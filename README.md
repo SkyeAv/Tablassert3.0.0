@@ -1,6 +1,6 @@
 # Tablassert(3.0.0)
 
-## By Skye Goetz (ISB)
+## By Skye Goetz (ISB) & Gwênlyn Glusman (ISB)
 
 Tablassert is a multipurpose tool that crafts knowledge assertions from tabular data, augments knowledge with configuration, and exports knowledge as Knowledge Graph Exchange (KGX) consistent TSVs.
 
