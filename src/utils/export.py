@@ -104,6 +104,8 @@ def kgx_formatinator(kg_path: str) -> None:
         nodes = dataframe.drop_duplicatesinator(nodes)
         nodes = dataframe.drop_duplicates_by_columnsinator(
             nodes, ["id", "category"])
+        nodes = dataframe.drop_duplicates_by_columnsinator(
+            nodes, ["id", "name"])
         nodes.to_csv(nodes_path, sep="\t", index=False)
 
         # Gzip the nodes and edges TSV files
