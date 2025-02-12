@@ -5,7 +5,8 @@ setup(
     version="3.0.0",
     packages=find_packages(),
     install_requires=[
-        "scikit-learn", "pyyaml", "pandas", "numpy", "xlrd", "nltk"],
+        "scikit-learn", "requests", "openpyxl", "pyyaml", "pandas", "numpy",
+        "xlrd", "nltk"],
     entry_points={
         "console_scripts": ["main=src.main:main"]},
     description="""

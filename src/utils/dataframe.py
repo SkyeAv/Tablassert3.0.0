@@ -166,6 +166,10 @@ def column_dropinator(df: object, columns_to_drop: list) -> object:
     return df.drop(columns=columns_to_drop, axis=1)
 
 
+def drop_duplicates_by_columnsinator(df: object, columns: list) -> object:
+    return df.drop_duplicates(subset=columns).reset_index(drop=True)
+
+
 def column_renamanator(df: object, renamements: dict) -> object:
     return df.rename(columns=renamements)
 
