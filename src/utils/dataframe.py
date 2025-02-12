@@ -485,13 +485,7 @@ def full_map(
 
     # Check if result is found in the Babel database
     if result:
-        if not classes and not taxons:
-            logging.log_mapped_edge(
-                val,
-                (result[0][3], result[0][0], biolink_it(result[0][1])),
-                "babel\tfull_map\tnormal")
-            return (result[0][3], result[0][0], biolink_it(result[0][1]))
-        elif classes and taxons:
+        if classes and taxons:
             for i, (category, taxon) in enumerate(
                     (item[1], item[2]) for item in result):
                 if (classes and biolink_it(category) in classes) and (
@@ -503,18 +497,44 @@ def full_map(
                         "babel\tfull_map\tclassed with taxon")
                     return (
                         result[i][3], result[i][0], biolink_it(result[i][1]))
-        else:
-            for i, (category, taxon) in enumerate(
-                    (item[1], item[2]) for item in result):
-                if (classes and biolink_it(category) in classes) or (
-                        taxons and taxon in taxons):
+        elif classes and not taxons:
+            for i, (category) in enumerate(
+                    (item[1]) for item in result):
+                if (classes and biolink_it(category) in classes):
                     logging.log_mapped_edge(
                         val,
                         (result[i][3], result[i][0],
                             biolink_it(result[i][1]), result[i][2]),
-                        "babel\tfull_map\tclassed or with taxon")
+                        "babel\tfull_map\tclassed")
                     return (
                         result[i][3], result[i][0], biolink_it(result[i][1]))
+        elif taxons and not classes:
+            print([item[1] for item in result])
+            if "Gene" in [item[1] for item in result]:
+                print("Triggered")
+                for i, (taxon) in enumerate(
+                        (item[2]) for item in result):
+                    if (taxons and taxon in taxons):
+                        logging.log_mapped_edge(
+                            val,
+                            (result[i][3], result[i][0],
+                                biolink_it(result[i][1]), result[i][2]),
+                            "babel\tfull_map\ttaxon")
+                        return (
+                            result[i][3], result[i][0], biolink_it(
+                                result[i][1]))
+            else:
+                logging.log_mapped_edge(
+                    val,
+                    (result[0][3], result[0][0], biolink_it(result[0][1])),
+                    "babel\tfull_map\tnormal")
+                return (result[0][3], result[0][0], biolink_it(result[0][1]))
+        else:
+            logging.log_mapped_edge(
+                val,
+                (result[0][3], result[0][0], biolink_it(result[0][1])),
+                "babel\tfull_map\tnormal")
+            return (result[0][3], result[0][0], biolink_it(result[0][1]))
 
     # Construct a query to search for the term in the KG2 database
     kg2_query = """
