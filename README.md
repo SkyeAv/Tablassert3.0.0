@@ -8,6 +8,8 @@ Tablassert is a multipurpose tool that crafts knowledge assertions from tabular 
 
 ```python
 pip install scikit-learn
+pip install requests
+pip install openpyxl
 pip install pyyaml
 pip install pandas
 pip install numpy
