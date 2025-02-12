@@ -7,7 +7,7 @@ setup(
     install_requires=[
         "scikit-learn", "pyyaml", "pandas", "numpy", "xlrd", "nltk"],
     entry_points={
-        "console_scripts": ["hello-world=src.Tablassert:hello_world"]},
+        "console_scripts": ["main=src.main:main"]},
     description="""
         Tablassert is a multipurpose tool that crafts knowledge assertions
         from tabular data, augments knowledge with configuration, and exports

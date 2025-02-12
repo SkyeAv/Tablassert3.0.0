@@ -18,7 +18,8 @@ pip install xlrd
 ### Usage (Unix)
 
 ```bash
-<python> [[ placeholder ]] <kg_config>
+pip install -e <path_to_tablassert>
+main <kg_config>
 ```
 
 ### KG Config
