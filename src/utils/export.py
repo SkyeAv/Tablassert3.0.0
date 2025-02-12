@@ -87,11 +87,11 @@ def kgx_formatinator(kg_path: str) -> None:
             "authors", "year_published", "table_url", "sheet_to_use",
             "yaml_curator", "curator_organization", "method_notes"]
 
-        # Write the edges DataFrame to the edges TSV file
+        # Extract the edges data and write it to the edges TSV file
         edges = df[edge_columns]
         edges.to_csv(edges_path, sep="\t", index=False)
 
-        # Write the nodes DataFrame to the nodes TSV file
+        # Extract the nodes data
         nodes = pd.concat([
             df[["subject", "subject_name", "subject_category"]].rename(
                 columns={
@@ -101,15 +101,20 @@ def kgx_formatinator(kg_path: str) -> None:
                 columns={
                     "object": "id", "object_name": "name",
                     "object_category": "category"})])
+
+        # Remove duplicate entries in the nodes DataFrame
         nodes = dataframe.drop_duplicatesinator(nodes)
         nodes = dataframe.drop_duplicates_by_columnsinator(
             nodes, ["id", "category"])
         nodes = dataframe.drop_duplicates_by_columnsinator(
             nodes, ["id", "name"])
+
+        # Write the nodes DataFrame to the nodes TSV file
         nodes.to_csv(nodes_path, sep="\t", index=False)
 
-        # Gzip the nodes and edges TSV files
+        # Gzip the nodes and edges TSV files to save space
         toolkit.gzip_file(nodes_path)
         toolkit.gzip_file(edges_path)
     except Exception as e:
+        # Raise a ValueError with the caught exception's message
         raise ValueError(str(e))
