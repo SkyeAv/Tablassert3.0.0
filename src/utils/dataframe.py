@@ -1,6 +1,7 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LinearRegression
 from src.utils import logging, nlp, toolkit
+from src import main
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -314,11 +315,10 @@ def biolink_it(val: str) -> str:
 
 def progress_handler() -> int:
     global start_time
-    global handler_timeout
     if start_time is None:
         start_time = time.time()
     elapsed_time = time.time() - start_time
-    if elapsed_time > handler_timeout:
+    if elapsed_time > main.handler_timeout:
         return 1
     return 0
 
@@ -1222,13 +1222,10 @@ def put_dataframe_togtherinator(
             lambda x: null_zip(x))
 
         # Add the 'edge_score' column
-        global predicates_sqlite
-        conn = sqlite3.connect(predicates_sqlite)
+        conn = sqlite3.connect(main.predicates_sqlite)
         cursor = conn.cursor()
-        global confidence_model
-        model = joblib.load(confidence_model)
-        global tfidf_vectorizer
-        vectorizer = joblib.load(tfidf_vectorizer)
+        model = joblib.load(main.confidence_model)
+        vectorizer = joblib.load(main.tfidf_vectorizer)
 
         df["edge_score"] = df.apply(
             lambda row: score_zip(

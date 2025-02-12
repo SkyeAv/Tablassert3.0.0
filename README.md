@@ -7,7 +7,7 @@ Tablassert is a multipurpose tool that crafts knowledge assertions from tabular 
 ### Dependencies (Python)
 
 ```python
-pip install sklearn
+pip install scikit-learn
 pip install pyyaml
 pip install pandas
 pip install numpy
@@ -53,7 +53,7 @@ Table Configs are YAML configuration for tabular data incorporated in a knowledg
 ```yaml
 # USE "~" FOR "None"
 
-column_style: # alphabetoic, numeric, else normal
+column_style: # alphabetic (A-ZZ), numeric (1-100), else normal
 
 method_notes : # Addtional details describing the methodology of the tabular data
 
