@@ -44,11 +44,11 @@ def kg_aggregatinator(kg_path: str) -> None:
 
 
 def edge_naminator(name: str, version: str) -> str:
-    return str(name) + "_edges_v" + str(version)
+    return str(name) + "_edges_v" + str(version) + ".tsv"
 
 
 def node_naminator(name: str, version: str) -> str:
-    return str(name) + "_nodes_v" + str(version)
+    return str(name) + "_nodes_v" + str(version) + ".tsv"
 
 
 def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
