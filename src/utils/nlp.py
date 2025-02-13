@@ -17,4 +17,7 @@ def tokenize_it(table_value: str) -> list:
     Tokenizes a given table value into a list of strings, using NLTK's
     word_tokenize function. The result is sorted alphabetically.
     """
-    return " ".join(sorted(word_tokenize(table_value)))
+    try:
+        return " ".join(sorted(word_tokenize(table_value)))
+    except TypeError:
+        return ""
