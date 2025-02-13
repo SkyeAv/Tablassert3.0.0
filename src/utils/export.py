@@ -43,15 +43,15 @@ def kg_aggregatinator(kg_path: str) -> None:
         raise ValueError("No TSV files found in the directory")
 
 
-def edge_naminator(path: str) -> str:
-    return "edges." + str(path)
+def edge_naminator(name: str, version: str) -> str:
+    return str(name) + "_edges_v" + str(version)
 
 
-def node_naminator(path: str) -> str:
-    return "nodes." + str(path)
+def node_naminator(name: str, version: str) -> str:
+    return str(name) + "_nodes_v" + str(version)
 
 
-def kgx_formatinator(kg_path: str) -> None:
+def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
     """
     Converts a Tablassert Knowledge Graph in TSV format to the KGX format.
 
@@ -60,6 +60,8 @@ def kgx_formatinator(kg_path: str) -> None:
 
     Args:
         kg_path (str): The path to the Tablassert Knowledge Graph in TSV format
+        kg_name (str): The name of the knowledge graph
+        version (str): The version of the knowledge graph
 
     Raises:
         ValueError: If any errors occur during the conversion
@@ -69,8 +71,8 @@ def kgx_formatinator(kg_path: str) -> None:
         df = read_tsv(kg_path)
 
         # Construct the paths for the nodes and edges TSV files
-        nodes_path = node_naminator(kg_path)
-        edges_path = edge_naminator(kg_path)
+        nodes_path = node_naminator(kg_name, version)
+        edges_path = edge_naminator(kg_name, version)
 
         # Deletes the nodes and edges TSV files if they already exist
         if os.path.isfile(nodes_path):
@@ -80,18 +82,24 @@ def kgx_formatinator(kg_path: str) -> None:
 
         # Select the columns that should be written to the edges TSV file
         edge_columns = [
-            "domain", "subject", "predicate", "object", "edge_score", "n",
+            "subject", "predicate", "object", "domain", "edge_score", "n",
             "relationship_strength", "p", "relationship_type",
             "p_correction_method", "knowledge_level", "agent_type",
             "publication", "journal", "publication_name",
             "authors", "year_published", "table_url", "sheet_to_use",
             "yaml_curator", "curator_organization", "method_notes"]
 
-        # Extract the edges data and write it to the edges TSV file
+        # Extract the edges data
         edges = df[edge_columns]
+
+        # Strip whitespace in 'method_notes' column
+        edges["method_notes"] = edges["method_notes"].apply(
+            lambda x: str(x).strip())
+
+        # Write the edges DataFrame to the edges TSV file
         edges.to_csv(edges_path, sep="\t", index=False)
 
-        # Extract the nodes data
+        # Extract the nodes data by renaming columns and concatenating
         nodes = pd.concat([
             df[["subject", "subject_name", "subject_category"]].rename(
                 columns={
@@ -108,6 +116,9 @@ def kgx_formatinator(kg_path: str) -> None:
             nodes, ["id", "category"])
         nodes = dataframe.drop_duplicates_by_columnsinator(
             nodes, ["id", "name"])
+
+        # Strip whitespace in nodes
+        nodes = nodes.map(lambda x: str(x).strip())
 
         # Write the nodes DataFrame to the nodes TSV file
         nodes.to_csv(nodes_path, sep="\t", index=False)

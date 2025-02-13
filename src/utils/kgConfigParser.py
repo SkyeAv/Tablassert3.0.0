@@ -10,13 +10,19 @@ def check_kg_config(kg_config: object) -> None:
 
 def check_kg_subconfigs(kg_config: dict) -> None:
     subconfigs = [
-        "knowledge_graph_name", "max_workers", "p_value_cutoff",
-        "config_directories", "override_sqlite", "supplement_sqlite",
-        "babel_sqlite", "kg2_sqlite", "progress_handler_timeout",
-        "predicates_sqlite", "confidence_model", "tfidf_vectorizer"]
+        "knowledge_graph_name", "version_number", "max_workers",
+        "p_value_cutoff", "config_directories", "override_sqlite",
+        "supplement_sqlite", "babel_sqlite", "kg2_sqlite",
+        "progress_handler_timeout", "predicates_sqlite",
+        "confidence_model", "tfidf_vectorizer"]
     if not all(field in kg_config.keys() for field in subconfigs):
         raise ValueError(
             f"Invalid kg_config: {subconfigs} not found")
+
+
+def check_str(x: object, attribute: str) -> None:
+    if not isinstance(x, str):
+        raise ValueError(f"Invalid {attribute}: Should be an string")
 
 
 def check_int(x: object, attribute: str) -> None:
@@ -75,6 +81,9 @@ def parse_kg_config(kg_config: object) -> None:
 
         # Check that the required subconfigs are present
         check_kg_subconfigs(kg_config)
+
+        # Check that version_number is a string
+        check_str(kg_config["version_number"], "version_number")
 
         # Check that max_workers is an integer
         check_int(kg_config["max_workers"], "max_workers")

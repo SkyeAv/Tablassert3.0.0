@@ -30,6 +30,7 @@ KG Configs are YAML configuration for any new Tablassert-generated knowledge gra
 
 ```yaml
 knowledge_graph_name :
+vesion_number : # Must be a string like '1.0.0'
 max_workers : # Max Parallel Processes
 p_value_cutoff : # Max P Value
 progress_handler_timeout : # For all SQL Databases and Queries

@@ -117,8 +117,11 @@ def main() -> None:
             print(f"Error: {e}")  # Print an error message
 
     try:
+        kg_version = kg_config["version_number"]
+        kg_name = kg_config["knowledge_graph_name"]
         export.kg_aggregatinator(kg_path)  # Aggregate the DataFrames into one
-        export.kgx_formatinator(kg_path)  # Formats the knowledge graph
+        export.kgx_formatinator(
+            kg_path, kg_name, kg_version)  # Formats the knowledge graph
     except ValueError as e:
         toolkit.exit_with_error(str(e))  # Exit if there is an error
 

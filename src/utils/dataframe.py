@@ -124,7 +124,7 @@ def column_stylinator(df: object, column_style: str) -> object:
 
 def column_truncinator(df: object) -> object:
     columns = [
-        "domain", "subject", "predicate", "object", "subject_name",
+        "subject", "predicate", "object", "domain", "subject_name",
         "object_name", "edge_score", "n", "relationship_strength", "p",
         "relationship_type", "p_correction_method", "knowledge_level",
         "agent_type", "publication", "journal", "publication_name",
@@ -509,9 +509,7 @@ def full_map(
                     return (
                         result[i][3], result[i][0], biolink_it(result[i][1]))
         elif taxons and not classes:
-            print([item[1] for item in result])
             if "Gene" in [item[1] for item in result]:
-                print("Triggered")
                 for i, (taxon) in enumerate(
                         (item[2]) for item in result):
                     if (taxons and taxon in taxons):
