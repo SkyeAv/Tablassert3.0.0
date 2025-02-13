@@ -96,6 +96,9 @@ def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
         edges["method_notes"] = edges["method_notes"].apply(
             lambda x: str(x).strip())
 
+        # Remove duplicate entries in the edges DataFrame
+        edges = dataframe.drop_duplicatesinator(edges)
+
         # Write the edges DataFrame to the edges TSV file
         edges.to_csv(edges_path, sep="\t", index=False)
 
