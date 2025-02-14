@@ -1091,7 +1091,11 @@ def p_pentalty(x: object) -> object:
 def score_predicate(x: str, cursor: object) -> object:
     cursor.execute(
         "SELECT score FROM specificity WHERE predicate = ?", (x,))
-    return cursor.fetchone()[0]
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+    else:
+        return 0
 
 
 def score_zip(
@@ -1259,17 +1263,17 @@ def put_dataframe_togtherinator(
         cursor.close()
         conn.close()
 
+        # Truncate, drop NaN values, and remove duplicates from DataFrame
+        df = column_truncinator(df)
+        df = dropnaninator(df)
+        df = drop_duplicatesinator(df)
+
         # Reverse any specific transformations on the 'p' column
         df["p"] = df["p"].apply(lambda x: four_unzip(str(x)))
 
         # Reverse any transformations on the 'relationship_strength' column
         df["relationship_strength"] = df["relationship_strength"].apply(
             lambda x: null_unzip(str(x)))
-
-        # Truncate, drop NaN values, and remove duplicates from DataFrame
-        df = column_truncinator(df)
-        df = dropnaninator(df)
-        df = drop_duplicatesinator(df)
 
         # Save the processed DataFrame to the specified output path
         save_dateframe(df, output_path)
