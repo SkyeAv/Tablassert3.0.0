@@ -1131,12 +1131,13 @@ def score_zip(
     Returns:
         float: The score of the association.
     """
-    a = 0.8
-    b = 0.6
-    c = 1.3
-    d = 1.1
-    e = 1.5
-    f = 0.7
+    a = 35
+    b = 10
+    c = 65
+    d = 50
+    e = 75
+    f = 40
+    g = 1000
 
     # Calculate the logarithm of the number of observations
     n_component = log10(n)
@@ -1165,7 +1166,8 @@ def score_zip(
         c * p_penalty +
         d * method_component +
         e * strength_component +
-        f * predicate_component)
+        f * predicate_component +
+        g)
 
     return score
 

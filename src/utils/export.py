@@ -31,9 +31,9 @@ def kg_aggregatinator(kg_path: str) -> None:
             # Read the file and concatenate it with the existing data
             df = pd.concat([df, read_tsv("tablassert/" + file)])
     # Normalize the 'edge_score' column
-    scaler = MinMaxScaler(feature_range=(42.128903, 99.289624))
+    scaler = MinMaxScaler(feature_range=(50, 100))
     df["edge_score"] = scaler.fit_transform(
-            np.array(df["edge_score"].values).reshape(-1, 1))
+        np.array(df["edge_score"].values).reshape(-1, 1))
     # Save the concatenated DataFrame to the specified file
     dataframe.save_dateframe(df, kg_path)
     # Check if any TSV files were found in the directory
