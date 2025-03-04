@@ -336,7 +336,7 @@ def full_map(
 
     Args:
         val (str): The term to map.
-        expected_taxa (list): A list of expected_taxa to restrict the search to.
+        expected_taxa (list): A list of expected_taxa to restrict the search.
         classes (list): A list of classes to restrict the search to.
         cur_kg2 (object): A database connection to the KG2 database.
         cur_babel (object): A database connection to the Babel database.
@@ -808,7 +808,8 @@ def check_that_curie_case(
 
 def check_that_value_case(
             value: object, babel: object, kg2: object, override: object,
-            supplement: object, expected_taxa: object, classes: object) -> None:
+            supplement: object, expected_taxa: object,
+            classes: object) -> None:
     if not isinstance(value, str):
         raise ValueError(
             f"Invalid value: {value} should be instance str")
@@ -835,7 +836,7 @@ def node_columninator(
         babel (object): A database connection to the Babel database.
         override (object): A database connection to the override database.
         supplement (object): A database connection to the supplement database.
-        expected_taxa (object): A list of expected_taxa to restrict the search to.
+        expected_taxa (object): A list of expected_taxa to restrict the search.
         classes (object): A list of classes to restrict the search to.
 
     Returns:
@@ -902,8 +903,8 @@ def node_columninator(
                         cur_override, cur_supplement, expected_taxa, classes)
                 df[column] = (
                     [full_map(
-                        str(subconfig["value"]), expected_taxa, classes, cur_kg2,
-                        cur_babel, cur_override, cur_supplement)]
+                        str(subconfig["value"]), expected_taxa, classes,
+                        cur_kg2, cur_babel, cur_override, cur_supplement)]
                     * len(df[column].to_list()))
             elif "curie_column_name" in subconfig.keys():
                 df = column_renamanator(
@@ -1030,7 +1031,8 @@ def null_zip(x: object) -> object:
                 otherwise returns the input value unchanged.
     """
     # Check if input is a string representing 'not applicable'
-    if str(x).strip().lower() in ["not_applicable", "not applicable"]:
+    if str(x).strip().lower() in [
+            "not_applicable", "not applicable", "notapplicable"]:
         return 1e-10
     else:
         return x
@@ -1131,16 +1133,16 @@ def score_zip(
     Returns:
         float: The score of the association.
     """
-    a = 35
-    b = 10
-    c = 65
-    d = 50
-    e = 75
+    a = 65
+    b = 20
+    c = 300
+    d = 95
+    e = 80
     f = 40
     g = 1000
 
     # Calculate the logarithm of the number of observations
-    n_component = log10(n)
+    n_component = log10(n) if isinstance(n, int) else 0
 
     # Calculate the logarithm of the p-value
     p_component = p_zip(p)
@@ -1169,7 +1171,7 @@ def score_zip(
         f * predicate_component +
         g)
 
-    return score
+    return log10(score)
 
 
 def put_dataframe_togtherinator(
