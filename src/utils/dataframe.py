@@ -138,7 +138,7 @@ def column_truncinator(df: object) -> object:
 
 
 def dataframe_slicnator(df: object, first_line: int, last_line: int) -> object:
-    return df.iloc[(first_line - 1):last_line]
+    return df.iloc[(first_line - 1):last_line].copy()
 
 
 def basic_key_value_column_addinator(df: object, subconfig: dict) -> object:
@@ -328,7 +328,7 @@ def progress_handler() -> int:
 
 
 def full_map(
-        val: str, taxons: list, classes: list,
+        val: str, expected_taxa: list, classes: list,
         cur_kg2: object, cur_babel: object,
         cur_override: object, cur_supplement: object) -> object:
     """
@@ -336,7 +336,7 @@ def full_map(
 
     Args:
         val (str): The term to map.
-        taxons (list): A list of taxons to restrict the search to.
+        expected_taxa (list): A list of expected_taxa to restrict the search to.
         classes (list): A list of classes to restrict the search to.
         cur_kg2 (object): A database connection to the KG2 database.
         cur_babel (object): A database connection to the Babel database.
@@ -448,7 +448,7 @@ def full_map(
         SELECT NAME, CATEGORY, TAXON, CURIE
         FROM name_lookup
         WHERE row_num = 1;
-        """ if not taxons else """
+        """ if not expected_taxa else """
         WITH synonym_lookup AS (
             SELECT CURIE
             FROM SYNONYMS
@@ -485,11 +485,11 @@ def full_map(
 
     # Check if result is found in the Babel database
     if result:
-        if classes and taxons:
+        if classes and expected_taxa:
             for i, (category, taxon) in enumerate(
                     (item[1], item[2]) for item in result):
                 if (classes and biolink_it(category) in classes) and (
-                        taxons and taxon in taxons):
+                        expected_taxa and taxon in expected_taxa):
                     logging.log_mapped_edge(
                         val,
                         (result[i][3], result[i][0],
@@ -497,7 +497,7 @@ def full_map(
                         "babel\tfull_map\tclassed with taxon")
                     return (
                         result[i][3], result[i][0], biolink_it(result[i][1]))
-        elif classes and not taxons:
+        elif classes and not expected_taxa:
             for i, (category) in enumerate(
                     (item[1]) for item in result):
                 if (classes and biolink_it(category) in classes):
@@ -508,11 +508,11 @@ def full_map(
                         "babel\tfull_map\tclassed")
                     return (
                         result[i][3], result[i][0], biolink_it(result[i][1]))
-        elif taxons and not classes:
+        elif expected_taxa and not classes:
             if "Gene" in [item[1] for item in result]:
                 for i, (taxon) in enumerate(
                         (item[2]) for item in result):
-                    if (taxons and taxon in taxons):
+                    if (expected_taxa and taxon in expected_taxa):
                         logging.log_mapped_edge(
                             val,
                             (result[i][3], result[i][0],
@@ -808,12 +808,12 @@ def check_that_curie_case(
 
 def check_that_value_case(
             value: object, babel: object, kg2: object, override: object,
-            supplement: object, taxons: object, classes: object) -> None:
+            supplement: object, expected_taxa: object, classes: object) -> None:
     if not isinstance(value, str):
         raise ValueError(
             f"Invalid value: {value} should be instance str")
     if not isinstance(full_map(
-                value, taxons, classes,
+                value, expected_taxa, classes,
                 kg2, babel, override, supplement), tuple):
         raise ValueError(
             f"Invalid value: {value} does not map via full_map")
@@ -822,7 +822,7 @@ def check_that_value_case(
 def node_columninator(
         df: object, subconfig: dict, column: str,
         kg2: object, babel: object, override: object,
-        supplement: object, taxons: object, classes: object) -> object:
+        supplement: object, expected_taxa: object, classes: object) -> object:
     """
     Processes a specified column in the DataFrame according to the provided
     subconfig.
@@ -835,7 +835,7 @@ def node_columninator(
         babel (object): A database connection to the Babel database.
         override (object): A database connection to the override database.
         supplement (object): A database connection to the supplement database.
-        taxons (object): A list of taxons to restrict the search to.
+        expected_taxa (object): A list of expected_taxa to restrict the search to.
         classes (object): A list of classes to restrict the search to.
 
     Returns:
@@ -899,10 +899,10 @@ def node_columninator(
             elif "value" in subconfig.keys():
                 check_that_value_case(
                         str(subconfig["value"]), cur_babel, cur_kg2,
-                        cur_override, cur_supplement, taxons, classes)
+                        cur_override, cur_supplement, expected_taxa, classes)
                 df[column] = (
                     [full_map(
-                        str(subconfig["value"]), taxons, classes, cur_kg2,
+                        str(subconfig["value"]), expected_taxa, classes, cur_kg2,
                         cur_babel, cur_override, cur_supplement)]
                     * len(df[column].to_list()))
             elif "curie_column_name" in subconfig.keys():
@@ -916,7 +916,7 @@ def node_columninator(
                     df, {subconfig["value_column_name"]: column})
                 df[column] = df[column].apply(
                     lambda x, *args: full_map(str(x), *args), args=(
-                        taxons, classes, cur_kg2, cur_babel,
+                        expected_taxa, classes, cur_kg2, cur_babel,
                         cur_override, cur_supplement))
             cur_kg2.close()
             cur_babel.close()
@@ -1233,7 +1233,7 @@ def put_dataframe_togtherinator(
         for col in ["subject", "object"]:
             df = node_columninator(
                 df, section[col], col, kg2, babel,
-                override, supplement, section[col].get("taxons"),
+                override, supplement, section[col].get("expected_taxa"),
                 section[col].get("expected_classes"))
             df = post_normalizatinator(df, col)
 

@@ -183,10 +183,10 @@ def check_reindexing(reindexing: object) -> None:
                     anything other than not_equal_to if value is a string""")
 
 
-def check_taxons(taxons: object) -> None:
-    if not isinstance(taxons, list):
-        raise ValueError("Invalid taxons: Should be a list")
-    for i, taxon in enumerate(taxons):
+def check_expected_taxa(expected_taxa: object) -> None:
+    if not isinstance(expected_taxa, list):
+        raise ValueError("Invalid expected_taxa: Should be a list")
+    for i, taxon in enumerate(expected_taxa):
         if not isinstance(taxon, str):
             raise ValueError(
                 f"Invalid taxon {i}: Should be a string")
@@ -262,11 +262,11 @@ def parse_section(i: int, section: object) -> None:
         # Check that the domain is valid
         check_domain(section["domain"])
 
-        # Check the reindexing and taxons (if present)
+        # Check the reindexing and expected_taxa (if present)
         if "reindex" in section.keys():
             check_reindexing(section["reindex"])
-        if "taxons" in section.keys():
-            check_taxons(section["taxons"])
+        if "expected_taxa" in section.keys():
+            check_expected_taxa(section["expected_taxa"])
     except Exception as e:
         raise ValueError(
             "Section %d: %s; See README.md for usage", i, e)

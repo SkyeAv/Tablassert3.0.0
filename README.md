@@ -84,7 +84,7 @@ subject :
  # value_column_name : <A Name of a Column Containing Values>
  expected_classes : # List
    - # biolink:Class
- taxons : # Only For biolink:Gene Filtering / List
+ expected_taxa : # Only For biolink:Gene Filtering / List
    - # NCBITaxon:Taxon
  regex_replacements : # List
    - pattern :
