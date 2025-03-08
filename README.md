@@ -82,6 +82,10 @@ subject :
  # value : <A Value for the Entire Table>
  # curie_column_name : <A Name of a Column Containing CURIEs>
  # value_column_name : <A Name of a Column Containing Values>
+ # shared_curie_column : <A Name of a Column Containing CURIEs and Something  
+  #Else You Want to Preserve>
+ # shared_value_column : <A Name of a Column Containing Values and Something  
+  #Else You Want to Preserve>
  expected_classes : # List
    - # biolink:Class
  expected_taxa : # Only For biolink:Gene Filtering / List

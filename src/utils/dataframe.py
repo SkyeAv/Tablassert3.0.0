@@ -138,7 +138,8 @@ def column_truncinator(df: object) -> object:
 
 
 def dataframe_slicnator(df: object, first_line: int, last_line: int) -> object:
-    return df.iloc[(first_line - 1):last_line].copy()
+    df = df.iloc[(first_line - 1):(last_line - 1)].copy()
+    return df
 
 
 def basic_key_value_column_addinator(df: object, subconfig: dict) -> object:
@@ -854,6 +855,14 @@ def node_columninator(
                 df, {subconfig.get(
                         "curie_column_name", subconfig.get("value_column_name")
                         ): column})
+        # Duplicate the column if specified
+        elif "shared_curie_column" in subconfig or \
+                "shared_value_column" in subconfig:
+            df = basic_key_value_column_addinator(
+                df, {column: df[
+                    subconfig.get(
+                        "shared_curie_column",
+                        subconfig.get("shared_value_column"))].values})
         empty_check(df, column, "column creation")
         # Fill NaN values in the column with the specified method
         if "fill_values" in subconfig.keys():
@@ -907,8 +916,12 @@ def node_columninator(
                         cur_kg2, cur_babel, cur_override, cur_supplement)]
                     * len(df[column].to_list()))
             elif "curie_column_name" in subconfig.keys():
+                df[column] = df[column].apply(
+                    lambda x, *args: half_map(str(x), *args), args=(
+                        cur_kg2, cur_babel, cur_override, cur_supplement))
+            elif "shared_curie_column" in subconfig.keys():
                 df = column_renamanator(
-                    df, {subconfig["curie_column_name"]: column})
+                    df, {subconfig["shared_curie_column"]: column})
                 df[column] = df[column].apply(
                     lambda x, *args: half_map(str(x), *args), args=(
                         cur_kg2, cur_babel, cur_override, cur_supplement))
@@ -919,11 +932,15 @@ def node_columninator(
                     lambda x, *args: full_map(str(x), *args), args=(
                         expected_taxa, classes, cur_kg2, cur_babel,
                         cur_override, cur_supplement))
+            elif "shared_value_column" in subconfig.keys():
+                df[column] = df[column].apply(
+                    lambda x, *args: full_map(str(x), *args), args=(
+                        expected_taxa, classes, cur_kg2, cur_babel,
+                        cur_override, cur_supplement))
             cur_kg2.close()
             cur_babel.close()
             cur_override.close()
             cur_supplement.close()
-
         # Remove the rows with unmapped values
         df = remove_unmapped_rowsinator(df, column)
         # Check for empty values in the column

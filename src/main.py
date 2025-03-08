@@ -56,8 +56,7 @@ def process_section(file: str, i: int, section: dict, kg_config: dict) -> str:
             dataframe.put_dataframe_togtherinator(
                 section, kg_config["p_value_cutoff"], output_path,
                 kg_config["kg2_sqlite"], kg_config["babel_sqlite"],
-                kg_config["override_sqlite"], kg_config["supplement_sqlite"]
-            )
+                kg_config["override_sqlite"], kg_config["supplement_sqlite"])
         # Return a success message
         return f"Success: {toolkit.get_filename_no_ext(file)} section {i}"
     except Exception as e:

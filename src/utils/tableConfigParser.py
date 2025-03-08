@@ -78,7 +78,9 @@ def check_predicate(predicate: object) -> None:
 
 
 def check_node_options(node: dict) -> None:
-    options = ["curie", "value", "curie_column_name", "value_column_name"]
+    options = [
+        "curie", "value", "curie_column_name", "value_column_name",
+        "shared_value_column", "shared_curie_column"]
     if not any(field in options for field in node.keys()):
         raise ValueError(f"Invalid node config: one of {options} not found")
 
