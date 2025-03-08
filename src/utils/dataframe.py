@@ -328,6 +328,75 @@ def progress_handler() -> int:
     return 0
 
 
+def full_map2_base_executinator(
+        cursor: object, query: str,
+        params: tuple, db: str) -> str:
+    try:
+        cursor.execute(query, params)
+        result = cursor.fetchone()
+        if result:
+            return (result[0][0], result[0][1], result[0][2])
+        else:
+            return None
+    except sqlite3.OperationalError as e:
+        logging.log_slow_query(params, f"full_map2_base {db}", e)
+
+
+def full_map2(
+        val: str, taxa: list, classes: list, avoid: list,
+        cur_kg2: object, cur_babel: object,
+        cur_override: object, cur_supplement: object) -> object:
+    try:
+        cur_override.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+        cur_babel.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+        cur_kg2.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+        cur_supplement.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+
+        """
+        SELECT 
+            COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM
+            NAMES.NAME,
+            NAMES.CATEGORY,
+            NAMES.TAXON,
+        FROM NAMES
+        INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+        LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+        WHERE SYNONYMS.SYNONYM = ?;"""
+
+        """
+        SELECT 
+            COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID
+            NAMES.NAME,
+            NAMES.CATEGORY,
+            NAMES.TAXON,
+        FROM NAMES
+        INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+        LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+        WHERE HASHES.HASH = ?;"""
+
+        """
+        SELECT
+            COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+            COALESCE(clusters.name, nodes.name) AS norm_name
+            COALESCE(clusters.category, nodes.category) as norm_cat
+        FROM clusters
+        LEFT JOIN nodes ON clusters.cluster_id = nodes.id
+        WHERE nodes.name = ?;"""
+
+        """
+        SELECT
+            COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+            COALESCE(clusters.name, nodes.name) AS norm_name
+            COALESCE(clusters.category, nodes.category) as norm_cat
+        FROM clusters
+        LEFT JOIN nodes ON clusters.cluster_id = nodes.id
+        WHERE nodes.name_simplified = ?;"""
+
+
 def full_map(
         val: str, expected_taxa: list, classes: list,
         cur_kg2: object, cur_babel: object,
@@ -631,6 +700,138 @@ def full_map(
     # If no result is found, return the original term
     logging.log_dropped_edge(val, "dropped\tfull_map")
     return [val]
+
+
+def half_map2_executinator(
+        cursor: object, query: str,
+        params: tuple, db: str) -> str:
+    """
+    Execute a query on a database and return the first result.
+
+    Args:
+        cursor (object): A database cursor object.
+        query (str): The query to execute.
+        params (tuple): The parameters to pass to the query.
+        db (str): The name of the database.
+
+    Returns:
+        str: The first result of the query, or None if no result is found.
+    """
+    try:
+        # Execute the query with the given parameters
+        cursor.execute(query, params)
+        # Fetch one result
+        result = cursor.fetchone()
+        # Return the first result, or None if no result is found
+        return result[0][0] if result else None
+    except sqlite3.OperationalError as e:
+        # Log any errors that occur
+        logging.log_slow_query(params, f"half_map2 {db}", e)
+
+
+def half_map2(
+        curie: str, cur_kg2: object, cur_babel: object,
+        cur_override: object, cur_supplement: object):
+    """
+    Maps the given curie to the preferred name, class, and curie in the
+    Babel, KG2, and supplement databases.
+
+    Args:
+        curie (str): The curie to map.
+        cur_kg2 (object): The KG2 database connection.
+        cur_babel (object): The Babel database connection.
+        cur_override (object): The override database connection.
+        cur_supplement (object): The supplement database connection.
+
+    Returns:
+        tuple: A tuple containing the preferred name, class, and curie of the
+            given curie.
+    """
+    try:
+        # Set progress handlers on the database connections
+        cur_override.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+        cur_babel.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+        cur_kg2.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+        cur_supplement.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
+
+        # Set global start time
+        global start_time
+
+        # Attempt to normalize the curie to its preferred name
+        norm_queries = [
+            (cur_babel, "SELECT PREFERRED FROM MAP WHERE ALIAS = ?",
+                (curie,), "babel"),
+            (cur_babel, "SELECT cluster_id FROM nodes WHERE id = ?", (curie,),
+                "kg2")]
+        for cursor, query, params, db in norm_queries:
+            start_time = time.time()
+            normalized_curie = half_map2_executinator(
+                cursor, query, params, db)
+            if normalized_curie is not None:
+                logging.log_mapped_edge(curie, normalized_curie, db)
+                curie = normalized_curie
+                break
+
+        # Attempt to retrieve the preferred name
+        name_queries = [
+            (cur_override,
+                """SELECT preferred_name FROM
+                curie_to_preferred_name WHERE curie = ?""",
+                (curie,), "override"),
+            (cur_babel, "SELECT NAME FROM NAMES WHERE CURIE = ?",
+                (curie,), "babel"),
+            (cur_babel, "SELECT name FROM clusters WHERE cluster_id = ?",
+                (curie,), "kg2"),
+            (cur_supplement,
+                """SELECT preferred_name FROM
+                curie_to_preferred_name WHERE curie = ?""",
+                (curie,), "supplement")]
+        for cursor, query, params, db in name_queries:
+            start_time = time.time()
+            name = half_map2_executinator(cursor, query, params, db)
+            if name is not None:
+                logging.log_mapped_edge(curie, name, db)
+                break
+
+        # If no name is found, log an error
+        if not name:
+            logging.log_dropped_edge(curie, "dropped\thalf_map\tno name")
+            return [curie]
+
+        # Attempt to retrieve the category
+        category_queries = [
+            (cur_override, "SELECT class FROM curie_to_class WHERE curie = ?",
+                (curie,), "override"),
+            (cur_babel, "SELECT CATEGORY FROM NAMES WHERE CURIE = ?",
+                (curie,), "babel"),
+            (cur_babel, "SELECT category FROM clusters WHERE cluster_id = ?",
+                (curie,), "kg2"),
+            (cur_supplement,
+                "SELECT class FROM curie_to_class WHERE curie = ?",
+                (curie,), "supplement")]
+        for cursor, query, params, db in category_queries:
+            start_time = time.time()
+            category = half_map2_executinator(cursor, query, params, db)
+            if category is not None:
+                logging.log_mapped_edge(curie, category, db)
+                break
+
+        # If no category is found, log an error
+        if not category:
+            logging.log_dropped_edge(curie, "dropped\thalf_map\tno category")
+            return [curie]
+
+        # Return the preferred name, class, and curie
+        result = (curie, name, category)
+        logging.log_mapped_edge(curie, result, "half_map2")
+        return result
+    except Exception as e:
+        raise ValueError(
+            f"{curie} broke half map\t{e}")
 
 
 def half_map(
