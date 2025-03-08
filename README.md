@@ -106,8 +106,10 @@ object :
  fill_values : # How to Fill Empty Values in Column (ffil or bfill)
 
 reindex : # List 
-  - mode : # Mode (greater_than_or_equal_to, less_than_or_equal_to, not_equal_to)
-    column : #nGoes By Final Column Names ONLY if Column is Included in the Final KG
+  - mode : # Mode (greater_than_or_equal_to, less_than_or_equal_to,
+      #equal_to, not_equal_to)
+    column : #nGoes By Final Column Names ONLY if Column is Included in the     
+      #Final KG
     value :
 
 attributes : 
@@ -118,7 +120,7 @@ attributes :
      - operation : # <Python math Module Attribute>
        parameter : # Optional: <Second Parameter for Attribute>
        order_last : # Optional: <yes/no About Whether to Order parameter Last>
-       # order_last is Required when parameter is Specified (Vice-Versa)
+        #order_last is Required when parameter is Specified (Vice-Versa)
  n : # Sample Size
  relationship_strength : # Field Describing the Strength of an Edge
  relationship_type : # Method for Strength

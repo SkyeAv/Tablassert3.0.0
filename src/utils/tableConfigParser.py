@@ -171,14 +171,15 @@ def check_reindexing(reindexing: object) -> None:
                 field in reindex.keys() for field in subconfigs):
             raise ValueError(
                 f"Invalid reindex {i}: {subconfigs} not found")
-        if not reindex["mode"] in ["greater_than_or_equal_to",
-                                   "less_than_or_equal_to", "not_equal_to"]:
+        if not reindex["mode"] in [
+                    "greater_than_or_equal_to",
+                    "less_than_or_equal_to", "not_equal_to", "equal_to"]:
             raise ValueError(
                 f"""Invalid reindex {i}: mode should be one of
                 greater_than_or_equal_to, less_than_or_equal_to,
                 not_equal_to""")
         if isinstance(reindex["value"], str) \
-                and reindex["mode"] != "not_equal_to":
+                and reindex["mode"] not in ["not_equal_to", "equal_to"]:
             raise ValueError(
                 f"""
                     Invalid reindex {i}: mode cannot be

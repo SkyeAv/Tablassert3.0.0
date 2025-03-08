@@ -1016,6 +1016,10 @@ def is_not_equal_toinator(df: object, column: str, value: object) -> object:
     return df[df[column] != value].reset_index(drop=True)
 
 
+def is_equal_toinator(df: object, column: str, value: object) -> object:
+    return df[df[column] == value].reset_index(drop=True)
+
+
 def reindexinator(df: object, reindexing: list) -> object:
     for subconfig in reindexing:
         mode = subconfig["mode"]
@@ -1027,6 +1031,9 @@ def reindexinator(df: object, reindexing: list) -> object:
                 df, subconfig["column"], subconfig["value"])
         elif mode == "not_equal_to":
             df = is_not_equal_toinator(
+                df, subconfig["column"], subconfig["value"])
+        elif mode == "equal_to":
+            df = is_equal_toinator(
                 df, subconfig["column"], subconfig["value"])
     return df
 
