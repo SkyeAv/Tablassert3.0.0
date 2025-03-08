@@ -102,7 +102,7 @@ object :
    - prefix : # Prefix
  suffix :
    - suffix : # Suffix
- explode : # Delimeter to Split Values by Before Exploding to Separate Rows
+ explode_column  : # Delimeter to Split Values by Before Exploding to Separate Rows
  fill_values : # How to Fill Empty Values in Column (ffil or bfill)
 
 reindex : # List 
