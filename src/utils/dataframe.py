@@ -383,8 +383,8 @@ def full_map2(
             COALESCE(clusters.cluster_id, nodes.id) AS norm_id
             COALESCE(clusters.name, nodes.name) AS norm_name
             COALESCE(clusters.category, nodes.category) as norm_cat
-        FROM clusters
-        LEFT JOIN nodes ON clusters.cluster_id = nodes.id
+        FROM nodes
+        LEFT JOIN clusters ON nodes.id = clusters.cluster_id
         WHERE nodes.name = ?;"""
 
         """
@@ -392,8 +392,8 @@ def full_map2(
             COALESCE(clusters.cluster_id, nodes.id) AS norm_id
             COALESCE(clusters.name, nodes.name) AS norm_name
             COALESCE(clusters.category, nodes.category) as norm_cat
-        FROM clusters
-        LEFT JOIN nodes ON clusters.cluster_id = nodes.id
+        FROM nodes
+        LEFT JOIN clusters ON nodes.id = clusters.cluster_id
         WHERE nodes.name_simplified = ?;"""
 
 
