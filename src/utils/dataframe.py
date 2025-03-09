@@ -331,21 +331,189 @@ def progress_handler() -> int:
 def full_map2_base_executinator(
         cursor: object, query: str,
         params: tuple, db: str) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :return: A tuple of (preferred name, class, curie) or None
+    """
     try:
         cursor.execute(query, params)
         result = cursor.fetchone()
         if result:
-            return (result[0][0], result[0][1], result[0][2])
+            category = result[2]
+            if db in ["babel", "kg2"]:
+                category = biolink_it(category)
+            return (result[0][0], result[0][1], category)
         else:
             return None
     except sqlite3.OperationalError as e:
         logging.log_slow_query(params, f"full_map2_base {db}", e)
 
 
+def full_map2_classed_taxonless_executinator(
+        cursor: object, query: str, params: tuple,
+        db: str, classes: list, avoid: list) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    This function is similar to full_map2_base_executinator but will
+    only return results if the class is in the list of classes and
+    not in the list of classes to avoid.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :param classes: The list of classes to include in the results
+    :param avoid: The list of classes to exclude from the results
+    :return: A tuple of (preferred name, class, curie) or None
+    """
+    try:
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                category = result[2]
+                if db in ["babel", "kg2"]:
+                    category = biolink_it(category)
+                if category in classes and category not in avoid:
+                    return (result[0], result[1], category)
+        else:
+            return None
+    except sqlite3.OperationalError as e:
+        logging.log_slow_query(
+            params, f"full_map2_classed_taxonless {db}", e)
+
+
+def full_map2_classless_with_taxon_executinator(
+        cursor: object, query: str,
+        params: tuple, db: str, taxa: list) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    This function is similar to full_map2_base_executinator but will
+    only return results if the class is not "Gene" or if the taxon
+    is in the list of taxa.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :param taxa: The list of taxa to include in the results
+    :return: A tuple of (preferred name, class, curie) or None
+    """
+    try:
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                # if the class is "Gene", only return results if the
+                # taxon is in the list of taxa
+                category = result[2]
+                if db in ["babel", "kg2"]:
+                    category = biolink_it(category)
+                if "biolink:Gene" in category:
+                    if result[3] in taxa:
+                        return (result[0], result[1], category)
+                    else:
+                        return None
+                # otherwise, return results regardless of the taxon
+                else:
+                    return (result[0], result[1], category)
+        else:
+            return None
+    except sqlite3.OperationalError as e:
+        # log the error and return None
+        logging.log_slow_query(
+            params, f"full_map2_classless_taxon {db}", e)
+
+
+def full_map2_classed_with_taxon_executinator(
+        cursor: object, query: str, params: tuple, db: str,
+        classes: list, avoid: list, taxa: list) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    This function is similar to full_map2_base_executinator but will
+    only return results if the class is in the list of classes and
+    not in the list of classes to avoid. If the class is "Gene", only
+    returns results if the taxon is in the list of taxa.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :param classes: The list of classes to include in the results
+    :param avoid: The list of classes to exclude from the results
+    :param taxa: The list of taxa to include in the results if the
+        class is "Gene"
+    :return: A tuple of (preferred name, class, curie) or None
+    """
+    try:
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                # if the class is "Gene", only return results if the
+                # taxon is in the list of taxa
+                category = result[2]
+                if db in ["babel", "kg2"]:
+                    category = biolink_it(category)
+                if "biolink:Gene" in category:
+                    if result[3] in taxa:
+                        return (result[0], result[1], category)
+                    else:
+                        return None
+                # otherwise, return results regardless of the taxon
+                else:
+                    if category in classes and category not in avoid:
+                        return (result[0], result[1], category)
+        else:
+            return None
+    except sqlite3.OperationalError as e:
+        # log the error and return None
+        logging.log_slow_query(
+            params, f"full_map2_classed_with_taxon {db}", e)
+
+
 def full_map2(
         val: str, taxa: list, classes: list, avoid: list,
         cur_kg2: object, cur_babel: object,
         cur_override: object, cur_supplement: object) -> object:
+    """
+    Maps a given term to a CURIE, preferred name, and category.
+
+    Args:
+        val (str): The term to map.
+        expected_taxa (list): A list of expected_taxa to restrict the search.
+        classes (list): A list of classes to restrict the search to.
+        cur_kg2 (object): A database connection to the KG2 database.
+        cur_babel (object): A database connection to the Babel database.
+        cur_override (object): A database connection to the override database.
+        cur_supplement (object):
+            A database connection to the supplement database.
+
+    Returns:
+        A list of the mapped CURIE, preferred name, and category if found.
+        Otherwise, returns the original term.
+    """
+
     try:
         cur_override.connection.set_progress_handler(
             lambda: progress_handler(), 1)
@@ -355,46 +523,543 @@ def full_map2(
             lambda: progress_handler(), 1)
         cur_supplement.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-
-        """
-        SELECT 
-            COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM
-            NAMES.NAME,
-            NAMES.CATEGORY,
-            NAMES.TAXON,
-        FROM NAMES
-        INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
-        LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
-        WHERE SYNONYMS.SYNONYM = ?;"""
-
-        """
-        SELECT 
-            COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID
-            NAMES.NAME,
-            NAMES.CATEGORY,
-            NAMES.TAXON,
-        FROM NAMES
-        INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
-        LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
-        WHERE HASHES.HASH = ?;"""
-
-        """
-        SELECT
-            COALESCE(clusters.cluster_id, nodes.id) AS norm_id
-            COALESCE(clusters.name, nodes.name) AS norm_name
-            COALESCE(clusters.category, nodes.category) as norm_cat
-        FROM nodes
-        LEFT JOIN clusters ON nodes.id = clusters.cluster_id
-        WHERE nodes.name = ?;"""
-
-        """
-        SELECT
-            COALESCE(clusters.cluster_id, nodes.id) AS norm_id
-            COALESCE(clusters.name, nodes.name) AS norm_name
-            COALESCE(clusters.category, nodes.category) as norm_cat
-        FROM nodes
-        LEFT JOIN clusters ON nodes.id = clusters.cluster_id
-        WHERE nodes.name_simplified = ?;"""
+        global start_time
+        start_time = time.time()
+        if classes and not taxa:
+            queries = [
+                (full_map2_classed_taxonless_executinator, cur_override, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie = curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""", (val,), "override"),
+                (full_map2_base_executinator, cur_override, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "override"),
+                (full_map2_classed_taxonless_executinator, cur_override, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "override"),
+                (full_map2_classed_taxonless_executinator, cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                    FROM NAMES
+                    INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE SYNONYMS.SYNONYM = ?;""", (val,), "babel"),
+                (full_map2_classed_taxonless_executinator, cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                        FROM NAMES
+                    INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE HASHES.HASH = ?;""", (nlp.hash_it(val),), "babel"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name = ?;""", (val,), "kg2"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name_simplified = ?;""",
+                    (nlp.nonword_regex(val),), "kg2"),
+                (full_map2_classed_taxonless_executinator, cur_supplement, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie = curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""", (val,), "supplement"),
+                (full_map2_classed_taxonless_executinator, cur_supplement, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "supplement"),
+                (full_map2_classed_taxonless_executinator, cur_supplement, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name ON
+                        tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "supplement")]
+            for func, cursor, query, params, db in queries:
+                start_time = time.time()
+                result = func(
+                    cursor, query, params, db, classes, avoid)
+                if result is not None:
+                    logging.log_mapped_edge(
+                        val, result, f"full_map2_classed_taxonless {db}")
+                    return result
+            logging.log_dropped_edge(
+                val, "dropped\tfull_map2\tclassed_taxonless")
+            return [val]
+        if not classes and taxa:
+            while result is None:
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_override, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""", (val,), "override")
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_override, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "override")
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_override, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "override")
+                start_time = time.time()
+                result = full_map2_classless_with_taxon_executinator(
+                    cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                    FROM NAMES
+                    INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE SYNONYMS.SYNONYM = ?;""", (val,), "babel", taxa)
+                start_time = time.time()
+                result = full_map2_classless_with_taxon_executinator(
+                    cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                        FROM NAMES
+                    INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE HASHES.HASH = ?;""",
+                    (nlp.hash_it(val),), "babel", taxa)
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name = ?;""", (val,), "kg2")
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name_simplified = ?;""",
+                    (nlp.nonword_regex(val),), "kg2")
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_supplement, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""", (val,), "supplement")
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_supplement, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "supplement")
+                start_time = time.time()
+                result = full_map2_base_executinator(
+                    cur_supplement, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "supplement")
+                break
+            logging.log_dropped_edge(
+                val, "dropped\tfull_map2\tclassless_with_taxon")
+            return [val]
+        if classes and taxa:
+            while result is None:
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_override, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""",
+                    (val,), "override", classes, avoid)
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_override, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "override", classes, avoid)
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_override, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "override", classes, avoid)
+                start_time = time.time()
+                result = full_map2_classed_with_taxon_executinator(
+                    cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                    FROM NAMES
+                    INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE SYNONYMS.SYNONYM = ?;""",
+                    (val,), "babel", classes, avoid, taxa)
+                start_time = time.time()
+                result = full_map2_classed_with_taxon_executinator(
+                    cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                        FROM NAMES
+                    INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE HASHES.HASH = ?;""",
+                    (nlp.hash_it(val),), "babel", classes, avoid, taxa)
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name = ?;""", (val,), "kg2")
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name_simplified = ?;""",
+                    (nlp.nonword_regex(val),), "kg2", classes, avoid)
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_supplement, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""",
+                    (val,), "supplement", classes, avoid)
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_supplement, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "supplement", classes, avoid)
+                start_time = time.time()
+                result = full_map2_classed_taxonless_executinator(
+                    cur_supplement, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "supplement", classes, avoid)
+                break
+            logging.log_dropped_edge(
+                val, "dropped\tfull_map2\tclassed_with_taxon")
+            return [val]
+        else:
+            queries = [
+                (full_map2_base_executinator, cur_override, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""", (val,), "override"),
+                (full_map2_base_executinator, cur_override, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "override"),
+                (full_map2_base_executinator, cur_override, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "override"),
+                (full_map2_base_executinator, cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                    FROM NAMES
+                    INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE SYNONYMS.SYNONYM = ?;""", (val,), "babel"),
+                (full_map2_base_executinator, cur_babel, """
+                    SELECT
+                        COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID
+                        NAMES.NAME,
+                        NAMES.CATEGORY,
+                        NAMES.TAXON,
+                        FROM NAMES
+                    INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+                    LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+                    WHERE HASHES.HASH = ?;""", (nlp.hash_it(val),), "babel"),
+                (full_map2_base_executinator, cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name = ?;""", (val,), "kg2"),
+                (full_map2_base_executinator, cur_kg2, """
+                    SELECT
+                        COALESCE(clusters.cluster_id, nodes.id) AS norm_id
+                        COALESCE(clusters.name, nodes.name) AS norm_name
+                        COALESCE(clusters.category, nodes.category) as norm_cat
+                    FROM nodes
+                    LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+                    WHERE nodes.name_simplified = ?;""",
+                    (nlp.nonword_regex(val),), "kg2"),
+                (full_map2_base_executinator, cur_supplement, """
+                    SELECT
+                        name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON name_to_curie.curie = curie_to_class.curie
+                    WHERE name_to_curie.name = ?;""", (val,), "supplement"),
+                (full_map2_base_executinator, cur_supplement, """
+                    SELECT
+                        hashed_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM hashed_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON hashed_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON hashed_name_to_curie.curie = curie_to_class.curie
+                    WHERE hashed_name_to_curie.hashed_name = ?;""",
+                    (nlp.hash_it(val),), "supplement"),
+                (full_map2_base_executinator, cur_supplement, """
+                    SELECT
+                        tokenized_name_to_curie.curie
+                        curie_to_preferred_name.preferred_name
+                        curie_to_class.class
+                    FROM tokenized_name_to_curie
+                    INNER JOIN curie_to_preferred_name
+                        ON tokenized_name_to_curie.curie =
+                            curie_to_preferred_name.curie
+                    INNER JOIN curie_to_class
+                        ON tokenized_name_to_curie.curie = curie_to_class.curie
+                    WHERE tokenized_name_to_curie.tokenized_name = ?;""",
+                    (nlp.tokenize_it(val),), "supplement")]
+            for func, cursor, query, params, db in queries:
+                start_time = time.time()
+                result = func(
+                    cursor, query, params, db)
+                if result is not None:
+                    logging.log_mapped_edge(
+                        val, result, f"full_map2_base {db}")
+                    return result
+            logging.log_dropped_edge(val, "dropped\tfull_map2\tbase")
+            return [val]
+    except Exception as e:
+        raise ValueError(
+            f"{val} broke full_map2\t{e}")
 
 
 def full_map(
@@ -799,7 +1464,7 @@ def half_map2(
 
         # If no name is found, log an error
         if not name:
-            logging.log_dropped_edge(curie, "dropped\thalf_map\tno name")
+            logging.log_dropped_edge(curie, "dropped\thalf_map2\tno name")
             return [curie]
 
         # Attempt to retrieve the category
@@ -817,12 +1482,14 @@ def half_map2(
             start_time = time.time()
             category = half_map2_executinator(cursor, query, params, db)
             if category is not None:
+                if db in ["babel", "kg2"]:
+                    category = biolink_it(category)
                 logging.log_mapped_edge(curie, category, db)
                 break
 
         # If no category is found, log an error
         if not category:
-            logging.log_dropped_edge(curie, "dropped\thalf_map\tno category")
+            logging.log_dropped_edge(curie, "dropped\thalf_map2\tno category")
             return [curie]
 
         # Return the preferred name, class, and curie
@@ -831,7 +1498,7 @@ def half_map2(
         return result
     except Exception as e:
         raise ValueError(
-            f"{curie} broke half map\t{e}")
+            f"{curie} broke half_map2\t{e}")
 
 
 def half_map(
