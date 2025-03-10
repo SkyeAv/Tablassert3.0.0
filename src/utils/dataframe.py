@@ -599,23 +599,23 @@ def full_map2(
                 (full_map2_classed_taxonless_executinator, cur_override,
                     os_base, (val,), "override"),
                 (full_map2_classed_taxonless_executinator, cur_override,
-                    os_hash, (nlp.hash_it(val),), "override"),
+                    os_hash, (nlp.hash_it(val),), "override_hash"),
                 (full_map2_classed_taxonless_executinator, cur_override,
-                    os_token, (nlp.tokenize_it(val),), "override"),
+                    os_token, (nlp.tokenize_it(val),), "override_token"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
                     babel_base, (val,), "babel"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
-                    babel_hash, (nlp.hash_it(val),), "babel"),
+                    babel_hash, (nlp.hash_it(val),), "babel_hash"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
                     (val,), "kg2"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(val),), "kg2"),
+                    (nlp.nonword_regex(val),), "kg2_simp"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
                     os_base, (val,), "supplement"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
-                    os_hash, (nlp.hash_it(val),), "supplement"),
+                    os_hash, (nlp.hash_it(val),), "supplement_hash"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
-                    os_token, (nlp.tokenize_it(val),), "supplement")]
+                    os_token, (nlp.tokenize_it(val),), "supplement_token")]
             for func, cursor, query, params, db in queries:
                 start_time = time.time()
                 result = func(cursor, query, params, db, classes, avoid)
@@ -634,27 +634,29 @@ def full_map2(
                 (full_map2_base_executinator,
                     (cur_override, os_base, (val,), "override")),
                 (full_map2_base_executinator,
-                    (cur_override, os_hash, (nlp.hash_it(val),), "override")),
+                    (cur_override, os_hash, (nlp.hash_it(val),),
+                        "override_hash")),
                 (full_map2_base_executinator,
                     (cur_override, os_token,
-                        (nlp.tokenize_it(val),), "override")),
+                        (nlp.tokenize_it(val),), "override_token")),
                 (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_base, (val,), "babel", taxa)),
                 (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_hash, (nlp.hash_it(val),),
-                        "babel", taxa)),
+                        "babel_hash", taxa)),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2")),
                 (full_map2_base_executinator,
-                    (cur_kg2, kg2_simp, (nlp.nonword_regex(val),), "kg2")),
+                    (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
+                        "kg2_simp")),
                 (full_map2_base_executinator,
                     (cur_supplement, os_base, (val,), "supplement")),
                 (full_map2_base_executinator,
                     (cur_supplement, os_hash,
-                        (nlp.hash_it(val),), "supplement")),
+                        (nlp.hash_it(val),), "supplement_hash")),
                 (full_map2_base_executinator,
                     (cur_supplement, os_token,
-                        (nlp.tokenize_it(val),), "supplement"))]
+                        (nlp.tokenize_it(val),), "supplement_token"))]
 
             # Iterate through the function calls
             for func, args in queries:
@@ -662,7 +664,7 @@ def full_map2(
                 result = func(*args)
                 if result is not None:
                     logging.log_mapped_edge(
-                        val, result, f"classless_with_taxon {db}")
+                        val, result, f"classed_with_taxon {args[3]}")
                     return result
             logging.log_dropped_edge(
                 val, "dropped\tfull_map2\tclassless_with_taxon")
@@ -677,31 +679,31 @@ def full_map2(
                         "override", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_override, os_hash, (nlp.hash_it(val),),
-                        "override", classes, avoid)),
+                        "override_hash", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_override, os_token, (nlp.tokenize_it(val),),
-                        "override", classes, avoid)),
+                        "override_token", classes, avoid)),
                 (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_base, (val,), "babel",
                         classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_hash, (nlp.hash_it(val),),
-                        "babel", classes, avoid, taxa)),
+                        "babel_hash", classes, avoid, taxa)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2",
                         classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
-                        "kg2", classes, avoid)),
+                        "kg2_simp", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_supplement, os_base, (val,), "supplement",
                         classes, avoid)),
-                (full_map2_classed_taxonless_executinator,
+                (args,
                     (cur_supplement, os_hash, (nlp.hash_it(val),),
-                        "supplement", classes, avoid)),
+                        "supplement_hash", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_supplement, os_token, (nlp.tokenize_it(val),),
-                        "supplement", classes, avoid))]
+                        "supplement_token", classes, avoid))]
 
             # Iterate through the function calls
             for func, args in queries:
@@ -709,7 +711,7 @@ def full_map2(
                 result = func(*args)
                 if result is not None:
                     logging.log_mapped_edge(
-                        val, result, f"classed_with_taxon {db}")
+                        val, result, f"classed_with_taxon {args[3]}")
                     return result
             logging.log_dropped_edge(
                 val, "dropped\tfull_map2\tclassed_with_taxon")
@@ -722,23 +724,23 @@ def full_map2(
                 (full_map2_base_executinator, cur_override, os_base, (val,),
                     "override"),
                 (full_map2_base_executinator, cur_override, os_hash,
-                    (nlp.hash_it(val),), "override"),
+                    (nlp.hash_it(val),), "override_hash"),
                 (full_map2_base_executinator, cur_override, os_token,
-                    (nlp.tokenize_it(val),), "override"),
+                    (nlp.tokenize_it(val),), "override_token"),
                 (full_map2_base_executinator, cur_babel, babel_base,
                     (val,), "babel"),
                 (full_map2_base_executinator, cur_babel, babel_hash,
-                    (nlp.hash_it(val),), "babel"),
+                    (nlp.hash_it(val),), "babel_hash"),
                 (full_map2_base_executinator, cur_kg2, kg2_base, (val,),
                     "kg2"),
                 (full_map2_base_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(val),), "kg2"),
+                    (nlp.nonword_regex(val),), "kg2_simp"),
                 (full_map2_base_executinator, cur_supplement, os_base, (val,),
                     "supplement"),
                 (full_map2_base_executinator, cur_supplement, os_hash,
-                    (nlp.hash_it(val),), "supplement"),
+                    (nlp.hash_it(val),), "supplement_hash"),
                 (full_map2_base_executinator, cur_supplement, os_token,
-                    (nlp.tokenize_it(val),), "supplement")
+                    (nlp.tokenize_it(val),), "supplement_token")
             ]
             for func, cursor, query, params, db in queries:
                 start_time = time.time()
