@@ -105,7 +105,7 @@ def check_expected_classes(expected_classes: object) -> None:
     for i, expected_class in enumerate(expected_classes):
         if "biolink:" not in expected_class:
             raise ValueError(
-                f"Invalid expected_class {i}: Should be a Biolink class")
+                f"Invalid classes {i}: Should be a Biolink class")
 
 
 def check_prefixes(prefixes: object) -> None:
@@ -247,9 +247,11 @@ def parse_section(i: int, section: object) -> None:
             if "regex_replacements" in section[field].keys():
                 check_regex_replacements(
                     section[field]["regex_replacements"])
-            # Check that the expected classes and prefixes are valid
+            # Check that the expected classes, avoid, and prefixes are valid
             if "expected_classes" in section[field].keys():
                 check_expected_classes(section[field]["expected_classes"])
+            if "classes_to_avoid" in section[field].keys():
+                check_expected_classes(section[field]["classes_to_avoid"])
             if "prefixes" in section[field].keys():
                 check_prefixes(section[field]["prefixes"])
 

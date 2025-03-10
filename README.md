@@ -88,6 +88,8 @@ subject :
   #Else You Want to Preserve>
  expected_classes : # List
    - # biolink:Class
+ classes_to_avoid : # List
+   - # biolink:Class
  expected_taxa : # Only For biolink:Gene Filtering / List
    - # NCBITaxon:Taxon
  regex_replacements : # List
