@@ -9,7 +9,7 @@ def hash_it(thing_to_hash: str) -> str:
 
 
 def nonword_regex(thing_to_regex: str) -> str:
-    return re.sub(r"\W+", "", str(thing_to_regex))
+    return re.sub(r"\W+", "", str(thing_to_regex)).lower()
 
 
 def tokenize_it(table_value: str) -> list:
@@ -18,6 +18,6 @@ def tokenize_it(table_value: str) -> list:
     word_tokenize function. The result is sorted alphabetically.
     """
     try:
-        return " ".join(sorted(word_tokenize(table_value)))
+        return " ".join(sorted(word_tokenize(table_value))).lower()
     except TypeError:
         return ""
