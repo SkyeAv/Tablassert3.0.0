@@ -348,7 +348,7 @@ def full_map2_base_executinator(
         result = cursor.fetchone()
         if result:
             category = result[2]
-            if db in ["babel", "kg2"]:
+            if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                 category = biolink_it(category)
             return (result[0], result[1], category)
     except sqlite3.OperationalError as e:
@@ -382,10 +382,14 @@ def full_map2_classed_taxonless_executinator(
         if results:
             for result in results:
                 category = result[2]
-                if db in ["babel", "kg2"]:
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
-                if category in classes and category not in avoid:
-                    return (result[0], result[1], category)
+                if category:
+                    if category in classes and category not in avoid:
+                        return (result[0], result[1], category)
+                else:
+                    if category not in avoid:
+                        return (result[0], result[1], category)
     except sqlite3.OperationalError as e:
         logging.log_slow_query(
             params, f"full_map2_classed_taxonless {db}", e)
@@ -419,7 +423,7 @@ def full_map2_classless_with_taxon_executinator(
                 # if the class is "Gene", only return results if the
                 # taxon is in the list of taxa
                 category = result[2]
-                if db in ["babel", "kg2"]:
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
                 if "biolink:Gene" in category:
                     if result[3] is not None and result[3] in taxa:
@@ -465,16 +469,25 @@ def full_map2_classed_with_taxon_executinator(
                 # if the class is "Gene", only return results if the
                 # taxon is in the list of taxa
                 category = result[2]
-                if db in ["babel", "kg2"]:
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
                 if "biolink:Gene" in category:
-                    if result[3] is not None and result[3] in taxa and \
-                            category in classes and category not in avoid:
-                        return (result[0], result[1], category)
+                    if not category:
+                        if result[3] is not None and result[3] in taxa and \
+                                category not in avoid:
+                            return (result[0], result[1], category)
+                    else:
+                        if result[3] is not None and result[3] in taxa and \
+                                category in classes and category not in avoid:
+                            return (result[0], result[1], category)
                 # otherwise, return results regardless of the taxon
                 else:
-                    if category in classes and category not in avoid:
-                        return (result[0], result[1], category)
+                    if not category:
+                        if category in classes and category not in avoid:
+                            return (result[0], result[1], category)
+                    else:
+                        if category not in avoid:
+                            return (result[0], result[1], category)
     except sqlite3.OperationalError as e:
         # log the error and return None
         logging.log_slow_query(
@@ -558,6 +571,17 @@ def full_map2(
             INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
             LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
             WHERE SYNONYMS.SYNONYM = ?;"""
+        babel_base_taxon = """
+            SELECT
+                COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM,
+                NAMES.NAME,
+                NAMES.CATEGORY,
+                NAMES.TAXON
+            FROM NAMES
+            INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+            LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+            WHERE SYNONYMS.SYNONYM = ?
+                AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = ?);"""
         babel_hash = """
             SELECT
                 COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID,
@@ -568,6 +592,17 @@ def full_map2(
             INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
             LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
             WHERE HASHES.HASH = ?;"""
+        babel_hash_taxon = """
+            SELECT
+                COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID,
+                NAMES.NAME,
+                NAMES.CATEGORY,
+                NAMES.TAXON
+            FROM NAMES
+            INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+            LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+            WHERE HASHES.HASH = ?
+                AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = ?);"""
         kg2_base = """
             SELECT
                 COALESCE(clusters.cluster_id, nodes.id) AS norm_id,
@@ -592,7 +627,14 @@ def full_map2(
         if not avoid:
             avoid = []
 
-        if classes and not taxa:
+        # Make classes optional
+        if not classes:
+            classes = []
+
+        # Strip Val
+        val = val.strip()
+
+        if (classes or avoid) and not taxa:
             # Query execution for class-specific mappings
             # without taxa restrictions
             queries = [
@@ -624,10 +666,11 @@ def full_map2(
                         val, result, f"full_map2_classed_taxonless {db}")
                     return result
             logging.log_dropped_edge(
-                val, "dropped\tfull_map2\tclassed_taxonless")
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tclassed_taxonless")
             return [val]
 
-        if not classes and taxa:
+        if not (classes or avoid) and taxa:
             # Query execution for taxa-specific mappings
             # without class restrictions
             queries = [
@@ -640,9 +683,10 @@ def full_map2(
                     (cur_override, os_token,
                         (nlp.tokenize_it(val),), "override_token")),
                 (full_map2_classless_with_taxon_executinator,
-                    (cur_babel, babel_base, (val,), "babel", taxa)),
+                    (cur_babel, babel_base_taxon, (val, taxa[0]),
+                        "babel", taxa)),
                 (full_map2_classless_with_taxon_executinator,
-                    (cur_babel, babel_hash, (nlp.hash_it(val),),
+                    (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
                         "babel_hash", taxa)),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2")),
@@ -659,18 +703,19 @@ def full_map2(
                         (nlp.tokenize_it(val),), "supplement_token"))]
 
             # Iterate through the function calls
-            for func, args in queries:
+            for func, func_args in queries:
                 start_time = time.time()
-                result = func(*args)
+                result = func(*func_args)
                 if result is not None:
                     logging.log_mapped_edge(
-                        val, result, f"classed_with_taxon {args[3]}")
+                        val, result, f"classless_with_taxon {func_args[3]}")
                     return result
             logging.log_dropped_edge(
-                val, "dropped\tfull_map2\tclassless_with_taxon")
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tclassless_with_taxon")
             return [val]
 
-        if classes and taxa:
+        if (classes or avoid) and taxa:
             # Query execution for mappings
             # with both class and taxa restrictions
             queries = [
@@ -684,10 +729,10 @@ def full_map2(
                     (cur_override, os_token, (nlp.tokenize_it(val),),
                         "override_token", classes, avoid)),
                 (full_map2_classed_with_taxon_executinator,
-                    (cur_babel, babel_base, (val,), "babel",
+                    (cur_babel, babel_base_taxon, (val, taxa[0]), "babel",
                         classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
-                    (cur_babel, babel_hash, (nlp.hash_it(val),),
+                    (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
                         "babel_hash", classes, avoid, taxa)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2",
@@ -698,7 +743,7 @@ def full_map2(
                 (full_map2_classed_taxonless_executinator,
                     (cur_supplement, os_base, (val,), "supplement",
                         classes, avoid)),
-                (args,
+                (full_map2_classed_taxonless_executinator,
                     (cur_supplement, os_hash, (nlp.hash_it(val),),
                         "supplement_hash", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
@@ -706,15 +751,16 @@ def full_map2(
                         "supplement_token", classes, avoid))]
 
             # Iterate through the function calls
-            for func, args in queries:
+            for func, func_args in queries:
                 start_time = time.time()
-                result = func(*args)
+                result = func(*func_args)
                 if result is not None:
                     logging.log_mapped_edge(
-                        val, result, f"classed_with_taxon {args[3]}")
+                        val, result, f"classed_with_taxon {func_args[3]}")
                     return result
             logging.log_dropped_edge(
-                val, "dropped\tfull_map2\tclassed_with_taxon")
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tclassed_with_taxon")
             return [val]
 
         else:
@@ -749,11 +795,15 @@ def full_map2(
                     logging.log_mapped_edge(
                         val, result, f"full_map2_base {db}")
                     return result
-            logging.log_dropped_edge(val, "dropped\tfull_map2\tbase")
+            logging.log_dropped_edge(
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tbase")
             return [val]
 
     except Exception as e:
-        raise ValueError(f"{val} broke full_map2\t{e}")
+        raise ValueError(
+            f"""{val}, {nlp.hash_it(val)},
+            {nlp.tokenize_it(val)} broke full_map2\t{e}""")
 
 
 def half_map2_executinator(
@@ -815,11 +865,14 @@ def half_map2(
         # Set global start time
         global start_time
 
+        # Strip curie
+        curie = curie.strip()
+
         # Attempt to normalize the curie to its preferred name
         norm_queries = [
             (cur_babel, "SELECT PREFERRED FROM MAP WHERE ALIAS = ?",
                 (curie,), "babel"),
-            (cur_babel, "SELECT cluster_id FROM nodes WHERE id = ?", (curie,),
+            (cur_kg2, "SELECT cluster_id FROM nodes WHERE id = ?", (curie,),
                 "kg2")]
         for cursor, query, params, db in norm_queries:
             start_time = time.time()
@@ -838,7 +891,7 @@ def half_map2(
                 (curie,), "override"),
             (cur_babel, "SELECT NAME FROM NAMES WHERE CURIE = ?",
                 (curie,), "babel"),
-            (cur_babel, "SELECT name FROM clusters WHERE cluster_id = ?",
+            (cur_kg2, "SELECT name FROM clusters WHERE cluster_id = ?",
                 (curie,), "kg2"),
             (cur_supplement,
                 """SELECT preferred_name FROM
@@ -862,7 +915,7 @@ def half_map2(
                 (curie,), "override"),
             (cur_babel, "SELECT CATEGORY FROM NAMES WHERE CURIE = ?",
                 (curie,), "babel"),
-            (cur_babel, "SELECT category FROM clusters WHERE cluster_id = ?",
+            (cur_kg2, "SELECT category FROM clusters WHERE cluster_id = ?",
                 (curie,), "kg2"),
             (cur_supplement,
                 "SELECT class FROM curie_to_class WHERE curie = ?",
@@ -987,12 +1040,16 @@ def node_columninator(
                 sqlite3.connect(supplement) as conn_supplement):
             cur_kg2 = conn_kg2.cursor()
             cur_kg2.execute("PRAGMA cache_size = -64000")
+            cur_kg2.execute("PRAGMA journal_mode=WAL;")
             cur_babel = conn_babel.cursor()
             cur_babel.execute("PRAGMA cache_size = -64000")
+            cur_babel.execute("PRAGMA journal_mode=WAL;")
             cur_override = conn_override.cursor()
             cur_override.execute("PRAGMA cache_size = -64000")
+            cur_override.execute("PRAGMA journal_mode=WAL;")
             cur_supplement = conn_supplement.cursor()
             cur_supplement.execute("PRAGMA cache_size = -64000")
+            cur_supplement.execute("PRAGMA journal_mode=WAL;")
             if "curie" in subconfig.keys():
                 check_that_curie_case(
                         str(subconfig["curie"]), cur_babel, cur_kg2,
@@ -1292,7 +1349,7 @@ def score_zip(
         f * predicate_component +
         g)
 
-    return log10(score)
+    return np.mean(log10(score))
 
 
 def put_dataframe_togtherinator(
@@ -1370,6 +1427,7 @@ def put_dataframe_togtherinator(
         # Reindex DataFrame if specified in the section configuration
         if "reindex" in section:
             df = reindexinator(df, section["reindex"])
+            empty_check(df, "reindex", "after reindexing")
 
         # Add method notes to the DataFrame
         df = basic_key_value_column_addinator(
@@ -1384,6 +1442,14 @@ def put_dataframe_togtherinator(
         cursor = conn.cursor()
         model = joblib.load(model)
         vectorizer = joblib.load(vectorizer)
+
+        logging.log_thing(df.head())
+        logging.log_thing(df.head(1).apply(
+            lambda row: score_zip(
+                row["predicate"], row["n"], row["p"],
+                row["relationship_strength"], row["relationship_type"],
+                row["p_correction_method"], row["method_notes"],
+                cursor, model, vectorizer), axis=1))
 
         df["edge_score"] = df.apply(
             lambda row: score_zip(

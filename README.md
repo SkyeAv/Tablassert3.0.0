@@ -19,9 +19,17 @@ pip install xlrd
 
 ### Usage (Unix)
 
+To build a Knowledge Graph
+
 ```bash
 pip install -e <path_to_tablassert>
-main <kg_config>
+tablassert <path_to_kg_config>
+```
+
+To test
+
+```bash
+tablassert_test
 ```
 
 ### KG Config
