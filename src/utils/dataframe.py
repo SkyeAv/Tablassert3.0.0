@@ -1,7 +1,6 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LinearRegression
 from src.utils import logging, nlp, toolkit
-from src import main
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -320,16 +319,183 @@ def biolink_it(val: str) -> str:
 
 def progress_handler() -> int:
     global start_time
+    global handler_timeout
     if start_time is None:
         start_time = time.time()
     elapsed_time = time.time() - start_time
-    if elapsed_time > main.handler_timeout:
+    if elapsed_time > handler_timeout:
         return 1
     return 0
 
 
-def full_map(
-        val: str, expected_taxa: list, classes: list,
+def full_map2_base_executinator(
+        cursor: object, query: str,
+        params: tuple, db: str) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :return: A tuple of (preferred name, class, curie) or None
+    """
+    try:
+        cursor.execute(query, params)
+        result = cursor.fetchone()
+        if result:
+            category = result[2]
+            if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
+                category = biolink_it(category)
+            return (result[0], result[1], category)
+    except sqlite3.OperationalError as e:
+        logging.log_slow_query(params, f"full_map2_base {db}", e)
+
+
+def full_map2_classed_taxonless_executinator(
+        cursor: object, query: str, params: tuple,
+        db: str, classes: list, avoid: list) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    This function is similar to full_map2_base_executinator but will
+    only return results if the class is in the list of classes and
+    not in the list of classes to avoid.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :param classes: The list of classes to include in the results
+    :param avoid: The list of classes to exclude from the results
+    :return: A tuple of (preferred name, class, curie) or None
+    """
+    try:
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                category = result[2]
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
+                    category = biolink_it(category)
+                if category:
+                    if category in classes and category not in avoid:
+                        return (result[0], result[1], category)
+                else:
+                    if category not in avoid:
+                        return (result[0], result[1], category)
+    except sqlite3.OperationalError as e:
+        logging.log_slow_query(
+            params, f"full_map2_classed_taxonless {db}", e)
+
+
+def full_map2_classless_with_taxon_executinator(
+        cursor: object, query: str,
+        params: tuple, db: str, taxa: list) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    This function is similar to full_map2_base_executinator but will
+    only return results if the class is not "Gene" or if the taxon
+    is in the list of taxa.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :param taxa: The list of taxa to include in the results
+    :return: A tuple of (preferred name, class, curie) or None
+    """
+    try:
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                # if the class is "Gene", only return results if the
+                # taxon is in the list of taxa
+                category = result[2]
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
+                    category = biolink_it(category)
+                if "biolink:Gene" in category:
+                    if result[3] is not None and result[3] in taxa:
+                        return (result[0], result[1], category)
+                # otherwise, return results regardless of the taxon
+                else:
+                    return (result[0], result[1], category)
+    except sqlite3.OperationalError as e:
+        # log the error and return None
+        logging.log_slow_query(
+            params, f"full_map2_classless_taxon {db}", e)
+
+
+def full_map2_classed_with_taxon_executinator(
+        cursor: object, query: str, params: tuple, db: str,
+        classes: list, avoid: list, taxa: list) -> str:
+    """
+    Executes a query and returns the results as a tuple of
+    (preferred name, class, curie). If the query returns no results,
+    returns None. If the query raises an OperationalError, logs the
+    error and returns None.
+
+    This function is similar to full_map2_base_executinator but will
+    only return results if the class is in the list of classes and
+    not in the list of classes to avoid. If the class is "Gene", only
+    returns results if the taxon is in the list of taxa.
+
+    :param cursor: The database connection to use for the query
+    :param query: The query to execute
+    :param params: The parameters to pass to the query
+    :param db: The name of the database being queried
+    :param classes: The list of classes to include in the results
+    :param avoid: The list of classes to exclude from the results
+    :param taxa: The list of taxa to include in the results if the
+        class is "Gene"
+    :return: A tuple of (preferred name, class, curie) or None
+    """
+    try:
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                # if the class is "Gene", only return results if the
+                # taxon is in the list of taxa
+                category = result[2]
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
+                    category = biolink_it(category)
+                if "biolink:Gene" in category:
+                    if not category:
+                        if result[3] is not None and result[3] in taxa and \
+                                category not in avoid:
+                            return (result[0], result[1], category)
+                    else:
+                        if result[3] is not None and result[3] in taxa and \
+                                category in classes and category not in avoid:
+                            return (result[0], result[1], category)
+                # otherwise, return results regardless of the taxon
+                else:
+                    if not category:
+                        if category in classes and category not in avoid:
+                            return (result[0], result[1], category)
+                    else:
+                        if category not in avoid:
+                            return (result[0], result[1], category)
+    except sqlite3.OperationalError as e:
+        # log the error and return None
+        logging.log_slow_query(
+            params, f"full_map2_classed_with_taxon {db}", e)
+
+
+def full_map2(
+        val: str, taxa: list, classes: list, avoid: list,
         cur_kg2: object, cur_babel: object,
         cur_override: object, cur_supplement: object) -> object:
     """
@@ -337,462 +503,444 @@ def full_map(
 
     Args:
         val (str): The term to map.
-        expected_taxa (list): A list of expected_taxa to restrict the search.
+        taxa (list): A list of expected_taxa to restrict the search.
         classes (list): A list of classes to restrict the search to.
-        cur_kg2 (object): A database connection to the KG2 database.
-        cur_babel (object): A database connection to the Babel database.
-        cur_override (object): A database connection to the override database.
-        cur_supplement (object):
-            A database connection to the supplement database.
+        avoid (list): A list of classes to exclude from the results.
+        cur_kg2 (object): A connection to the KG2 database.
+        cur_babel (object): A connection to the Babel database.
+        cur_override (object): A connection to the override database.
+        cur_supplement (object): A connection to the supplement database.
 
     Returns:
-        A list of the mapped CURIE, preferred name, and category if found.
-        Otherwise, returns the original term.
+        object: A tuple of (preferred name, class, curie) or the original
+        term if no mapping is found.
     """
-
-    global start_time
-
-    # Construct a query to search for the term in
-    # the override and supplement databases
-    override_supplement_query = ("""
-        WITH name_lookup AS (
-            SELECT curie
-            FROM name_to_curie
-            WHERE name = ?
-            UNION
-            SELECT curie
-            FROM tokenized_name_to_curie
-            WHERE tokenized_name = ?
-            UNION
-            SELECT curie
-            FROM hashed_name_to_curie
-            WHERE hashed_name = ?
-        ),
-        preferred_name_lookup AS (
-            SELECT
-                curie_to_preferred_name.curie,
-                curie_to_preferred_name.preferred_name,
-                curie_to_class.class
-            FROM curie_to_preferred_name
-            JOIN curie_to_class
-            ON curie_to_preferred_name.curie = curie_to_class.curie
-            WHERE curie_to_preferred_name.curie IN (
-                SELECT curie FROM name_lookup)
-        ),
-        ranked_results AS (
-            SELECT
-                curie,
-                preferred_name,
-                class,
-                ROW_NUMBER() OVER (
-                PARTITION BY class ORDER BY curie) AS row_num
-            FROM preferred_name_lookup
-        )
-        SELECT
-            curie,
-            preferred_name,
-            class
-        FROM ranked_results
-        WHERE row_num = 1;""", (
-            val, nlp.tokenize_it(val), nlp.nonword_regex(val)))
-
-    # Execute the query in the override database
     try:
-        start_time = time.time()
+        # Set progress handlers for database connections
         cur_override.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-        cur_override.execute(
-            override_supplement_query[0], override_supplement_query[1])
-        result = cur_override.fetchall()
-        cur_override.connection.set_progress_handler(None, 1)
-    except sqlite3.OperationalError as e:
-        logging.log_slow_query(val, "override", e)
-        result = None
-
-    # Check if result is found in the override database
-    if result:
-        if classes is None:
-            logging.log_mapped_edge(
-                val,
-                (result[0][0], result[0][1], result[0][2]),
-                "override\tfull_map\tnormal")
-            return (result[0][0], result[0][1], result[0][2])
-        for i, (category) in enumerate((item[2] for item in result)):
-            if category in classes:
-                logging.log_mapped_edge(
-                    val,
-                    (result[i][0], result[i][1], result[i][2]),
-                    "override\tfull_map\tclassed")
-                return (result[i][0], result[i][1], result[i][2])
-
-    # Construct a query to search for the term in the Babel database
-    babel_query = """
-        WITH synonym_lookup AS (
-            SELECT CURIE
-            FROM SYNONYMS
-            WHERE SYNONYM = ?
-            UNION
-            SELECT CURIE
-            FROM HASHES
-            WHERE HASH = ?
-        ),
-        name_lookup AS (
-            SELECT N.NAME, N.CATEGORY, N.TAXON, N.CURIE,
-            ROW_NUMBER() OVER (
-                PARTITION BY N.CATEGORY ORDER BY N.CATEGORY) AS row_num
-            FROM NAMES N
-            JOIN synonym_lookup S ON N.CURIE = S.CURIE
-            LEFT JOIN MAP M ON S.CURIE = M.ALIAS
-            LEFT JOIN NAMES N2 ON M.PREFERRED = N2.CURIE
-            WHERE N.CURIE = COALESCE(M.PREFERRED, S.CURIE)
-        )
-        SELECT NAME, CATEGORY, TAXON, CURIE
-        FROM name_lookup
-        WHERE row_num = 1;
-        """ if not expected_taxa else """
-        WITH synonym_lookup AS (
-            SELECT CURIE
-            FROM SYNONYMS
-            WHERE SYNONYM = ?
-            UNION
-            SELECT CURIE
-            FROM HASHES
-            WHERE HASH = ?
-        ),
-        name_lookup AS (
-            SELECT N.NAME, N.CATEGORY, N.TAXON, N.CURIE,
-            ROW_NUMBER() OVER (
-                PARTITION BY N.CATEGORY ORDER BY N.CATEGORY) AS row_num
-            FROM NAMES N
-            JOIN synonym_lookup S ON N.CURIE = S.CURIE
-            LEFT JOIN MAP M ON S.CURIE = M.ALIAS
-            LEFT JOIN NAMES N2 ON M.PREFERRED = N2.CURIE
-            WHERE N.CURIE = COALESCE(M.PREFERRED, S.CURIE)
-        )
-        SELECT NAME, CATEGORY, TAXON, CURIE
-        FROM name_lookup;
-        """
-    try:
-        start_time = time.time()
         cur_babel.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-        cur_babel.execute(
-            babel_query, (val, nlp.hash_it(val)))
-        result = cur_babel.fetchall()
-        cur_babel.connection.set_progress_handler(None, 1)
-    except sqlite3.OperationalError as e:
-        logging.log_slow_query(val, "babel", e)
-        result = None
-
-    # Check if result is found in the Babel database
-    if result:
-        if classes and expected_taxa:
-            for i, (category, taxon) in enumerate(
-                    (item[1], item[2]) for item in result):
-                if (classes and biolink_it(category) in classes) and (
-                        expected_taxa and taxon in expected_taxa):
-                    logging.log_mapped_edge(
-                        val,
-                        (result[i][3], result[i][0],
-                            biolink_it(result[i][1]), result[i][2]),
-                        "babel\tfull_map\tclassed with taxon")
-                    return (
-                        result[i][3], result[i][0], biolink_it(result[i][1]))
-        elif classes and not expected_taxa:
-            for i, (category) in enumerate(
-                    (item[1]) for item in result):
-                if (classes and biolink_it(category) in classes):
-                    logging.log_mapped_edge(
-                        val,
-                        (result[i][3], result[i][0],
-                            biolink_it(result[i][1]), result[i][2]),
-                        "babel\tfull_map\tclassed")
-                    return (
-                        result[i][3], result[i][0], biolink_it(result[i][1]))
-        elif expected_taxa and not classes:
-            if "Gene" in [item[1] for item in result]:
-                for i, (taxon) in enumerate(
-                        (item[2]) for item in result):
-                    if (expected_taxa and taxon in expected_taxa):
-                        logging.log_mapped_edge(
-                            val,
-                            (result[i][3], result[i][0],
-                                biolink_it(result[i][1]), result[i][2]),
-                            "babel\tfull_map\ttaxon")
-                        return (
-                            result[i][3], result[i][0], biolink_it(
-                                result[i][1]))
-            else:
-                logging.log_mapped_edge(
-                    val,
-                    (result[0][3], result[0][0], biolink_it(result[0][1])),
-                    "babel\tfull_map\tnormal")
-                return (result[0][3], result[0][0], biolink_it(result[0][1]))
-        else:
-            logging.log_mapped_edge(
-                val,
-                (result[0][3], result[0][0], biolink_it(result[0][1])),
-                "babel\tfull_map\tnormal")
-            return (result[0][3], result[0][0], biolink_it(result[0][1]))
-
-    # Construct a query to search for the term in the KG2 database
-    kg2_query = """
-        WITH node_lookup AS (
-            SELECT id, category
-            FROM nodes
-            WHERE name = ?
-            UNION
-            SELECT id, category
-            FROM nodes
-            WHERE name_simplified = ?
-        ),
-        cluster_lookup AS (
-            SELECT id, cluster_id, category
-            FROM nodes
-            WHERE id IN (SELECT id FROM node_lookup)
-        ),
-        ranked_results AS (
-            SELECT
-                cluster_lookup.cluster_id,
-                cluster_lookup.id AS node_id,
-                cluster_lookup.category AS node_category,
-                clusters.name AS cluster_name,
-                clusters.category AS cluster_category,
-                ROW_NUMBER() OVER (
-                PARTITION BY clusters.category
-                ORDER BY cluster_lookup.id) AS row_num
-            FROM cluster_lookup
-            JOIN clusters ON cluster_lookup.cluster_id = clusters.cluster_id
-        )
-        SELECT
-            cluster_id,
-            node_id,
-            node_category,
-            cluster_name,
-            cluster_category
-        FROM ranked_results
-        WHERE row_num = 1;"""
-    try:
-        start_time = time.time()
         cur_kg2.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-        cur_kg2.execute(kg2_query, (val, nlp.nonword_regex(val)))
-        result = cur_kg2.fetchall()
-        cur_kg2.connection.set_progress_handler(None, 1)
-    except sqlite3.OperationalError as e:
-        logging.log_slow_query(val, "kg2", e)
-        result = None
-
-    # Check if result is found in the KG2 database
-    if result:
-        if classes is None:
-            logging.log_mapped_edge(
-                val,
-                (result[0][0], result[0][3], biolink_it(result[0][4])),
-                "kg2\tfull_map\tnormal")
-            return (result[0][0], result[0][3], biolink_it(result[0][4]))
-        for i, (category) in enumerate((item[4] for item in result)):
-            if biolink_it(category) in classes:
-                logging.log_mapped_edge(
-                    val,
-                    (result[0][0], result[0][3], biolink_it(result[0][4])),
-                    "kg2\tfull_map\tclassed")
-                return (result[i][0], result[i][3], biolink_it(result[i][4]))
-
-    # Execute the query in the supplement database
-    try:
-        start_time = time.time()
         cur_supplement.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-        cur_supplement.execute(
-            override_supplement_query[0], override_supplement_query[1])
-        result = cur_supplement.fetchall()
-        cur_supplement.connection.set_progress_handler(None, 1)
+
+        # Define SQL queries for different database operations
+        os_base = """
+            SELECT
+                name_to_curie.curie,
+                curie_to_preferred_name.preferred_name,
+                curie_to_class.class
+            FROM name_to_curie
+            INNER JOIN curie_to_preferred_name
+                ON name_to_curie.curie = curie_to_preferred_name.curie
+            INNER JOIN curie_to_class
+                ON name_to_curie.curie = curie_to_class.curie
+            WHERE name_to_curie.name = ?;"""
+        os_hash = """
+            SELECT
+                hashed_name_to_curie.curie,
+                curie_to_preferred_name.preferred_name,
+                curie_to_class.class
+            FROM hashed_name_to_curie
+            INNER JOIN curie_to_preferred_name
+                ON hashed_name_to_curie.curie = curie_to_preferred_name.curie
+            INNER JOIN curie_to_class
+                ON hashed_name_to_curie.curie = curie_to_class.curie
+            WHERE hashed_name_to_curie.hashed_name = ?;"""
+        os_token = """
+            SELECT
+                tokenized_name_to_curie.curie,
+                curie_to_preferred_name.preferred_name,
+                curie_to_class.class
+            FROM tokenized_name_to_curie
+            INNER JOIN curie_to_preferred_name
+                ON tokenized_name_to_curie.curie =
+                    curie_to_preferred_name.curie
+            INNER JOIN curie_to_class
+                ON tokenized_name_to_curie.curie = curie_to_class.curie
+            WHERE tokenized_name_to_curie.tokenized_name = ?;"""
+        babel_base = """
+            SELECT
+                COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM,
+                NAMES.NAME,
+                NAMES.CATEGORY,
+                NAMES.TAXON
+            FROM NAMES
+            INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+            LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+            WHERE SYNONYMS.SYNONYM = ?;"""
+        babel_base_taxon = """
+            SELECT
+                COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM,
+                NAMES.NAME,
+                NAMES.CATEGORY,
+                NAMES.TAXON
+            FROM NAMES
+            INNER JOIN SYNONYMS ON NAMES.CURIE = SYNONYMS.CURIE
+            LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+            WHERE SYNONYMS.SYNONYM = ?
+                AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = ?);"""
+        babel_hash = """
+            SELECT
+                COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID,
+                NAMES.NAME,
+                NAMES.CATEGORY,
+                NAMES.TAXON
+            FROM NAMES
+            INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+            LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+            WHERE HASHES.HASH = ?;"""
+        babel_hash_taxon = """
+            SELECT
+                COALESCE(MAP.PREFERRED, NAMES.CURIE) AS NORM_ID,
+                NAMES.NAME,
+                NAMES.CATEGORY,
+                NAMES.TAXON
+            FROM NAMES
+            INNER JOIN HASHES ON NAMES.CURIE = HASHES.CURIE
+            LEFT JOIN MAP ON NAMES.CURIE = MAP.ALIAS
+            WHERE HASHES.HASH = ?
+                AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = ?);"""
+        kg2_base = """
+            SELECT
+                COALESCE(clusters.cluster_id, nodes.id) AS norm_id,
+                COALESCE(clusters.name, nodes.name) AS norm_name,
+                COALESCE(clusters.category, nodes.category) as norm_cat
+            FROM nodes
+            LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+            WHERE nodes.name = ?;"""
+        kg2_simp = """
+            SELECT
+                COALESCE(clusters.cluster_id, nodes.id) AS norm_id,
+                COALESCE(clusters.name, nodes.name) AS norm_name,
+                COALESCE(clusters.category, nodes.category) as norm_cat
+            FROM nodes
+            LEFT JOIN clusters ON nodes.id = clusters.cluster_id
+            WHERE nodes.name_simplified = ?;"""
+
+        global start_time
+        start_time = time.time()
+
+        # Make avoid optional
+        if not avoid:
+            avoid = []
+
+        # Make classes optional
+        if not classes:
+            classes = []
+
+        # Strip Val
+        val = val.strip()
+
+        if (classes or avoid) and not taxa:
+            # Query execution for class-specific mappings
+            # without taxa restrictions
+            queries = [
+                (full_map2_classed_taxonless_executinator, cur_override,
+                    os_base, (val,), "override"),
+                (full_map2_classed_taxonless_executinator, cur_override,
+                    os_hash, (nlp.hash_it(val),), "override_hash"),
+                (full_map2_classed_taxonless_executinator, cur_override,
+                    os_token, (nlp.tokenize_it(val),), "override_token"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_base, (val,), "babel"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_hash, (nlp.hash_it(val),), "babel_hash"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
+                    (val,), "kg2"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
+                    (nlp.nonword_regex(val),), "kg2_simp"),
+                (full_map2_classed_taxonless_executinator, cur_supplement,
+                    os_base, (val,), "supplement"),
+                (full_map2_classed_taxonless_executinator, cur_supplement,
+                    os_hash, (nlp.hash_it(val),), "supplement_hash"),
+                (full_map2_classed_taxonless_executinator, cur_supplement,
+                    os_token, (nlp.tokenize_it(val),), "supplement_token")]
+            for func, cursor, query, params, db in queries:
+                start_time = time.time()
+                result = func(cursor, query, params, db, classes, avoid)
+                if result is not None:
+                    logging.log_mapped_edge(
+                        val, result, f"full_map2_classed_taxonless {db}")
+                    return result
+            logging.log_dropped_edge(
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tclassed_taxonless")
+            return [val]
+
+        if not (classes or avoid) and taxa:
+            # Query execution for taxa-specific mappings
+            # without class restrictions
+            queries = [
+                (full_map2_base_executinator,
+                    (cur_override, os_base, (val,), "override")),
+                (full_map2_base_executinator,
+                    (cur_override, os_hash, (nlp.hash_it(val),),
+                        "override_hash")),
+                (full_map2_base_executinator,
+                    (cur_override, os_token,
+                        (nlp.tokenize_it(val),), "override_token")),
+                (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (val, taxa[0]),
+                        "babel", taxa)),
+                (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
+                        "babel_hash", taxa)),
+                (full_map2_base_executinator,
+                    (cur_kg2, kg2_base, (val,), "kg2")),
+                (full_map2_base_executinator,
+                    (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
+                        "kg2_simp")),
+                (full_map2_base_executinator,
+                    (cur_supplement, os_base, (val,), "supplement")),
+                (full_map2_base_executinator,
+                    (cur_supplement, os_hash,
+                        (nlp.hash_it(val),), "supplement_hash")),
+                (full_map2_base_executinator,
+                    (cur_supplement, os_token,
+                        (nlp.tokenize_it(val),), "supplement_token"))]
+
+            # Iterate through the function calls
+            for func, func_args in queries:
+                start_time = time.time()
+                result = func(*func_args)
+                if result is not None:
+                    logging.log_mapped_edge(
+                        val, result, f"classless_with_taxon {func_args[3]}")
+                    return result
+            logging.log_dropped_edge(
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tclassless_with_taxon")
+            return [val]
+
+        if (classes or avoid) and taxa:
+            # Query execution for mappings
+            # with both class and taxa restrictions
+            queries = [
+                (full_map2_classed_taxonless_executinator,
+                    (cur_override, os_base, (val,),
+                        "override", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_override, os_hash, (nlp.hash_it(val),),
+                        "override_hash", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_override, os_token, (nlp.tokenize_it(val),),
+                        "override_token", classes, avoid)),
+                (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (val, taxa[0]), "babel",
+                        classes, avoid, taxa)),
+                (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
+                        "babel_hash", classes, avoid, taxa)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_base, (val,), "kg2",
+                        classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
+                        "kg2_simp", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_supplement, os_base, (val,), "supplement",
+                        classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_supplement, os_hash, (nlp.hash_it(val),),
+                        "supplement_hash", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_supplement, os_token, (nlp.tokenize_it(val),),
+                        "supplement_token", classes, avoid))]
+
+            # Iterate through the function calls
+            for func, func_args in queries:
+                start_time = time.time()
+                result = func(*func_args)
+                if result is not None:
+                    logging.log_mapped_edge(
+                        val, result, f"classed_with_taxon {func_args[3]}")
+                    return result
+            logging.log_dropped_edge(
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tclassed_with_taxon")
+            return [val]
+
+        else:
+            # Query execution for general mappings
+            # without specific restrictions
+            queries = [
+                (full_map2_base_executinator, cur_override, os_base, (val,),
+                    "override"),
+                (full_map2_base_executinator, cur_override, os_hash,
+                    (nlp.hash_it(val),), "override_hash"),
+                (full_map2_base_executinator, cur_override, os_token,
+                    (nlp.tokenize_it(val),), "override_token"),
+                (full_map2_base_executinator, cur_babel, babel_base,
+                    (val,), "babel"),
+                (full_map2_base_executinator, cur_babel, babel_hash,
+                    (nlp.hash_it(val),), "babel_hash"),
+                (full_map2_base_executinator, cur_kg2, kg2_base, (val,),
+                    "kg2"),
+                (full_map2_base_executinator, cur_kg2, kg2_simp,
+                    (nlp.nonword_regex(val),), "kg2_simp"),
+                (full_map2_base_executinator, cur_supplement, os_base, (val,),
+                    "supplement"),
+                (full_map2_base_executinator, cur_supplement, os_hash,
+                    (nlp.hash_it(val),), "supplement_hash"),
+                (full_map2_base_executinator, cur_supplement, os_token,
+                    (nlp.tokenize_it(val),), "supplement_token")
+            ]
+            for func, cursor, query, params, db in queries:
+                start_time = time.time()
+                result = func(cursor, query, params, db)
+                if result is not None:
+                    logging.log_mapped_edge(
+                        val, result, f"full_map2_base {db}")
+                    return result
+            logging.log_dropped_edge(
+                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                "dropped\tfull_map2\tbase")
+            return [val]
+
+    except Exception as e:
+        raise ValueError(
+            f"""{val}, {nlp.hash_it(val)},
+            {nlp.tokenize_it(val)} broke full_map2\t{e}""")
+
+
+def half_map2_executinator(
+        cursor: object, query: str,
+        params: tuple, db: str) -> str:
+    """
+    Execute a query on a database and return the first result.
+
+    Args:
+        cursor (object): A database cursor object.
+        query (str): The query to execute.
+        params (tuple): The parameters to pass to the query.
+        db (str): The name of the database.
+
+    Returns:
+        str: The first result of the query, or None if no result is found.
+    """
+    try:
+        # Execute the query with the given parameters
+        cursor.execute(query, params)
+        # Fetch one result
+        result = cursor.fetchone()
+        # Return the first result, or None if no result is found
+        return result[0] if result else None
     except sqlite3.OperationalError as e:
-        logging.log_slow_query(val, "supplement", e)
-        result = None
-
-    # Check if result is found in the supplement database
-    if result:
-        if classes is None:
-            logging.log_mapped_edge(
-                val,
-                (result[0][0], result[0][1], result[0][2]),
-                "supplement\tfull_map\tnormal")
-            return (result[0][0], result[0][1], result[0][2])
-        for i, (category) in enumerate((item[2] for item in result)):
-            if category in classes:
-                logging.log_mapped_edge(
-                    val,
-                    (result[i][0], result[i][1], result[i][2]),
-                    "supplement\tfull_map\tclassed")
-                return (result[i][0], result[i][1], result[i][2])
-
-    # If no result is found, return the original term
-    logging.log_dropped_edge(val, "dropped\tfull_map")
-    return [val]
+        # Log any errors that occur
+        logging.log_slow_query(params, f"half_map2 {db}", e)
 
 
-def half_map(
+def half_map2(
         curie: str, cur_kg2: object, cur_babel: object,
-        cur_override: object, cur_supplement: object) -> object:
+        cur_override: object, cur_supplement: object):
     """
     Maps the given curie to the preferred name, class, and curie in the
     Babel, KG2, and supplement databases.
+
+    Args:
+        curie (str): The curie to map.
+        cur_kg2 (object): The KG2 database connection.
+        cur_babel (object): The Babel database connection.
+        cur_override (object): The override database connection.
+        cur_supplement (object): The supplement database connection.
 
     Returns:
         tuple: A tuple containing the preferred name, class, and curie of the
             given curie.
     """
-
-    global start_time
-
-    # First, try to find the curie in the override database
-    override_supplement_query = ("""
-        WITH preferred_name_lookup AS (
-            SELECT
-                curie_to_preferred_name.curie,
-                curie_to_preferred_name.preferred_name,
-                curie_to_class.class
-            FROM curie_to_preferred_name
-            JOIN curie_to_class
-            ON curie_to_preferred_name.curie = curie_to_class.curie
-            WHERE curie_to_preferred_name.curie = ?
-        ),
-        ranked_results AS (
-            SELECT
-                curie,
-                preferred_name,
-                class,
-                ROW_NUMBER() OVER (
-                    PARTITION BY class ORDER BY curie
-                ) AS row_num
-            FROM preferred_name_lookup
-        )
-        SELECT
-            curie,
-            preferred_name,
-            class
-        FROM ranked_results
-        WHERE row_num = 1;""", (curie,))
-
     try:
-        start_time = time.time()
+        # Set progress handlers on the database connections
         cur_override.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-        cur_override.execute(
-            override_supplement_query[0], override_supplement_query[1])
-        result = cur_override.fetchall()
-        cur_override.connection.set_progress_handler(None, 1)
-    except sqlite3.OperationalError as e:
-        logging.log_slow_query(curie, "override", e)
-        result = None
-
-    if result:
-        logging.log_mapped_edge(
-            curie,
-            (result[0][0], result[0][1], result[0][2]),
-            "override\thalf_map")
-        # If the curie is found in the override database, return it
-        return (result[0][0], result[0][1], result[0][2])
-
-    # If not, try to find the curie in the Babel database
-    try:
-        start_time = time.time()
         cur_babel.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-        cur_babel.execute("""
-            WITH name_lookup AS (
-                SELECT N.NAME, N.CATEGORY, M.PREFERRED,
-                ROW_NUMBER() OVER (
-                    PARTITION BY N.CATEGORY ORDER BY N.CATEGORY) AS row_num
-                FROM NAMES N
-                LEFT JOIN MAP M ON N.CURIE = COALESCE(M.ALIAS, ?)
-                WHERE N.CURIE = COALESCE(M.ALIAS, ?)
-            )
-            SELECT NAME, CATEGORY, PREFERRED
-            FROM name_lookup
-            WHERE row_num = 1;
-            """, (curie, curie))
-        result = cur_babel.fetchall()
-        cur_babel.connection.set_progress_handler(None, 1)
-    except sqlite3.OperationalError as e:
-        logging.log_slow_query(curie, "babel", e)
-        result = None
-
-    if result:
-        logging.log_mapped_edge(
-            curie,
-            (result[0][2], result[0][0], biolink_it(result[0][1])),
-            "kg2\thalf_map")
-        # If the curie is found in the Babel database, return it
-        return (result[0][2], result[0][0], biolink_it(result[0][1]))
-
-    # If not, try to find the curie in the KG2 database
-    try:
-        start_time = time.time()
-        cur_kg2.connection.set_progress_handler(lambda: progress_handler(), 1)
-        cur_kg2.execute("""
-            WITH cluster_lookup AS (
-                SELECT cluster_id, category
-                FROM nodes
-                WHERE id = ?  -- Using the parameter to filter by node_id
-            ),
-            ranked_results AS (
-                SELECT
-                    cluster_lookup.cluster_id,
-                    clusters.name AS cluster_name,
-                    clusters.category AS cluster_category,
-                    ROW_NUMBER() OVER (
-                    PARTITION BY clusters.category
-                    ORDER BY cluster_lookup.cluster_id) AS row_num
-                FROM cluster_lookup
-                JOIN clusters
-                    ON cluster_lookup.cluster_id = clusters.cluster_id
-            )
-            SELECT
-                cluster_id,
-                cluster_name,
-                cluster_category
-            FROM ranked_results
-            WHERE row_num = 1;""", (curie,))
-        result = cur_kg2.fetchall()
-        cur_kg2.connection.set_progress_handler(None, 1)
-    except sqlite3.OperationalError as e:
-        logging.log_slow_query(curie, "kg2", e)
-        result = None
-
-    if result:
-        logging.log_mapped_edge(
-            curie,
-            (result[0][0], result[0][1], biolink_it(result[0][2])),
-            "kg2\thalf_map")
-        # If the curie is found in the KG2 database, return it
-        return (result[0][0], result[0][1], biolink_it(result[0][2]))
-
-    try:
-        start_time = time.time()
+        cur_kg2.connection.set_progress_handler(
+            lambda: progress_handler(), 1)
         cur_supplement.connection.set_progress_handler(
             lambda: progress_handler(), 1)
-        cur_supplement.execute(
-            override_supplement_query[0], override_supplement_query[1])
-        result = cur_supplement.fetchall()
-        cur_supplement.connection.set_progress_handler(None, 1)
-    except sqlite3.OperationalError as e:
-        logging.log_slow_query(curie, "supplement", e)
-        result = None
 
-    if result:
-        logging.log_mapped_edge(
-            curie,
-            (result[0][0], result[0][1], result[0][2]),
-            "supplement\thalf_map")
-        # If the curie is found in the supplement database, return it
-        return (result[0][0], result[0][1], result[0][2])
+        # Set global start time
+        global start_time
 
-    # If not, return the original curie
-    logging.log_dropped_edge(curie, "dropped\thalf_map")
-    return [curie]
+        # Strip curie
+        curie = curie.strip()
+
+        # Attempt to normalize the curie to its preferred name
+        norm_queries = [
+            (cur_babel, "SELECT PREFERRED FROM MAP WHERE ALIAS = ?",
+                (curie,), "babel"),
+            (cur_kg2, "SELECT cluster_id FROM nodes WHERE id = ?", (curie,),
+                "kg2")]
+        for cursor, query, params, db in norm_queries:
+            start_time = time.time()
+            normalized_curie = half_map2_executinator(
+                cursor, query, params, db)
+            if normalized_curie is not None:
+                logging.log_mapped_edge(curie, normalized_curie, db)
+                curie = normalized_curie
+                break
+
+        # Attempt to retrieve the preferred name
+        name_queries = [
+            (cur_override,
+                """SELECT preferred_name FROM
+                curie_to_preferred_name WHERE curie = ?""",
+                (curie,), "override"),
+            (cur_babel, "SELECT NAME FROM NAMES WHERE CURIE = ?",
+                (curie,), "babel"),
+            (cur_kg2, "SELECT name FROM clusters WHERE cluster_id = ?",
+                (curie,), "kg2"),
+            (cur_supplement,
+                """SELECT preferred_name FROM
+                curie_to_preferred_name WHERE curie = ?""",
+                (curie,), "supplement")]
+        for cursor, query, params, db in name_queries:
+            start_time = time.time()
+            name = half_map2_executinator(cursor, query, params, db)
+            if name is not None:
+                logging.log_mapped_edge(curie, name, db)
+                break
+
+        # If no name is found, log an error
+        if not name:
+            logging.log_dropped_edge(curie, "dropped\thalf_map2\tno name")
+            return [curie]
+
+        # Attempt to retrieve the category
+        category_queries = [
+            (cur_override, "SELECT class FROM curie_to_class WHERE curie = ?",
+                (curie,), "override"),
+            (cur_babel, "SELECT CATEGORY FROM NAMES WHERE CURIE = ?",
+                (curie,), "babel"),
+            (cur_kg2, "SELECT category FROM clusters WHERE cluster_id = ?",
+                (curie,), "kg2"),
+            (cur_supplement,
+                "SELECT class FROM curie_to_class WHERE curie = ?",
+                (curie,), "supplement")]
+        for cursor, query, params, db in category_queries:
+            start_time = time.time()
+            category = half_map2_executinator(cursor, query, params, db)
+            if category is not None:
+                if db in ["babel", "kg2"]:
+                    category = biolink_it(category)
+                logging.log_mapped_edge(curie, category, db)
+                break
+
+        # If no category is found, log an error
+        if not category:
+            logging.log_dropped_edge(curie, "dropped\thalf_map2\tno category")
+            return [curie]
+
+        # Return the preferred name, class, and curie
+        result = (curie, name, category)
+        logging.log_mapped_edge(curie, result, "half_map2")
+        return result
+    except Exception as e:
+        raise ValueError(
+            f"{curie} broke half_map2\t{e}")
 
 
 def check_that_curie_case(
@@ -801,7 +949,7 @@ def check_that_curie_case(
     if not isinstance(curie, str):
         raise ValueError(
             f"Invalid value: {curie} should be instance str")
-    if not isinstance(half_map(
+    if not isinstance(half_map2(
             curie, kg2, babel, override, supplement), tuple):
         raise ValueError(
             f"Invalid value: {curie} does not map via half_map")
@@ -810,12 +958,12 @@ def check_that_curie_case(
 def check_that_value_case(
             value: object, babel: object, kg2: object, override: object,
             supplement: object, expected_taxa: object,
-            classes: object) -> None:
+            classes: object, avoid: object) -> None:
     if not isinstance(value, str):
         raise ValueError(
             f"Invalid value: {value} should be instance str")
-    if not isinstance(full_map(
-                value, expected_taxa, classes,
+    if not isinstance(full_map2(
+                value, expected_taxa, classes, avoid,
                 kg2, babel, override, supplement), tuple):
         raise ValueError(
             f"Invalid value: {value} does not map via full_map")
@@ -824,7 +972,8 @@ def check_that_value_case(
 def node_columninator(
         df: object, subconfig: dict, column: str,
         kg2: object, babel: object, override: object,
-        supplement: object, expected_taxa: object, classes: object) -> object:
+        supplement: object, expected_taxa: object,
+        classes: object, avoid: object) -> object:
     """
     Processes a specified column in the DataFrame according to the provided
     subconfig.
@@ -891,51 +1040,56 @@ def node_columninator(
                 sqlite3.connect(supplement) as conn_supplement):
             cur_kg2 = conn_kg2.cursor()
             cur_kg2.execute("PRAGMA cache_size = -64000")
+            cur_kg2.execute("PRAGMA journal_mode=WAL;")
             cur_babel = conn_babel.cursor()
             cur_babel.execute("PRAGMA cache_size = -64000")
+            cur_babel.execute("PRAGMA journal_mode=WAL;")
             cur_override = conn_override.cursor()
             cur_override.execute("PRAGMA cache_size = -64000")
+            cur_override.execute("PRAGMA journal_mode=WAL;")
             cur_supplement = conn_supplement.cursor()
             cur_supplement.execute("PRAGMA cache_size = -64000")
+            cur_supplement.execute("PRAGMA journal_mode=WAL;")
             if "curie" in subconfig.keys():
                 check_that_curie_case(
                         str(subconfig["curie"]), cur_babel, cur_kg2,
                         cur_override, cur_supplement)
                 df[column] = (
-                    [half_map(
+                    [half_map2(
                         str(subconfig["curie"]), cur_kg2, cur_babel,
                         cur_override, cur_supplement)]
                     * len(df[column].to_list()))
             elif "value" in subconfig.keys():
                 check_that_value_case(
                         str(subconfig["value"]), cur_babel, cur_kg2,
-                        cur_override, cur_supplement, expected_taxa, classes)
+                        cur_override, cur_supplement, expected_taxa,
+                        classes, avoid)
                 df[column] = (
-                    [full_map(
-                        str(subconfig["value"]), expected_taxa, classes,
+                    [full_map2(
+                        str(subconfig["value"]), expected_taxa, classes, avoid,
                         cur_kg2, cur_babel, cur_override, cur_supplement)]
                     * len(df[column].to_list()))
             elif "curie_column_name" in subconfig.keys():
                 df[column] = df[column].apply(
-                    lambda x, *args: half_map(str(x), *args), args=(
+                    lambda x, *args: half_map2(str(x), *args), args=(
                         cur_kg2, cur_babel, cur_override, cur_supplement))
             elif "shared_curie_column" in subconfig.keys():
                 df = column_renamanator(
                     df, {subconfig["shared_curie_column"]: column})
                 df[column] = df[column].apply(
-                    lambda x, *args: half_map(str(x), *args), args=(
+                    lambda x, *args: half_map2(str(x), *args), args=(
                         cur_kg2, cur_babel, cur_override, cur_supplement))
             elif "value_column_name" in subconfig.keys():
                 df = column_renamanator(
                     df, {subconfig["value_column_name"]: column})
                 df[column] = df[column].apply(
-                    lambda x, *args: full_map(str(x), *args), args=(
-                        expected_taxa, classes, cur_kg2, cur_babel,
+                    lambda x, *args: full_map2(str(x), *args), args=(
+                        expected_taxa, classes, avoid, cur_kg2, cur_babel,
                         cur_override, cur_supplement))
             elif "shared_value_column" in subconfig.keys():
                 df[column] = df[column].apply(
-                    lambda x, *args: full_map(str(x), *args), args=(
-                        expected_taxa, classes, cur_kg2, cur_babel,
+                    lambda x, *args: full_map2(str(x), *args), args=(
+                        expected_taxa, classes, avoid, cur_kg2, cur_babel,
                         cur_override, cur_supplement))
             cur_kg2.close()
             cur_babel.close()
@@ -1195,12 +1349,14 @@ def score_zip(
         f * predicate_component +
         g)
 
-    return log10(score)
+    return np.mean(log10(score))
 
 
 def put_dataframe_togtherinator(
         section: dict, threshold: float, output_path: str,
-        kg2: str, babel: str, override: str, supplement: str) -> None:
+        kg2: str, babel: str, override: str, supplement: str,
+        predicates: str, timeout: float, model: str,
+        vectorizer: str) -> None:
     """
     Processes a DataFrame according to the given section configuration
     and saves the result to the specified output path.
@@ -1218,6 +1374,10 @@ def put_dataframe_togtherinator(
         ValueError: If any errors occur during DataFrame processing.
     """
     try:
+
+        global handler_timeout
+        handler_timeout = timeout
+
         # Set pandas display settings for better output visualization
         set_pandas_settings()
 
@@ -1260,12 +1420,14 @@ def put_dataframe_togtherinator(
             df = node_columninator(
                 df, section[col], col, kg2, babel,
                 override, supplement, section[col].get("expected_taxa"),
-                section[col].get("expected_classes"))
+                section[col].get("expected_classes"),
+                section[col].get("classes_to_avoid"))
             df = post_normalizatinator(df, col)
 
         # Reindex DataFrame if specified in the section configuration
         if "reindex" in section:
             df = reindexinator(df, section["reindex"])
+            empty_check(df, "reindex", "after reindexing")
 
         # Add method notes to the DataFrame
         df = basic_key_value_column_addinator(
@@ -1276,10 +1438,18 @@ def put_dataframe_togtherinator(
             lambda x: null_zip(x))
 
         # Add the 'edge_score' column
-        conn = sqlite3.connect(main.predicates_sqlite)
+        conn = sqlite3.connect(predicates)
         cursor = conn.cursor()
-        model = joblib.load(main.confidence_model)
-        vectorizer = joblib.load(main.tfidf_vectorizer)
+        model = joblib.load(model)
+        vectorizer = joblib.load(vectorizer)
+
+        logging.log_thing(df.head())
+        logging.log_thing(df.head(1).apply(
+            lambda row: score_zip(
+                row["predicate"], row["n"], row["p"],
+                row["relationship_strength"], row["relationship_type"],
+                row["p_correction_method"], row["method_notes"],
+                cursor, model, vectorizer), axis=1))
 
         df["edge_score"] = df.apply(
             lambda row: score_zip(

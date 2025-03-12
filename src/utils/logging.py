@@ -48,4 +48,4 @@ def log_error(msg: object) -> None:
 
 def log_slow_query(val: str, db: str, err: str) -> None:
     logger = get_log()
-    logger.info(newline_cleaner(f"Slow Query: {val}\t{db}\t{err}"))
+    logger.warning(newline_cleaner(f"Slow Query: {val}\t{db}\t{err}"))

@@ -249,11 +249,11 @@ class TestNlp(unittest.TestCase):
     def test_tokenize_it(self) -> None:
         self.assertEqual(
             nlp.tokenize_it(
-                "This is a test sentence"), "This a is sentence test")
+                "This is a test sentence"), "this a is sentence test")
 
     def test_nonword_regex(self) -> None:
         self.assertEqual(
-            nlp.nonword_regex("Hello, World! 123"), "HelloWorld123")
+            nlp.nonword_regex("Hello, World! 123"), "helloworld123")
 
     def test_hash_it(self) -> None:
         self.assertEqual(

@@ -42,21 +42,15 @@ def process_section(file: str, i: int, section: dict, kg_config: dict) -> str:
         output_path = "tablassert/" + toolkit.tsv_it(
             toolkit.slash_cleaner(
                 str(i) + "_" + toolkit.get_filename_no_ext(file)))
-        # Set global variables
-        global handler_timeout
-        handler_timeout = kg_config["progress_handler_timeout"]
-        global predicates_sqlite
-        predicates_sqlite = kg_config["predicates_sqlite"]
-        global confidence_model
-        confidence_model = kg_config["confidence_model"]
-        global tfidf_vectorizer
-        tfidf_vectorizer = kg_config["tfidf_vectorizer"]
         # Process the DataFrame if it hasn't already been processed
         if not os.path.isfile(output_path):
             dataframe.put_dataframe_togtherinator(
                 section, kg_config["p_value_cutoff"], output_path,
                 kg_config["kg2_sqlite"], kg_config["babel_sqlite"],
-                kg_config["override_sqlite"], kg_config["supplement_sqlite"])
+                kg_config["override_sqlite"], kg_config["supplement_sqlite"],
+                kg_config["predicates_sqlite"],
+                kg_config["progress_handler_timeout"],
+                kg_config["confidence_model"], kg_config["tfidf_vectorizer"])
         # Return a success message
         return f"Success: {toolkit.get_filename_no_ext(file)} section {i}"
     except Exception as e:
