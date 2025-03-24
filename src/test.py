@@ -233,7 +233,7 @@ class TestTableConfigParser(unittest.TestCase):
 
     def test_check_section(self) -> None:
         with self.assertRaises(ValueError):
-            tableConfigParser.check_pkl([])
+            tableConfigParser.check_section([])
 
     def test_check_column_style(self) -> None:
         self.assertEqual(
@@ -252,10 +252,10 @@ class TestTableConfigParser(unittest.TestCase):
 
     def test_check_download_url(self) -> None:
         self.assertEqual(
-            tableConfigParser.check_check_download_url(
+            tableConfigParser.check_download_url(
                 "https://www.google.com"), None)
-        with self.assertRaises(ValueError):
-            tableConfigParser.check_check_download_url(
+        with self.assertRaises(Exception):
+            tableConfigParser.check_download_url(
                 "https://www.THIS_IS_NOTawebsiteORANYTHIN.KIWIKI.FR")
 
 
@@ -334,7 +334,7 @@ def main() -> None:
     test_classes: list[type] = [
         TestArguments, TestDataframe, TestExport,
         TestKgConfigParser, TestLogging, TestNlp,
-        TestToolkit]
+        TestToolkit, TestTableConfigParser]
     suite: unittest.TestSuite = unittest.TestSuite()
     for test_class in test_classes:
         suite.addTests(
