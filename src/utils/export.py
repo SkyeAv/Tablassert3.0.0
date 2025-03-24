@@ -82,8 +82,8 @@ def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
 
         # Select the columns that should be written to the edges TSV file
         edge_columns = [
-            "subject", "predicate", "object", "domain", "edge_score", "n",
-            "relationship_strength", "p", "relationship_type",
+            "subject", "predicate", "object", "domain", "mesh", "edge_score",
+            "n", "relationship_strength", "p", "relationship_type",
             "p_correction_method", "knowledge_level", "agent_type",
             "publication", "journal", "publication_name",
             "authors", "year_published", "table_url", "sheet_to_use",

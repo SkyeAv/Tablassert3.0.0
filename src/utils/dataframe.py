@@ -123,7 +123,7 @@ def column_stylinator(df: object, column_style: str) -> object:
 
 def column_truncinator(df: object) -> object:
     columns = [
-        "subject", "predicate", "object", "domain", "subject_name",
+        "subject", "predicate", "object", "domain", "mesh", "subject_name",
         "object_name", "edge_score", "n", "relationship_strength", "p",
         "relationship_type", "p_correction_method", "knowledge_level",
         "agent_type", "publication", "journal", "publication_name",
@@ -1317,7 +1317,7 @@ def score_zip(
     d = 95
     e = 80
     f = 40
-    g = 800
+    g = 700
 
     # Calculate the logarithm of the number of observations
     n_component = log10(n) if isinstance(n, int) else 0
@@ -1349,32 +1349,110 @@ def score_zip(
         f * predicate_component +
         g)
 
-    return np.mean(log10(score)) if np.mean(score) > 0 else 0
+    return np.mean(log10(score)) if np.mean(score) > 0 else 1e-10
+
+
+def mesh_it(x: str) -> str:
+    return "MESH:" + x
+
+
+def pubmed_lookupinator(
+            pmid: str,
+            cursor: sqlite3.Cursor) -> tuple[list, list, list, list]:
+    """
+    Look up the PubMed id in the database and return the corresponding
+    MeSH terms, qualifiers, and determinants.
+
+    Args:
+        pmid (str): The PubMed id to look up.
+        cursor (sqlite3.Cursor): The database connection cursor.
+
+    Returns:
+        tuple[list, list, list, list]: A tuple of lists containing the
+            MeSH domain, MeSH terms, qualifiers, and determinants.
+    """
+    # Optimize the database query
+    cursor.execute("PRAGMA cache_size = -64000")
+    cursor.execute("PRAGMA journal_mode=WAL;")
+
+    # Look up the PubMed id
+    cursor.execute("SELECT pmid FROM ids WHERE alt = ?", (pmid,))
+    result = cursor.fetchone()
+    if result:
+        # If the id was found, update it
+        pmid = result[0]
+
+    # Get the MeSH domain
+    cursor.execute("""
+        SELECT mesh FROM mesh WHERE pmid = ? AND mesh_major =\"Y\"""", (pmid,))
+    results = cursor.fetchall()
+    if results:
+        # If results were found, extract the MeSH domain
+        domain = [
+            mesh_it(result[0]) for result in results if result[0] is not None]
+    else:
+        # Otherwise, set the MeSH domain to "not_applicable"
+        domain = ["not_applicable"]
+
+    # Get the MeSH terms
+    cursor.execute("""
+        SELECT mesh FROM mesh WHERE pmid = ? AND mesh_major =\"N\"""", (pmid,))
+    results = cursor.fetchall()
+    if results:
+        # If results were found, extract the MeSH terms
+        mesh = [
+            mesh_it(result[0]) for result in results if result[0] is not None]
+    else:
+        # Otherwise, set the MeSH terms to "not_applicable"
+        mesh = ["not_applicable"]
+
+    # Return the MeSH domain and MeSH terms
+    return (domain, mesh)
 
 
 def put_dataframe_togtherinator(
         section: dict, threshold: float, output_path: str,
         kg2: str, babel: str, override: str, supplement: str,
         predicates: str, timeout: float, model: str,
-        vectorizer: str) -> None:
+        vectorizer: str, pubmed: str) -> None:
     """
-    Processes a DataFrame according to the given section configuration
-    and saves the result to the specified output path.
+    Processes a DataFrame according to the given section configuration and
+    saves the result to the specified output path.
 
-    Args:
-        section (dict): Configuration for processing the DataFrame.
-        threshold (float): The p-value threshold to enforce.
-        output_path (str): The path where the processed DataFrame is saved.
-        kg2 (str): Path to the KG2 database.
-        babel (str): Path to the Babel database.
-        override (str): Path to the override database.
-        supplement (str): Path to the supplement database.
+    Parameters
+    ----------
+    section : dict
+        Configuration for processing the DataFrame.
+    threshold : float
+        The p-value threshold to enforce.
+    output_path : str
+        The path where the processed DataFrame is saved.
+    kg2 : str
+        Path to the KG2 database.
+    babel : str
+        Path to the Babel database.
+    override : str
+        Path to the override database.
+    supplement : str
+        Path to the supplement database.
+    predicates : str
+        Path to the predicates database.
+    timeout : float
+        The timeout for the progress handler.
+    model : str
+        The path to the model to use for scoring.
+    vectorizer : str
+        The path to the vectorizer to use for scoring.
+    pubmed : str
+        Path to the PubMed database.
 
-    Raises:
-        ValueError: If any errors occur during DataFrame processing.
+    Raises
+    ------
+    ValueError
+        If any errors occur during DataFrame processing.
     """
     try:
-
+        # Set global timeout for progress handler
         global handler_timeout
         handler_timeout = timeout
 
@@ -1406,8 +1484,21 @@ def put_dataframe_togtherinator(
                 df, {"sheet_to_use": "not_applicable"})
 
         # Add 'domain' column
+        conn = sqlite3.connect(pubmed)
+        cursor = conn.cursor()
+
+        # Get the MeSH domain, MeSH terms, qualifiers, and determinants
+        domain, mesh = pubmed_lookupinator(
+            remove_before_colon(section["provenance"]["publication"]), cursor)
+
+        cursor.close()
+        conn.close()
+
+        # Add the MeSH domain and MeSH terms to the DataFrame
         df = basic_key_value_column_addinator(
-            df, {"domain": join_domainsinator(section["domain"])})
+            df, {"domain": join_domainsinator(domain)})
+        df = basic_key_value_column_addinator(
+            df, {"mesh": join_domainsinator(mesh)})
 
         # Process attributes as per configuration
         df = attribute_addinator(df, section["attributes"])
@@ -1442,14 +1533,6 @@ def put_dataframe_togtherinator(
         cursor = conn.cursor()
         model = joblib.load(model)
         vectorizer = joblib.load(vectorizer)
-
-        logging.log_thing(df.head())
-        logging.log_thing(df.head(1).apply(
-            lambda row: score_zip(
-                row["predicate"], row["n"], row["p"],
-                row["relationship_strength"], row["relationship_type"],
-                row["p_correction_method"], row["method_notes"],
-                cursor, model, vectorizer), axis=1))
 
         df["edge_score"] = df.apply(
             lambda row: score_zip(

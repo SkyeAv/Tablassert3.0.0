@@ -184,7 +184,8 @@ class TestKgConfigParser(unittest.TestCase):
             "progress_handler_timeout": 10,
             "predicates_sqlite": "",
             "confidence_model": "",
-            "tfidf_vectorizer": ""
+            "tfidf_vectorizer": "",
+            "pubmed_sqlite": ""
         }
         self.assertEqual(
             kgConfigParser.check_kg_subconfigs(valid_kg_config), None)

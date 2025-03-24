@@ -51,10 +51,12 @@ override_sqlite : # Paths
 supplement_sqlite : 
 babel_sqlite : 
 kg2_sqlite :
-predicates_sqlite : 
 
+predicates_sqlite : 
 confidence_model : # Pretrained Sklearn Linear Regression Model
 tfidf_vectorizer : # Pretrained Sklearn TFIDF Vectorizer Model
+
+pubmed_sqlite : 
 ```
 
 ### Table Configs 
