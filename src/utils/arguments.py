@@ -23,6 +23,4 @@ def enforce_usage(args: list) -> None:
         # Print a helpful error message and exit
         toolkit.exit_with_error(
             str(e) +
-            "\nSee README.md for usage\n" +
-            "Usage: python3 tablassert3everything.py <kg_config_file>\n" +
-            "Where <kg_config_file> is the path to a yaml configuration file")
+            "\nSee README.md for usage")
