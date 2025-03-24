@@ -1317,7 +1317,7 @@ def score_zip(
     d = 95
     e = 80
     f = 40
-    g = 1000
+    g = 800
 
     # Calculate the logarithm of the number of observations
     n_component = log10(n) if isinstance(n, int) else 0
@@ -1349,7 +1349,7 @@ def score_zip(
         f * predicate_component +
         g)
 
-    return np.mean(log10(score))
+    return np.mean(log10(score)) if np.mean(score) > 0 else 0
 
 
 def put_dataframe_togtherinator(
