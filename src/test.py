@@ -1,6 +1,6 @@
 from src.utils import (
     toolkit, arguments, logging, kgConfigParser,
-    dataframe, export, nlp)
+    tableConfigParser, dataframe, export, nlp)
 import unittest
 import hashlib
 import math
@@ -227,6 +227,36 @@ class TestKgConfigParser(unittest.TestCase):
     def test_check_pkl(self) -> None:
         with self.assertRaises(ValueError):
             kgConfigParser.check_pkl(r"file.xlsx", "")
+
+
+class TestTableConfigParser(unittest.TestCase):
+
+    def test_check_section(self) -> None:
+        with self.assertRaises(ValueError):
+            tableConfigParser.check_pkl([])
+
+    def test_check_column_style(self) -> None:
+        self.assertEqual(
+            tableConfigParser.check_column_style("str"), None)
+        with self.assertRaises(ValueError):
+            tableConfigParser.check_column_style(["list"])
+
+    def test_check_data_location(self) -> None:
+        self.assertEqual(
+            tableConfigParser.check_data_location("FILE.XLsx"), None)
+        self.assertEqual(
+            tableConfigParser.check_data_location("PATH/FILE.xls"), None)
+        with self.assertRaises(ValueError):
+            tableConfigParser.check_data_location("FIle.NOT.xlsx")
+            tableConfigParser.check_data_location(".tiff")
+
+    def test_check_download_url(self) -> None:
+        self.assertEqual(
+            tableConfigParser.check_check_download_url(
+                "https://www.google.com"), None)
+        with self.assertRaises(ValueError):
+            tableConfigParser.check_check_download_url(
+                "https://www.THIS_IS_NOTawebsiteORANYTHIN.KIWIKI.FR")
 
 
 class TestLogging(unittest.TestCase):
