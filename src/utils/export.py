@@ -119,6 +119,8 @@ def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
             nodes, ["id", "category"])
         nodes = dataframe.drop_duplicates_by_columnsinator(
             nodes, ["id", "name"])
+        nodes = dataframe.drop_duplicates_by_columnsinator(
+            nodes, ["id"])
 
         # Strip whitespace in nodes
         nodes = nodes.map(lambda x: str(x).strip())
