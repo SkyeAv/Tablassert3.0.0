@@ -91,8 +91,8 @@ def main() -> None:
     with ProcessPoolExecutor(max_workers=kg_config["max_workers"]) as executor:
         for file in section_config_files:
             try:
-                section_config = toolkit.read_config(file)
-                sections = toolkit.get_sections(section_config)
+                table_config = toolkit.read_config(file)
+                sections = toolkit.get_sections(table_config)
                 for i, section in enumerate(sections, start=1):
                     futures.append(
                         executor.submit(
