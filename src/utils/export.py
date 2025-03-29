@@ -87,7 +87,8 @@ def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
             "p_correction_method", "knowledge_level", "agent_type",
             "publication", "journal", "publication_name",
             "authors", "year_published", "table_url", "sheet_to_use",
-            "yaml_curator", "curator_organization", "method_notes"]
+            "yaml_curator", "curator_organization", "method_notes",
+            "config_path", "section"]
 
         # Extract the edges data
         edges = df[edge_columns]

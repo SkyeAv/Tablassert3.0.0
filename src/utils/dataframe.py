@@ -1,6 +1,7 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LinearRegression
 from src.utils import logging, nlp, toolkit
+from nltk.corpus import stopwords
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -129,7 +130,7 @@ def column_truncinator(df: object) -> object:
         "agent_type", "publication", "journal", "publication_name",
         "authors", "year_published", "table_url", "sheet_to_use",
         "yaml_curator", "curator_organization", "method_notes",
-        "subject_category", "object_category"]
+        "subject_category", "object_category", "config_path", "section"]
     try:
         return df[columns]
     except KeyError as e:
@@ -1278,11 +1279,34 @@ def score_predicate(x: str, cursor: object) -> object:
         return 0
 
 
+def log5(x: object) -> float:
+    """
+    Calculates the base 5 logarithm of the given object.
+
+    If the object is zero, returns the logarithm of a very small value
+    (1e-10) instead. This is done to avoid returning negative infinity.
+
+    Args:
+        x (object): The input value to be processed.
+
+    Returns:
+        float: The base 5 logarithm of the input value.
+    """
+    # Check if the input is zero to avoid division by zero
+    if int(x) != 0:
+        # Calculate and return the base 5 logarithm
+        return float(math.log(float(x), 5))
+    else:
+        # Return the logarithm of a very small value
+        return float(math.log(float(0.0000000001), 5))
+
+
 def score_zip(
         predicate: str, n: int, p: float,
         relationship_strength: float, relationship_type: str,
         p_correction_method: str, method_notes: str,
-        cursor: object, model: object, vectorizer: object) -> float:
+        cursor: object, model: object, vectorizer: object,
+        stop_words: object) -> float:
     """
     Calculates the score of a given association based on its properties.
 
@@ -1311,13 +1335,13 @@ def score_zip(
     Returns:
         float: The score of the association.
     """
-    a = 65
-    b = 20
-    c = 300
-    d = 95
-    e = 80
-    f = 40
-    g = 700
+    a = 65  # Weight for the number of observations
+    b = 20  # Weight for the p-value
+    c = 300  # Weight for the p-value penalty
+    d = 95  # Weight for the model score
+    e = 80  # Weight for the relationship strength
+    f = 40  # Weight for the predicate score
+    g = 700  # Constant added to the score
 
     # Calculate the logarithm of the number of observations
     n_component = log10(n) if isinstance(n, int) else 0
@@ -1328,9 +1352,14 @@ def score_zip(
     # Calculate the penalty for the p-value
     p_penalty = p_pentalty(p)
 
-    # Calculate the score of the relationship type
-    methods = list(
-        f"{relationship_type} {p_correction_method} {method_notes}")
+    # Calculate the score of the methods
+    methods = [
+        f"{relationship_type} {p_correction_method} {method_notes}"]
+    methods = [
+        word.strip()
+        for word in re.sub(r"[^a-zA-Z0-9\s]", " ", str(methods)).split()
+        if word.lower() not in stop_words]
+
     method_component = np.mean(model.predict(vectorizer.transform(methods)))
 
     # Calculate the logarithm of the relationship strength
@@ -1349,7 +1378,8 @@ def score_zip(
         f * predicate_component +
         g)
 
-    return np.mean(log10(score)) if np.mean(score) > 0 else 1e-10
+    # Return the mean of the logarithm of the score
+    return np.mean(log5(score)) if np.mean(score) > 0 else 1e-10
 
 
 def mesh_it(x: str) -> str:
@@ -1414,7 +1444,7 @@ def put_dataframe_togtherinator(
         section: dict, threshold: float, output_path: str,
         kg2: str, babel: str, override: str, supplement: str,
         predicates: str, timeout: float, model: str,
-        vectorizer: str, pubmed: str) -> None:
+        vectorizer: str, pubmed: str, path: str, section_number: int) -> None:
     """
     Processes a DataFrame according to the given section configuration and
     saves the result to the specified output path.
@@ -1500,6 +1530,12 @@ def put_dataframe_togtherinator(
         df = basic_key_value_column_addinator(
             df, {"mesh": join_domainsinator(mesh)})
 
+        # Add config path and section for duplicate-utility
+        df = basic_key_value_column_addinator(
+            df, {"config_path": path})
+        df = basic_key_value_column_addinator(
+            df, {"section": section_number})
+
         # Process attributes as per configuration
         df = attribute_addinator(df, section["attributes"])
 
@@ -1534,12 +1570,13 @@ def put_dataframe_togtherinator(
         model = joblib.load(model)
         vectorizer = joblib.load(vectorizer)
 
+        stop_words = set(stopwords.words("english"))
         df["edge_score"] = df.apply(
             lambda row: score_zip(
                 row["predicate"], row["n"], row["p"],
                 row["relationship_strength"], row["relationship_type"],
                 row["p_correction_method"], row["method_notes"],
-                cursor, model, vectorizer), axis=1)
+                cursor, model, vectorizer, stop_words), axis=1)
 
         cursor.close()
         conn.close()
