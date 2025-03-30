@@ -1107,6 +1107,14 @@ def check_that_value_case(
             f"Invalid value: {value} does not map via full_map")
 
 
+def remove_weird_strings(x: str) -> str:
+    weird_strings = ["\"\"", "nan"]
+    if x in weird_strings:
+        return "SURELYTHISWONTMAP_qwwihweuegeggqige"
+    else:
+        return x
+
+
 def node_columninator(
         df: object, subconfig: dict, column: str,
         kg2: object, babel: object, override: object,
@@ -1171,6 +1179,8 @@ def node_columninator(
         empty_check(df, column, "regex_replacements")
         # Map the values in the column to CURIEs,
         # preferred names, and categories
+        df[column] = df[column].apply(
+            lambda x: remove_weird_strings(str(x)))
         with (
                 sqlite3.connect(kg2) as conn_kg2,
                 sqlite3.connect(babel) as conn_babel,
