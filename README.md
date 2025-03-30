@@ -12,9 +12,20 @@ pip install requests
 pip install openpyxl
 pip install pyyaml
 pip install pandas
+pip install spacy
 pip install numpy
 pip install nltk
 pip install xlrd
+```
+
+```bash
+python3 -m spacy download en_core_web_sm
+```
+
+```python
+import nltk
+nltk.download("stopwords")
+nltk.download("punkt")
 ```
 
 ### Usage (Unix)
@@ -32,6 +43,12 @@ To Test the Pipeline
 tablassert_test
 ```
 
+To Install NLP Dependencies
+
+```bash
+download_dependencies
+```
+
 ### KG Config
 
 KG Configs are YAML configuration for any new Tablassert-generated knowledge graph. They contain basic information about the graph, what databases you want to connect, the table_configs you wish to include, which vectorizers/models to use, and some knowledge graph-wide hyperparameters.
@@ -46,7 +63,6 @@ progress_handler_timeout : # For all SQL Databases and Queries
 config_directories:
  - # List of Directories That Contain Table Configs
  
-
 override_sqlite : # Paths
 supplement_sqlite : 
 babel_sqlite : 
