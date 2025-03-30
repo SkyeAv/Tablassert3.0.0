@@ -6,10 +6,11 @@ setup(
     packages=find_packages(),
     install_requires=[
         "scikit-learn", "requests", "openpyxl", "pyyaml", "pandas", "numpy",
-        "xlrd", "nltk"],
+        "xlrd", "nltk", "spacy"],
     entry_points={
         "console_scripts": [
-            "tablassert=src.main:main", "tablassert_test=src.test:main"]},
+            "tablassert=src.main:main", "tablassert_test=src.test:main",
+            "download_dependencies=src.utils.dependencies:main"]},
     description="""
         Tablassert is a multipurpose tool that crafts knowledge assertions
         from tabular data, augments knowledge with configuration, and exports

@@ -338,6 +338,9 @@ def full_map2_base_executinator(
     returns None. If the query raises an OperationalError, logs the
     error and returns None.
 
+    Maintains a frequency count of categories, and returns the result
+    with the most frequent category if available.
+
     :param cursor: The database connection to use for the query
     :param query: The query to execute
     :param params: The parameters to pass to the query
@@ -345,14 +348,29 @@ def full_map2_base_executinator(
     :return: A tuple of (preferred name, class, curie) or None
     """
     try:
+        global frequencies
         cursor.execute(query, params)
-        result = cursor.fetchone()
-        if result:
-            category = result[2]
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                category = result[2]
+                # Convert category to biolink format if needed
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
+                    category = biolink_it(category)
+                # Update frequency count for the category
+                frequencies[category] = frequencies.get(category, 0) + 1
+                # Check if the current category is the most frequent
+                if category == max(frequencies, key=frequencies.get) \
+                        and max(frequencies.values()) >= 5:
+                    return (result[0], result[1], category)
+            # Fallback to return the first result
+            category = results[0][2]
             if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                 category = biolink_it(category)
-            return (result[0], result[1], category)
+            frequencies[category] = frequencies.get(category, 0) + 1
+            return (results[0][0], results[0][1], category)
     except sqlite3.OperationalError as e:
+        # Log the error and return None
         logging.log_slow_query(params, f"full_map2_base {db}", e)
 
 
@@ -385,7 +403,7 @@ def full_map2_classed_taxonless_executinator(
                 category = result[2]
                 if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
-                if category:
+                if classes:
                     if category in classes and category not in avoid:
                         return (result[0], result[1], category)
                 else:
@@ -417,6 +435,7 @@ def full_map2_classless_with_taxon_executinator(
     :return: A tuple of (preferred name, class, curie) or None
     """
     try:
+        global frequencies
         cursor.execute(query, params)
         results = cursor.fetchall()
         if results:
@@ -427,11 +446,28 @@ def full_map2_classless_with_taxon_executinator(
                 if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
                 if "biolink:Gene" in category:
-                    if result[3] is not None and result[3] in taxa:
+                    if result[3] is not None and result[3] in taxa \
+                                and category == max(
+                                    frequencies, key=frequencies.get) and \
+                                max(frequencies.values()) >= 5:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
+                        return (result[0], result[1], category)
+                    elif result[3] is not None and result[3] in taxa:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
                         return (result[0], result[1], category)
                 # otherwise, return results regardless of the taxon
                 else:
-                    return (result[0], result[1], category)
+                    if category == max(frequencies, key=frequencies.get) and \
+                            max(frequencies.values()) >= 5:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
+                        return (result[0], result[1], category)
+                    else:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
+                        return (result[0], result[1], category)
     except sqlite3.OperationalError as e:
         # log the error and return None
         logging.log_slow_query(
@@ -473,7 +509,7 @@ def full_map2_classed_with_taxon_executinator(
                 if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
                 if "biolink:Gene" in category:
-                    if not category:
+                    if not classes:
                         if result[3] is not None and result[3] in taxa and \
                                 category not in avoid:
                             return (result[0], result[1], category)
@@ -483,7 +519,7 @@ def full_map2_classed_with_taxon_executinator(
                             return (result[0], result[1], category)
                 # otherwise, return results regardless of the taxon
                 else:
-                    if not category:
+                    if classes:
                         if category in classes and category not in avoid:
                             return (result[0], result[1], category)
                     else:
@@ -642,15 +678,25 @@ def full_map2(
                 (full_map2_classed_taxonless_executinator, cur_override,
                     os_base, (val,), "override"),
                 (full_map2_classed_taxonless_executinator, cur_override,
+                    os_base, (val,), "override"),
+                (full_map2_classed_taxonless_executinator, cur_override,
                     os_hash, (nlp.hash_it(val),), "override_hash"),
                 (full_map2_classed_taxonless_executinator, cur_override,
                     os_token, (nlp.tokenize_it(val),), "override_token"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
                     babel_base, (val,), "babel"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_base, (nlp.remove_stopwords(val),), "babel_stop"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_base, (nlp.lemmatize_it(val),), "babel_lemma"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
                     babel_hash, (nlp.hash_it(val),), "babel_hash"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
                     (val,), "kg2"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
+                    (nlp.remove_stopwords(val),), "kg2_stop"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
+                    (nlp.lemmatize_it(val),), "kg2_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
                     (nlp.nonword_regex(val),), "kg2_simp"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
@@ -687,10 +733,24 @@ def full_map2(
                     (cur_babel, babel_base_taxon, (val, taxa[0]),
                         "babel", taxa)),
                 (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.remove_stopwords(val),
+                        taxa[0]), "babel_stop", taxa)),
+                (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.lemmatize_it(val),
+                        taxa[0]), "babel_lemma", taxa)),
+                (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
                         "babel_hash", taxa)),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2")),
+                (full_map2_base_executinator,
+                    (cur_kg2, kg2_base, (nlp.remove_stopwords(val),),
+                        "kg2_stop")),
+                (full_map2_base_executinator,
+                    (cur_kg2, kg2_base, (nlp.lemmatize_it(val),),
+                        "kg2_lemma")),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
                         "kg2_simp")),
@@ -733,10 +793,24 @@ def full_map2(
                     (cur_babel, babel_base_taxon, (val, taxa[0]), "babel",
                         classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.remove_stopwords(val), taxa[0]), "babel_stop",
+                        classes, avoid, taxa)),
+                (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.lemmatize_it(val), taxa[0]), "babel_lemma",
+                        classes, avoid, taxa)),
+                (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
                         "babel_hash", classes, avoid, taxa)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2",
+                        classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_base, (nlp.remove_stopwords(val),),
+                        "kg2_stop", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_base, (nlp.lemmatize_it(val),), "kg2_lemma",
                         classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
@@ -776,10 +850,18 @@ def full_map2(
                     (nlp.tokenize_it(val),), "override_token"),
                 (full_map2_base_executinator, cur_babel, babel_base,
                     (val,), "babel"),
+                (full_map2_base_executinator, cur_babel, babel_base,
+                    (nlp.remove_stopwords(val),), "babel_stop"),
+                (full_map2_base_executinator, cur_babel, babel_base,
+                    (nlp.lemmatize_it(val),), "babel_lemma"),
                 (full_map2_base_executinator, cur_babel, babel_hash,
                     (nlp.hash_it(val),), "babel_hash"),
                 (full_map2_base_executinator, cur_kg2, kg2_base, (val,),
                     "kg2"),
+                (full_map2_base_executinator, cur_kg2, kg2_base,
+                    (nlp.remove_stopwords(val),), "kg2_stop"),
+                (full_map2_base_executinator, cur_kg2, kg2_base,
+                    (nlp.lemmatize_it(val),), "kg2_lemma"),
                 (full_map2_base_executinator, cur_kg2, kg2_simp,
                     (nlp.nonword_regex(val),), "kg2_simp"),
                 (full_map2_base_executinator, cur_supplement, os_base, (val,),
@@ -1051,6 +1133,8 @@ def node_columninator(
             cur_supplement = conn_supplement.cursor()
             cur_supplement.execute("PRAGMA cache_size = -64000")
             cur_supplement.execute("PRAGMA journal_mode=WAL;")
+            global frequencies
+            frequencies = {"DEFAULT": 1}
             if "curie" in subconfig.keys():
                 check_that_curie_case(
                         str(subconfig["curie"]), cur_babel, cur_kg2,
