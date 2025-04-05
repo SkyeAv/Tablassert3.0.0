@@ -50,7 +50,8 @@ def process_section(file: str, i: int, section: dict, kg_config: dict) -> str:
                 kg_config["override_sqlite"], kg_config["supplement_sqlite"],
                 kg_config["predicates_sqlite"],
                 kg_config["progress_handler_timeout"],
-                kg_config["confidence_model"], kg_config["tfidf_vectorizer"])
+                kg_config["confidence_model"], kg_config["tfidf_vectorizer"],
+                kg_config["pubmed_sqlite"], os.path.abspath(file), i)
         # Return a success message
         return f"Success: {toolkit.get_filename_no_ext(file)} section {i}"
     except Exception as e:
@@ -91,8 +92,8 @@ def main() -> None:
     with ProcessPoolExecutor(max_workers=kg_config["max_workers"]) as executor:
         for file in section_config_files:
             try:
-                section_config = toolkit.read_config(file)
-                sections = toolkit.get_sections(section_config)
+                table_config = toolkit.read_config(file)
+                sections = toolkit.get_sections(table_config)
                 for i, section in enumerate(sections, start=1):
                     futures.append(
                         executor.submit(

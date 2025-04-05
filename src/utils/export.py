@@ -82,12 +82,13 @@ def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
 
         # Select the columns that should be written to the edges TSV file
         edge_columns = [
-            "subject", "predicate", "object", "domain", "edge_score", "n",
-            "relationship_strength", "p", "relationship_type",
+            "subject", "predicate", "object", "domain", "mesh", "edge_score",
+            "n", "relationship_strength", "p", "relationship_type",
             "p_correction_method", "knowledge_level", "agent_type",
             "publication", "journal", "publication_name",
-            "authors", "year_published", "table_url", "sheet_to_use",
-            "yaml_curator", "curator_organization", "method_notes"]
+            "authors", "year_published", "table_url", "sheet_to_use", "row",
+            "yaml_curator", "curator_organization", "method_notes",
+            "config_path", "section"]
 
         # Extract the edges data
         edges = df[edge_columns]
@@ -119,6 +120,8 @@ def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
             nodes, ["id", "category"])
         nodes = dataframe.drop_duplicates_by_columnsinator(
             nodes, ["id", "name"])
+        nodes = dataframe.drop_duplicates_by_columnsinator(
+            nodes, ["id"])
 
         # Strip whitespace in nodes
         nodes = nodes.map(lambda x: str(x).strip())

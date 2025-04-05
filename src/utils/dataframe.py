@@ -1,6 +1,7 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LinearRegression
 from src.utils import logging, nlp, toolkit
+from nltk.corpus import stopwords
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -123,13 +124,13 @@ def column_stylinator(df: object, column_style: str) -> object:
 
 def column_truncinator(df: object) -> object:
     columns = [
-        "subject", "predicate", "object", "domain", "subject_name",
+        "subject", "predicate", "object", "domain", "mesh", "subject_name",
         "object_name", "edge_score", "n", "relationship_strength", "p",
         "relationship_type", "p_correction_method", "knowledge_level",
         "agent_type", "publication", "journal", "publication_name",
-        "authors", "year_published", "table_url", "sheet_to_use",
+        "authors", "year_published", "table_url", "sheet_to_use", "row",
         "yaml_curator", "curator_organization", "method_notes",
-        "subject_category", "object_category"]
+        "subject_category", "object_category", "config_path", "section"]
     try:
         return df[columns]
     except KeyError as e:
@@ -337,6 +338,9 @@ def full_map2_base_executinator(
     returns None. If the query raises an OperationalError, logs the
     error and returns None.
 
+    Maintains a frequency count of categories, and returns the result
+    with the most frequent category if available.
+
     :param cursor: The database connection to use for the query
     :param query: The query to execute
     :param params: The parameters to pass to the query
@@ -344,14 +348,29 @@ def full_map2_base_executinator(
     :return: A tuple of (preferred name, class, curie) or None
     """
     try:
+        global frequencies
         cursor.execute(query, params)
-        result = cursor.fetchone()
-        if result:
-            category = result[2]
+        results = cursor.fetchall()
+        if results:
+            for result in results:
+                category = result[2]
+                # Convert category to biolink format if needed
+                if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
+                    category = biolink_it(category)
+                # Update frequency count for the category
+                frequencies[category] = frequencies.get(category, 0) + 1
+                # Check if the current category is the most frequent
+                if category == max(frequencies, key=frequencies.get) \
+                        and max(frequencies.values()) >= 5:
+                    return (result[0], result[1], category)
+            # Fallback to return the first result
+            category = results[0][2]
             if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                 category = biolink_it(category)
-            return (result[0], result[1], category)
+            frequencies[category] = frequencies.get(category, 0) + 1
+            return (results[0][0], results[0][1], category)
     except sqlite3.OperationalError as e:
+        # Log the error and return None
         logging.log_slow_query(params, f"full_map2_base {db}", e)
 
 
@@ -384,7 +403,7 @@ def full_map2_classed_taxonless_executinator(
                 category = result[2]
                 if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
-                if category:
+                if classes:
                     if category in classes and category not in avoid:
                         return (result[0], result[1], category)
                 else:
@@ -416,6 +435,7 @@ def full_map2_classless_with_taxon_executinator(
     :return: A tuple of (preferred name, class, curie) or None
     """
     try:
+        global frequencies
         cursor.execute(query, params)
         results = cursor.fetchall()
         if results:
@@ -426,11 +446,28 @@ def full_map2_classless_with_taxon_executinator(
                 if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
                 if "biolink:Gene" in category:
-                    if result[3] is not None and result[3] in taxa:
+                    if result[3] is not None and result[3] in taxa \
+                                and category == max(
+                                    frequencies, key=frequencies.get) and \
+                                max(frequencies.values()) >= 5:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
+                        return (result[0], result[1], category)
+                    elif result[3] is not None and result[3] in taxa:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
                         return (result[0], result[1], category)
                 # otherwise, return results regardless of the taxon
                 else:
-                    return (result[0], result[1], category)
+                    if category == max(frequencies, key=frequencies.get) and \
+                            max(frequencies.values()) >= 5:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
+                        return (result[0], result[1], category)
+                    else:
+                        frequencies[category] = frequencies.get(
+                            category, 0) + 1
+                        return (result[0], result[1], category)
     except sqlite3.OperationalError as e:
         # log the error and return None
         logging.log_slow_query(
@@ -472,7 +509,7 @@ def full_map2_classed_with_taxon_executinator(
                 if db in ["babel", "babel_hash", "kg2", "kg2_simp"]:
                     category = biolink_it(category)
                 if "biolink:Gene" in category:
-                    if not category:
+                    if not classes:
                         if result[3] is not None and result[3] in taxa and \
                                 category not in avoid:
                             return (result[0], result[1], category)
@@ -482,7 +519,7 @@ def full_map2_classed_with_taxon_executinator(
                             return (result[0], result[1], category)
                 # otherwise, return results regardless of the taxon
                 else:
-                    if not category:
+                    if classes:
                         if category in classes and category not in avoid:
                             return (result[0], result[1], category)
                     else:
@@ -538,6 +575,18 @@ def full_map2(
             INNER JOIN curie_to_class
                 ON name_to_curie.curie = curie_to_class.curie
             WHERE name_to_curie.name = ?;"""
+        os_taxon = """
+            SELECT
+                name_to_curie.curie,
+                curie_to_preferred_name.preferred_name,
+                curie_to_class.class
+            FROM name_to_curie
+            INNER JOIN curie_to_preferred_name
+                ON name_to_curie.curie = curie_to_preferred_name.curie
+            INNER JOIN curie_to_class
+                ON name_to_curie.curie = curie_to_class.curie
+            WHERE name_to_curie.name = ?
+                AND name_to_curie.taxon = ?;"""
         os_hash = """
             SELECT
                 hashed_name_to_curie.curie,
@@ -641,17 +690,39 @@ def full_map2(
                 (full_map2_classed_taxonless_executinator, cur_override,
                     os_base, (val,), "override"),
                 (full_map2_classed_taxonless_executinator, cur_override,
+                    os_base, (val,), "override"),
+                (full_map2_classed_taxonless_executinator, cur_override,
                     os_hash, (nlp.hash_it(val),), "override_hash"),
                 (full_map2_classed_taxonless_executinator, cur_override,
                     os_token, (nlp.tokenize_it(val),), "override_token"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
                     babel_base, (val,), "babel"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_base, (nlp.remove_stopwords(val),), "babel_stop"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_base, (nlp.lemmatize_it(val),), "babel_lemma"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
                     babel_hash, (nlp.hash_it(val),), "babel_hash"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_hash, (nlp.hash_it(nlp.remove_stopwords(val)),),
+                    "babel_hash_stop"),
+                (full_map2_classed_taxonless_executinator, cur_babel,
+                    babel_hash, (nlp.hash_it(nlp.lemmatize_it(val)),),
+                    "babel_hash_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
                     (val,), "kg2"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
+                    (nlp.remove_stopwords(val),), "kg2_stop"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
+                    (nlp.lemmatize_it(val),), "kg2_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
                     (nlp.nonword_regex(val),), "kg2_simp"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
+                    (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                    "kg2_simp_stop"),
+                (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
+                    (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                    "kg2_simp_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
                     os_base, (val,), "supplement"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
@@ -677,6 +748,9 @@ def full_map2(
                 (full_map2_base_executinator,
                     (cur_override, os_base, (val,), "override")),
                 (full_map2_base_executinator,
+                    (cur_override, os_taxon,
+                        (val, taxa[0]), "override_taxon")),
+                (full_map2_base_executinator,
                     (cur_override, os_hash, (nlp.hash_it(val),),
                         "override_hash")),
                 (full_map2_base_executinator,
@@ -686,13 +760,43 @@ def full_map2(
                     (cur_babel, babel_base_taxon, (val, taxa[0]),
                         "babel", taxa)),
                 (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.remove_stopwords(val),
+                        taxa[0]), "babel_stop", taxa)),
+                (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.lemmatize_it(val),
+                        taxa[0]), "babel_lemma", taxa)),
+                (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
                         "babel_hash", taxa)),
+                (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_hash_taxon,
+                        (nlp.hash_it(nlp.remove_stopwords(val)), taxa[0]),
+                        "babel_hash_stop", taxa)),
+                (full_map2_classless_with_taxon_executinator,
+                    (cur_babel, babel_hash_taxon,
+                        (nlp.hash_it(nlp.lemmatize_it(val)), taxa[0]),
+                        "babel_hash_lemma", taxa)),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2")),
                 (full_map2_base_executinator,
+                    (cur_kg2, kg2_base, (nlp.remove_stopwords(val),),
+                        "kg2_stop")),
+                (full_map2_base_executinator,
+                    (cur_kg2, kg2_base, (nlp.lemmatize_it(val),),
+                        "kg2_lemma")),
+                (full_map2_base_executinator,
                     (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
                         "kg2_simp")),
+                (full_map2_base_executinator,
+                    (cur_kg2, kg2_simp,
+                        (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                        "kg2_simp_stop")),
+                (full_map2_base_executinator,
+                    (cur_kg2, kg2_simp,
+                        (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                        "kg2_simp_lemma")),
                 (full_map2_base_executinator,
                     (cur_supplement, os_base, (val,), "supplement")),
                 (full_map2_base_executinator,
@@ -722,6 +826,9 @@ def full_map2(
                 (full_map2_classed_taxonless_executinator,
                     (cur_override, os_base, (val,),
                         "override", classes, avoid)),
+                (full_map2_base_executinator,
+                    (cur_override, os_taxon,
+                        (val, taxa[0]), "override_taxon")),
                 (full_map2_classed_taxonless_executinator,
                     (cur_override, os_hash, (nlp.hash_it(val),),
                         "override_hash", classes, avoid)),
@@ -732,14 +839,44 @@ def full_map2(
                     (cur_babel, babel_base_taxon, (val, taxa[0]), "babel",
                         classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.remove_stopwords(val), taxa[0]), "babel_stop",
+                        classes, avoid, taxa)),
+                (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_base_taxon, (
+                        nlp.lemmatize_it(val), taxa[0]), "babel_lemma",
+                        classes, avoid, taxa)),
+                (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
                         "babel_hash", classes, avoid, taxa)),
+                (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_hash_taxon,
+                        (nlp.hash_it(nlp.remove_stopwords(val)), taxa[0]),
+                        "babel_hash_stop", classes, avoid, taxa)),
+                (full_map2_classed_with_taxon_executinator,
+                    (cur_babel, babel_hash_taxon,
+                        (nlp.hash_it(nlp.lemmatize_it(val)), taxa[0]),
+                        "babel_hash_lemma", classes, avoid, taxa)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2",
                         classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_base, (nlp.remove_stopwords(val),),
+                        "kg2_stop", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_base, (nlp.lemmatize_it(val),), "kg2_lemma",
+                        classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
                         "kg2_simp", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_simp,
+                        (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                        "kg2_simp_stop", classes, avoid)),
+                (full_map2_classed_taxonless_executinator,
+                    (cur_kg2, kg2_simp,
+                        (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                        "kg2_simp_lemma", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_supplement, os_base, (val,), "supplement",
                         classes, avoid)),
@@ -775,12 +912,31 @@ def full_map2(
                     (nlp.tokenize_it(val),), "override_token"),
                 (full_map2_base_executinator, cur_babel, babel_base,
                     (val,), "babel"),
+                (full_map2_base_executinator, cur_babel, babel_base,
+                    (nlp.remove_stopwords(val),), "babel_stop"),
+                (full_map2_base_executinator, cur_babel, babel_base,
+                    (nlp.lemmatize_it(val),), "babel_lemma"),
                 (full_map2_base_executinator, cur_babel, babel_hash,
                     (nlp.hash_it(val),), "babel_hash"),
+                (full_map2_base_executinator, cur_babel, babel_hash,
+                    (nlp.hash_it(nlp.remove_stopwords(val)),),
+                    "babel_hash_stop"),
+                (full_map2_base_executinator, cur_babel, babel_hash,
+                    (nlp.hash_it(nlp.lemmatize_it(val)),), "babel_hash_lemma"),
                 (full_map2_base_executinator, cur_kg2, kg2_base, (val,),
                     "kg2"),
+                (full_map2_base_executinator, cur_kg2, kg2_base,
+                    (nlp.remove_stopwords(val),), "kg2_stop"),
+                (full_map2_base_executinator, cur_kg2, kg2_base,
+                    (nlp.lemmatize_it(val),), "kg2_lemma"),
                 (full_map2_base_executinator, cur_kg2, kg2_simp,
                     (nlp.nonword_regex(val),), "kg2_simp"),
+                (full_map2_base_executinator, cur_kg2, kg2_simp,
+                    (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                    "kg2_simp_stop"),
+                (full_map2_base_executinator, cur_kg2, kg2_simp,
+                    (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                    "kg2_simp_lemma"),
                 (full_map2_base_executinator, cur_supplement, os_base, (val,),
                     "supplement"),
                 (full_map2_base_executinator, cur_supplement, os_hash,
@@ -969,6 +1125,14 @@ def check_that_value_case(
             f"Invalid value: {value} does not map via full_map")
 
 
+def remove_weird_strings(x: str) -> str:
+    weird_strings = ["\"\"", "nan"]
+    if x in weird_strings:
+        return "SURELYTHISWONTMAP_qwwihweuegeggqige"
+    else:
+        return x
+
+
 def node_columninator(
         df: object, subconfig: dict, column: str,
         kg2: object, babel: object, override: object,
@@ -1033,6 +1197,8 @@ def node_columninator(
         empty_check(df, column, "regex_replacements")
         # Map the values in the column to CURIEs,
         # preferred names, and categories
+        df[column] = df[column].apply(
+            lambda x: remove_weird_strings(str(x)))
         with (
                 sqlite3.connect(kg2) as conn_kg2,
                 sqlite3.connect(babel) as conn_babel,
@@ -1050,6 +1216,8 @@ def node_columninator(
             cur_supplement = conn_supplement.cursor()
             cur_supplement.execute("PRAGMA cache_size = -64000")
             cur_supplement.execute("PRAGMA journal_mode=WAL;")
+            global frequencies
+            frequencies = {"DEFAULT": 1}
             if "curie" in subconfig.keys():
                 check_that_curie_case(
                         str(subconfig["curie"]), cur_babel, cur_kg2,
@@ -1278,11 +1446,34 @@ def score_predicate(x: str, cursor: object) -> object:
         return 0
 
 
+def log5(x: object) -> float:
+    """
+    Calculates the base 5 logarithm of the given object.
+
+    If the object is zero, returns the logarithm of a very small value
+    (1e-10) instead. This is done to avoid returning negative infinity.
+
+    Args:
+        x (object): The input value to be processed.
+
+    Returns:
+        float: The base 5 logarithm of the input value.
+    """
+    # Check if the input is zero to avoid division by zero
+    if int(x) != 0:
+        # Calculate and return the base 5 logarithm
+        return float(math.log(float(x), 5))
+    else:
+        # Return the logarithm of a very small value
+        return float(math.log(float(0.0000000001), 5))
+
+
 def score_zip(
         predicate: str, n: int, p: float,
         relationship_strength: float, relationship_type: str,
         p_correction_method: str, method_notes: str,
-        cursor: object, model: object, vectorizer: object) -> float:
+        cursor: object, model: object, vectorizer: object,
+        stop_words: object) -> float:
     """
     Calculates the score of a given association based on its properties.
 
@@ -1311,13 +1502,13 @@ def score_zip(
     Returns:
         float: The score of the association.
     """
-    a = 65
-    b = 20
-    c = 300
-    d = 95
-    e = 80
-    f = 40
-    g = 1000
+    a = 65  # Weight for the number of observations
+    b = 20  # Weight for the p-value
+    c = 300  # Weight for the p-value penalty
+    d = 95  # Weight for the model score
+    e = 80  # Weight for the relationship strength
+    f = 40  # Weight for the predicate score
+    g = 700  # Constant added to the score
 
     # Calculate the logarithm of the number of observations
     n_component = log10(n) if isinstance(n, int) else 0
@@ -1328,9 +1519,14 @@ def score_zip(
     # Calculate the penalty for the p-value
     p_penalty = p_pentalty(p)
 
-    # Calculate the score of the relationship type
-    methods = list(
-        f"{relationship_type} {p_correction_method} {method_notes}")
+    # Calculate the score of the methods
+    methods = [
+        f"{relationship_type} {p_correction_method} {method_notes}"]
+    methods = [
+        word.strip()
+        for word in re.sub(r"[^a-zA-Z0-9\s]", " ", str(methods)).split()
+        if word.lower() not in stop_words]
+
     method_component = np.mean(model.predict(vectorizer.transform(methods)))
 
     # Calculate the logarithm of the relationship strength
@@ -1349,32 +1545,111 @@ def score_zip(
         f * predicate_component +
         g)
 
-    return np.mean(log10(score))
+    # Return the mean of the logarithm of the score
+    return np.mean(log5(score)) if np.mean(score) > 0 else 1e-10
+
+
+def mesh_it(x: str) -> str:
+    return "MESH:" + x
+
+
+def pubmed_lookupinator(
+            pmid: str,
+            cursor: sqlite3.Cursor) -> tuple[list, list, list, list]:
+    """
+    Look up the PubMed id in the database and return the corresponding
+    MeSH terms, qualifiers, and determinants.
+
+    Args:
+        pmid (str): The PubMed id to look up.
+        cursor (sqlite3.Cursor): The database connection cursor.
+
+    Returns:
+        tuple[list, list, list, list]: A tuple of lists containing the
+            MeSH domain, MeSH terms, qualifiers, and determinants.
+    """
+    # Optimize the database query
+    cursor.execute("PRAGMA cache_size = -64000")
+    cursor.execute("PRAGMA journal_mode=WAL;")
+
+    # Look up the PubMed id
+    cursor.execute("SELECT pmid FROM ids WHERE alt = ?", (pmid,))
+    result = cursor.fetchone()
+    if result:
+        # If the id was found, update it
+        pmid = result[0]
+
+    # Get the MeSH domain
+    cursor.execute("""
+        SELECT mesh FROM mesh WHERE pmid = ? AND mesh_major =\"Y\"""", (pmid,))
+    results = cursor.fetchall()
+    if results:
+        # If results were found, extract the MeSH domain
+        domain = [
+            mesh_it(result[0]) for result in results if result[0] is not None]
+    else:
+        # Otherwise, set the MeSH domain to "not_applicable"
+        domain = ["not_applicable"]
+
+    # Get the MeSH terms
+    cursor.execute("""
+        SELECT mesh FROM mesh WHERE pmid = ? AND mesh_major =\"N\"""", (pmid,))
+    results = cursor.fetchall()
+    if results:
+        # If results were found, extract the MeSH terms
+        mesh = [
+            mesh_it(result[0]) for result in results if result[0] is not None]
+    else:
+        # Otherwise, set the MeSH terms to "not_applicable"
+        mesh = ["not_applicable"]
+
+    # Return the MeSH domain and MeSH terms
+    return (domain, mesh)
 
 
 def put_dataframe_togtherinator(
         section: dict, threshold: float, output_path: str,
         kg2: str, babel: str, override: str, supplement: str,
         predicates: str, timeout: float, model: str,
-        vectorizer: str) -> None:
+        vectorizer: str, pubmed: str, path: str, section_number: int) -> None:
     """
-    Processes a DataFrame according to the given section configuration
-    and saves the result to the specified output path.
+    Processes a DataFrame according to the given section configuration and
+    saves the result to the specified output path.
 
-    Args:
-        section (dict): Configuration for processing the DataFrame.
-        threshold (float): The p-value threshold to enforce.
-        output_path (str): The path where the processed DataFrame is saved.
-        kg2 (str): Path to the KG2 database.
-        babel (str): Path to the Babel database.
-        override (str): Path to the override database.
-        supplement (str): Path to the supplement database.
+    Parameters
+    ----------
+    section : dict
+        Configuration for processing the DataFrame.
+    threshold : float
+        The p-value threshold to enforce.
+    output_path : str
+        The path where the processed DataFrame is saved.
+    kg2 : str
+        Path to the KG2 database.
+    babel : str
+        Path to the Babel database.
+    override : str
+        Path to the override database.
+    supplement : str
+        Path to the supplement database.
+    predicates : str
+        Path to the predicates database.
+    timeout : float
+        The timeout for the progress handler.
+    model : str
+        The path to the model to use for scoring.
+    vectorizer : str
+        The path to the vectorizer to use for scoring.
+    pubmed : str
+        Path to the PubMed database.
 
-    Raises:
-        ValueError: If any errors occur during DataFrame processing.
+    Raises
+    ------
+    ValueError
+        If any errors occur during DataFrame processing.
     """
     try:
-
+        # Set global timeout for progress handler
         global handler_timeout
         handler_timeout = timeout
 
@@ -1394,6 +1669,10 @@ def put_dataframe_togtherinator(
             df = dataframe_slicnator(
                 df, location["first_line"], location["last_line"])
 
+        # Add row
+        df = basic_key_value_column_addinator(
+            df, {"row": (df.index + 2)})
+
         # Add provenance and additional metadata to the DataFrame
         df = basic_key_value_column_addinator(df, section["provenance"])
         df = basic_key_value_column_addinator(
@@ -1406,8 +1685,27 @@ def put_dataframe_togtherinator(
                 df, {"sheet_to_use": "not_applicable"})
 
         # Add 'domain' column
+        conn = sqlite3.connect(pubmed)
+        cursor = conn.cursor()
+
+        # Get the MeSH domain, MeSH terms, qualifiers, and determinants
+        domain, mesh = pubmed_lookupinator(
+            remove_before_colon(section["provenance"]["publication"]), cursor)
+
+        cursor.close()
+        conn.close()
+
+        # Add the MeSH domain and MeSH terms to the DataFrame
         df = basic_key_value_column_addinator(
-            df, {"domain": join_domainsinator(section["domain"])})
+            df, {"domain": join_domainsinator(domain)})
+        df = basic_key_value_column_addinator(
+            df, {"mesh": join_domainsinator(mesh)})
+
+        # Add config path and section for duplicate-utility
+        df = basic_key_value_column_addinator(
+            df, {"config_path": path})
+        df = basic_key_value_column_addinator(
+            df, {"section": section_number})
 
         # Process attributes as per configuration
         df = attribute_addinator(df, section["attributes"])
@@ -1443,20 +1741,13 @@ def put_dataframe_togtherinator(
         model = joblib.load(model)
         vectorizer = joblib.load(vectorizer)
 
-        logging.log_thing(df.head())
-        logging.log_thing(df.head(1).apply(
-            lambda row: score_zip(
-                row["predicate"], row["n"], row["p"],
-                row["relationship_strength"], row["relationship_type"],
-                row["p_correction_method"], row["method_notes"],
-                cursor, model, vectorizer), axis=1))
-
+        stop_words = set(stopwords.words("english"))
         df["edge_score"] = df.apply(
             lambda row: score_zip(
                 row["predicate"], row["n"], row["p"],
                 row["relationship_strength"], row["relationship_type"],
                 row["p_correction_method"], row["method_notes"],
-                cursor, model, vectorizer), axis=1)
+                cursor, model, vectorizer, stop_words), axis=1)
 
         cursor.close()
         conn.close()

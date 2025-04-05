@@ -12,24 +12,41 @@ pip install requests
 pip install openpyxl
 pip install pyyaml
 pip install pandas
+pip install spacy
 pip install numpy
 pip install nltk
 pip install xlrd
 ```
 
+```bash
+python3 -m spacy download en_core_web_sm
+```
+
+```python
+import nltk
+nltk.download("stopwords")
+nltk.download("punkt")
+```
+
 ### Usage (Unix)
 
-To build a Knowledge Graph
+To Build a Knowledge Graph
 
 ```bash
 pip install -e <path_to_tablassert>
 tablassert <path_to_kg_config>
 ```
 
-To test
+To Test the Pipeline
 
 ```bash
 tablassert_test
+```
+
+To Install NLP Dependencies
+
+```bash
+download_dependencies
 ```
 
 ### KG Config
@@ -46,15 +63,16 @@ progress_handler_timeout : # For all SQL Databases and Queries
 config_directories:
  - # List of Directories That Contain Table Configs
  
-
 override_sqlite : # Paths
 supplement_sqlite : 
 babel_sqlite : 
 kg2_sqlite :
-predicates_sqlite : 
 
+predicates_sqlite : 
 confidence_model : # Pretrained Sklearn Linear Regression Model
 tfidf_vectorizer : # Pretrained Sklearn TFIDF Vectorizer Model
+
+pubmed_sqlite : 
 ```
 
 ### Table Configs 

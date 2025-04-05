@@ -9,7 +9,7 @@ def check_section(section: object) -> None:
 
 def section_subconfig_check(section: dict) -> None:
     section_subconfigs = [
-        "column_style", "data_location", "provenance", "domain",
+        "column_style", "data_location", "provenance",
         "subject", "predicate", "object", "attributes", "method_notes"]
     if not all(field in section.keys() for field in section_subconfigs):
         raise ValueError(
@@ -198,15 +198,6 @@ def check_expected_taxa(expected_taxa: object) -> None:
                 f"Invalid taxon {i}: Should be a \"NCBITaxon:\" CURIE")
 
 
-def check_domain(domain: object) -> None:
-    if not isinstance(domain, list):
-        raise ValueError("Invalid domain: Should be a list")
-    for i, d in enumerate(domain):
-        if "MESH:" not in d:
-            raise ValueError(
-                f"Invalid domain {i}: Should be a \"MESH:\" CURIE")
-
-
 def parse_section(i: int, section: object) -> None:
     """
     Checks that the given sections are valid.
@@ -263,9 +254,6 @@ def parse_section(i: int, section: object) -> None:
             if "math" in section["attributes"][attribute].keys():
                 check_math_subconfig(
                     section["attributes"][attribute]["math"])
-
-        # Check that the domain is valid
-        check_domain(section["domain"])
 
         # Check the reindexing and expected_taxa (if present)
         if "reindex" in section.keys():

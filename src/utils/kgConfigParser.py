@@ -14,7 +14,8 @@ def check_kg_subconfigs(kg_config: dict) -> None:
         "p_value_cutoff", "config_directories", "override_sqlite",
         "supplement_sqlite", "babel_sqlite", "kg2_sqlite",
         "progress_handler_timeout", "predicates_sqlite",
-        "confidence_model", "tfidf_vectorizer"]
+        "confidence_model", "tfidf_vectorizer",
+        "pubmed_sqlite"]
     if not all(field in kg_config.keys() for field in subconfigs):
         raise ValueError(
             f"Invalid kg_config: {subconfigs} not found")
@@ -63,7 +64,7 @@ def check_sqlites(kg_config: dict) -> None:
     for sqlite in [
             "override_sqlite", "supplement_sqlite",
             "babel_sqlite", "kg2_sqlite",
-            "predicates_sqlite"]:
+            "predicates_sqlite", "pubmed_sqlite"]:
         try:
             is_valid_db(kg_config[sqlite])
         except ValueError as e:
