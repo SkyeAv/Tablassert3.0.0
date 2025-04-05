@@ -128,7 +128,7 @@ def column_truncinator(df: object) -> object:
         "object_name", "edge_score", "n", "relationship_strength", "p",
         "relationship_type", "p_correction_method", "knowledge_level",
         "agent_type", "publication", "journal", "publication_name",
-        "authors", "year_published", "table_url", "sheet_to_use",
+        "authors", "year_published", "table_url", "sheet_to_use", "row",
         "yaml_curator", "curator_organization", "method_notes",
         "subject_category", "object_category", "config_path", "section"]
     try:
@@ -575,6 +575,18 @@ def full_map2(
             INNER JOIN curie_to_class
                 ON name_to_curie.curie = curie_to_class.curie
             WHERE name_to_curie.name = ?;"""
+        os_taxon = """
+            SELECT
+                name_to_curie.curie,
+                curie_to_preferred_name.preferred_name,
+                curie_to_class.class
+            FROM name_to_curie
+            INNER JOIN curie_to_preferred_name
+                ON name_to_curie.curie = curie_to_preferred_name.curie
+            INNER JOIN curie_to_class
+                ON name_to_curie.curie = curie_to_class.curie
+            WHERE name_to_curie.name = ?
+                AND name_to_curie.taxon = ?;"""
         os_hash = """
             SELECT
                 hashed_name_to_curie.curie,
@@ -736,6 +748,9 @@ def full_map2(
                 (full_map2_base_executinator,
                     (cur_override, os_base, (val,), "override")),
                 (full_map2_base_executinator,
+                    (cur_override, os_taxon,
+                        (val, taxa[0]), "override_taxon")),
+                (full_map2_base_executinator,
                     (cur_override, os_hash, (nlp.hash_it(val),),
                         "override_hash")),
                 (full_map2_base_executinator,
@@ -811,6 +826,9 @@ def full_map2(
                 (full_map2_classed_taxonless_executinator,
                     (cur_override, os_base, (val,),
                         "override", classes, avoid)),
+                (full_map2_base_executinator,
+                    (cur_override, os_taxon,
+                        (val, taxa[0]), "override_taxon")),
                 (full_map2_classed_taxonless_executinator,
                     (cur_override, os_hash, (nlp.hash_it(val),),
                         "override_hash", classes, avoid)),
@@ -1650,6 +1668,10 @@ def put_dataframe_togtherinator(
                 location["path_to_file"]) in ["xlsx", ".xls"]:
             df = dataframe_slicnator(
                 df, location["first_line"], location["last_line"])
+
+        # Add row
+        df = basic_key_value_column_addinator(
+            df, {"row": (df.index + 2)})
 
         # Add provenance and additional metadata to the DataFrame
         df = basic_key_value_column_addinator(df, section["provenance"])

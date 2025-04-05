@@ -86,7 +86,7 @@ def kgx_formatinator(kg_path: str, kg_name: str, version: str) -> None:
             "n", "relationship_strength", "p", "relationship_type",
             "p_correction_method", "knowledge_level", "agent_type",
             "publication", "journal", "publication_name",
-            "authors", "year_published", "table_url", "sheet_to_use",
+            "authors", "year_published", "table_url", "sheet_to_use", "row",
             "yaml_curator", "curator_organization", "method_notes",
             "config_path", "section"]
 
