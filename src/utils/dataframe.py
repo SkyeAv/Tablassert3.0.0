@@ -669,6 +669,17 @@ def full_map2(
             LEFT JOIN clusters ON nodes.id = clusters.cluster_id
             WHERE nodes.name_simplified = ?;"""
 
+        # Define Value Transformations
+        hashed_val = nlp.hash_it(val)
+        tokenized_val = nlp.tokenize_it(val)
+        stopword_free_val = nlp.remove_stopwords(val)
+        lemmatized_val = nlp.lemmatize_it(val)
+        simplified_val = nlp.nonword_regex(val)
+        hashed_stopword_free_val = nlp.hash_it(stopword_free_val)
+        hashed_lemmatized_val = nlp.hash_it(lemmatized_val)
+        simplified_stopword_free_val = nlp.nonword_regex(stopword_free_val)
+        simplified_lemmatized_val = nlp.nonword_regex(lemmatized_val)
+
         global start_time
         start_time = time.time()
 
@@ -692,43 +703,43 @@ def full_map2(
                 (full_map2_classed_taxonless_executinator, cur_override,
                     os_base, (val,), "override"),
                 (full_map2_classed_taxonless_executinator, cur_override,
-                    os_hash, (nlp.hash_it(val),), "override_hash"),
+                    os_hash, (hashed_val,), "override_hash"),
                 (full_map2_classed_taxonless_executinator, cur_override,
-                    os_token, (nlp.tokenize_it(val),), "override_token"),
+                    os_token, (tokenized_val,), "override_token"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
                     babel_base, (val,), "babel"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
-                    babel_base, (nlp.remove_stopwords(val),), "babel_stop"),
+                    babel_base, (stopword_free_val,), "babel_stop"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
-                    babel_base, (nlp.lemmatize_it(val),), "babel_lemma"),
+                    babel_base, (lemmatized_val,), "babel_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
-                    babel_hash, (nlp.hash_it(val),), "babel_hash"),
+                    babel_hash, (hashed_val,), "babel_hash"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
-                    babel_hash, (nlp.hash_it(nlp.remove_stopwords(val)),),
+                    babel_hash, (hashed_stopword_free_val,),
                     "babel_hash_stop"),
                 (full_map2_classed_taxonless_executinator, cur_babel,
-                    babel_hash, (nlp.hash_it(nlp.lemmatize_it(val)),),
+                    babel_hash, (hashed_lemmatized_val,),
                     "babel_hash_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
                     (val,), "kg2"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
-                    (nlp.remove_stopwords(val),), "kg2_stop"),
+                    (stopword_free_val,), "kg2_stop"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_base,
-                    (nlp.lemmatize_it(val),), "kg2_lemma"),
+                    (lemmatized_val,), "kg2_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(val),), "kg2_simp"),
+                    (simplified_val,), "kg2_simp"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                    (simplified_stopword_free_val,),
                     "kg2_simp_stop"),
                 (full_map2_classed_taxonless_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                    (simplified_lemmatized_val,),
                     "kg2_simp_lemma"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
                     os_base, (val,), "supplement"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
-                    os_hash, (nlp.hash_it(val),), "supplement_hash"),
+                    os_hash, (hashed_val,), "supplement_hash"),
                 (full_map2_classed_taxonless_executinator, cur_supplement,
-                    os_token, (nlp.tokenize_it(val),), "supplement_token")]
+                    os_token, (tokenized_val,), "supplement_token")]
             for func, cursor, query, params, db in queries:
                 start_time = time.time()
                 result = func(cursor, query, params, db, classes, avoid)
@@ -737,7 +748,7 @@ def full_map2(
                         val, result, f"full_map2_classed_taxonless {db}")
                     return result
             logging.log_dropped_edge(
-                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                f"{val}, {hashed_val}, {tokenized_val}",
                 "dropped\tfull_map2\tclassed_taxonless")
             return [val]
 
@@ -751,60 +762,60 @@ def full_map2(
                     (cur_override, os_taxon,
                         (val, taxa[0]), "override_taxon")),
                 (full_map2_base_executinator,
-                    (cur_override, os_hash, (nlp.hash_it(val),),
+                    (cur_override, os_hash, (hashed_val,),
                         "override_hash")),
                 (full_map2_base_executinator,
                     (cur_override, os_token,
-                        (nlp.tokenize_it(val),), "override_token")),
+                        (tokenized_val,), "override_token")),
                 (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_base_taxon, (val, taxa[0]),
                         "babel", taxa)),
                 (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_base_taxon, (
-                        nlp.remove_stopwords(val),
+                        stopword_free_val,
                         taxa[0]), "babel_stop", taxa)),
                 (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_base_taxon, (
-                        nlp.lemmatize_it(val),
+                        lemmatized_val,
                         taxa[0]), "babel_lemma", taxa)),
                 (full_map2_classless_with_taxon_executinator,
-                    (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
+                    (cur_babel, babel_hash_taxon, (hashed_val, taxa[0]),
                         "babel_hash", taxa)),
                 (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon,
-                        (nlp.hash_it(nlp.remove_stopwords(val)), taxa[0]),
+                        (hashed_stopword_free_val, taxa[0]),
                         "babel_hash_stop", taxa)),
                 (full_map2_classless_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon,
-                        (nlp.hash_it(nlp.lemmatize_it(val)), taxa[0]),
+                        (hashed_lemmatized_val, taxa[0]),
                         "babel_hash_lemma", taxa)),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2")),
                 (full_map2_base_executinator,
-                    (cur_kg2, kg2_base, (nlp.remove_stopwords(val),),
+                    (cur_kg2, kg2_base, (stopword_free_val,),
                         "kg2_stop")),
                 (full_map2_base_executinator,
-                    (cur_kg2, kg2_base, (nlp.lemmatize_it(val),),
+                    (cur_kg2, kg2_base, (lemmatized_val,),
                         "kg2_lemma")),
                 (full_map2_base_executinator,
-                    (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
+                    (cur_kg2, kg2_simp, (simplified_val,),
                         "kg2_simp")),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_simp,
-                        (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                        (simplified_stopword_free_val,),
                         "kg2_simp_stop")),
                 (full_map2_base_executinator,
                     (cur_kg2, kg2_simp,
-                        (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                        (simplified_lemmatized_val,),
                         "kg2_simp_lemma")),
                 (full_map2_base_executinator,
                     (cur_supplement, os_base, (val,), "supplement")),
                 (full_map2_base_executinator,
                     (cur_supplement, os_hash,
-                        (nlp.hash_it(val),), "supplement_hash")),
+                        (hashed_val,), "supplement_hash")),
                 (full_map2_base_executinator,
                     (cur_supplement, os_token,
-                        (nlp.tokenize_it(val),), "supplement_token"))]
+                        (tokenized_val,), "supplement_token"))]
 
             # Iterate through the function calls
             for func, func_args in queries:
@@ -815,7 +826,7 @@ def full_map2(
                         val, result, f"classless_with_taxon {func_args[3]}")
                     return result
             logging.log_dropped_edge(
-                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                f"{val}, {hashed_val}, {tokenized_val}",
                 "dropped\tfull_map2\tclassless_with_taxon")
             return [val]
 
@@ -830,61 +841,61 @@ def full_map2(
                     (cur_override, os_taxon,
                         (val, taxa[0]), "override_taxon")),
                 (full_map2_classed_taxonless_executinator,
-                    (cur_override, os_hash, (nlp.hash_it(val),),
+                    (cur_override, os_hash, (hashed_val,),
                         "override_hash", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
-                    (cur_override, os_token, (nlp.tokenize_it(val),),
+                    (cur_override, os_token, (tokenized_val,),
                         "override_token", classes, avoid)),
                 (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_base_taxon, (val, taxa[0]), "babel",
                         classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_base_taxon, (
-                        nlp.remove_stopwords(val), taxa[0]), "babel_stop",
+                        stopword_free_val, taxa[0]), "babel_stop",
                         classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_base_taxon, (
-                        nlp.lemmatize_it(val), taxa[0]), "babel_lemma",
+                        lemmatized_val, taxa[0]), "babel_lemma",
                         classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
-                    (cur_babel, babel_hash_taxon, (nlp.hash_it(val), taxa[0]),
+                    (cur_babel, babel_hash_taxon, (hashed_val, taxa[0]),
                         "babel_hash", classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon,
-                        (nlp.hash_it(nlp.remove_stopwords(val)), taxa[0]),
+                        (hashed_stopword_free_val, taxa[0]),
                         "babel_hash_stop", classes, avoid, taxa)),
                 (full_map2_classed_with_taxon_executinator,
                     (cur_babel, babel_hash_taxon,
-                        (nlp.hash_it(nlp.lemmatize_it(val)), taxa[0]),
+                        (hashed_lemmatized_val, taxa[0]),
                         "babel_hash_lemma", classes, avoid, taxa)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_base, (val,), "kg2",
                         classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
-                    (cur_kg2, kg2_base, (nlp.remove_stopwords(val),),
+                    (cur_kg2, kg2_base, (stopword_free_val,),
                         "kg2_stop", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
-                    (cur_kg2, kg2_base, (nlp.lemmatize_it(val),), "kg2_lemma",
+                    (cur_kg2, kg2_base, (lemmatized_val,), "kg2_lemma",
                         classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
-                    (cur_kg2, kg2_simp, (nlp.nonword_regex(val),),
+                    (cur_kg2, kg2_simp, (simplified_val,),
                         "kg2_simp", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_simp,
-                        (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                        (simplified_stopword_free_val,),
                         "kg2_simp_stop", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_kg2, kg2_simp,
-                        (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                        (simplified_lemmatized_val,),
                         "kg2_simp_lemma", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
                     (cur_supplement, os_base, (val,), "supplement",
                         classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
-                    (cur_supplement, os_hash, (nlp.hash_it(val),),
+                    (cur_supplement, os_hash, (hashed_val,),
                         "supplement_hash", classes, avoid)),
                 (full_map2_classed_taxonless_executinator,
-                    (cur_supplement, os_token, (nlp.tokenize_it(val),),
+                    (cur_supplement, os_token, (tokenized_val,),
                         "supplement_token", classes, avoid))]
 
             # Iterate through the function calls
@@ -896,7 +907,7 @@ def full_map2(
                         val, result, f"classed_with_taxon {func_args[3]}")
                     return result
             logging.log_dropped_edge(
-                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                f"{val}, {hashed_val}, {tokenized_val}",
                 "dropped\tfull_map2\tclassed_with_taxon")
             return [val]
 
@@ -907,42 +918,42 @@ def full_map2(
                 (full_map2_base_executinator, cur_override, os_base, (val,),
                     "override"),
                 (full_map2_base_executinator, cur_override, os_hash,
-                    (nlp.hash_it(val),), "override_hash"),
+                    (hashed_val,), "override_hash"),
                 (full_map2_base_executinator, cur_override, os_token,
-                    (nlp.tokenize_it(val),), "override_token"),
+                    (tokenized_val,), "override_token"),
                 (full_map2_base_executinator, cur_babel, babel_base,
                     (val,), "babel"),
                 (full_map2_base_executinator, cur_babel, babel_base,
-                    (nlp.remove_stopwords(val),), "babel_stop"),
+                    (stopword_free_val,), "babel_stop"),
                 (full_map2_base_executinator, cur_babel, babel_base,
-                    (nlp.lemmatize_it(val),), "babel_lemma"),
+                    (lemmatized_val,), "babel_lemma"),
                 (full_map2_base_executinator, cur_babel, babel_hash,
-                    (nlp.hash_it(val),), "babel_hash"),
+                    (hashed_val,), "babel_hash"),
                 (full_map2_base_executinator, cur_babel, babel_hash,
-                    (nlp.hash_it(nlp.remove_stopwords(val)),),
+                    (hashed_stopword_free_val,),
                     "babel_hash_stop"),
                 (full_map2_base_executinator, cur_babel, babel_hash,
-                    (nlp.hash_it(nlp.lemmatize_it(val)),), "babel_hash_lemma"),
+                    (hashed_lemmatized_val,), "babel_hash_lemma"),
                 (full_map2_base_executinator, cur_kg2, kg2_base, (val,),
                     "kg2"),
                 (full_map2_base_executinator, cur_kg2, kg2_base,
-                    (nlp.remove_stopwords(val),), "kg2_stop"),
+                    (stopword_free_val,), "kg2_stop"),
                 (full_map2_base_executinator, cur_kg2, kg2_base,
-                    (nlp.lemmatize_it(val),), "kg2_lemma"),
+                    (lemmatized_val,), "kg2_lemma"),
                 (full_map2_base_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(val),), "kg2_simp"),
+                    (simplified_val,), "kg2_simp"),
                 (full_map2_base_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(nlp.remove_stopwords(val)),),
+                    (simplified_stopword_free_val,),
                     "kg2_simp_stop"),
                 (full_map2_base_executinator, cur_kg2, kg2_simp,
-                    (nlp.nonword_regex(nlp.lemmatize_it(val)),),
+                    (simplified_lemmatized_val,),
                     "kg2_simp_lemma"),
                 (full_map2_base_executinator, cur_supplement, os_base, (val,),
                     "supplement"),
                 (full_map2_base_executinator, cur_supplement, os_hash,
-                    (nlp.hash_it(val),), "supplement_hash"),
+                    (hashed_val,), "supplement_hash"),
                 (full_map2_base_executinator, cur_supplement, os_token,
-                    (nlp.tokenize_it(val),), "supplement_token")
+                    (tokenized_val,), "supplement_token")
             ]
             for func, cursor, query, params, db in queries:
                 start_time = time.time()
@@ -952,14 +963,14 @@ def full_map2(
                         val, result, f"full_map2_base {db}")
                     return result
             logging.log_dropped_edge(
-                f"{val}, {nlp.hash_it(val)}, {nlp.tokenize_it(val)}",
+                f"{val}, {hashed_val}, {tokenized_val}",
                 "dropped\tfull_map2\tbase")
             return [val]
 
     except Exception as e:
         raise ValueError(
-            f"""{val}, {nlp.hash_it(val)},
-            {nlp.tokenize_it(val)} broke full_map2\t{e}""")
+            f"""{val}, {hashed_val},
+            {tokenized_val} broke full_map2\t{e}""")
 
 
 def half_map2_executinator(
