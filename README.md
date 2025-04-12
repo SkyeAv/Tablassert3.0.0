@@ -30,7 +30,7 @@ nltk.download("punkt")
 
 ### Usage (Unix)
 
-To Build a Knowledge Graph
+**To Build a Knowledge Graph**
 
 ```bash
 pip install -e <path_to_tablassert>
@@ -43,7 +43,7 @@ To Test the Pipeline
 tablassert_test
 ```
 
-To Install NLP Dependencies
+**To Install NLP Dependencies**
 
 ```bash
 download_dependencies
