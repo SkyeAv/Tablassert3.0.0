@@ -1,4 +1,4 @@
-# Tablassert(3.1.3)
+# Tablassert(3.2.0)
 
 ## By Skye Goetz (ISB) & Gwênlyn Glusman (ISB)
 
