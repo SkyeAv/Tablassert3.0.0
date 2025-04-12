@@ -1,0 +1,13 @@
+[build-system]
+requires = ["flit_core >=3.11,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "Tablassert"
+authors = [{name = "Skye Lane Goetz", email = "sgoetz@isbscience.org"}]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dynamic = ["version", "description"]
+
+[project.urls]
+Home = "https://github.com/SkyeAv/Tablassert"
