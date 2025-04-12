@@ -2,11 +2,11 @@ from setuptools import setup, find_packages
 
 setup(
     name="Tablassert",
-    version="3.0.0",
+    version="3.2.0",
     packages=find_packages(),
     install_requires=[
         "scikit-learn", "requests", "openpyxl", "pyyaml", "pandas", "numpy",
-        "xlrd", "nltk", "spacy"],
+        "xlrd", "nltk", "spacy", "camelot-py[base]"],
     entry_points={
         "console_scripts": [
             "tablassert=src.main:main", "tablassert_test=src.test:main",
