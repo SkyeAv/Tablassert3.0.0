@@ -75,3 +75,35 @@ def test_nonsqlite_files(valid_config):
 def test_empty_dirs_list(valid_config):
     with pytest.raises(ValidationError):
         GraphConfig(**{**valid_config, "dirs": []})
+
+
+def test_incorrect_quantity_of_workers(valid_config):
+    with pytest.raises(ValidationError):
+        GraphConfig(**{**valid_config, "workers": 0})
+        GraphConfig(**{**valid_config, "workers": 2.5})
+        GraphConfig(**{**valid_config, "workers": 17})
+
+
+def test_too_large_floats(valid_config):
+    with pytest.raises(ValidationError):
+        GraphConfig(**{**valid_config, "identification_accuracy": 2.2})
+        GraphConfig(**{**valid_config, "extraction_accuracy": 2.2})
+        GraphConfig(**{**valid_config, "cutoff": 2.2})
+
+
+def test_negative_floats(valid_config):
+    with pytest.raises(ValidationError):
+        GraphConfig(**{**valid_config, "progress_handler": -0.05})
+        GraphConfig(**{**valid_config, "identification_accuracy": -0.05})
+        GraphConfig(**{**valid_config, "extraction_accuracy": -0.05})
+        GraphConfig(**{**valid_config, "cutoff": -0.05})
+
+
+def test_string_casting(valid_config):
+    with pytest.raises(ValidationError):
+        GraphConfig(**{**valid_config, "version": 1.0})
+
+
+def test_float_casting(valid_config):
+    GraphConfig(**{**valid_config, "progress_handler": 1})
+    GraphConfig(**{**valid_config, "progress_handler": "1"})

@@ -18,8 +18,8 @@ class GraphConfig(BaseModel):
         item_type=DirectoryPath, min_length=1
     )  # min_items=1 doesn't work for some reason?
 
-    workers: conint(ge=1)
-    progress_handler: float
+    workers: conint(ge=1, le=16)
+    progress_handler: confloat(ge=0)
     identification_accuracy: confloat(ge=0, le=1)
     extraction_accuracy: confloat(ge=0, le=1)
     cutoff: confloat(ge=0, le=1)
@@ -33,6 +33,21 @@ class GraphConfig(BaseModel):
     predicates: FilePath
 
     training_data: FilePath  # ADD TRAINING DATA CLASS LATER, IE ANOTHER BASE MODEL
+
+    @field_validator("progress_handler", mode="before")
+    def cast_string(cls, x: object):
+        if not isinstance(x, str):
+            return str(x)
+        return x
+
+    @field_validator("progress_handler", mode="before")
+    def cast_float(cls, x: object):
+        if not isinstance(x, float):
+            try:
+                return float(x)
+            except ValueError:
+                pass
+        return x
 
     @field_validator(
         "override",
