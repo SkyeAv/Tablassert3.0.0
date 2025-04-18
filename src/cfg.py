@@ -7,13 +7,15 @@ from pydantic import (
     FilePath,
     confloat,
     conlist,
+    FileUrl,
     conint,
+    constr,
 )
 
 
 class GraphConfig(BaseModel):
-    name: str
-    version: str
+    name: constr(min_length=1, strip_whitespace=True)
+    version: constr(min_length=1, strip_whitespace=True)
     dirs: conlist(
         item_type=DirectoryPath, min_length=1
     )  # min_items=1 doesn't work for some reason?
@@ -66,3 +68,19 @@ class GraphConfig(BaseModel):
             msg = "must be a sqlite database"
             raise ValueError(msg)
         return db
+
+
+class Location(
+    BaseModel
+):  # SPLIT INTO SEPARATE CONFIGS DEPENDING ON FILETYPE, Field(discriminator=)
+    download: FileUrl
+    ext: constr(min_length=1, strip_whitespace=True, to_lower=True)
+    # param: Use "|" for all the parm options and add classes for them all
+
+
+class Provenance(BaseModel):
+    publication_id: constr(
+        min_length=1, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
+    )  # regex=r"regex" doesn't work for some reason?
+    curator: constr(min_length=1, strip_whitespace=True)
+    org: constr(min_length=1, strip_whitespace=True)

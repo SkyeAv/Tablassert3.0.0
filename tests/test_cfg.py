@@ -26,7 +26,7 @@ def temp_file() -> str:
 
 
 @pytest.fixture
-def valid_config() -> dict[str, object]:
+def eg_graph_config() -> dict[str, object]:
     sqlite = temp_sqlite()
     directory = temp_dir()
     return {
@@ -49,61 +49,61 @@ def valid_config() -> dict[str, object]:
     }
 
 
-def test_valid_config(valid_config):
-    GraphConfig(**{**valid_config})
+def test_eg_graph_config(eg_graph_config):
+    GraphConfig(**{**eg_graph_config})
 
 
 SQLITES = ["override", "babel", "kg2", "supplement", "pubmed", "names", "predicates"]
 
 
-def test_nonexistent_files(valid_config):
+def test_nonexistent_files(eg_graph_config):
     random_path = r"random/mc_randomface"
     with pytest.raises(ValidationError):
-        GraphConfig(**{**valid_config, "training_data": random_path})
+        GraphConfig(**{**eg_graph_config, "training_data": random_path})
     for field in SQLITES:
         with pytest.raises(ValidationError):
-            GraphConfig(**{**valid_config, field: random_path})
+            GraphConfig(**{**eg_graph_config, field: random_path})
 
 
-def test_nonsqlite_files(valid_config):
+def test_nonsqlite_files(eg_graph_config):
     random_file = temp_file()
     for field in SQLITES:
         with pytest.raises(ValueError, match="must be a sqlite database"):
-            GraphConfig(**{**valid_config, field: random_file})
+            GraphConfig(**{**eg_graph_config, field: random_file})
 
 
-def test_empty_dirs_list(valid_config):
+def test_empty_dirs_list(eg_graph_config):
     with pytest.raises(ValidationError):
-        GraphConfig(**{**valid_config, "dirs": []})
+        GraphConfig(**{**eg_graph_config, "dirs": []})
 
 
-def test_incorrect_quantity_of_workers(valid_config):
+def test_incorrect_quantity_of_workers(eg_graph_config):
     with pytest.raises(ValidationError):
-        GraphConfig(**{**valid_config, "workers": 0})
-        GraphConfig(**{**valid_config, "workers": 2.5})
-        GraphConfig(**{**valid_config, "workers": 17})
+        GraphConfig(**{**eg_graph_config, "workers": 0})
+        GraphConfig(**{**eg_graph_config, "workers": 2.5})
+        GraphConfig(**{**eg_graph_config, "workers": 17})
 
 
-def test_too_large_floats(valid_config):
+def test_too_large_floats(eg_graph_config):
     with pytest.raises(ValidationError):
-        GraphConfig(**{**valid_config, "identification_accuracy": 2.2})
-        GraphConfig(**{**valid_config, "extraction_accuracy": 2.2})
-        GraphConfig(**{**valid_config, "cutoff": 2.2})
+        GraphConfig(**{**eg_graph_config, "identification_accuracy": 2.2})
+        GraphConfig(**{**eg_graph_config, "extraction_accuracy": 2.2})
+        GraphConfig(**{**eg_graph_config, "cutoff": 2.2})
 
 
-def test_negative_floats(valid_config):
+def test_negative_floats(eg_graph_config):
     with pytest.raises(ValidationError):
-        GraphConfig(**{**valid_config, "progress_handler": -0.05})
-        GraphConfig(**{**valid_config, "identification_accuracy": -0.05})
-        GraphConfig(**{**valid_config, "extraction_accuracy": -0.05})
-        GraphConfig(**{**valid_config, "cutoff": -0.05})
+        GraphConfig(**{**eg_graph_config, "progress_handler": -0.05})
+        GraphConfig(**{**eg_graph_config, "identification_accuracy": -0.05})
+        GraphConfig(**{**eg_graph_config, "extraction_accuracy": -0.05})
+        GraphConfig(**{**eg_graph_config, "cutoff": -0.05})
 
 
-def test_string_casting(valid_config):
+def test_string_casting(eg_graph_config):
     with pytest.raises(ValidationError):
-        GraphConfig(**{**valid_config, "version": 1.0})
+        GraphConfig(**{**eg_graph_config, "version": 1.0})
 
 
-def test_float_casting(valid_config):
-    GraphConfig(**{**valid_config, "progress_handler": 1})
-    GraphConfig(**{**valid_config, "progress_handler": "1"})
+def test_float_casting(eg_graph_config):
+    GraphConfig(**{**eg_graph_config, "progress_handler": 1})
+    GraphConfig(**{**eg_graph_config, "progress_handler": "1"})
