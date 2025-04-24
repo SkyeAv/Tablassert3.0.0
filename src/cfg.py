@@ -13,6 +13,8 @@ from pydantic import (
     constr,
     Field,
 )
+import inspect
+import math
 
 
 class GraphConfig(BaseModel):
@@ -75,6 +77,11 @@ class GraphConfig(BaseModel):
         return db
 
 
+class TableConfig(BaseModel):
+    template: dict[str, object] | None = Field(default=None)
+    sections: list[dict[str, object]]
+
+
 class TextBasedImage(BaseModel):
     pages: (
         constr(
@@ -130,15 +137,15 @@ class Location(
     ext: constr(
         min_length=1, strip_whitespace=True, to_lower=True, pattern=r"/^\s*(\w+)\s*$/i"
     )
-    param: ExcelSpreadSheet | DelimitedFile | TextBasedImage
+    params: ExcelSpreadSheet | DelimitedFile | TextBasedImage
 
     @model_validator(mode="after")
     @classmethod
-    def validate_extension_params(self):
+    def validate_extension_paramss(self):
         ext = self.ext
-        param = self.param
+        params = self.params
 
-        if isinstance(param, ExcelSpreadSheet) and ext not in [
+        if isinstance(params, ExcelSpreadSheet) and ext not in [
             "xlsx",
             "xls",
             "xlsm",
@@ -146,10 +153,10 @@ class Location(
         ]:
             msg = f'Extension "{ext}" is not valid for Excel files'
             raise ValueError(msg)
-        if isinstance(param, DelimitedFile) and ext not in ["csv", "tsv", "txt"]:
+        if isinstance(params, DelimitedFile) and ext not in ["csv", "tsv", "txt"]:
             msg = f'Extension "{ext}" is not valid for delimited files'
             raise ValueError(msg)
-        if isinstance(param, TextBasedImage) and ext != "pdf":
+        if isinstance(params, TextBasedImage) and ext != "pdf":
             msg = f'Extension "{ext}" is not valid for text based image files'
             raise ValueError(msg)
         return self
@@ -163,10 +170,58 @@ class Provenance(BaseModel):
     org: constr(min_length=1, strip_whitespace=True)
 
 
+class MathParams(BaseModel):
+    attr: constr(min_length=1, strip_whitespace=True)
+    args: conlist(min_length=1)
+
+    @field_validator("args", mode="before")
+    @classmethod
+    def cast_float(cls, args: object):
+        processed = []
+        for x in args:
+            if x and not isinstance(x, float):
+                try:
+                    processed.append(float(x))
+                except ValueError:
+                    msg = f"{x} must be null or a float"
+                    raise ValueError(msg)
+            else:
+                processed.append(x)
+        return processed
+
+    @field_validator("attr", mode="after")
+    @classmethod
+    def is_attr(cls, x: str):
+        if not hasattr(math, x):
+            msg = f"{x} must be a valid attr from the math module"
+            raise ValueError(msg)
+        return x
+
+    @model_validator(mode="after")
+    @classmethod
+    def check_args_length(self):
+        attr = self.attr
+        func = math.getattr(math, attr)
+        sig = inspect.signature(func)
+        params = sig.parameters
+        max_args = len(params)
+        min_args = sum(
+            1
+            for param in params.values()
+            if param.default == inspect.Parameter.empty
+            and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
+        )
+        specified = len(self.args)
+        if max_args < specified or min_args > specified:
+            msg = f"{attr} requires {min_args}-{max_args} arguments, {specified} specified"
+            raise ValueError(msg)
+        return self
+
+
 class Attribute(BaseModel):
     mode: constr(min_length=6, max_length=10, to_lower=True, strip_whitespace=True)
     value: constr(min_length=1)
-    # Include Something For the Math Parameter Here
+    math: conlist(item_type=MathParams, min_length=1) | None = Field(default=None)
 
     @field_validator("mode", mode="after")
     @classmethod
@@ -189,9 +244,11 @@ class Attribute(BaseModel):
 
 
 class Attributes(BaseModel):
-    sample: Attribute
-    p_value: Attribute
-    fdr: Attribute
-    strength: Attribute
-    statictic: Attribute  # Maybe Baloon into Stats Master
+    sample_size: Attribute | None = Field(default=None)
+    p_value: Attribute | None = Field(default=None)
+    fdr: Attribute | None = Field(default=None)
+    strength: Attribute | None = Field(default=None)
+    # Maybe Baloon into Stats Master
+    statictic: Attribute | None = Field(default=None)
+    notes: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
     # Internally predefine knowledge_level and agent_type
