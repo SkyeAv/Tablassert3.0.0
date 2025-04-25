@@ -6,3 +6,4 @@ __pycache__/
 dist/
 venv/
 .flake8
+resources/
