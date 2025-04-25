@@ -8,7 +8,7 @@ from pydantic import (
     FilePath,
     confloat,
     conlist,
-    FileUrl,
+    HttpUrl,
     conint,
     constr,
     Field,
@@ -36,7 +36,7 @@ class GraphConfig(BaseModel):
     supplement: FilePath
     pubmed: FilePath
     names: FilePath
-    predicates: FilePath
+    preds: FilePath
 
     training_data: FilePath  # [[ADD TRAINING DATA CLASS LATER, IE ANOTHER BASE MODEL]]
 
@@ -64,7 +64,7 @@ class GraphConfig(BaseModel):
         "supplement",
         "pubmed",
         "names",
-        "predicates",
+        "preds",
         mode="after",
     )
     @classmethod
@@ -106,7 +106,7 @@ class TextBasedImage(BaseModel):
 
 
 class DelimitedFile(BaseModel):
-    delimeter: constr(min_length=1)
+    delimiter: constr(min_length=1)
 
 
 class ExcelSpreadSheet(BaseModel):
@@ -116,7 +116,6 @@ class ExcelSpreadSheet(BaseModel):
     rows: conlist(item_type=conint(ge=1), min_length=1) | None = Field(default=None)
 
     @model_validator(mode="after")
-    @classmethod
     def is_valid_slice(self):
         if self.start and self.end:
             if int(self.end - self.start) < 2:
@@ -124,18 +123,37 @@ class ExcelSpreadSheet(BaseModel):
                 raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def no_rows_with_start_syntax(self):
+        if (self.start or self.end) and self.rows:
+            msg = "cannot use rows with start-end syntax"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def has_rows_or_start(self):
+        if not (self.start or self.end or self.rows):
+            msg = "must have rows or start or end in Excel params"
+            raise ValueError(msg)
+        return self
+
 
 class Location(
     BaseModel
 ):  # SPLIT INTO SEPARATE CONFIGS DEPENDING ON FILETYPE, Field(discriminator=)
-    download: FileUrl
-    ext: constr(
-        min_length=1, strip_whitespace=True, to_lower=True, pattern=r"/^\s*(\w+)\s*$/i"
-    )
+    download_from: HttpUrl
+    ext: constr(min_length=1, strip_whitespace=True, to_lower=True)
     params: ExcelSpreadSheet | DelimitedFile | TextBasedImage
 
+    @field_validator("ext", mode="after")
+    def is_valid_ext(cls, x: str):
+        extensions = ["csv", "tsv", "txt", "xls", "xlsx", "xlsm", "xlsb", "pdf"]
+        if x not in extensions:
+            msg = f"extenstion {x} is not supported"
+            raise ValueError(msg)
+        return x
+
     @model_validator(mode="after")
-    @classmethod
     def validate_extension_paramss(self):
         ext = self.ext
         params = self.params
@@ -159,7 +177,7 @@ class Location(
 
 class Provenance(BaseModel):
     publication_id: constr(
-        min_length=1, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
+        min_length=5, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
     )  # regex=r"regex" doesn't work for some reason?
     curator: constr(min_length=1, strip_whitespace=True)
     org: constr(min_length=1, strip_whitespace=True)
@@ -167,7 +185,7 @@ class Provenance(BaseModel):
 
 class MathParams(BaseModel):
     attr: constr(min_length=1, strip_whitespace=True)
-    args: conlist(min_length=1)
+    args: conlist(item_type=(float | None), min_length=1)
 
     @field_validator("args", mode="before")
     @classmethod
@@ -193,7 +211,6 @@ class MathParams(BaseModel):
         return x
 
     @model_validator(mode="after")
-    @classmethod
     def check_args_length(self):
         attr = self.attr
         func = math.getattr(math, attr)
@@ -227,7 +244,6 @@ class Attribute(BaseModel):
         return x
 
     @model_validator(mode="after")
-    @classmethod
     def validate_value(self):
         mode = self.mode
         value = self.value
@@ -266,19 +282,19 @@ class Node(BaseModel):
     value: constr(min_length=1)
     in_organism: constr(
         min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
-    )
+    ) | None = Field(default=None)
     prioritize: conlist(
         item_type=constr(
             min_length=10, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
         ),
         min_length=1,
-    )
+    ) | None = Field(default=None)
     avoid: conlist(
         item_type=constr(
             min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
         ),
         min_length=1,
-    )
+    ) | None = Field(default=None)
     prefix: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
     suffix: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
     cfill: (
@@ -291,7 +307,7 @@ class Node(BaseModel):
         default=None
     )
     regex: conlist(item_type=Regex, min_length=1) | None = Field(default=None)
-    dexplode: constr(min_length=1)
+    dexplode: constr(min_length=1) | None = Field(default=None)
 
     @field_validator("prefix", "suffix", "value", "remove", mode="before")
     @classmethod
@@ -302,7 +318,7 @@ class Node(BaseModel):
             ]
         return str(x) if x and not isinstance(x, str) else x
 
-    @field_validator("prioritize", "avoid", method="after")
+    @field_validator("prioritize", "avoid", mode="after")
     @classmethod
     def is_biolink(cls, args: list):
         if args:
@@ -312,7 +328,7 @@ class Node(BaseModel):
                     raise ValueError(msg)
         return args
 
-    @field_validator("cfill", method="after")
+    @field_validator("cfill", mode="after")
     @classmethod
     def is_strategy(cls, x: str):
         strategies = [
@@ -329,7 +345,7 @@ class Node(BaseModel):
             raise ValueError(msg)
         return x
 
-    @field_validator("mode", method="after")
+    @field_validator("mode", mode="after")
     @classmethod
     def is_mode(cls, x: str):
         modes = ["value", "cvalue", "scvalue", "curie", "ccurie", "sccurie"]
@@ -340,9 +356,9 @@ class Node(BaseModel):
 
 
 class Triple(BaseModel):
-    subject: Node
+    subj: Node
     obj: Node
-    predicate: constr(
+    pred: constr(
         min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
     )
 
@@ -361,6 +377,7 @@ class ReindexingOperation(BaseModel):
                 return float(x)
             except ValueError:
                 return str(x)
+        return x
 
     @field_validator("when", mode="after")
     @classmethod
@@ -381,14 +398,13 @@ class ReindexingOperation(BaseModel):
         return x
 
     @model_validator(mode="after")
-    @classmethod
     def validate_value(self):
         mode = self.mode
         value = self.value
         if mode not in ["eq", "ne"] and isinstance(value, str):
             msg = 'only mode "eq" and "ne" support strings as values'
             raise ValueError(msg)
-        elif not isinstance(value, float):
+        elif mode not in ["eq", "ne"] and not isinstance(value, float):
             msg = f"value must be a float, {value} provided"
             raise ValueError(msg)
         return self
@@ -397,7 +413,7 @@ class ReindexingOperation(BaseModel):
 class Section(BaseModel):
     location: Location
     provenance: Provenance
-    attributes: Attributes
+    attributes: Attributes | None = Field(default={})
     triple: Triple
     reindexing: conlist(item_type=ReindexingOperation, min_length=1) | None = Field(
         default=None
