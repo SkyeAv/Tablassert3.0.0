@@ -23,7 +23,8 @@ dependencies = [
     "rich>=14.0.0",
     "typer>=0.15.2",
     "pydantic>=2.11.3",
-    "python-dotenv>=1.1.0"
+    "python-dotenv>=1.1.0",
+    "numba>=0.61.2"
 ]
 
 [project.urls]
