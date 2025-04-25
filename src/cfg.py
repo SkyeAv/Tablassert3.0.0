@@ -77,11 +77,6 @@ class GraphConfig(BaseModel):
         return db
 
 
-class TableConfig(BaseModel):
-    template: dict[str, object] | None = Field(default=None)
-    sections: list[dict[str, object]]
-
-
 class TextBasedImage(BaseModel):
     pages: (
         constr(
@@ -252,3 +247,105 @@ class Attributes(BaseModel):
     statictic: Attribute | None = Field(default=None)
     notes: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
     # Internally predefine knowledge_level and agent_type
+
+
+class Regex(BaseModel):
+    pattern: constr(min_length=1)
+    replacement: constr(min_length=1)
+
+    @field_validator("pattern", "replacement", mode="before")
+    @classmethod
+    def cast_string(cls, x: object):
+        if not isinstance(x, str):
+            return str(x)
+        return x
+
+
+class Node(BaseModel):
+    mode: constr(min_length=5, max_length=7, to_lower=True, strip_whitespace=True)
+    value: constr(min_length=1)
+    in_organism: constr(
+        min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
+    )
+    prioritize: conlist(
+        item_type=constr(
+            min_length=10, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
+        ),
+        min_length=1,
+    )
+    avoid: conlist(
+        item_type=constr(
+            min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
+        ),
+        min_length=1,
+    )
+    prefix: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
+    suffix: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
+    cfill: (
+        constr(
+            min_length=1, pattern=r"^[A-Za-z]+$", to_lower=True, strip_whitespace=True
+        )
+        | None
+    ) = Field(default=None)
+    remove: conlist(item_type=constr(min_length=1), min_length=1) | None = Field(
+        default=None
+    )
+    regex: conlist(item_type=Regex, min_length=1) | None = Field(default=None)
+    dexplode: constr(min_length=1)
+
+    @field_validator("prefix", "suffix", "value", "remove", mode="before")
+    @classmethod
+    def cast_string(cls, x: object):
+        if isinstance(x, list):
+            return [
+                str(item) if item and not isinstance(item, str) else item for item in x
+            ]
+        return str(x) if x and not isinstance(x, str) else x
+
+    @field_validator("prioritize", "avoid", method="after")
+    @classmethod
+    def is_biolink(cls, args: list):
+        for x in args:
+            if "biolink:" not in str(x):
+                msg = f"{x} must be a biolink:Class"
+                raise ValueError(msg)
+        return args
+
+    @field_validator("cfill", method="after")
+    @classmethod
+    def is_strategy(cls, x: str):
+        strategies = [
+            "forward",
+            "backward",
+            "min",
+            "max",
+            "mean",
+            "zero",
+            "one",
+        ]
+        if x and str(x) not in strategies:
+            msg = f"{x} must be a polars fill_null strategy"
+            raise ValueError(msg)
+        return x
+
+    @field_validator("mode", method="after")
+    @classmethod
+    def is_mode(cls, x: str):
+        modes = ["value", "cvalue", "scvalue", "curie", "ccurie", "sccurie"]
+        if x not in modes:
+            msg = f"must be a valid mode {modes}, {x} provided"
+            raise ValueError(msg)
+        return x
+
+
+class Triple(BaseModel):
+    subject: Node
+    obj: Node
+    predicate: constr(
+        min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
+    )
+
+
+class TableConfig(BaseModel):
+    template: dict[str, object] | None = Field(default=None)
+    sections: list[dict[str, object]]
