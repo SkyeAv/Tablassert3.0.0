@@ -55,9 +55,12 @@ template: &template
      # Delimited File
      delimiter: str
      # Excel SpreadSheet
-     sheet: str
+     sheet: str ##
+     # Row To Start At
      start: int
+     # Row To End At
      end: int
+     # List of Specific Rows (Alt to Start + End)
      rows:
        - list[str]
  provenance: ##
@@ -74,7 +77,7 @@ template: &template
          # list[str, dict[str, object]]
        - attr: str ##
          args: ##
-           - list[float]
+           - list[float | None]
            # Use Null In Place of What You Want To Transform
            - null
    p_value: 
@@ -101,18 +104,18 @@ template: &template
        - list[str] 
      regex:
        # list[dict[str, str]]
-       - pattern: str
-         replacement: str
+       - pattern: str ##
+         replacement: str ##
       dexplode: str # delimiter to split strings by before exploding
    obj: ##
    predicate: str ## biolink:Predicates
  reindexing:
    # list[dict[str, object]]
-   - when: str # "before" or "after"
-     mode: str # ge, le, gt, lt, et, ne
-     column: str 
+   - when: str ## "before" or "after"
+     mode: str ## ge, le, gt, lt, eq, ne
+     column: str ##
      # mode = et/ne can use strings for value
-     value: float | str
+     value: float | str ##
 
 # You Must Have At Least One Section Per TableConfig
 sections: ##
