@@ -305,10 +305,11 @@ class Node(BaseModel):
     @field_validator("prioritize", "avoid", method="after")
     @classmethod
     def is_biolink(cls, args: list):
-        for x in args:
-            if "biolink:" not in str(x):
-                msg = f"{x} must be a biolink:Class"
-                raise ValueError(msg)
+        if args:
+            for x in args:
+                if "biolink:" not in str(x):
+                    msg = f"{x} must be a biolink:Class"
+                    raise ValueError(msg)
         return args
 
     @field_validator("cfill", method="after")
@@ -332,7 +333,7 @@ class Node(BaseModel):
     @classmethod
     def is_mode(cls, x: str):
         modes = ["value", "cvalue", "scvalue", "curie", "ccurie", "sccurie"]
-        if x not in modes:
+        if x and x not in modes:
             msg = f"must be a valid mode {modes}, {x} provided"
             raise ValueError(msg)
         return x
@@ -346,6 +347,63 @@ class Triple(BaseModel):
     )
 
 
+class ReindexingOperation(BaseModel):
+    when: constr(min_length=5, max_length=6, to_lower=True, strip_whitespace=True)
+    mode: constr(min_length=2, max_length=2, to_lower=True, strip_whitespace=True)
+    column: constr(min_length=1)
+    value: float | constr(min_length=1)
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def cast_float(cls, x: object):
+        if not isinstance(x, float):
+            try:
+                return float(x)
+            except ValueError:
+                return str(x)
+
+    @field_validator("when", mode="after")
+    @classmethod
+    def is_when(cls, x: str):
+        whens = ["before", "after"]
+        if x not in whens:
+            msg = 'when must be "before" or "after"'
+            raise ValueError(msg)
+        return x
+
+    @field_validator("mode", mode="after")
+    @classmethod
+    def is_mode(cls, x: str):
+        modes = ["ge", "le", "gt", "lt", "eq", "ne"]
+        if x not in modes:
+            msg = f"{x} must be a valid mode"
+            raise ValueError(msg)
+        return x
+
+    @model_validator(mode="after")
+    @classmethod
+    def validate_value(self):
+        mode = self.mode
+        value = self.value
+        if mode not in ["eq", "ne"] and isinstance(value, str):
+            msg = 'only mode "eq" and "ne" support strings as values'
+            raise ValueError(msg)
+        elif not isinstance(value, float):
+            msg = f"value must be a float, {value} provided"
+            raise ValueError(msg)
+        return self
+
+
+class Section(BaseModel):
+    location: Location
+    provenance: Provenance
+    attributes: Attributes
+    triple: Triple
+    reindexing: conlist(item_type=ReindexingOperation, min_length=1) | None = Field(
+        default=None
+    )
+
+
 class TableConfig(BaseModel):
     template: dict[str, object] | None = Field(default=None)
-    sections: list[dict[str, object]]
+    sections: conlist(item_type=Section, min_length=1)
