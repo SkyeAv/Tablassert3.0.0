@@ -114,7 +114,6 @@ template: &template
      # mode = et/ne can use strings for value
      value: float | str
 
-
 # You Must Have At Least One Section Per TableConfig
 sections: ##
  - <<: *template ##
