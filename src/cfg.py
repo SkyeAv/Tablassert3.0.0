@@ -38,7 +38,7 @@ class GraphConfig(BaseModel):
     names: FilePath
     predicates: FilePath
 
-    training_data: FilePath  # ADD TRAINING DATA CLASS LATER, IE ANOTHER BASE MODEL
+    training_data: FilePath  # [[ADD TRAINING DATA CLASS LATER, IE ANOTHER BASE MODEL]]
 
     @field_validator("progress_handler", mode="before")
     @classmethod
