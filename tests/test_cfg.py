@@ -1,7 +1,7 @@
 # 2025 Skye Lane Goetz
 
+from src.cfg import GraphConfig, TableConfig
 from pydantic import ValidationError
-from src.cfg import GraphConfig
 import tempfile
 import pytest
 import os
@@ -44,7 +44,7 @@ def eg_graph_config() -> dict[str, object]:
         "supplement": sqlite,
         "pubmed": sqlite,
         "names": sqlite,
-        "predicates": sqlite,
+        "preds": sqlite,
         "training_data": sqlite,
     }
 
@@ -53,7 +53,26 @@ def test_eg_graph_config(eg_graph_config):
     GraphConfig(**{**eg_graph_config})
 
 
-SQLITES = ["override", "babel", "kg2", "supplement", "pubmed", "names", "predicates"]
+def test_missing_graph_subconfigs(eg_graph_config):
+    with pytest.raises(ValidationError):
+        GraphConfig(**{**eg_graph_config, "name": None})
+        GraphConfig(**{**eg_graph_config, "version": None})
+        GraphConfig(**{**eg_graph_config, "workers": None})
+        GraphConfig(**{**eg_graph_config, "progress_handler": None})
+        GraphConfig(**{**eg_graph_config, "identification_accuracy": None})
+        GraphConfig(**{**eg_graph_config, "extraction_accuracy": None})
+        GraphConfig(**{**eg_graph_config, "cutoff": None})
+        GraphConfig(**{**eg_graph_config, "override": None})
+        GraphConfig(**{**eg_graph_config, "babel": None})
+        GraphConfig(**{**eg_graph_config, "kg2": None})
+        GraphConfig(**{**eg_graph_config, "supplement": None})
+        GraphConfig(**{**eg_graph_config, "pubmed": None})
+        GraphConfig(**{**eg_graph_config, "names": None})
+        GraphConfig(**{**eg_graph_config, "preds": None})
+        GraphConfig(**{**eg_graph_config, "training_data": None})
+
+
+SQLITES = ["override", "babel", "kg2", "supplement", "pubmed", "names", "preds"]
 
 
 def test_nonexistent_files(eg_graph_config):
@@ -68,7 +87,7 @@ def test_nonexistent_files(eg_graph_config):
 def test_nonsqlite_files(eg_graph_config):
     random_file = temp_file()
     for field in SQLITES:
-        with pytest.raises(ValueError, match="must be a sqlite database"):
+        with pytest.raises(ValidationError):
             GraphConfig(**{**eg_graph_config, field: random_file})
 
 
@@ -107,3 +126,684 @@ def test_string_casting(eg_graph_config):
 def test_float_casting(eg_graph_config):
     GraphConfig(**{**eg_graph_config, "progress_handler": 1})
     GraphConfig(**{**eg_graph_config, "progress_handler": "1"})
+
+
+@pytest.fixture
+def eg_table_config() -> dict[str, object]:
+    return {
+        "template": None,
+        "sections": [
+            {
+                "location": {
+                    "download_from": r"https://website.com/file.csv",
+                    "ext": "csv",
+                    "params": {"delimiter": ","},
+                },
+                "provenance": {
+                    "publication_id": "PMC:18930937",
+                    "curator": "person",
+                    "org": "organization",
+                },
+                "attributes": None,
+                "triple": {
+                    "subj": {"mode": "value", "value": "A"},
+                    "obj": {"mode": "value", "value": "A"},
+                    "pred": "biolink:pred",
+                },
+            }
+        ],
+    }
+
+
+def test_eg_table_config(eg_table_config):
+    TableConfig(**{**eg_table_config})
+
+
+def test_eg_reinxeding(eg_table_config):
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "reindexing": [
+                        {
+                            "when": "before",
+                            "mode": "ne",
+                            "column": "A",
+                            "value": "string",
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "reindexing": [
+                        {"when": "AftEr", "mode": "eq", "column": "BC", "value": 0.05}
+                    ],
+                }
+            ],
+        }
+    )
+
+
+def test_erroneous_string_values_reindexing(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "reindexing": [
+                            {
+                                "when": "after",
+                                "mode": "gt",
+                                "column": "BC",
+                                "value": "string",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "reindexing": [
+                            {
+                                "when": "after",
+                                "mode": "le",
+                                "column": "BC",
+                                "value": "string",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
+def test_erroneous_when_reindexing(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "reindexing": [
+                            {
+                                "when": "a",
+                                "mode": "gt",
+                                "column": "BC",
+                                "value": "string",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "reindexing": [
+                            {
+                                "when": "_after",
+                                "mode": "le",
+                                "column": "BC",
+                                "value": "string",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
+def test_erroneous_mode_reindexing(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "reindexing": [
+                            {
+                                "when": "after",
+                                "mode": "gtr",
+                                "column": "BC",
+                                "value": "string",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "reindexing": [
+                            {
+                                "when": "before",
+                                "mode": "lq",
+                                "column": "BC",
+                                "value": "string",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
+def test_missing_table_subconfigs(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [{**eg_table_config["sections"][0], "provenance": None}],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [{**eg_table_config["sections"][0], "location": None}],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [{**eg_table_config["sections"][0], "triple": None}],
+            }
+        )
+
+
+def test_improper_urls(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "download_from": "file:///Users/username/Documents/report.docx",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "download_from": "/Users/username/Documents/report.docx",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "download_from": "report.docx",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "download_from": "random string",
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_random_madeup_extensions(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "yml",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "gabagool",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "christopher",
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_random_mismatching_location_params(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "xlsx",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "xls",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "pdf",
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_xlsx_location_params(eg_table_config):
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "xlsx",
+                        "params": {"sheet": "sheet1", "start": 20},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "xlsx",
+                        "params": {"sheet": "sheet1", "end": 2},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "xlsx",
+                        "params": {"sheet": "sheet1", "start": 12, "end": 1738},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "xlsx",
+                        "params": {"sheet": "sheet1", "rows": [1, 2, 56, 78]},
+                    },
+                }
+            ],
+        }
+    )
+
+
+def test_erroneous_xlsx_location_params(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "xlsx",
+                            "params": {"sheet": "sheet1", "start": 0},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "xlsx",
+                            "params": {"sheet": "sheet1", "end": 2},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "xlsx",
+                            "params": {"sheet": "sheet1"},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "xlsx",
+                            "params": {"sheet": "sheet1", "start": 1, "end": 2},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "xlsx",
+                            "params": {
+                                "sheet": "sheet1",
+                                "start": 1,
+                                "end": 2,
+                                "rows": [5, 6, 7],
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_text_based_image_location_params(eg_table_config):
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "pdf",
+                        "params": {"pages": 1, "flavor": "stream"},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "pdf",
+                        "params": {"pages": "1-5", "flavor": "stream"},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "pdf",
+                        "params": {"pages": "1,2,3", "flavor": "lattice"},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "pdf",
+                        "params": {"pages": "1,2,4-10", "flavor": "lattice"},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "pdf",
+                        "params": {"pages": None, "flavor": "lattice"},
+                    },
+                }
+            ],
+        }
+    )
+
+
+def test_erroneous_text_based_image_location_params(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "pdf",
+                            "params": {"pages": "1-10-100", "flavor": "stream"},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "pdf",
+                            "params": {"pages": "1", "flavor": "steam"},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "pdf",
+                            "params": {"pages": "1-20", "flavor": "lettuce"},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "pdf",
+                            "params": {"pages": "1-20"},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "pdf",
+                            "params": {"pages": None},
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "ext": "pdf",
+                            "params": None,
+                        },
+                    }
+                ],
+            }
+        )
+
+
+# TableConfig(**{**eg_table_config, "sections": [{**eg_table_config["sections"][0], "location": {**eg_table_config["sections"][0]["location"], "ext": "pdf"}}]})
