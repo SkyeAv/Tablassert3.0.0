@@ -30,7 +30,7 @@ kg2: str
 supplement: str
 pubmed: str
 names: str
-predicates: str
+preds: str
 
 # TSV File with Training Data For Edge Scoring
 training_data: str
@@ -44,8 +44,8 @@ training_data: str
 # Use null for none
 template: &template
  location: ##
-   # Where to Download File You're Mining
-   download: str ##
+   # Where to download_from File You're Mining
+   download_from: str ##
    ext: str ##
    # Extension Specific Parameters
    params: ##
@@ -64,7 +64,7 @@ template: &template
      rows:
        - list[str]
  provenance: ##
-   # PubMed Curie (or doi) for the Paper You're Downloading From
+   # PubMed Curie (or doi) for the Paper You're download_froming From
    publication_id: str ##
    curator: str ##
    # Your Organization
@@ -86,7 +86,7 @@ template: &template
    statistics:
    notes:
  triple: ##
-   subject: ##
+   subj: ##
      mode: str ## value, cvalue, scvalue, curie, ccurie, sccurie
      value: str ## representing column
      # NCBITaxon or null for unspecified
@@ -108,7 +108,7 @@ template: &template
          replacement: str ##
       dexplode: str # delimiter to split strings by before exploding
    obj: ##
-   predicate: str ## biolink:Predicates
+   pred: str ## biolink:preds
  reindexing:
    # list[dict[str, object]]
    - when: str ## "before" or "after"
