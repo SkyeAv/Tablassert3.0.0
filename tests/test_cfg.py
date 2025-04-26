@@ -806,4 +806,541 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
         )
 
 
-# TableConfig(**{**eg_table_config, "sections": [{**eg_table_config["sections"][0], "location": {**eg_table_config["sections"][0]["location"], "ext": "pdf"}}]})
+def test_detimited_file_location_params(eg_table_config):
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "csv",
+                        "params": {"delimiter": 9},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "csv",
+                        "params": {"delimiter": 9.0},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "tsv",
+                        "params": {"delimiter": "\t"},
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "location": {
+                        **eg_table_config["sections"][0]["location"],
+                        "ext": "txt",
+                        "params": {"delimiter": "\t"},
+                    },
+                }
+            ],
+        }
+    )
+
+
+def test_different_provenance_curies(eg_table_config):
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "provenance": {
+                        **eg_table_config["sections"][0]["provenance"],
+                        "publication_id": "PMID:01303890",
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "provenance": {
+                        **eg_table_config["sections"][0]["provenance"],
+                        "publication_id": "doi:0130aj389/si0",
+                    },
+                }
+            ],
+        }
+    )
+
+
+def test_erroneous_provenance_curries(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "provenance": {
+                            **eg_table_config["sections"][0]["provenance"],
+                            "publication_id": "doi/:0130aj389/si0",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "provenance": {
+                            **eg_table_config["sections"][0]["provenance"],
+                            "publication_id": "doi/0130aj389/si0",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "provenance": {
+                            **eg_table_config["sections"][0]["provenance"],
+                            "publication_id": "PMC: 2848474091 ",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "provenance": {
+                            **eg_table_config["sections"][0]["provenance"],
+                            "publication_id": "0130aj389/si0:doi",
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_eg_attributes(eg_table_config):
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "attributes": {
+                        "sample_size": {"mode": "column", "value": "A"},
+                        "p_value": {"mode": "column", "value": "B"},
+                        "fdr": {"mode": "predefined", "value": "string"},
+                        "strength": {"mode": "column", "value": "C"},
+                        "statistics": {"mode": "predefined", "value": "string"},
+                        "notes": "string",
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "attributes": {
+                        "sample_size": {"mode": "column", "value": "A"},
+                        "p_value": {"mode": "column", "value": "B"},
+                        "fdr": {"mode": "predefined", "value": "string"},
+                        "strength": {"mode": "column", "value": "C"},
+                        "statistics": {"mode": "predefined", "value": "string"},
+                        "notes": "string",
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "attributes": {
+                        "sample_size": {"mode": "column", "value": "A"},
+                        "p_value": {"mode": "column", "value": "B"},
+                        "fdr": {"mode": "predefined", "value": "string"},
+                        "strength": {"mode": "column", "value": "C"},
+                        "statistics": {"mode": "predefined", "value": "string"},
+                        "notes": 909,
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "attributes": {
+                        "sample_size": {
+                            "mode": "column",
+                            "value": "A",
+                            "math": [
+                                {
+                                    "attr": "pow",
+                                    "args": [None, -2],
+                                }
+                            ],
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "attributes": {
+                        "sample_size": {
+                            "mode": "column",
+                            "value": "A",
+                            "math": [
+                                {
+                                    "attr": "ceil",
+                                    "args": [None],
+                                }
+                            ],
+                        },
+                    },
+                }
+            ],
+        }
+    )
+
+
+def test_incorrect_column_names(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "attributes": {
+                            "sample_size": {"mode": "column", "value": "string"},
+                            "p_value": {"mode": "column", "value": "string"},
+                            "fdr": {"mode": "column", "value": "string"},
+                            "strength": {"mode": "column", "value": "string"},
+                            "statistics": {"mode": "column", "value": "string"},
+                            "notes": "string",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "attributes": {
+                            "sample_size": {"mode": "predefined", "value": "string"},
+                            "p_value": {"mode": "predefined", "value": "string"},
+                            "fdr": {"mode": "predefined", "value": "string"},
+                            "strength": {"mode": "predefined", "value": "string"},
+                            "statistics": {"mode": "column", "value": "string"},
+                            "notes": "string",
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_fake_math_attributes(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "attributes": {
+                            "sample_size": {
+                                "mode": "column",
+                                "value": "A",
+                                "math": [
+                                    {
+                                        "attr": "wonderlaw",
+                                        "args": [None, 9],
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "attributes": {
+                            "sample_size": {
+                                "mode": "column",
+                                "value": "A",
+                                "math": [
+                                    {
+                                        "attr": "9+10",
+                                        "args": [None, 21],
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "attributes": {
+                            "sample_size": {
+                                "mode": "column",
+                                "value": "A",
+                                "math": [
+                                    {
+                                        "attr": "Jennifer",
+                                        "args": [None, -3],
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_fleshed_out_triples(eg_table_config):
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "triple": {
+                        **eg_table_config["sections"][0]["triple"],
+                        "subj": {
+                            "mode": "sccurie",
+                            "value": "A",
+                            "in_organism": "NCBITaxon:9606",
+                            "remove": ["x", "y", "z"],
+                            "prefix": "PREFIX:",
+                            "suffix": "+suffix",
+                            "cfill": "forward",
+                            "regex": [{"pattern": r"\W", "replacement": "WOLLONGONG"}],
+                            "dexplode": ",",
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    TableConfig(
+        **{
+            **eg_table_config,
+            "sections": [
+                {
+                    **eg_table_config["sections"][0],
+                    "triple": {
+                        **eg_table_config["sections"][0]["triple"],
+                        "subj": {
+                            "mode": "value",
+                            "value": "string",
+                            "in_organism": "NCBITaxon:9606",
+                            "remove": ["x", "y", 1],
+                            "prefix": "PREFIX:",
+                            "suffix": "+suffix",
+                            "cfill": "forward",
+                            "regex": [{"pattern": r"\W", "replacement": "WOLLONGONG"}],
+                            "dexplode": 9,
+                        },
+                    },
+                }
+            ],
+        }
+    )
+
+
+def test_erroneous_fleshed_out_triples(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "triple": {
+                            **eg_table_config["sections"][0]["triple"],
+                            "subj": {
+                                "mode": "value",
+                                "value": "string",
+                                "in_organism": "9606",
+                                "remove": ["x", "y", 1],
+                                "prefix": "PREFIX:",
+                                "suffix": "+suffix",
+                                "cfill": "forward",
+                                "regex": [
+                                    {"pattern": r"\W", "replacement": "WOLLONGONG"}
+                                ],
+                                "dexplode": 9,
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "triple": {
+                            **eg_table_config["sections"][0]["triple"],
+                            "subj": {
+                                "cfill": "fake",
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "triple": {
+                            **eg_table_config["sections"][0]["triple"],
+                            "subj": {
+                                "prefix": ["fake"],
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "triple": {
+                            **eg_table_config["sections"][0]["triple"],
+                            "subj": {
+                                "remove": "X",
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_erroneous_predicates(eg_table_config):
+    with pytest.raises(ValidationError):
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "triple": {
+                            **eg_table_config["sections"][0]["triple"],
+                            "pred": "string",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "triple": {
+                            **eg_table_config["sections"][0]["triple"],
+                            "pred": "string:string",
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "triple": {
+                            **eg_table_config["sections"][0]["triple"],
+                            "pred": "biolink:19209",
+                        },
+                    }
+                ],
+            }
+        )

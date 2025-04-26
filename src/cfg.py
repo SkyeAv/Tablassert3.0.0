@@ -108,6 +108,13 @@ class TextBasedImage(BaseModel):
 class DelimitedFile(BaseModel):
     delimiter: constr(min_length=1)
 
+    @field_validator("delimiter", mode="before")
+    @classmethod
+    def cast_string(cls, x: object):
+        if x and not isinstance(x, str):
+            return str(x)
+        return x
+
 
 class ExcelSpreadSheet(BaseModel):
     sheet: constr(min_length=1)
@@ -213,7 +220,7 @@ class MathParams(BaseModel):
     @model_validator(mode="after")
     def check_args_length(self):
         attr = self.attr
-        func = math.getattr(math, attr)
+        func = getattr(math, attr)
         sig = inspect.signature(func)
         params = sig.parameters
         max_args = len(params)
@@ -235,11 +242,18 @@ class Attribute(BaseModel):
     value: constr(min_length=1)
     math: conlist(item_type=MathParams, min_length=1) | None = Field(default=None)
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def cast_string(cls, x: object):
+        if x and not isinstance(x, str):
+            return str(x)
+        return x
+
     @field_validator("mode", mode="after")
     @classmethod
     def is_mode(cls, x: str):
         if str(x) not in ["column", "predefined"]:
-            msg = 'must be "column" or "predefined"'
+            msg = 'mode must be "column" or "predefined"'
             raise ValueError(msg)
         return x
 
@@ -248,7 +262,7 @@ class Attribute(BaseModel):
         mode = self.mode
         value = self.value
 
-        if str(mode) == "column" and not value.isupper():
+        if str(mode) in ["column"] and not value.isupper():
             msg = "value must follow alphabetical naming convention"
             raise ValueError(msg)
         return self
@@ -263,6 +277,13 @@ class Attributes(BaseModel):
     statictic: Attribute | None = Field(default=None)
     notes: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
     # Internally predefine knowledge_level and agent_type
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def cast_string(cls, x: object):
+        if x and not isinstance(x, str):
+            return str(x)
+        return x
 
 
 class Regex(BaseModel):
@@ -280,21 +301,34 @@ class Regex(BaseModel):
 class Node(BaseModel):
     mode: constr(min_length=5, max_length=7, to_lower=True, strip_whitespace=True)
     value: constr(min_length=1)
-    in_organism: constr(
-        min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
-    ) | None = Field(default=None)
-    prioritize: conlist(
-        item_type=constr(
-            min_length=10, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
-        ),
-        min_length=1,
-    ) | None = Field(default=None)
-    avoid: conlist(
-        item_type=constr(
+    in_organism: (
+        constr(
             min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
-        ),
-        min_length=1,
-    ) | None = Field(default=None)
+        )
+        | None
+    ) = Field(default=None)
+    prioritize: (
+        conlist(
+            item_type=constr(
+                min_length=10,
+                pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$",
+                strip_whitespace=True,
+            ),
+            min_length=1,
+        )
+        | None
+    ) = Field(default=None)
+    avoid: (
+        conlist(
+            item_type=constr(
+                min_length=8,
+                pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$",
+                strip_whitespace=True,
+            ),
+            min_length=1,
+        )
+        | None
+    ) = Field(default=None)
     prefix: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
     suffix: constr(min_length=1, strip_whitespace=True) | None = Field(default=None)
     cfill: (
@@ -309,7 +343,7 @@ class Node(BaseModel):
     regex: conlist(item_type=Regex, min_length=1) | None = Field(default=None)
     dexplode: constr(min_length=1) | None = Field(default=None)
 
-    @field_validator("prefix", "suffix", "value", "remove", mode="before")
+    @field_validator("prefix", "suffix", "value", "remove", "dexplode", mode="before")
     @classmethod
     def cast_string(cls, x: object):
         if isinstance(x, list):
@@ -327,6 +361,14 @@ class Node(BaseModel):
                     msg = f"{x} must be a biolink:Class"
                     raise ValueError(msg)
         return args
+
+    @field_validator("in_organism", mode="after")
+    @classmethod
+    def is_ncbi_taxon(cls, x: str):
+        if x and "NCBITaxon" not in str(x):
+            msg = f"{x} must be a NCBITaxon:Taxon"
+            raise ValueError(msg)
+        return x
 
     @field_validator("cfill", mode="after")
     @classmethod
