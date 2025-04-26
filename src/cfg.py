@@ -3,6 +3,7 @@
 from pydantic import (
     field_validator,
     model_validator,
+    ValidationError,
     DirectoryPath,
     BaseModel,
     FilePath,
@@ -15,6 +16,7 @@ from pydantic import (
 )
 import inspect
 import math
+import yaml
 
 
 class GraphConfig(BaseModel):
@@ -465,3 +467,26 @@ class Section(BaseModel):
 class TableConfig(BaseModel):
     template: dict[str, object] | None = Field(default=None)
     sections: conlist(item_type=Section, min_length=1)
+
+
+def load_yaml(path: str, cfg_type: str) -> dict[str, object]:
+    try:
+        with open(path, "r") as f:
+            cfg = yaml.load(f, Loader=yaml.CSafeLoader)
+            match str(cfg_type):
+                case "GraphConfig":
+                    return GraphConfig(**cfg)
+                case "TableConfig":
+                    return TableConfig(**cfg)
+                case _:
+                    msg = f"{path} must pass a valid cfg_type, {cfg_type} provided"
+                    raise ValueError(msg)
+    except yaml.YAMLError as e:
+        msg = f"{path}: YAML parsing error: {e}"
+        raise ValueError(msg)
+    except ValidationError as e:
+        msg = f"{path}: Validation error: {e}"
+        raise ValueError(msg)
+    except Exception as e:
+        msg = f"{path}: Unexpected error: {e}"
+        raise ValueError(msg)
