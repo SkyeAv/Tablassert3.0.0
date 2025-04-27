@@ -1,6 +1,6 @@
 # 2025 Skye Lane Goetz
 
-from src.cfg import load_yaml
+from tablassert.cfg import load_yaml
 import typer
 
 
@@ -10,9 +10,10 @@ app = typer.Typer()
 @app.command()
 def validate_config(
     path: str = typer.Option(
-        ...,
+        None,
+        "--path",
+        "-p",
         help="Path to GraphConfig.yaml",
-        alias="-p",
         exists=True,
         file_okay=True,
         readable=True,

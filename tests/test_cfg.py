@@ -1,6 +1,6 @@
 # 2025 Skye Lane Goetz
 
-from src.cfg import GraphConfig, TableConfig
+from src.tablassert.cfg import GraphConfig, TableConfig
 from pydantic import ValidationError
 import tempfile
 import pytest

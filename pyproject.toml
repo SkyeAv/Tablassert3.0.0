@@ -5,27 +5,34 @@ requires = ["flit_core >=3.11,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "Tablassert"
+name = "tablassert"
 version = "4.0.0"
 authors = [{name = "Skye Lane Goetz", email = "sgoetz@isbscience.org"}]
+description = """
+    Tablassert is a versatile tool that creates knowledge assertions from
+    tabular data, enhances knowledge with configurable options, and exports
+    KGX-compliant TSVs.
+"""
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-dynamic = ["version", "description"]
 requires-python = ">=3.13.3"
 dependencies = [
-    "polars[polars-calamine]>=1.27.1",
-    "camelot-py[base]>=1.0.0",
-    "pandas>=2.1.0",
-    "spacy>=3.8.5",
+    # "polars[polars-calamine]>=1.27.1",
+    # "camelot-py[base]>=1.0.0",
+    # "pandas>=2.1.0",
+    # "spacy>=3.8.2",
     "pyyaml>=6.0.2",
-    "joblib>=1.4.2",
-    "loguru>=0.7.3",
-    "rich>=14.0.0",
+    # "joblib>=1.4.2",
+    # "loguru>=0.7.3",
+    # "rich>=14.0.0",
     "typer>=0.15.2",
     "pydantic>=2.11.3",
-    "python-dotenv>=1.1.0",
-    "numba>=0.61.2"
+    # "python-dotenv>=1.1.0",
+    # "numba>=0.61.2"
 ]
+
+[project.scripts]
+tablassert = "tablassert.cli:app"
 
 [project.urls]
 Home = "https://github.com/SkyeAv/Tablassert"
@@ -55,5 +62,3 @@ exclude = [
 [tool.black]
 line-length = 88
 target-version = ["py313"]
-
-[project.scripts]
