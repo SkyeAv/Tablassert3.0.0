@@ -8,7 +8,7 @@ app = typer.Typer()
 
 
 @app.command()
-def validate_config(
+def check_graph_config(
     path: str = typer.Option(
         None,
         "--path",
@@ -19,8 +19,24 @@ def validate_config(
         readable=True,
     )
 ):
-    """Check if configuration is valid"""
-    load_yaml(path)
+    """Check if GraphConfig is valid"""
+    load_yaml(path, "GraphConfig")
+
+
+@app.command()
+def check_table_config(
+    path: str = typer.Option(
+        None,
+        "--path",
+        "-p",
+        help="Path to TableConfig.yaml",
+        exists=True,
+        file_okay=True,
+        readable=True,
+    )
+):
+    """Check if TableConfig is valid"""
+    load_yaml(path, "TableConfig")
 
 
 if __name__ == "__main__":
