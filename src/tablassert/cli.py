@@ -7,6 +7,7 @@ import typer
 app = typer.Typer()
 
 
+@app.command(name="cgc", help='Alias for "check-graph-config"')
 @app.command()
 def check_graph_config(
     path: str = typer.Option(
@@ -23,6 +24,7 @@ def check_graph_config(
     load_yaml(path, "GraphConfig")
 
 
+@app.command(name="ctc", help='Alias for "check-table-config"')
 @app.command()
 def check_table_config(
     path: str = typer.Option(
