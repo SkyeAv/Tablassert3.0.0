@@ -475,9 +475,9 @@ def load_yaml(path: str, cfg_type: str) -> dict[str, object]:
             cfg = yaml.load(f, Loader=yaml.CSafeLoader)
             match str(cfg_type):
                 case "GraphConfig":
-                    return GraphConfig(**cfg)
+                    return GraphConfig(**cfg).model_dump()
                 case "TableConfig":
-                    return TableConfig(**cfg)
+                    return TableConfig(**cfg).model_dump()
                 case _:
                     msg = f"{path} must pass a valid cfg_type, {cfg_type} provided"
                     raise ValueError(msg)

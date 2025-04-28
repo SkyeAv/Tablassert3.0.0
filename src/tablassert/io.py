@@ -14,9 +14,8 @@ def load_sections(dirs: list[str]) -> list[dict[str, object]]:
             if path.suffix.lower() == ".yaml":
                 try:
                     table_cfg = load_yaml(path.resolve(), "TableConfig")
-                    if "sections" in table_cfg:
-                        sections.append(table_cfg["sections"])
-                        console.print(f"[green]✓[/green] Loaded [dim]{path.name}[/dim]")
+                    sections.extend(table_cfg["sections"])
+                    console.print(f"[green]✓[/green] Loaded [dim]{path.name}[/dim]")
                 except Exception as e:
                     console.print(
                         Panel.fit(
