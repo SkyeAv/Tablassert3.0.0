@@ -1,4 +1,5 @@
-# 2025 Skye Lane Goetz
+__author__ = "Skye Lane Goetz"
+
 
 from tablassert.io import load_sections
 from tablassert.cfg import load_yaml

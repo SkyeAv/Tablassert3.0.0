@@ -1,0 +1,14 @@
+template
+templates
+base
+base config
+base configuration
+template configuration
+yaml template
+&template
+table config template
+table configs template
+tableconfig template
+tableconfigs template
+not section
+not sections

@@ -1,4 +1,5 @@
-# 2025 Skye Lane Goetz
+__author__ = "Skye Lane Goetz"
+
 
 from tablassert.cfg import GraphConfig, TableConfig
 from pydantic import ValidationError

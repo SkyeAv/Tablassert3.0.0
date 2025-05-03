@@ -1,4 +1,5 @@
-# 2025 Skye Lane Goetz
+__author__ = "Skye Lane Goetz"
+
 
 import pytest
 
