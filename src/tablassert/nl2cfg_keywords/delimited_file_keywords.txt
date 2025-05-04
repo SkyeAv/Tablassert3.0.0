@@ -1,0 +1,21 @@
+tsv
+csv
+tab separated
+tab delimited
+tab separated value
+tab separated values
+delimited
+txt
+delimiter
+delimeter
+delimeted
+delimited file
+delimeted file
+comma separated
+comma delimited
+comma separated value
+comma separated values
+pipe separated
+pipe delimited
+pipe separated value
+pipe separated values

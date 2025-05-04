@@ -110,6 +110,9 @@ class TextBasedImage(BaseModel):
 
 class DelimitedFile(BaseModel):
     delimiter: constr(min_length=1)
+    start: conint(ge=1) | None = Field(default=None)
+    end: conint(ge=2) | None = Field(default=None)
+    rows: conlist(item_type=conint(ge=1), min_length=1) | None = Field(default=None)
 
     @field_validator("delimiter", mode="before")
     @classmethod
@@ -117,6 +120,28 @@ class DelimitedFile(BaseModel):
         if x and not isinstance(x, str):
             return str(x)
         return x
+
+    @model_validator(mode="after")
+    def is_valid_slice(self):
+        if self.start and self.end:
+            if int(self.end - self.start) < 2:
+                msg = "use rows to select single rows"
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def no_rows_with_start_syntax(self):
+        if (self.start or self.end) and self.rows:
+            msg = "cannot use rows with start-end syntax"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def has_rows_or_start(self):
+        if not (self.start or self.end or self.rows):
+            msg = "must have rows or start or end in Excel params"
+            raise ValueError(msg)
+        return self
 
 
 class ExcelSpreadSheet(BaseModel):

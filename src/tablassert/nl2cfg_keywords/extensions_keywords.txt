@@ -1,0 +1,8 @@
+xlsx
+xls
+xlsb
+xlsm
+csv
+tsv
+txt
+pdf

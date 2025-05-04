@@ -54,6 +54,14 @@ template: &template
      flavor: str
      # Delimited File
      delimiter: str
+     sheet: str ##
+     # Row To Start At
+     start: int
+     # Row To End At
+     end: int
+     # List of Specific Rows (Alt to Start + End)
+     rows:
+       - list[str]
      # Excel SpreadSheet
      sheet: str ##
      # Row To Start At
