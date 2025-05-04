@@ -12,8 +12,7 @@ def eg_table_config() -> dict[str, object]:
             {
                 "location": {
                     "download_from": r"https://website.com/file.csv",
-                    "ext": "csv",
-                    "params": {"delimiter": ","},
+                    "params": {"ext": "csv", "delimiter": ",", "start": 1},
                 },
                 "provenance": {
                     "publication_id": "PMC:18930937",

@@ -24,22 +24,20 @@ dependencies = [
     "pyyaml>=6.0.2",
     # "joblib>=1.4.2",
     # "loguru>=0.7.3",
-    "rich>=14.0.0",
+    "rich<14.0.0",
     "typer>=0.15.2",
-    "pydantic>=2.11.3",
+    "pydantic>=2.10.3",
     # "python-dotenv>=1.1.0",
     # "numba>=0.61.2",
     "adapt-parser>=1.0.0",
     "numpy>=1.26.4",
-    #"llama-index>=0.10.28",
-    #"llama-index-llms-huggingface>=0.1.4",
-    #"transformers>=4.40.0",
-    #"torch>=2.3.0",
+    "transformers>=4.40.0",
+    "torch>=2.3.0",
+    "atomic-agents>=1.1.0",
 ]
 
 [project.scripts]
 tablassert = "tablassert.cli:app"
-pprint = "tablassert.io:test"
 
 [project.urls]
 Home = "https://github.com/SkyeAv/Tablassert"

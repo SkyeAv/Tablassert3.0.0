@@ -379,7 +379,10 @@ def test_random_madeup_extensions(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "yml",
+                            "params": {
+                                **eg_table_config["sections"][0]["location"]["params"],
+                                "ext": "yml",
+                            },
                         },
                     }
                 ],
@@ -393,7 +396,10 @@ def test_random_madeup_extensions(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "gabagool",
+                            "params": {
+                                **eg_table_config["sections"][0]["location"]["params"],
+                                "ext": "gabagool",
+                            },
                         },
                     }
                 ],
@@ -407,7 +413,10 @@ def test_random_madeup_extensions(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "christopher",
+                            "params": {
+                                **eg_table_config["sections"][0]["location"]["params"],
+                                "ext": "christopher",
+                            },
                         },
                     }
                 ],
@@ -425,7 +434,10 @@ def test_random_mismatching_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "xlsx",
+                            "params": {
+                                **eg_table_config["sections"][0]["location"]["params"],
+                                "ext": "xlsx",
+                            },
                         },
                     }
                 ],
@@ -439,7 +451,10 @@ def test_random_mismatching_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "xls",
+                            "params": {
+                                **eg_table_config["sections"][0]["location"]["params"],
+                                "ext": "xls",
+                            },
                         },
                     }
                 ],
@@ -453,7 +468,10 @@ def test_random_mismatching_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "pdf",
+                            "params": {
+                                **eg_table_config["sections"][0]["location"]["params"],
+                                "ext": "pdf",
+                            },
                         },
                     }
                 ],
@@ -470,8 +488,7 @@ def test_xlsx_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "xlsx",
-                        "params": {"sheet": "sheet1", "start": 20},
+                        "params": {"ext": "xlsx", "sheet": "sheet1", "start": 20},
                     },
                 }
             ],
@@ -485,8 +502,7 @@ def test_xlsx_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "xlsx",
-                        "params": {"sheet": "sheet1", "end": 2},
+                        "params": {"ext": "xlsx", "sheet": "sheet1", "end": 2},
                     },
                 }
             ],
@@ -500,8 +516,12 @@ def test_xlsx_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "xlsx",
-                        "params": {"sheet": "sheet1", "start": 12, "end": 1738},
+                        "params": {
+                            "ext": "xlsx",
+                            "sheet": "sheet1",
+                            "start": 12,
+                            "end": 1738,
+                        },
                     },
                 }
             ],
@@ -515,8 +535,11 @@ def test_xlsx_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "xlsx",
-                        "params": {"sheet": "sheet1", "rows": [1, 2, 56, 78]},
+                        "params": {
+                            "ext": "xlsx",
+                            "sheet": "sheet1",
+                            "rows": [1, 2, 56, 78],
+                        },
                     },
                 }
             ],
@@ -534,8 +557,7 @@ def test_erroneous_xlsx_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "xlsx",
-                            "params": {"sheet": "sheet1", "start": 0},
+                            "params": {"ext": "xlsx", "sheet": "sheet1", "start": 0},
                         },
                     }
                 ],
@@ -549,8 +571,7 @@ def test_erroneous_xlsx_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "xlsx",
-                            "params": {"sheet": "sheet1", "end": 2},
+                            "params": {"ext": "xlsx", "sheet": "sheet1", "end": 2},
                         },
                     }
                 ],
@@ -564,8 +585,7 @@ def test_erroneous_xlsx_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "xlsx",
-                            "params": {"sheet": "sheet1"},
+                            "params": {"ext": "xlsx", "sheet": "sheet1"},
                         },
                     }
                 ],
@@ -579,23 +599,27 @@ def test_erroneous_xlsx_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "xlsx",
-                            "params": {"sheet": "sheet1", "start": 1, "end": 2},
-                        },
-                    }
-                ],
-            }
-        )
-        TableConfig(
-            **{
-                **eg_table_config,
-                "sections": [
-                    {
-                        **eg_table_config["sections"][0],
-                        "location": {
-                            **eg_table_config["sections"][0]["location"],
-                            "ext": "xlsx",
                             "params": {
+                                "ext": "xlsx",
+                                "sheet": "sheet1",
+                                "start": 1,
+                                "end": 2,
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        TableConfig(
+            **{
+                **eg_table_config,
+                "sections": [
+                    {
+                        **eg_table_config["sections"][0],
+                        "location": {
+                            **eg_table_config["sections"][0]["location"],
+                            "params": {
+                                "ext": "xlsx",
                                 "sheet": "sheet1",
                                 "start": 1,
                                 "end": 2,
@@ -617,8 +641,7 @@ def test_text_based_image_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "pdf",
-                        "params": {"pages": 1, "flavor": "stream"},
+                        "params": {"ext": "pdf", "pages": 1, "flavor": "stream"},
                     },
                 }
             ],
@@ -632,8 +655,7 @@ def test_text_based_image_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "pdf",
-                        "params": {"pages": "1-5", "flavor": "stream"},
+                        "params": {"ext": "pdf", "pages": "1-5", "flavor": "stream"},
                     },
                 }
             ],
@@ -647,8 +669,7 @@ def test_text_based_image_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "pdf",
-                        "params": {"pages": "1,2,3", "flavor": "lattice"},
+                        "params": {"ext": "pdf", "pages": "1,2,3", "flavor": "lattice"},
                     },
                 }
             ],
@@ -662,8 +683,11 @@ def test_text_based_image_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "pdf",
-                        "params": {"pages": "1,2,4-10", "flavor": "lattice"},
+                        "params": {
+                            "ext": "pdf",
+                            "pages": "1,2,4-10",
+                            "flavor": "lattice",
+                        },
                     },
                 }
             ],
@@ -677,8 +701,7 @@ def test_text_based_image_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "pdf",
-                        "params": {"pages": None, "flavor": "lattice"},
+                        "params": {"ext": "pdf", "pages": None, "flavor": "lattice"},
                     },
                 }
             ],
@@ -696,8 +719,11 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "pdf",
-                            "params": {"pages": "1-10-100", "flavor": "stream"},
+                            "params": {
+                                "ext": "pdf",
+                                "pages": "1-10-100",
+                                "flavor": "stream",
+                            },
                         },
                     }
                 ],
@@ -711,8 +737,7 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "pdf",
-                            "params": {"pages": "1", "flavor": "steam"},
+                            "params": {"ext": "pdf", "pages": "1", "flavor": "steam"},
                         },
                     }
                 ],
@@ -726,8 +751,11 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "pdf",
-                            "params": {"pages": "1-20", "flavor": "lettuce"},
+                            "params": {
+                                "ext": "pdf",
+                                "pages": "1-20",
+                                "flavor": "lettuce",
+                            },
                         },
                     }
                 ],
@@ -741,8 +769,7 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "pdf",
-                            "params": {"pages": "1-20"},
+                            "params": {"ext": "pdf", "pages": "1-20"},
                         },
                     }
                 ],
@@ -756,8 +783,7 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "pdf",
-                            "params": {"pages": None},
+                            "params": {"ext": "pdf", "pages": None},
                         },
                     }
                 ],
@@ -771,7 +797,6 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
                         **eg_table_config["sections"][0],
                         "location": {
                             **eg_table_config["sections"][0]["location"],
-                            "ext": "pdf",
                             "params": None,
                         },
                     }
@@ -780,7 +805,7 @@ def test_erroneous_text_based_image_location_params(eg_table_config):
         )
 
 
-def test_detimited_file_location_params(eg_table_config):
+def test_delimited_file_location_params(eg_table_config):
     TableConfig(
         **{
             **eg_table_config,
@@ -789,8 +814,7 @@ def test_detimited_file_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "csv",
-                        "params": {"delimiter": 9},
+                        "params": {"ext": "csv", "delimiter": 9, "start": 1},
                     },
                 }
             ],
@@ -804,8 +828,7 @@ def test_detimited_file_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "csv",
-                        "params": {"delimiter": 9.0},
+                        "params": {"ext": "csv", "delimiter": 9.0, "start": 1},
                     },
                 }
             ],
@@ -819,8 +842,7 @@ def test_detimited_file_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "tsv",
-                        "params": {"delimiter": "\t"},
+                        "params": {"ext": "tsv", "delimiter": "\t", "start": 1},
                     },
                 }
             ],
@@ -834,8 +856,7 @@ def test_detimited_file_location_params(eg_table_config):
                     **eg_table_config["sections"][0],
                     "location": {
                         **eg_table_config["sections"][0]["location"],
-                        "ext": "txt",
-                        "params": {"delimiter": "\t"},
+                        "params": {"ext": "txt", "delimiter": "\t", "start": 1},
                     },
                 }
             ],
