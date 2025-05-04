@@ -72,6 +72,7 @@ template: &template
  attributes: ##
    sample_size: 
      mode: str ##
+     # "column" or "predefined"
      value: str ##
      math:
          # list[str, dict[str, object]]

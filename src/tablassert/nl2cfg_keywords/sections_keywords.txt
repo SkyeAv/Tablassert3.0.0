@@ -5,6 +5,7 @@ new sections
 new part
 new parts
 augment
+<<: *template
 change template
 change Templates
 not template

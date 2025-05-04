@@ -31,6 +31,10 @@ dependencies = [
     # "numba>=0.61.2",
     "adapt-parser>=1.0.0",
     "numpy>=1.26.4",
+    #"llama-index>=0.10.28",
+    #"llama-index-llms-huggingface>=0.1.4",
+    #"transformers>=4.40.0",
+    #"torch>=2.3.0",
 ]
 
 [project.scripts]
