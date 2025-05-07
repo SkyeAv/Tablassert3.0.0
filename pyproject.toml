@@ -34,6 +34,7 @@ dependencies = [
     "transformers>=4.40.0",
     "torch>=2.3.0",
     "atomic-agents>=1.1.0",
+    "instructor>=1.7.9",
 ]
 
 [project.scripts]

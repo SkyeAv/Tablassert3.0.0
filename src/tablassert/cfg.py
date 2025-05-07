@@ -131,7 +131,7 @@ class TextBasedImage(BaseModel):
     ext: Literal["pdf", "pdF", "pDf", "pDF", "Pdf", "PdF", "PDf", "PDF"] = Field(
         ...,
         description="The extension discriminating ParamsType for params in Location",
-    )
+    )  # You cannot use a field_validator with mode="before" on descriminators
     pages: (
         constr(
             min_length=1,
@@ -186,7 +186,7 @@ class DelimitedFile(BaseModel):
     ] = Field(
         ...,
         description="The extension discriminating ParamsType for params in Location",
-    )
+    )  # You cannot use a field_validator with mode="before" on descriminators
     delimiter: constr(min_length=1) = Field(
         ..., description="The delimiter separating values in a delimited file"
     )
@@ -294,7 +294,7 @@ class ExcelSpreadSheet(BaseModel):
     ] = Field(
         ...,
         description="The extension discriminating ParamsType for params in Location",
-    )
+    )  # You cannot use a field_validator with mode="before" on descriminators
     sheet: constr(min_length=1) = Field(
         ...,
         description="The name of the sheet in the excel spreadhseet to extract content from",
