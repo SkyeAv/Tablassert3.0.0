@@ -1,0 +1,5 @@
+1. Generate a JSON object representing the SCHEMA block
+2. Ensure all required keys are present
+3. Ensure that every key in your output exists in the SCHEMA block, delete all other keys/values
+4. Strip whitespace and ensure values are syntactically valid
+5. Use "null" for any None values

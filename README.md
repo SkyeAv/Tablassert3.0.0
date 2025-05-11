@@ -46,9 +46,9 @@ template: &template
  location: ##
    # Where to download_from File You're Mining
    download_from: str ##
-   ext: str ##
    # Extension Specific Parameters
    params: ##
+     ext: str ## Required To Differentiate All Below
      # Text Based PDF
      pages: str
      flavor: str

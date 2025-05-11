@@ -53,3 +53,9 @@ def get_true_root(candidate: Path, identifier: str = "pyproject.toml") -> Path:
     raise FileNotFoundError(
         f"Could not find project root, no {identifier} in {candidate}"
     )
+
+
+@lru_cache(maxsize=None)
+def read_lines(text_file: str) -> list[str]:
+    with open(text_file, "r") as f:
+        return [line.rstrip("\n") for line in f]

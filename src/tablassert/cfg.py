@@ -706,10 +706,17 @@ class Section(BaseModel):
         ...,
         description="A field telling Tablassert who created these data, who's writing this config, and general information to link to the final graph Tablassert creates",
     )
-    attributes: Attributes | None = Field(default={}, description="")
-    triple: Triple = Field(..., description="")
+    attributes: Attributes | None = Field(
+        default={},
+        description="A feild telling Tablassert what fields to attribute to edges/data in a Knowledge Graph (KG)",
+    )
+    triple: Triple = Field(
+        ...,
+        description="A field telling Tablassert where to find and how to process the mandatory subject/predicate/object triple underlying each knowledge assertion. Subject and Object are Nodes while Predicate describes an edge. All fields are valid CURIES.",
+    )
     reindexing: conlist(item_type=ReindexingOperation, min_length=1) | None = Field(
-        default=None, description=""
+        default=None,
+        description="A field containing any useful reindexing operations for Tablassert to Preform",
     )
 
 
