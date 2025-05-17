@@ -56,6 +56,10 @@ class IsSectionsTemplateOutput(BaseIOSchema):
         tableconfigs template
         not section
         not sections
+
+    SUPER IMPORTANT CLARIFICATION:
+
+    IF NEITHER A template NOT section IS SPECIFIED TREAT THE MESSAGE AS A SECTION
     """
 
     has_template: bool = Field(
