@@ -1,3 +1,4 @@
+# script renamed from "math.py" as it creates a circular import
 __author__ = "Skye Lane Goetz"
 __status__ = "Development"
 
