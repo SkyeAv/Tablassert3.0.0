@@ -1183,9 +1183,9 @@ def test_fleshed_out_triples(eg_table_config):
                             "remove": ["x", "y", "z"],
                             "prefix": "PREFIX:",
                             "suffix": "+suffix",
-                            "cfill": "forward",
+                            "fill_column": "forward",
                             "regex": [{"pattern": r"\W", "replacement": "WOLLONGONG"}],
-                            "dexplode": ",",
+                            "split_explode": ",",
                         },
                     },
                 }
@@ -1207,9 +1207,9 @@ def test_fleshed_out_triples(eg_table_config):
                             "remove": ["x", "y", 1],
                             "prefix": "PREFIX:",
                             "suffix": "+suffix",
-                            "cfill": "forward",
+                            "fill_column": "forward",
                             "regex": [{"pattern": r"\W", "replacement": "WOLLONGONG"}],
-                            "dexplode": 9,
+                            "split_explode": 9,
                         },
                     },
                 }
@@ -1235,11 +1235,11 @@ def test_erroneous_fleshed_out_triples(eg_table_config):
                                 "remove": ["x", "y", 1],
                                 "prefix": "PREFIX:",
                                 "suffix": "+suffix",
-                                "cfill": "forward",
+                                "fill_column": "forward",
                                 "regex": [
                                     {"pattern": r"\W", "replacement": "WOLLONGONG"}
                                 ],
-                                "dexplode": 9,
+                                "split_explode": 9,
                             },
                         },
                     }
@@ -1255,7 +1255,7 @@ def test_erroneous_fleshed_out_triples(eg_table_config):
                         "triple": {
                             **eg_table_config["sections"][0]["triple"],
                             "subj": {
-                                "cfill": "fake",
+                                "fill_column": "fake",
                             },
                         },
                     }

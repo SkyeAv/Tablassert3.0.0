@@ -585,7 +585,7 @@ class Node(BaseModel):
         default=None,
         description="A suffix to add to the end of the values denoted by a node before they're processed/passed to databases/etc..",
     )
-    cfill: (
+    fill_column: (
         Literal[
             "forward",
             "backward",
@@ -608,17 +608,17 @@ class Node(BaseModel):
         default=None,
         description="Regex to apply re.sub(pattern, replacement, string) to across the node data",
     )
-    dexplode: constr(min_length=1) | None = Field(
+    split_explode: constr(min_length=1) | None = Field(
         default=None,
         description="A field specificying which delimiter to split the string encoded in a node by into a list before exploding values in that list thier own respective nodes, like with a pandas or polars explode column",
     )
 
-    @field_validator("mode", "cfill", mode="before")
+    @field_validator("mode", "fill_column", mode="before")
     @classmethod
     def cast_lower(cls, x: object):
         return str(x).lower()
 
-    @field_validator("prefix", "suffix", "value", "remove", "dexplode", mode="before")
+    @field_validator("prefix", "suffix", "value", "remove", "split_explode", mode="before")
     @classmethod
     def cast_string(cls, x: object):
         if isinstance(x, list):
@@ -656,7 +656,7 @@ class Triple(BaseModel):
         description="The object in a subject/predicate/object (or thing/relationship_between_thing/thing) knowledge triple, these comprise the knowledge encoded in a Tablassert knowledge graph",
     )
     pred: constr(
-        min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
+        min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9._/-]+$", strip_whitespace=True
     ) = Field(
         ...,
         description="The predicate in a subject/predicate/object (or thing/relationship_between_thing/thing) knowledge triple, these comprise the knowledge encoded in a Tablassert knowledge graph. ONLY biolink:predicates are accepted in this field",

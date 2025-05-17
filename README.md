@@ -107,7 +107,7 @@ template: &template
      prefix: str
      suffix: str
      # substrings to remove
-     cfill: str # polars fill_null strategy
+     fill_column: str # polars fill_null strategy
      remove:
        # substrings to remove
        - list[str] 
@@ -115,7 +115,7 @@ template: &template
        # list[dict[str, str]]
        - pattern: str ##
          replacement: str ##
-      dexplode: str # delimiter to split strings by before exploding
+      split_explode: str # delimiter to split strings by before exploding
    obj: ##
    pred: str ## biolink:preds
  reindexing:
