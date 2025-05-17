@@ -92,7 +92,7 @@ template: &template
    p_value: 
    fdr:
    strength:
-   statistics:
+   statistic:
    notes:
  triple: ##
    subj: ##

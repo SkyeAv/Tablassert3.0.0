@@ -1,4 +1,5 @@
 __author__ = "Skye Lane Goetz"
+__status__ = "Development"
 
 
 from atomic_agents.lib.components.system_prompt_generator import SystemPromptGenerator
@@ -7,7 +8,6 @@ from atomic_agents.lib.components.agent_memory import AgentMemory
 from atomic_agents.lib.base.base_io_schema import BaseIOSchema
 from tablassert.io import get_root, read_lines
 from pydantic import Field, constr
-from dataclasses import dataclass
 from functools import lru_cache
 from openai import OpenAI
 from re import split
@@ -68,7 +68,9 @@ def get_user_input() -> dict[str, str]:
 
 
 class AgentInvocationError(Exception):
-    """Raised when an agent fails to process user input"""
+    """
+    Raised when an agent fails to process user input
+    """
 
     pass
 

@@ -37,6 +37,7 @@ dependencies = [
     "instructor>=1.7.9",
     "openai>=1.77.0",
     "ruamel.yaml>=0.18.10",
+    "sqlite-utils>=3.38.0",
 ]
 
 [project.scripts]

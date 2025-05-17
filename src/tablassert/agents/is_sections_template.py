@@ -1,4 +1,5 @@
 __author__ = "Skye Lane Goetz"
+__status__ = "Development"
 
 
 from atomic_agents.lib.base.base_io_schema import BaseIOSchema
@@ -13,12 +14,12 @@ from tablassert.agents.toolkit import (
 )
 
 
-class SectionsTemplateOutput(BaseIOSchema):
+class IsSectionsTemplateOutput(BaseIOSchema):
     """
     SCHEMA ANNOTATIONS:
 
     has_template: A boolean denoting if the user intends to build a template (if the user is building a new section the value here should be "False")
-    template_portion: An string of text pertaining to the template specified in a message (e.g., I want a template using Mono as the subject and the first section to use Alzhemiers Disease as a subject -> "I want a template using Mono as the subject")
+    template_portion: An optional string of text pertaining to the template specified in a message (e.g., I want a template using Mono as the subject and the first section to use Alzhemiers Disease as a subject -> "I want a template using Mono as the subject")
 
     has_section: A boolean denoting if the user intends to build a section (if the user is building a template the value here should be "False")
     sections_portions: An optional list of text pertaining to each individual section specified in a message (e.g., I want the first section to use Alzhemiers Disease as a subject and the second section to use Mono as a subject -> ["I want the first section to use Alzhemiers Disease as a subject", "and the second section to use Mono as a subject"])
@@ -63,7 +64,7 @@ class SectionsTemplateOutput(BaseIOSchema):
     )
     template_portion: constr(min_length=1, strip_whitespace=True) | None = Field(
         default=None,
-        description='An string of text pertaining to the template specified in a message (e.g., "I want a template using Mono as the subject and the first section to use Alzhemiers Disease as a subject" BECOMES "I want a template using Mono as the subject")',
+        description='An string of text pertaining to the template specified in a message (e.g., "I want a template using Mono as the subject and the first section to use Alzhemiers Disease as a subject" -> "I want a template using Mono as the subject")',
     )
     has_section: bool = Field(
         ...,
@@ -77,7 +78,7 @@ class SectionsTemplateOutput(BaseIOSchema):
         | None
     ) = Field(
         default=None,
-        description='An optional list of text pertaining to each individual section specified in a message (e.g., "I want the first section to use Alzhemiers Disease as a subject and the second section to use Mono as a subject" BECOMES ["I want the first section to use Alzhemiers Disease as a subject", "and the second section to use Mono as a subject"])',
+        description='An optional list of text pertaining to each individual section specified in a message (e.g., "I want the first section to use Alzhemiers Disease as a subject and the second section to use Mono as a subject" -> ["I want the first section to use Alzhemiers Disease as a subject", "and the second section to use Mono as a subject"])',
     )
     suggested_questions: (
         conlist(
@@ -97,19 +98,19 @@ class SectionsTemplateOutput(BaseIOSchema):
         return self
 
 
-class SectionsTemplateAgent(LLMAgent):
+class IsSectionsTemplateAgent(LLMAgent):
     def __init__(self):
         super().__init__(
             llm_client=ollama_client(),
             llm="mistral",
-            system_prompt=get_system_prompt("boolean_split", "SectionsTemplateOutput"),
+            system_prompt=get_system_prompt("boolean_split", "IsSectionsTemplateOutput"),
             input_schema=UserInput,
-            output_schema=SectionsTemplateOutput,
+            output_schema=IsSectionsTemplateOutput,
         )
 
 
-def run_sections_template_agent():
-    agent = SectionsTemplateAgent()
+def run_is_sections_template_agent():
+    agent = IsSectionsTemplateAgent()
     user_input = get_user_input()
     try:
         print(agent.invoke(user_input))
@@ -117,4 +118,4 @@ def run_sections_template_agent():
         print(e)
 
 
-run_sections_template_agent()
+run_is_sections_template_agent()

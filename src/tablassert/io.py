@@ -1,4 +1,5 @@
 __author__ = "Skye Lane Goetz"
+__status__ = "Development"
 
 
 from importlib.metadata import files, PackageNotFoundError

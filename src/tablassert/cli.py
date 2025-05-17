@@ -1,4 +1,5 @@
 __author__ = "Skye Lane Goetz"
+__status__ = "Prototype"
 
 
 from tablassert.io import load_sections
