@@ -371,9 +371,20 @@ class Provenance(BaseModel):
     )
 
 
+# Fallback arg specs for built-ins that can't be introspected
+MATH_FALLBACK = {
+    # "fn": (min_args, max_args)
+    "log": (1, 2),  # log(x) or log(x, base)
+    "sin": (1, 1),
+    "cos": (1, 1),
+    "pow": (2, 2),
+    # add more as needed
+}
+
+
 class MathParams(BaseModel):
     attr: constr(min_length=1, strip_whitespace=True) = Field(
-        ..., description="A math module atrribute used to process data"
+        ..., description="A valid math module atrribute used to process data"
     )
     args: conlist(item_type=(float | None), min_length=1) = Field(
         ...,
@@ -406,20 +417,27 @@ class MathParams(BaseModel):
     @model_validator(mode="after")
     def check_args_length(self):
         attr = self.attr
-        func = getattr(math, attr)
-        sig = inspect.signature(func)
-        params = sig.parameters
-        max_args = len(params)
-        min_args = sum(
-            1
-            for param in params.values()
-            if param.default == inspect.Parameter.empty
-            and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
-        )
         specified = len(self.args)
-        if max_args < specified or min_args > specified:
-            msg = f"{attr} requires {min_args}-{max_args} arguments, {specified} specified"
-            raise ValueError(msg)
+        try:
+            func = getattr(math, attr)
+            sig = inspect.signature(func)
+            params = sig.parameters.values()
+            max_args = len(params)
+            min_args = sum(
+                1
+                for param in params
+                if param.default == inspect.Parameter.empty
+                and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
+            )
+        except (ValueError, TypeError):
+            # Fallback to manually defined signatures for built-ins
+            if attr not in MATH_FALLBACK:
+                raise ValueError(f"Unknown or unsupported math function: {attr}")
+            min_args, max_args = MATH_FALLBACK[attr]
+        if specified < min_args or specified > max_args:
+            raise ValueError(
+                f"{attr} requires {min_args}-{max_args} arguments, but {specified} were specified"
+            )
         return self
 
 
