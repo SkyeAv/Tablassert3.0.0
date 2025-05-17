@@ -24,7 +24,7 @@ class TextBasedPDFOutput(BaseIOSchema):
 
     params: Parameters specifying how Tablassert should first treat/process said data
         ext: The current file extension
-        pages: A list of pages abiding by the regex \"^(\d+|(\d+)(\-(\d+|end))?)(\,(\d+|(\d+)(\-(\d+|end))?))*$\" for the pages parameter in Camelot's read_pdf
+        pages: A comma delimited list (ENSURE THIS VALUE IS PYTHON TYPE STRING) of pages abiding by the regex \"^(\d+|(\d+)(\-(\d+|end))?)(\,(\d+|(\d+)(\-(\d+|end))?))*$\" for the pages parameter in Camelot's read_pdf (DO NOT UNDER ANY CIRCUMSTANCES ADD "START-" BEFORE or "-END" AFTER ANY PAGES IN THIS FIELD)
         flavor: Either lattice or stream for the flavor parameter in Camelot's read_pdf
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
@@ -176,8 +176,8 @@ class ParamsAgent(LLMAgent):
 
 def run_params_agent():
     agent = ParamsAgent()
-    agent.register_extention_context()
     try:
+        agent.register_extention_context()
         print(agent.invoke(USER_INPUT))
     except AgentInvocationError as e:
         print(e)

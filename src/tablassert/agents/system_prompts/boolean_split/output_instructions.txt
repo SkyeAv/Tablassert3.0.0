@@ -1,0 +1,3 @@
+Only output a single valid JSON object representing the SCHEMA block with strictly valid fields
+Do not include explanations or comments
+Do not leave any field blank or use placeholder values like "string" unless its permitted by the pydantic model and omitted by the user

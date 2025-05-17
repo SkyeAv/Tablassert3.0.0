@@ -28,7 +28,9 @@ def get_system_prompt(subdir: str, SCHEMA: str | None = None) -> dict[str, list[
         system_prompt = {
             "background": [x.replace("SCHEMA", SCHEMA) for x in read_lines(background)],
             "steps": [x.replace("SCHEMA", SCHEMA) for x in read_lines(steps)],
-            "output_instructions": [x.replace("SCHEMA", SCHEMA) for x in read_lines(output_instructions)],
+            "output_instructions": [
+                x.replace("SCHEMA", SCHEMA) for x in read_lines(output_instructions)
+            ],
         }
     else:
         system_prompt = {
@@ -105,8 +107,8 @@ class LLMAgent:
             raise AgentInvocationError(e)
 
 
-class AdaptTokenizer():
+class AdaptTokenizer:
 
     def invoke(self, text) -> str:
-        tokens = [t for t in split(r'\W+', text) if t]
+        tokens = [t for t in split(r"\W+", text) if t]
         return " ".join(tokens)
