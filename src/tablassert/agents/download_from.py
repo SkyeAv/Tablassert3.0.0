@@ -56,13 +56,9 @@ class DownloadFromAgent(LLMAgent):
         )
 
 
-def run_download_from_agent():
+def run_download_from_agent(user_input: dict[str, object]) -> DownloadFromOutput:
     agent = DownloadFromAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_download_from_agent()
+        raise e

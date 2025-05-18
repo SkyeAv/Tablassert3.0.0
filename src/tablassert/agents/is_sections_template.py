@@ -7,7 +7,6 @@ from pydantic import Field, conlist, constr, model_validator
 from tablassert.agents.toolkit import (
     AgentInvocationError,
     get_system_prompt,
-    get_user_input,
     ollama_client,
     UserInput,
     LLMAgent,
@@ -22,7 +21,7 @@ class IsSectionsTemplateOutput(BaseIOSchema):
     template_portion: An optional string of text pertaining to the template specified in a message (e.g., I want a template using Mono as the subject and the first section to use Alzhemiers Disease as a subject -> "I want a template using Mono as the subject")
 
     has_section: A boolean denoting if the user intends to build a section (if the user is building a template the value here should be "False")
-    sections_portions: An optional list of text pertaining to each individual section specified in a message (e.g., I want the first section to use Alzhemiers Disease as a subject and the second section to use Mono as a subject -> ["I want the first section to use Alzhemiers Disease as a subject", "and the second section to use Mono as a subject"])
+    sections_portionss: An optional list of text pertaining to each individual section specified in a message (e.g., I want the first section to use Alzhemiers Disease as a subject and the second section to use Mono as a subject -> ["I want the first section to use Alzhemiers Disease as a subject", "and the second section to use Mono as a subject"])
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
 
@@ -74,7 +73,7 @@ class IsSectionsTemplateOutput(BaseIOSchema):
         ...,
         description='A boolean denoting if the user intends to build a section (if the user is building a template the value here should be "False")',
     )
-    sections_portion: (
+    sections_portions: (
         conlist(
             item_type=constr(min_length=1, strip_whitespace=True),
             min_length=1,
@@ -115,13 +114,9 @@ class IsSectionsTemplateAgent(LLMAgent):
         )
 
 
-def run_is_sections_template_agent():
+def run_is_sections_template_agent(user_input: dict[str, object]) -> IsSectionsTemplateOutput:
     agent = IsSectionsTemplateAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_is_sections_template_agent()
+        raise e
