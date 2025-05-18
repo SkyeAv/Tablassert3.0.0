@@ -27,13 +27,10 @@ class InOrganismOutput(BaseIOSchema):
     ONLY ACCEPT A NCBITaxon: curie FOR in_organism
     """
 
-    in_organism: (
-        constr(
-            min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
-        )
-        | None
+    in_organism: constr(
+        min_length=8, pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$", strip_whitespace=True
     ) = Field(
-        default=None,
+        ...,
         description="A NCBITaxon: curie denoting which organism the scientific finding relates to/was discovered in. NCBITaxon:9606 denotes humans for example",
     )
     suggested_questions: (

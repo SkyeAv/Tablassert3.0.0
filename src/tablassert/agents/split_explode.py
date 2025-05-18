@@ -14,22 +14,18 @@ from tablassert.agents.toolkit import (
 )
 
 
-class PrefixOutput(BaseIOSchema):
+class SplitExplodeOutput(BaseIOSchema):
     """
     SCHEMA ANNOTATIONS:
 
-    prefix: A prefix to add to the begining of the values denoted by a node before they're processed/passed to databases/etc.. (this can be a string of literally anything and usually is the same as chat_msg)
+    split_explode: A field specificying which delimiter to split the string encoded in a node by into a list before exploding values in that list thier own respective nodes, like with a pandas or polars explode column (this can be a string of literally anything and usually is the same as chat_msg)
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about (do NOT use empty strings here)
-
-    IMPORTANT CLARIFICATIONS:
-
-    INCLUDE ALL SPECIAL CHARACTERS ESPECIALLY ":" IN PREFIX IF THEYRE IN A PREFIX
     """
 
-    prefix: constr(min_length=1, strip_whitespace=True) = Field(
+    split_explode: constr(min_length=1) = Field(
         ...,
-        description="A prefix to add to the begining of the values denoted by a node before they're processed/passed to databases/etc..",
+        description="A field specificying which delimiter to split the string encoded in a node by into a list before exploding values in that list thier own respective nodes, like with a pandas or polars explode column",
     )
     suggested_questions: (
         conlist(
@@ -49,19 +45,19 @@ class PrefixOutput(BaseIOSchema):
         return self
 
 
-class PrefixAgent(LLMAgent):
+class SplitExplodeAgent(LLMAgent):
     def __init__(self):
         super().__init__(
             llm_client=ollama_client(),
             llm="mistral",
-            system_prompt=get_system_prompt("default", "PrefixOutput"),
+            system_prompt=get_system_prompt("default", "SplitExplodeOutput"),
             input_schema=UserInput,
-            output_schema=PrefixOutput,
+            output_schema=SplitExplodeOutput,
         )
 
 
-def run_prefix_agent():
-    agent = PrefixAgent()
+def run_split_explode_agent():
+    agent = SplitExplodeAgent()
     user_input = get_user_input()
     try:
         print(agent.invoke(user_input))
@@ -69,4 +65,4 @@ def run_prefix_agent():
         print(e)
 
 
-run_prefix_agent()
+run_split_explode_agent()

@@ -22,12 +22,12 @@ class MathOutput(BaseIOSchema):
 
     math: A field denoting specific matheatical operations to preform on the data stores in an attribute
         attr: A string of a valid python math module atrribute used to process data (DONT INCLUDE "math." ONLY INCLUDE THE ATTR LIKE "sqrt")
-        args: A list[Union[str, None]] of arguments for to pass to the aforementioned math module attribute, use null in place of the data you wish to tranform 
+        args: A list[Union[str, None]] of arguments for to pass to the aforementioned math module attribute, use null in place of the data you wish to tranform
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
 
     IMPORTANT CAVEATS:
-    
+
     "args" MUST contain at least one None value
     "args" MUST have a length equal to the # of arguments the math module attribute requires
     ABSOLUTELY DO NOT CHANGE THE ATTRIBUTE OR DEFAULT TO "sqrt"
@@ -35,7 +35,7 @@ class MathOutput(BaseIOSchema):
     NEVER RETURN "\"None\"" and return "None" INSTEAD
 
     SUPER IMPORTANT CAVEATS:
-    
+
     For "args" if there is only one agrument return [None] otherwise return something like [2, None] for "log 2 the values"
     """
 

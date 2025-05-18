@@ -16,15 +16,15 @@ from tablassert.agents.toolkit import (
 
 class RemoveSubstringsOutput(BaseIOSchema):
     """
-    From the following message, extract a list of *all* whitespace-separated substrings into the `remove` field. 
-    Keep them exactly as they appear — including symbols like `"`, `_`, etc. 
+    From the following message, extract a list of *all* whitespace-separated substrings into the `remove` field.
+    Keep them exactly as they appear — including symbols like `"`, `_`, etc.
     Do **not** deduplicate, clean, or ignore punctuation.
 
     Also return an optional `suggested_questions` field, or `null` if there are no clarifying questions.
     """
 
-    remove: conlist(item_type=constr(min_length=1), min_length=1) | None = Field(
-        default=None,
+    remove: conlist(item_type=constr(min_length=1), min_length=1) = Field(
+        ...,
         description='A list of substrings to remove by applying re.sub(substring, "", string) to',
     )
     suggested_questions: (

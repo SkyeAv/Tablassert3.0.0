@@ -107,7 +107,9 @@ class IsSectionsTemplateAgent(LLMAgent):
         super().__init__(
             llm_client=ollama_client(),
             llm="mistral",
-            system_prompt=get_system_prompt("boolean_split", "IsSectionsTemplateOutput"),
+            system_prompt=get_system_prompt(
+                "boolean_split", "IsSectionsTemplateOutput"
+            ),
             input_schema=UserInput,
             output_schema=IsSectionsTemplateOutput,
         )

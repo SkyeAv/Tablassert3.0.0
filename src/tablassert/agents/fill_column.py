@@ -34,19 +34,16 @@ class FillColumnOutput(BaseIOSchema):
     one
     """
 
-    fill_column: (
-        Literal[
-            "forward",
-            "backward",
-            "min",
-            "max",
-            "mean",
-            "zero",
-            "one",
-        ]
-        | None
-    ) = Field(
-        default=None,
+    fill_column: Literal[
+        "forward",
+        "backward",
+        "min",
+        "max",
+        "mean",
+        "zero",
+        "one",
+    ] = Field(
+        ...,
         description="A valid polars fill_null strategy parameter to fill the null values in a given column",
     )
     suggested_questions: (

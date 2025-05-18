@@ -618,7 +618,9 @@ class Node(BaseModel):
     def cast_lower(cls, x: object):
         return str(x).lower()
 
-    @field_validator("prefix", "suffix", "value", "remove", "split_explode", mode="before")
+    @field_validator(
+        "prefix", "suffix", "value", "remove", "split_explode", mode="before"
+    )
     @classmethod
     def cast_string(cls, x: object):
         if isinstance(x, list):

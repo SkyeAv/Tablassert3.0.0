@@ -26,8 +26,8 @@ class RegexOperationsOutput(BaseIOSchema):
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about (do NOT use empty strings here)
     """
 
-    regex: conlist(item_type=Regex, min_length=1) | None = Field(
-        default=None,
+    regex: conlist(item_type=Regex, min_length=1) = Field(
+        ...,
         description="A list of regex operations to apply re.sub(pattern, replacement, string) to",
     )
     suggested_questions: (

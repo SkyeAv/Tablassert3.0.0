@@ -14,32 +14,29 @@ from tablassert.agents.toolkit import (
 )
 
 
-class PrioritizeOutput(BaseIOSchema):
+class AvoidOutput(BaseIOSchema):
     """
     SCHEMA ANNOTATIONS:
 
-    prioritize:A list of biolink:<Class> curies (e.g., biolink:Gene or biolink:OrganismTaxon) that Tablasserts databases should prioritize when mapping strings to CURIES
+    avoid: A list of biolink:<Class> curies (e.g., biolink:Gene or biolink:OrganismTaxon) that Tablasserts databases should Avoid when mapping strings to CURIES
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about (do NOT use empty strings here)
 
     IMPORTANT CLARIFICATIONS:
 
-    ONLY ACCEPT A biolink:<Class> curie FOR prioritize
+    ONLY ACCEPT A biolink:<Class> curie FOR avoid
     """
 
-    prioritize: (
-        conlist(
-            item_type=constr(
-                min_length=10,
-                pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$",
-                strip_whitespace=True,
-            ),
-            min_length=1,
-        )
-        | None
+    avoid: conlist(
+        item_type=constr(
+            min_length=10,
+            pattern=r"^[A-Za-z]+:[A-Za-z0-9./-]+$",
+            strip_whitespace=True,
+        ),
+        min_length=1,
     ) = Field(
-        default=None,
-        description="A list of biolink:<Class> curies that Tablasserts databases should prioritize when mapping strings to CURIES",
+        ...,
+        description="A list of biolink:<Class> curies that Tablasserts databases should avoid when mapping strings to CURIES",
     )
     suggested_questions: (
         conlist(
@@ -59,19 +56,19 @@ class PrioritizeOutput(BaseIOSchema):
         return self
 
 
-class PrioritizeAgent(LLMAgent):
+class AvoidAgent(LLMAgent):
     def __init__(self):
         super().__init__(
             llm_client=ollama_client(),
             llm="mistral",
-            system_prompt=get_system_prompt("default", "PrioritizeOutput"),
+            system_prompt=get_system_prompt("default", "AvoidOutput"),
             input_schema=UserInput,
-            output_schema=PrioritizeOutput,
+            output_schema=AvoidOutput,
         )
 
 
-def run_prioritize_agent():
-    agent = PrioritizeAgent()
+def run_avoid_agent():
+    agent = AvoidAgent()
     user_input = get_user_input()
     try:
         print(agent.invoke(user_input))
@@ -79,4 +76,4 @@ def run_prioritize_agent():
         print(e)
 
 
-run_prioritize_agent()
+run_avoid_agent()

@@ -27,8 +27,8 @@ class SuffixOutput(BaseIOSchema):
     INCLUDE ALL SPECIAL CHARACTERS ESPECIALLY ":" IN SUFFIX IF THEYRE IN A SUFFIX
     """
 
-    suffix: constr(min_length=1, strip_whitespace=True) | None = Field(
-        default=None,
+    suffix: constr(min_length=1, strip_whitespace=True) = Field(
+        ...,
         description="A suffix to add to the end of the values denoted by a node before they're processed/passed to databases/etc..",
     )
     suggested_questions: (
