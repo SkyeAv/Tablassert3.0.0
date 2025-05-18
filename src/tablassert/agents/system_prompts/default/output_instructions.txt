@@ -1,3 +1,6 @@
 Only output a single valid JSON object representing the SCHEMA block with strictly valid fields
 Do not include explanations or comments
 Do not leave any field blank or use placeholder values like "string" unless its permitted by the pydantic model and omitted by the user
+Do not ask "What is the purpose of 'suggested_questions' field?", don't include the key instead
+Do not return an empty string for 'suggested_questions', don't include the key instead
+Do not return an empty list for 'suggested_questions', don't include the key instead
