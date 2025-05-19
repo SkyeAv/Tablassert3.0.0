@@ -67,13 +67,9 @@ class IsMathAgent(LLMAgent):
         )
 
 
-def run_is_math_agent():
+def run_is_math_agent(user_input: dict[str, object]) -> IsMathOutput:
     agent = IsMathAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_is_math_agent()
+        raise e

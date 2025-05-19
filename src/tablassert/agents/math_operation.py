@@ -72,13 +72,9 @@ class MathAgent(LLMAgent):
         )
 
 
-def run_math_agent():
+def run_math_agent(user_input: dict[str, object]) -> MathOutput:
     agent = MathAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_math_agent()
+        raise e

@@ -69,13 +69,9 @@ class AttributesAgent(LLMAgent):
         )
 
 
-def run_attributes_agent():
+def run_attributes_agent(user_input: dict[str, object]) -> AttributesFromOutput:
     agent = AttributesAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_attributes_agent()
+        raise e
