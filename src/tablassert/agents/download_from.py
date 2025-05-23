@@ -18,8 +18,13 @@ class DownloadFromOutput(BaseIOSchema):
     SCHEMA ANNOTATIONS:
 
     download_from: A url telling Tablassert where to download the data you want to process from
+    - DO NOT MAKE UP URLS NOT SPECIFIED IN THE chat_msg
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
+
+    IMPORTANT INFO:
+
+    download_from IS USUALLY THE ONLY URL IN THE MESSAGE
     """
 
     download_from: HttpUrl = Field(
@@ -28,8 +33,8 @@ class DownloadFromOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None

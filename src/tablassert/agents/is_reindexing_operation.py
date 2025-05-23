@@ -19,11 +19,12 @@ class IsReindexingOperationOutput(BaseIOSchema):
 
     has_reindexing: A boolean denoting if the "reindexing" operation (A field containing any useful reindexing operations for Tablassert to Preform) is implied in the message
     reindexing_operations: An optional list of text pertaining to each individual reindexing operation specified in a message (e.g., "First I want to filter the p-value less than 0.05 then remove anything the p-value column that equals the 0.00" -> ["First I want to filter the p-value less than 0.05", "then remove anything the p-value column that equals the 0.00"])
+    - IF has_reindexing == True THEN reindexing_operations IS REQUIRED
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
     """
 
-    has_reindex: bool = Field(
+    has_reindexing: bool = Field(
         ...,
         description='A boolean denoting if the "reindexing" operation (A field containing any useful reindexing operations for Tablassert to Preform) is implied in the message',
     )
@@ -39,8 +40,8 @@ class IsReindexingOperationOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None

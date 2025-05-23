@@ -27,15 +27,17 @@ from tablassert.agents.prefix import run_prefix_agent
 from tablassert.agents.suffix import run_suffix_agent
 from tablassert.agents.avoid import run_avoid_agent
 from tablassert.agents.pred import run_pred_agent
-from tablassert.agents.toolkit import UserInput
+
+# UserInput is obsolete now
+from tablassert.agents.toolkit import get_user_input
 from tablassert.cfg import Section, TableConfig
 
 
 class TableConfigAgent:
 
     @classmethod
-    def msg_to_user_input(cls, x: object) -> UserInput:
-        return UserInput(chat_msg=str(x))
+    def msg_to_user_input(cls, x: object) -> dict[str, str]:
+        return {"chat_msg": str(x)}
 
     @classmethod
     def extend_questions(cls, x: object, suggested_questions: list[str]) -> list[str]:
@@ -172,7 +174,7 @@ class TableConfigAgent:
         for node, portion in node_portions.items():
             inner_node_params = {}
             node_input = cls.msg_to_user_input(portion)
-            NodeParamsOutput = run_node_params_agent
+            NodeParamsOutput = run_node_params_agent(node_input)
             mode = NodeParamsOutput.mode
             value = NodeParamsOutput.value
             node_params_questions = NodeParamsOutput.suggested_questions
@@ -316,7 +318,7 @@ class TableConfigAgent:
                 reindexing_portion.append(reindexing_intermediate.model_dump())
             reindexing = {"reindexing": reindexing_portion}
             section.update(reindexing)
-        return section
+        return section, suggested_questions
 
     @classmethod
     def invoke(cls, user_input: dict[str, object]) -> TableConfig:
@@ -345,4 +347,13 @@ class TableConfigAgent:
                 sections.append(section)
                 suggested_questions.append(questions)
             table_config.update({"sections": sections})
+        print("\n")
         print(table_config)
+        print("\n")
+        print(suggested_questions)
+
+
+if __name__ == "__main__":
+    agent = TableConfigAgent
+    user_input = get_user_input()
+    TableConfigAgent.invoke(user_input)

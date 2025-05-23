@@ -19,6 +19,7 @@ class IsMathOutput(BaseIOSchema):
 
     has_math: A boolean denoting if the "math" attribute (An optional field denoting specific matheatical operations to preform on the data stores in an attribute) is implied in the message
     math_portions: An optional list of text pertaining to each individual mathematical operation specified in a message (e.g., "First I want to square root the p-value then negative log10 the p_value" -> ["First I want to square root the p-value", "then negative log10 the p_value"])
+    - IF has_math == True THEN math_portions IS REQUIRED
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
     """
@@ -39,8 +40,8 @@ class IsMathOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None

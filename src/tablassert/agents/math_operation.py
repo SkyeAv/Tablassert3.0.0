@@ -44,8 +44,8 @@ class MathOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None
@@ -71,7 +71,7 @@ class MathAgent(LLMAgent):
         )
 
 
-def run_math_agent(user_input: dict[str, object]) -> MathOutput:
+def run_math_operation_agent(user_input: dict[str, object]) -> MathOutput:
     agent = MathAgent()
     try:
         return agent.invoke(user_input)

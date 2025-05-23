@@ -18,37 +18,43 @@ class IsPrecleaningOutput(BaseIOSchema):
     SCHEMA ANNOTATIONS:
 
     has_in_organism: A boolean denoting if the "in_organism" attribute (A NCBITaxon: curie denoting which organism the scientific finding relates to/was discovered in. NCBITaxon:9606 denotes humans for example) is implied in the message
-    in_organism_portion: <See Important Instructions>
+    in_organism_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_prioritize: A boolean denoting if the "prioritize" attribute (A list of biolink: curies that Tablasserts databases should prioritize when mapping strings to CURIES) is implied in the message
-    prioritize_portion: <See Important Instructions>
+    prioritize_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_avoid: A boolean denoting if the "avoid" attribute (A list of biolink: curies that Tablasserts databases should avoid when mapping strings to CURIES) is implied in the message
-    avoid_portion: <See Important Instructions>
+    avoid_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_prefix: A boolean denoting if the "prefix" attribute (A prefix to add to the begining of the values denoted by a node before they're processed/passed to databases/etc..) is implied in the message
-    prefix_portion: <See Important Instructions>
+    prefix_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_suffix: A boolean denoting if the "suffix" attribute (A suffix to add to the end of the values denoted by a node before they're processed/passed to databases/etc..) is implied in the message
-    suffix_portion: <See Important Instructions>
+    suffix_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_fill_column: A boolean denoting if the "fill_column" attribute (A valid polars fill_null strategy parameter to fill the null values in a given column) is implied in the message
-    fill_column_portion: <See Important Instructions>
+    fill_column_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_remove: A boolean denoting if the "remove" attribute (Substrings to apply re.sub(substring, "", string) to across the node data) is implied in the message
-    remove_portion: <See Important Instructions>
+    remove_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_regex: A boolean denoting if the "regex" attribute (Regex to apply re.sub(pattern, replacement, string) to across the node data) is implied in the message
-    regex_portion: <See Important Instructions>
+    regex_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     has_split_explode: A boolean denoting if the "split_explode" attribute (A field specificying which delimiter to split the string encoded in a node by into a list before exploding values in that list thier own respective nodes, like with a pandas or polars explode column) is implied in the message
-    split_explode_portion: <See Important Instructions>
+    split_explode_portion: THIS IS AN OPTIONAL FIELD... <See Important Instructions>
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
 
-    IMPORTANT INSTRUCTIONS:
+    HYPER IMPORTANT INSTRUCTIONS:
 
     Any "<FACTOR>_portion" Key is string of text related to the factor specified in a message (e.g., "I want to use Mono as the factor and focus on Alzheimer's Disease as the other factor" -> "I want to use Mono as the factor").
+    - IF has_<FACTOR> == True THEN <FACTOR>_portion IS REQUIRED
+
+    CRITICAL INFO:
+
+    IF has_<FACTOR> == True THEN <FACTOR>_portion IS REQUIRED AND <FACTOR>_portion CANNOT BE None
+    IT IS ALSO OKAY FOR ALL OF THESE TO BE FALSE. THAT IS NORMAL.
     """
 
     has_in_organism: bool = Field(
@@ -116,8 +122,8 @@ class IsPrecleaningOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None

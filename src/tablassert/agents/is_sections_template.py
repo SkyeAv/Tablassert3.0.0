@@ -19,9 +19,12 @@ class IsSectionsTemplateOutput(BaseIOSchema):
 
     has_template: A boolean denoting if the user intends to build a template (if the user is building a new section the value here should be "False")
     template_portion: An optional string of text pertaining to the template specified in a message (e.g., I want a template using Mono as the subject and the first section to use Alzhemiers Disease as a subject -> "I want a template using Mono as the subject")
+    - IF has_template == True THEN template_portion IS REQUIRED
 
-    has_section: A boolean denoting if the user intends to build a section (if the user is building a template the value here should be "False")
-    sections_portionss: An optional list of text pertaining to each individual section specified in a message (e.g., I want the first section to use Alzhemiers Disease as a subject and the second section to use Mono as a subject -> ["I want the first section to use Alzhemiers Disease as a subject", "and the second section to use Mono as a subject"])
+    has_sections: A boolean denoting if the user intends to build a section (if the user is building a template the value here should be "False")
+    sections_portions: A REQUIRED list of text pertaining to each individual section specified in a message (e.g., I want the first section to use Alzhemiers Disease as a subject and the second section to use Mono as a subject -> ["I want the first section to use Alzhemiers Disease as a subject", "and the second section to use Mono as a subject"])
+    - THERE IS AT LEAST ONE SECTION PER MESSAGE
+    - IF has_sections == True THEN sections_portions IS REQUIRED
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
 
@@ -69,7 +72,7 @@ class IsSectionsTemplateOutput(BaseIOSchema):
         default=None,
         description='An string of text pertaining to the template specified in a message (e.g., "I want a template using Mono as the subject and the first section to use Alzhemiers Disease as a subject" -> "I want a template using Mono as the subject")',
     )
-    has_section: bool = Field(
+    has_sections: bool = Field(
         ...,
         description='A boolean denoting if the user intends to build a section (if the user is building a template the value here should be "False")',
     )
@@ -85,8 +88,8 @@ class IsSectionsTemplateOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None

@@ -36,8 +36,8 @@ class TextBasedPDFOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None
@@ -65,11 +65,16 @@ class DelimitedFileOutput(BaseIOSchema):
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
 
-    IMPORTANT CAVEAT:
+    HYPER IMPORTANT REQUIRED CAVEAT:
 
     Use at least one of the following keys in "params": "start", "end", or "rows"
     You may not use both "rows" and "start/"end" together
     If both "start" and "end" are used, the range must be at least 2 rows
+
+    HELPFUL INFO:
+
+    IF ext == "csv" THEN delimiter IS ","
+    IF ext == "tsv" THEN delimiter IS "\t"
     """
 
     params: DelimitedFile = Field(
@@ -78,8 +83,8 @@ class DelimitedFileOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None
@@ -107,7 +112,7 @@ class ExcelSpreadSheetOutput(BaseIOSchema):
 
     suggested_questions: An optional list of suggested follow up questions to clarify any JSON output you're still unsure about
 
-    IMPORTANT CAVEAT:
+    HYPER IMPORTANT REQUIRED CAVEAT:
 
     Use at least one of the following keys in "params": "start", "end", or "rows"
     You may not use both "rows" and "start/"end" together
@@ -120,8 +125,8 @@ class ExcelSpreadSheetOutput(BaseIOSchema):
     )
     suggested_questions: (
         conlist(
-            item_type=constr(min_length=1, strip_whitespace=True),
-            min_length=1,
+            item_type=constr(strip_whitespace=True),
+            min_length=0,
             max_length=3,
         )
         | None
@@ -171,11 +176,11 @@ class ParamsAgent(LLMAgent):
 
 
 def run_params_agent(user_input: dict[str, object]) -> object:
-    agent = ParamsAgent()
     global USER_INPUT
     USER_INPUT = user_input
     global FILE_EXTENSION
-    FILE_EXTENSION: str = run_ext_engine(USER_INPUT.chat_msg)
+    FILE_EXTENSION = run_ext_engine(USER_INPUT.get("chat_msg"))
+    agent = ParamsAgent()
     try:
         agent.register_extention_context()
         return agent.invoke(USER_INPUT)
