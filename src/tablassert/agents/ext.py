@@ -7,14 +7,13 @@ from adapt.engine import IntentDeterminationEngine
 from adapt.intent import IntentBuilder
 from tablassert.io import read_lines
 from functools import lru_cache
-import sys
 
 
 @lru_cache(maxsize=None)
 def ext_engine() -> IntentDeterminationEngine:
     engine = IntentDeterminationEngine()
     root: str = KEYWORDS
-    keyword_file = KEYWORDS + "ext_keywords.txt"
+    keyword_file = root + "ext_keywords.txt"
     ext_keywords = read_lines(keyword_file)
     for kw in ext_keywords:
         engine.register_entity(kw, "extension")

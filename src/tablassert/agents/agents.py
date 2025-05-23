@@ -2,7 +2,9 @@ __author__ = "Skye Lane Goetz"
 __status__ = "Development"
 
 
-from tablassert.agents.is_precleaning_operation import run_is_precleaning_operation_agent
+from tablassert.agents.is_precleaning_operation import (
+    run_is_precleaning_operation_agent,
+)
 from tablassert.agents.is_reindexing_operation import run_is_reindexing_operation_agent
 from tablassert.agents.is_sections_template import run_is_sections_template_agent
 from tablassert.agents.is_subject_object import run_is_subject_object_agent
@@ -162,7 +164,9 @@ class TableConfigAgent:
         subject_portion = IsSubjectObjectOutput.subject_portion
         object_portion = IsSubjectObjectOutput.object_portion
         is_subject_object_questions = IsSubjectObjectOutput
-        suggested_questions = cls.extend_questions(is_subject_object_questions, suggested_questions)
+        suggested_questions = cls.extend_questions(
+            is_subject_object_questions, suggested_questions
+        )
         node_portions = {"subj": subject_portion, "obj": object_portion}
         nodes = {}
         for node, portion in node_portions.items():
@@ -172,11 +176,15 @@ class TableConfigAgent:
             mode = NodeParamsOutput.mode
             value = NodeParamsOutput.value
             node_params_questions = NodeParamsOutput.suggested_questions
-            suggested_questions = cls.extend_questions(node_params_questions, suggested_questions)
+            suggested_questions = cls.extend_questions(
+                node_params_questions, suggested_questions
+            )
             inner_node_params.update({"mode": mode, "value": value})
             IsPrecleaningOutput = run_is_precleaning_operation_agent(node_input)
             is_precleaning_questions = IsPrecleaningOutput.suggested_questions
-            suggested_questions = cls.extend_questions(is_subject_object_questions, suggested_questions)
+            suggested_questions = cls.extend_questions(
+                is_precleaning_questions, suggested_questions
+            )
             has_in_organism = IsPrecleaningOutput.has_in_organism
             if has_in_organism:
                 in_organism_portion = IsPrecleaningOutput.in_organism_portion
@@ -185,16 +193,20 @@ class TableConfigAgent:
                 in_organism = InOrganismOutput.in_organism
                 inner_node_params.update({"in_organism": in_organism})
                 in_organism_questions = InOrganismOutput.suggested_questions
-                suggested_questions = cls.extend_questions(in_organism_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    in_organism_questions, suggested_questions
+                )
             has_prioritize = IsPrecleaningOutput.has_prioritize
             if has_prioritize:
                 prioritize_portion = IsPrecleaningOutput.prioritize_portion
                 prioritize_input = cls.msg_to_user_input(prioritize_portion)
                 PrioritizeOutput = run_prioritize_agent(prioritize_input)
-                = PrioritizeOutput.
-                inner_node_params.update({"prioritize":})
+                prioritize = PrioritizeOutput.prioritize
+                inner_node_params.update({"prioritize": prioritize})
                 prioritize_questions = PrioritizeOutput.suggested_questions
-                suggested_questions = cls.extend_questions(prioritize_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    prioritize_questions, suggested_questions
+                )
             has_avoid = IsPrecleaningOutput.has_avoid
             if has_avoid:
                 avoid_portion = IsPrecleaningOutput.avoid_portion
@@ -203,7 +215,9 @@ class TableConfigAgent:
                 avoid = AvoidOutput.avoid
                 inner_node_params.update({"avoid": avoid})
                 avoid_questions = AvoidOutput.suggested_questions
-                suggested_questions = cls.extend_questions(avoid_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    avoid_questions, suggested_questions
+                )
             has_prefix = IsPrecleaningOutput.has_prefix
             if has_prefix:
                 prefix_portion = IsPrecleaningOutput.prefix_portion
@@ -212,7 +226,9 @@ class TableConfigAgent:
                 prefix = PrefixOutput.prefix
                 inner_node_params.update({"prefix": prefix})
                 prefix_questions = PrefixOutput.suggested_questions
-                suggested_questions = cls.extend_questions(prefix_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    prefix_questions, suggested_questions
+                )
             has_suffix = IsPrecleaningOutput.has_suffix
             if has_suffix:
                 suffix_portion = IsPrecleaningOutput.suffix_portion
@@ -221,7 +237,9 @@ class TableConfigAgent:
                 suffix = SuffixOutput.suffix
                 inner_node_params.update({"suffix": suffix})
                 suffix_questions = SuffixOutput.suggested_questions
-                suggested_questions = cls.extend_questions(suffix_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    suffix_questions, suggested_questions
+                )
             has_fill_column = IsPrecleaningOutput.has_fill_column
             if has_fill_column:
                 fill_column_portion = IsPrecleaningOutput.fill_column_portion
@@ -230,7 +248,9 @@ class TableConfigAgent:
                 fill_column = FillColumnOutput.fill_column
                 inner_node_params.update({"fill_column": fill_column})
                 fill_column_questions = FillColumnOutput.suggested_questions
-                suggested_questions = cls.extend_questions(fill_column_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    fill_column_questions, suggested_questions
+                )
             has_remove = IsPrecleaningOutput.has_remove
             if has_remove:
                 remove_portion = IsPrecleaningOutput.remove_portion
@@ -239,7 +259,9 @@ class TableConfigAgent:
                 remove = RemoveSubstringsOutput.remove
                 inner_node_params.update({"remove": remove})
                 remove_substrings_questions = RemoveSubstringsOutput.suggested_questions
-                suggested_questions = cls.extend_questions(remove_substrings_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    remove_substrings_questions, suggested_questions
+                )
             has_regex = IsPrecleaningOutput.has_regex
             if has_regex:
                 regex_portion = IsPrecleaningOutput.regex_portion
@@ -248,7 +270,9 @@ class TableConfigAgent:
                 regex = RegexOperationsOutput.regex
                 inner_node_params.update({"regex": regex})
                 regex_operations_questions = RegexOperationsOutput.suggested_questions
-                suggested_questions = cls.extend_questions(regex_operations_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    regex_operations_questions, suggested_questions
+                )
             has_split_explode = IsPrecleaningOutput.has_split_explode
             if has_split_explode:
                 split_explode_portion = IsPrecleaningOutput.split_explode_portion
@@ -257,7 +281,9 @@ class TableConfigAgent:
                 split_explode = SplitExplodeOutput.split_explode
                 inner_node_params.update({"split_explode": split_explode})
                 split_explode_questions = SplitExplodeOutput.suggested_questions
-                suggested_questions = cls.extend_questions(split_explode_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    split_explode_questions, suggested_questions
+                )
             nodes.update({node: inner_node_params})
         PredOutput = run_pred_agent(user_input)
         pred_questions = PredOutput.suggested_questions
@@ -267,17 +293,25 @@ class TableConfigAgent:
         triple = {"triple": nodes}
         section.update(triple)
         IsReindexingOperationOutput = run_is_reindexing_operation_agent(user_input)
-        is_reindexing_operation_questions = IsReindexingOperationOutput.suggested_questions
+        is_reindexing_operation_questions = (
+            IsReindexingOperationOutput.suggested_questions
+        )
         has_reindexing = IsReindexingOperationOutput.has_reindexing
-        suggested_questions = cls.extend_questions(is_reindexing_operation_questions, suggested_questions)
+        suggested_questions = cls.extend_questions(
+            is_reindexing_operation_questions, suggested_questions
+        )
         if has_reindexing:
-            reindexing_operations: list[str] = IsReindexingOperationOutput.reindexing_operations
+            reindexing_operations: list[str] = (
+                IsReindexingOperationOutput.reindexing_operations
+            )
             reindexing_portion = []
             for reindexing_operation in reindexing_operations:
                 reindexing_input = cls.msg_to_user_input(reindexing_operation)
                 ReindexingOutput = run_reindexing_agent(reindexing_input)
                 reindexing_questions = ReindexingOutput.suggested_questions
-                suggested_questions = cls.extend_questions(reindexing_questions, suggested_questions)
+                suggested_questions = cls.extend_questions(
+                    reindexing_questions, suggested_questions
+                )
                 reindexing_intermediate = ReindexingOutput.reindexing
                 reindexing_portion.append(reindexing_intermediate.model_dump())
             reindexing = {"reindexing": reindexing_portion}

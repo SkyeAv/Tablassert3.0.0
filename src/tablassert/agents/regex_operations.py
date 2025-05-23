@@ -61,6 +61,6 @@ class RegexOperationsAgent(LLMAgent):
 def run_regex_operations_agent(user_input: dict[str, object]) -> RegexOperationsOutput:
     agent = RegexOperationsAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

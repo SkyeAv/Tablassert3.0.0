@@ -143,9 +143,11 @@ class IsPrecleaningAgent(LLMAgent):
         )
 
 
-def run_is_precleaning_operation_agent() -> IsPrecleaningOutput:
+def run_is_precleaning_operation_agent(
+    user_input: dict[str, object],
+) -> IsPrecleaningOutput:
     agent = IsPrecleaningAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

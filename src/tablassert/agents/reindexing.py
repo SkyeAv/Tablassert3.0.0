@@ -72,6 +72,6 @@ class ReindexingAgent(LLMAgent):
 def run_reindexing_agent(user_input: dict[str, object]) -> ReindexingOutput:
     agent = ReindexingAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

@@ -68,9 +68,11 @@ class IsReindexingOperationAgent(LLMAgent):
         )
 
 
-def run_is_reindexing_operation_agent(user_input: dict[str, object]) -> IsReindexingOperationOutput:
+def run_is_reindexing_operation_agent(
+    user_input: dict[str, object],
+) -> IsReindexingOperationOutput:
     agent = IsReindexingOperationAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

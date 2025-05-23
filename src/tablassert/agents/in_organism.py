@@ -64,7 +64,6 @@ class InOrganismAgent(LLMAgent):
 def run_in_organism_agent(user_input: dict[str, object]) -> InOrganismOutput:
     agent = InOrganismAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e
-

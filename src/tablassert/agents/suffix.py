@@ -62,6 +62,6 @@ class SuffixAgent(LLMAgent):
 def run_suffix_agent(user_input: dict[str, object]) -> SuffixOutput:
     agent = SuffixAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

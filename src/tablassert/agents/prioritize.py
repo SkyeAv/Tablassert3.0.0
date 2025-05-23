@@ -69,7 +69,6 @@ class PrioritizeAgent(LLMAgent):
 def run_prioritize_agent(user_input: dict[str, object]) -> PrioritizeOutput:
     agent = PrioritizeAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e
-

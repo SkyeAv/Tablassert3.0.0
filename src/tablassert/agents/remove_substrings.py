@@ -55,9 +55,11 @@ class RemoveSubstringsAgent(LLMAgent):
         )
 
 
-def run_remove_substrings_agent(user_input: dict[str, object]) -> RemoveSubstringsOutput:
+def run_remove_substrings_agent(
+    user_input: dict[str, object],
+) -> RemoveSubstringsOutput:
     agent = RemoveSubstringsAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

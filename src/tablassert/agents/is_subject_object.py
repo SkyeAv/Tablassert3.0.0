@@ -80,6 +80,6 @@ class IsSubjectObjectAgent(LLMAgent):
 def run_is_subject_object_agent(user_input: dict[str, object]) -> IsSubjectObjectOutput:
     agent = IsSubjectObjectAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

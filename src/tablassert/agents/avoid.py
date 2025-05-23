@@ -69,6 +69,6 @@ class AvoidAgent(LLMAgent):
 def run_avoid_agent(user_input: dict[str, object]) -> AvoidOutput:
     agent = AvoidAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

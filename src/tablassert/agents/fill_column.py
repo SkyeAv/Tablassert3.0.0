@@ -77,7 +77,6 @@ class FillColumnAgent(LLMAgent):
 def run_fill_column_agent(user_input: dict[str, object]) -> FillColumnOutput:
     agent = FillColumnAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e
-

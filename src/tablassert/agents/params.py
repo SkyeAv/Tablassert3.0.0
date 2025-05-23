@@ -139,7 +139,6 @@ class ExcelSpreadSheetOutput(BaseIOSchema):
 class ExtensionProvider(SystemPromptContextProviderBase):
     def __init__(self, title: str = "File Extension"):
         super().__init__(title)
-        global FILE_EXTENSION
         self.extension = FILE_EXTENSION
 
     def get_info(self) -> str:
@@ -147,7 +146,6 @@ class ExtensionProvider(SystemPromptContextProviderBase):
 
 
 def get_output_type() -> BaseIOSchema:
-    global FILE_EXTENSION
     ext = FILE_EXTENSION
     match ext:
         case "xlsx" | "xls" | "xlsb" | "xlsm":
@@ -180,6 +178,6 @@ def run_params_agent(user_input: dict[str, object]) -> object:
     FILE_EXTENSION: str = run_ext_engine(USER_INPUT.chat_msg)
     try:
         agent.register_extention_context()
-        return(agent.invoke(USER_INPUT))
+        return agent.invoke(USER_INPUT)
     except AgentInvocationError as e:
         raise e

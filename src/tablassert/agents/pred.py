@@ -165,7 +165,6 @@ class PredAgent(LLMAgent):
 def run_pred_agent(user_input: dict[str, object]) -> PredOutput:
     agent = PredAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e
-

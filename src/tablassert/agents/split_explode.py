@@ -58,6 +58,6 @@ class SplitExplodeAgent(LLMAgent):
 def run_split_explode_agent(user_input: dict[str, object]) -> SplitExplodeOutput:
     agent = SplitExplodeAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

@@ -62,6 +62,6 @@ class PrefixAgent(LLMAgent):
 def run_prefix_agent(user_input: dict[str, object]) -> PrefixOutput:
     agent = PrefixAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

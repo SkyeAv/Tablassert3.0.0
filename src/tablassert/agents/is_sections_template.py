@@ -114,9 +114,11 @@ class IsSectionsTemplateAgent(LLMAgent):
         )
 
 
-def run_is_sections_template_agent(user_input: dict[str, object]) -> IsSectionsTemplateOutput:
+def run_is_sections_template_agent(
+    user_input: dict[str, object],
+) -> IsSectionsTemplateOutput:
     agent = IsSectionsTemplateAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

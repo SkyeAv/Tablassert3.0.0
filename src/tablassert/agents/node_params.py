@@ -69,6 +69,6 @@ class NodeParamsAgent(LLMAgent):
 def run_node_params_agent(user_input: dict[str, object]) -> NodeParamsOutput:
     agent = NodeParamsAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e

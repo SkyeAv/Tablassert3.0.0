@@ -7,7 +7,6 @@ from pydantic import Field, conlist, constr, model_validator
 from tablassert.agents.toolkit import (
     AgentInvocationError,
     get_system_prompt,
-    get_user_input,
     ollama_client,
     UserInput,
     LLMAgent,
@@ -72,6 +71,6 @@ class AttributesAgent(LLMAgent):
 def run_attributes_agent(user_input: dict[str, object]) -> AttributesFromOutput:
     agent = AttributesAgent()
     try:
-        return(agent.invoke(user_input))
+        return agent.invoke(user_input)
     except AgentInvocationError as e:
         raise e
