@@ -7,7 +7,6 @@ from pydantic import Field, conlist, constr, model_validator
 from tablassert.agents.toolkit import (
     AgentInvocationError,
     get_system_prompt,
-    get_user_input,
     ollama_client,
     UserInput,
     LLMAgent,
@@ -56,13 +55,9 @@ class RemoveSubstringsAgent(LLMAgent):
         )
 
 
-def run_remove_substrings_agent():
+def run_remove_substrings_agent(user_input: dict[str, object]) -> RemoveSubstringsOutput:
     agent = RemoveSubstringsAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_remove_substrings_agent()
+        raise e

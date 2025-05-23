@@ -7,7 +7,6 @@ from pydantic import Field, conlist, constr, model_validator
 from tablassert.agents.toolkit import (
     AgentInvocationError,
     get_system_prompt,
-    get_user_input,
     ollama_client,
     UserInput,
     LLMAgent,
@@ -67,13 +66,9 @@ class AvoidAgent(LLMAgent):
         )
 
 
-def run_avoid_agent():
+def run_avoid_agent(user_input: dict[str, object]) -> AvoidOutput:
     agent = AvoidAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_avoid_agent()
+        raise e

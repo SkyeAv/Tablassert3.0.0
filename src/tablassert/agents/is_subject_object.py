@@ -7,7 +7,6 @@ from pydantic import Field, conlist, constr, model_validator
 from tablassert.agents.toolkit import (
     AgentInvocationError,
     get_system_prompt,
-    get_user_input,
     ollama_client,
     UserInput,
     LLMAgent,
@@ -78,13 +77,9 @@ class IsSubjectObjectAgent(LLMAgent):
         )
 
 
-def run_is_subject_object_agent():
+def run_is_subject_object_agent(user_input: dict[str, object]) -> IsSubjectObjectOutput:
     agent = IsSubjectObjectAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_is_subject_object_agent()
+        raise e

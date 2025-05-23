@@ -7,7 +7,6 @@ from pydantic import Field, conlist, constr, model_validator
 from tablassert.agents.toolkit import (
     AgentInvocationError,
     get_system_prompt,
-    get_user_input,
     ollama_client,
     UserInput,
     LLMAgent,
@@ -60,13 +59,9 @@ class SuffixAgent(LLMAgent):
         )
 
 
-def run_suffix_agent():
+def run_suffix_agent(user_input: dict[str, object]) -> SuffixOutput:
     agent = SuffixAgent()
-    user_input = get_user_input()
     try:
-        print(agent.invoke(user_input))
+        return(agent.invoke(user_input))
     except AgentInvocationError as e:
-        print(e)
-
-
-run_suffix_agent()
+        raise e
