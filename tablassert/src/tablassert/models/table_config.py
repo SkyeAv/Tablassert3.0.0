@@ -2,6 +2,7 @@ from pydantic import ValidationError, BaseModel, Field
 from typing import Optional, Literal, Union
 
 class DownloadHyperparameters(BaseModel):
+    # ADD KEYS ETC..
 
 class Location(BaseModel):
     where_to_download_data_from: str = Field(...)
