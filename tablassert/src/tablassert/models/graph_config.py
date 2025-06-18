@@ -1,5 +1,5 @@
-from pydantic import BaseModel, FilePath, Field
-from typing import Optional
+from pydantic import field_validator, BaseModel, FilePath, Field
+from typing import Optional, Union
 
 
 class Metadata(BaseModel):
@@ -24,6 +24,17 @@ class Hyperparameters(BaseModel):
     number_of_parallel_processes_to_run: Optional[int] = Field(default=None)
     sql_progess_handler_time: Optional[float] = Field(default=None)
     maximum_p_value_in_graph: Optional[float] = Field(default=None)
+
+    @field_validator(
+        "maximum_p_value_in_graph", "sql_progess_handler_time", mode="before"
+    )
+    @classmethod
+    def convert_int_to_float(
+        cls, possible_int: Optional[Union[int, float]]
+    ) -> Optional[Union[int, float]]:
+        if possible_int and isinstance(possible_int, int):
+            return float(possible_int)
+        return possible_int
 
 
 class GraphConfig(BaseModel):
