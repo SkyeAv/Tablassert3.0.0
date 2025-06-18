@@ -1,0 +1,40 @@
+[project]
+name = "tablassert"
+version = "4.2.0"
+description = "Tablassert is a versatile tool that creates knowledge assertions from tabular data, enhances knowledge with configurable options, and exports KGX-compliant TSVs."
+authors = [
+    {name = "Skye Lane Goetz",email = "skye.lane.goetz@gmail.com"}
+]
+license = {text = "Apache-2.0"}
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic (>=2.11.7,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry]
+package-mode = false
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.0"
+black = "^25.1.0"
+flake8 = "^7.2.0"
+flake8-pyproject = "^1.2.3"
+
+
+[tool.flake8]
+max-line-length = 88
+ignore = ["E203", "E501", "W503", "F722"]
+exclude = [".git", "__pycache__", "*.pyc"]
+
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
