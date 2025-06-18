@@ -112,7 +112,7 @@ class MathModuleTransformation(BaseModel):
     @classmethod
     def arguments_contains_nonetype(arguments: list[Optional[str]]) -> list[Optional[str]]:
         if not any(argument is None for argument in arguments):
-            raise ValueError("")
+            raise ValueError("At least one argument must be nonetype")
         return arguments
 
 
