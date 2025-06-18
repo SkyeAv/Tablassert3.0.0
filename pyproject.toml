@@ -23,10 +23,11 @@ package-mode = false
 
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.4.0"
+pytest = "^8.4.1"
 black = "^25.1.0"
 flake8 = "^7.2.0"
 flake8-pyproject = "^1.2.3"
+mypy = "^1.16.1"
 
 
 [tool.flake8]
@@ -38,3 +39,11 @@ exclude = [".git", "__pycache__", "*.pyc"]
 [tool.black]
 line-length = 88
 target-version = ["py313"]
+
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
+ignore_missing_imports = true

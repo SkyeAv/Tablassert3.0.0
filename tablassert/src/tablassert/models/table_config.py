@@ -1,5 +1,5 @@
 from pydantic import field_validator, model_validator, ValidationError, BaseModel, HttpUrl, Field
-from typing import Annotated, Optional, Literal, Union
+from typing import Annotated, Optional, Literal, Union, Self
 import math
 
 def start_end_rows_fallback(start: Optional[int], end: Optional[int], rows: Optional[set[int]]) -> tuple[Optional[int], Optional[int], Optional[set[int]]]:
@@ -16,7 +16,7 @@ def start_end_rows_fallback(start: Optional[int], end: Optional[int], rows: Opti
 def biolink_fallback(x: str) -> str:
     if "biolink:" not in x:
         return "biolink:" + x
-    else return x
+    return x
 
 # classes starting with "t" are for basic template validation
 
@@ -27,7 +27,7 @@ class ExcelHyperparameters(BaseModel):
     end_at_line_number: Optional[int] = Field(default=None)
     use_row_numbers: Optional[set[int]] = Field(default=None)
     @model_validator(mode="after")
-    def start_end_rows_fix(self):
+    def start_end_rows_fix(self: Self) -> Self:
         start = self.start_at_line_number
         end = self.end_at_line_number
         rows = self.use_row_numbers
@@ -51,7 +51,7 @@ class CsvHyperparameters(BaseModel):
     end_at_line_number: Optional[int] = Field(default=None)
     use_row_numbers: Optional[set[int]] = Field(default=None)
     @model_validator(mode="after")
-    def start_end_rows_fix(self):
+    def start_end_rows_fix(self: Self) -> Self:
         start = self.start_at_line_number
         end = self.end_at_line_number
         rows = self.use_row_numbers
@@ -95,7 +95,7 @@ class Provenance(BaseModel):
     config_curator_organization: str = Field(...)
     @field_validator("article_curie", mode="after")
     @classmethod
-    def is_article_curie(article_curie: str) -> str:
+    def is_article_curie(cls, article_curie: str) -> str:
         accepted_domains = {"PMC:", "PMID:", "doi:"}
         if all(domain not in article_curie for domain in accepted_domains):\
             return "PMC:" + article_curie
@@ -111,13 +111,13 @@ class MathModuleTransformation(BaseModel):
     arguments: list[Optional[str]] = Field(...)
     @field_validator("attribute", mode="after")
     @classmethod
-    def is_math_module_attribute(attribute: str) -> str:
-        if not hasattr(math, x):
+    def is_math_module_attribute(cls, attribute: str) -> str:
+        if not hasattr(math, attribute):
             raise ValueError("Transformation must include a valid math module atribute")
         return attribute
     @field_validator("arguments", mode="after")
     @classmethod
-    def arguments_contains_nonetype(arguments: list[Optional[str]]) -> list[Optional[str]]:
+    def arguments_contains_nonetype(cls, arguments: list[Optional[str]]) -> list[Optional[str]]:
         if not any(argument is None for argument in arguments):
             raise ValueError("At least one argument must be nonetype")
         return arguments
@@ -195,7 +195,7 @@ class tMappingHyperparameters(BaseModel):
     explode_by_delimiter: Optional[str] = Field(default=None)
 
 class GraphVertex(BaseModel):
-    encoding_method: Literal["value", "column_of_values", "curie", "column_of_curies"] = Field(defult="value")
+    encoding_method: Literal["value", "column_of_values", "curie", "column_of_curies"] = Field(default="value")
     value_for_encoding: str = Field(...)
     mapping_hyperparameters: MappingHyperparameters = Field(...)
 
@@ -224,7 +224,7 @@ class Reindexing(BaseModel):
     comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = Field(...)
     value_for_comparison: Union[str, float] = Field(...)
     @model_validator(mode="after")
-    def mode_value_type_checking(self):
+    def mode_value_type_checking(self: Self) -> Self:
         mode = self.mode
         value = self.value_for_comparison
         string_modes = {"eq", "ne"}
