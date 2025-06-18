@@ -1,16 +1,54 @@
 from pydantic import ValidationError, BaseModel, Field
-from typing import Optional, Literal, Union
+from typing import Annotated, Optional, Literal, Union
 
-class DownloadHyperparameters(BaseModel):
-    # ADD KEYS ETC..
+class ExcelHyperparameters(BaseModel):
+    extension: Literal["xlsx", "xls"] = Field(...)
+    which_excel_sheet_to_use: str = = Field(...)
+    start_at_line_number: int = Field(...)
+    end_at_line_number: int = Field(...)
+    use_row_numbers: set[int] = Field(...)
+
+class tExcelHyperparameters(BaseModel):
+    extension: Optional[Literal["xlsx", "xls"]] = Field(default=None)
+    which_excel_sheet_to_use: Optional[str] = Field(default=None)
+    start_at_line_number: Optional[int] = Field(default=None)
+    end_at_line_number: Optional[int] = Field(default=None)
+    use_row_numbers: Optional[set[int]] = Field(default=None)
+
+class CsvHyperparameters(BaseModel):
+    extension: Literal["csv", "tsv", "txt"] = Field(...)
+    file_delimiter: str = Field(...)
+    start_at_line_number: int = Field(...)
+    end_at_line_number: int = Field(...)
+    use_row_numbers: set[int] = Field(...)
+
+class tCsvHyperparameters(BaseModel):
+    extension: Optional[Literal["csv", "tsv", "txt"]] = Field(default=None)
+    file_delimiter: Optional[str] = Field(default=None)
+    start_at_line_number: Optional[int] = Field(default=None)
+    end_at_line_number: Optional[int] = Field(default=None)
+    use_row_numbers: Optional[set[int]] = Field(default=None)
+
+class PdfHyperparameters(BaseModel):
+    extension: Literal["pdf"] = Field(...)
+    pages_table_is_on: set[int] = Field(...)
+    camelot_flavor: Literal["stream", "lattice"] = Field(...)
+
+class tPdfHyperparameters(BaseModel):
+    extension: Optional[Literal["pdf"]] = Field(default=None)
+    pages_table_is_on: Optional[set[int]] = Field(default=None)
+    camelot_flavor: Optional[Literal["stream", "lattice"]] = Field(default=None)
+
+DownloadHyperparameters = Annotated[Union[ExcelHyperparameters, CsvHyperparameters, PdfHyperparameters], Field(discriminator="extension")]
+tDownloadHyperparameters = Union[tExcelHyperparameters, tCsvHyperparameters, tPdfHyperparameters]
 
 class Location(BaseModel):
     where_to_download_data_from: str = Field(...)
-    download_hyperparameters: = Field(...)
+    download_hyperparameters: DownloadHyperparameters = Field(...)
 
 class tLocation(BaseModel):
     where_to_download_data_from: Optional[str] = Field(default=None)
-    download_hyperparameters: Optional[] = Field(default=None)
+    download_hyperparameters: Optional[tDownloadHyperparameters] = Field(default=None)
 
 class Provenance(BaseModel):
     article_curie: str = Field(...)
