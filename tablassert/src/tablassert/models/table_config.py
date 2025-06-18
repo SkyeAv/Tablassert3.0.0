@@ -9,6 +9,10 @@ from typing import Annotated, Optional, Literal, Union, Self
 import math
 
 
+def column_name_fallback(column_name: str) -> str:
+    return column_name.upper()
+
+
 def start_end_rows_fallback(
     start: Optional[int], end: Optional[int], rows: Optional[set[int]]
 ) -> tuple[Optional[int], Optional[int], Optional[set[int]]]:
@@ -182,6 +186,14 @@ class Attribute(BaseModel):
         default=None
     )
 
+    @model_validator(mode="after")
+    def column_name_fix(self: Self) -> Self:
+        encoding = self.encoding_method
+        value = self.value_for_encoding
+        if encoding in {"column_of_values"}:
+            self.value_for_encoding = column_name_fallback(value)
+        return self
+
 
 class tAttribute(BaseModel):
     encoding_method: Optional[Literal["value", "column_of_values"]] = Field(
@@ -269,6 +281,14 @@ class GraphVertex(BaseModel):
     ] = Field(default="value")
     value_for_encoding: str = Field(...)
     mapping_hyperparameters: MappingHyperparameters = Field(...)
+
+    @model_validator(mode="after")
+    def column_name_fix(self: Self) -> Self:
+        encoding = self.encoding_method
+        value = self.value_for_encoding
+        if encoding in {"column_of_values", "column_of_curies"}:
+            self.value_for_encoding = column_name_fallback(value)
+        return self
 
 
 class tGraphVertex(BaseModel):

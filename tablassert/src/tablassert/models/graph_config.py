@@ -1,0 +1,32 @@
+from pydantic import BaseModel, FilePath, Field
+from typing import Optional
+
+
+class Metadata(BaseModel):
+    knowledge_graph_name: str = Field(...)
+    graph_version: str = Field(default="0.0.0")
+    graph_description: Optional[str] = Field(default=None)
+
+
+class SqliteDatabases(BaseModel):
+    babel: FilePath = Field(...)
+    kg2: FilePath = Field(...)
+    custom_patch: FilePath = Field(...)
+    pubmed: FilePath = Field(...)
+
+
+class Location(BaseModel):
+    table_config_containing_directories: set[FilePath] = Field(...)
+    sqlite_databases: SqliteDatabases = Field(...)
+
+
+class Hyperparameters(BaseModel):
+    number_of_parallel_processes_to_run: Optional[int] = Field(default=None)
+    sql_progess_handler_time: Optional[float] = Field(default=None)
+    maximum_p_value_in_graph: Optional[float] = Field(default=None)
+
+
+class GraphConfig(BaseModel):
+    metadata: Metadata = Field(...)
+    location: Location = Field(...)
+    hyperparameters: Optional[Hyperparameters] = Field(default=None)
