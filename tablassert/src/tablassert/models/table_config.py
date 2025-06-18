@@ -1,5 +1,10 @@
-from pydantic import ValidationError, BaseModel, Field
+from pydantic import field_validator, ValidationError, BaseModel, Field
 from typing import Annotated, Optional, Literal, Union
+
+def biolink_fallback(x: str) -> str:
+    if "biolink:" not in x:
+        return "biolink:" + x
+    else return x
 
 class ExcelHyperparameters(BaseModel):
     extension: Literal["xlsx", "xls"] = Field(...)
@@ -111,7 +116,7 @@ class MappingHyperparameters(BaseModel):
     how_to_fill_column: Literal["forward", "backward", "min", "max", "mean", "zero", "one"] = Field(default="forward")
     strings_to_remove: set[str] = Field(...)
     regular_expressions: set[RegularExpression] = Field(...)
-    explode_by_delimiter: str = Field(...)
+    explode_by_delimiter: str = Field(default=",")
 
 class tMappingHyperparameters(BaseModel):
     in_this_organism: Optional[str] = Field(default=None)
@@ -123,6 +128,10 @@ class tMappingHyperparameters(BaseModel):
     strings_to_remove: Optional[set[str]] = Field(default=None)
     regular_expressions: Optional[set[tRegularExpression]] = Field(default=None)
     explode_by_delimiter: Optional[str] = Field(default=None)
+    @field_validator("classes_to_prioritize", "classes_to_avoid", mode="after")
+    @classmethod
+    def biolink_priorities_and_avoid(cls, biolink_set: set[str]) -> set[str]:
+        return {biolink_fallback(thing) for thing in biolink_set}
 
 class GraphVertex(BaseModel):
     encoding_method: Literal["value", "column_of_values", "curie", "column_of_curies"] = Field(defult="value")
@@ -138,6 +147,10 @@ class Triple(BaseModel):
     triple_subject: GraphVertex = Field(...)
     triple_object: GraphVertex = Field(...)
     triple_predicate: str = Field(default="biolink:associated_with")
+    @field_validator("triple_predicate", mode="after")
+    @classmethod
+    def biolink_predicate(cls, predicate: str) -> str:
+        return biolink_fallback(predicate)
 
 class tTriple(BaseModel):
     triple_subject: Optional[tGraphVertex] = Field(default=None)
