@@ -108,7 +108,7 @@ class tProvenance(BaseModel):
 
 class MathModuleTransformation(BaseModel):
     attribute: str = Field(...)
-    arguments: list[Optional[str]] = Field(...)
+    arguments: list[Optional[float]] = Field(...)
     @field_validator("attribute", mode="after")
     @classmethod
     def is_math_module_attribute(cls, attribute: str) -> str:
@@ -117,10 +117,14 @@ class MathModuleTransformation(BaseModel):
         return attribute
     @field_validator("arguments", mode="after")
     @classmethod
-    def arguments_contains_nonetype(cls, arguments: list[Optional[str]]) -> list[Optional[str]]:
+    def arguments_contains_nonetype(cls, arguments: list[Optional[float]]) -> list[Optional[float]]:
         if not any(argument is None for argument in arguments):
             raise ValueError("At least one argument must be nonetype")
         return arguments
+    @field_validator("arguments", mode="before")
+    @classmethod
+    def arguments_fallback(cls, arguments: list[Optional[float]]) -> list[Optional[float]]:
+        return [float(argument) if isinstance(argument, int) else argument for argument in arguments]
 
 class tMathModuleTransformation(BaseModel):
     attribute: Optional[str] = Field(default=None)
