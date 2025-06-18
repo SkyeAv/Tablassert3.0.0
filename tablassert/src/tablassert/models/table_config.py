@@ -3,7 +3,7 @@ from typing import Annotated, Optional, Literal, Union
 
 class ExcelHyperparameters(BaseModel):
     extension: Literal["xlsx", "xls"] = Field(...)
-    which_excel_sheet_to_use: str = = Field(...)
+    which_excel_sheet_to_use: str = Field(default="Sheet1")
     start_at_line_number: int = Field(...)
     end_at_line_number: int = Field(...)
     use_row_numbers: set[int] = Field(...)
@@ -17,7 +17,7 @@ class tExcelHyperparameters(BaseModel):
 
 class CsvHyperparameters(BaseModel):
     extension: Literal["csv", "tsv", "txt"] = Field(...)
-    file_delimiter: str = Field(...)
+    file_delimiter: str = Field(default=",")
     start_at_line_number: int = Field(...)
     end_at_line_number: int = Field(...)
     use_row_numbers: set[int] = Field(...)
@@ -31,8 +31,8 @@ class tCsvHyperparameters(BaseModel):
 
 class PdfHyperparameters(BaseModel):
     extension: Literal["pdf"] = Field(...)
-    pages_table_is_on: set[int] = Field(...)
-    camelot_flavor: Literal["stream", "lattice"] = Field(...)
+    pages_table_is_on: Optional[set[int]] = Field(default=None)
+    camelot_flavor: Literal["stream", "lattice"] = Field(default="lattice")
 
 class tPdfHyperparameters(BaseModel):
     extension: Optional[Literal["pdf"]] = Field(default=None)
@@ -52,8 +52,8 @@ class tLocation(BaseModel):
 
 class Provenance(BaseModel):
     article_curie: str = Field(...)
-    config_curator_name: str = Field(...)
-    config_curator_organization: str = Field(...)
+    config_curator_name: str = Field(default="Omitted")
+    config_curator_organization: str = Field(default="Omitted")
 
 class tProvenance(BaseModel):
     article_curie: Optional[str] = Field(default=None)
@@ -69,7 +69,7 @@ class tMathModuleTransformation(BaseModel):
     arguments: Optional[list[Optional[str]]] = Field(default=None)
 
 class Attribute(BaseModel):
-    encoding_method: Literal["value", "column_of_values"] = Field(...)
+    encoding_method: Literal["value", "column_of_values"] = Field(default="value")
     value_for_encoding: str = Field(...)
     math_module_transformations: Optional[MathModuleTransformation] = Field(default=None)
 
@@ -103,12 +103,12 @@ class tRegularExpression(BaseModel):
     replacement: Optional[str] = Field(default=None)
 
 class MappingHyperparameters(BaseModel):
-    in_this_organism: str = Field(...)
+    in_this_organism: str = Field(default="NCBITaxon:9606")
     classes_to_prioritize: set[str] = Field(...)
     classes_to_avoid: set[str] = Field(...)
     prefix: str = Field(...)
     suffix: str = Field(...)
-    how_to_fill_column: Literal["forward", "backward", "min", "max", "mean", "zero", "one"] = Field(...)
+    how_to_fill_column: Literal["forward", "backward", "min", "max", "mean", "zero", "one"] = Field(default="forward")
     strings_to_remove: set[str] = Field(...)
     regular_expressions: set[RegularExpression] = Field(...)
     explode_by_delimiter: str = Field(...)
@@ -125,7 +125,7 @@ class tMappingHyperparameters(BaseModel):
     explode_by_delimiter: Optional[str] = Field(default=None)
 
 class GraphVertex(BaseModel):
-    encoding_method: Literal["value", "column_of_values", "curie", "column_of_curies"] = Field(...)
+    encoding_method: Literal["value", "column_of_values", "curie", "column_of_curies"] = Field(defult="value")
     value_for_encoding: str = Field(...)
     mapping_hyperparameters: MappingHyperparameters = Field(...)
 
@@ -137,7 +137,7 @@ class tGraphVertex(BaseModel):
 class Triple(BaseModel):
     triple_subject: GraphVertex = Field(...)
     triple_object: GraphVertex = Field(...)
-    triple_predicate: str = Field(...)
+    triple_predicate: str = Field(default="biolink:associated_with")
 
 class tTriple(BaseModel):
     triple_subject: Optional[tGraphVertex] = Field(default=None)
@@ -145,7 +145,7 @@ class tTriple(BaseModel):
     triple_predicate: Optional[str] = Field(default=None)
 
 class Reindexing(BaseModel):
-    mode: Literal["before", "after"] = Field(...)
+    mode: Literal["before", "after"] = Field(default="after")
     column: str = Field(...)
     comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = Field(...)
     value_for_comparison: Union[str, float] = Field(...)
