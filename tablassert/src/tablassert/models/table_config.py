@@ -93,6 +93,13 @@ class Provenance(BaseModel):
     article_curie: str = Field(...)
     config_curator_name: str = Field(...)
     config_curator_organization: str = Field(...)
+    @field_validator("article_curie", mode="after")
+    @classmethod
+    def is_article_curie(article_curie: str) -> str:
+        accepted_domains = {"PMC:", "PMID:", "doi:"}
+        if all(domain not in article_curie for domain in accepted_domains):\
+            return "PMC:" + article_curie
+        return article_curie
 
 class tProvenance(BaseModel):
     article_curie: Optional[str] = Field(default=None)
@@ -114,7 +121,6 @@ class MathModuleTransformation(BaseModel):
         if not any(argument is None for argument in arguments):
             raise ValueError("At least one argument must be nonetype")
         return arguments
-
 
 class tMathModuleTransformation(BaseModel):
     attribute: Optional[str] = Field(default=None)
