@@ -1,17 +1,41 @@
-from pydantic import field_validator, ValidationError, BaseModel, Field
+from pydantic import field_validator, model_validator, ValidationError, BaseModel, HttpUrl, Field
 from typing import Annotated, Optional, Literal, Union
+import math
+
+def start_end_rows_fallback(start: Optional[int], end: Optional[int], rows: Optional[set[int]]) -> tuple[Optional[int], Optional[int], Optional[set[int]]]:
+    fallback = 1
+    if (start or end) and rows:
+        raise ValueError("You cannot define start/end_at_line_number AND use_row_numbers")
+    if (start or end) and not (start and end):
+        if not start:
+            return fallback, end, rows
+        if not end:
+            return start, fallback, rows
+    return start, end, rows
 
 def biolink_fallback(x: str) -> str:
     if "biolink:" not in x:
         return "biolink:" + x
     else return x
 
+# classes starting with "t" are for basic template validation
+
 class ExcelHyperparameters(BaseModel):
     extension: Literal["xlsx", "xls"] = Field(...)
     which_excel_sheet_to_use: str = Field(default="Sheet1")
-    start_at_line_number: int = Field(...)
-    end_at_line_number: int = Field(...)
-    use_row_numbers: set[int] = Field(...)
+    start_at_line_number: Optional[int] = Field(default=None)
+    end_at_line_number: Optional[int] = Field(default=None)
+    use_row_numbers: Optional[set[int]] = Field(default=None)
+    @model_validator(mode="after")
+    def start_end_rows_fix(self):
+        start = self.start_at_line_number
+        end = self.end_at_line_number
+        rows = self.use_row_numbers
+        start, end, rows = start_end_rows_fallback(start, end, rows)
+        self.start_at_line_number = start
+        self.end_at_line_number = end
+        self.use_row_numbers = rows
+        return self
 
 class tExcelHyperparameters(BaseModel):
     extension: Optional[Literal["xlsx", "xls"]] = Field(default=None)
@@ -23,9 +47,19 @@ class tExcelHyperparameters(BaseModel):
 class CsvHyperparameters(BaseModel):
     extension: Literal["csv", "tsv", "txt"] = Field(...)
     file_delimiter: str = Field(default=",")
-    start_at_line_number: int = Field(...)
-    end_at_line_number: int = Field(...)
-    use_row_numbers: set[int] = Field(...)
+    start_at_line_number: Optional[int] = Field(default=None)
+    end_at_line_number: Optional[int] = Field(default=None)
+    use_row_numbers: Optional[set[int]] = Field(default=None)
+    @model_validator(mode="after")
+    def start_end_rows_fix(self):
+        start = self.start_at_line_number
+        end = self.end_at_line_number
+        rows = self.use_row_numbers
+        start, end, rows = start_end_rows_fallback(start, end, rows)
+        self.start_at_line_number = start
+        self.end_at_line_number = end
+        self.use_row_numbers = rows
+        return self
 
 class tCsvHyperparameters(BaseModel):
     extension: Optional[Literal["csv", "tsv", "txt"]] = Field(default=None)
@@ -48,17 +82,17 @@ DownloadHyperparameters = Annotated[Union[ExcelHyperparameters, CsvHyperparamete
 tDownloadHyperparameters = Union[tExcelHyperparameters, tCsvHyperparameters, tPdfHyperparameters]
 
 class Location(BaseModel):
-    where_to_download_data_from: str = Field(...)
+    where_to_download_data_from: HttpUrl = Field(...)
     download_hyperparameters: DownloadHyperparameters = Field(...)
 
 class tLocation(BaseModel):
-    where_to_download_data_from: Optional[str] = Field(default=None)
+    where_to_download_data_from: Optional[HttpUrl] = Field(default=None)
     download_hyperparameters: Optional[tDownloadHyperparameters] = Field(default=None)
 
 class Provenance(BaseModel):
     article_curie: str = Field(...)
-    config_curator_name: str = Field(default="Omitted")
-    config_curator_organization: str = Field(default="Omitted")
+    config_curator_name: str = Field(...)
+    config_curator_organization: str = Field(...)
 
 class tProvenance(BaseModel):
     article_curie: Optional[str] = Field(default=None)
@@ -68,6 +102,19 @@ class tProvenance(BaseModel):
 class MathModuleTransformation(BaseModel):
     attribute: str = Field(...)
     arguments: list[Optional[str]] = Field(...)
+    @field_validator("attribute", mode="after")
+    @classmethod
+    def is_math_module_attribute(attribute: str) -> str:
+        if not hasattr(math, x):
+            raise ValueError("Transformation must include a valid math module atribute")
+        return attribute
+    @field_validator("arguments", mode="after")
+    @classmethod
+    def arguments_contains_nonetype(arguments: list[Optional[str]]) -> list[Optional[str]]:
+        if not any(argument is None for argument in arguments):
+            raise ValueError("")
+        return arguments
+
 
 class tMathModuleTransformation(BaseModel):
     attribute: Optional[str] = Field(default=None)
@@ -108,15 +155,27 @@ class tRegularExpression(BaseModel):
     replacement: Optional[str] = Field(default=None)
 
 class MappingHyperparameters(BaseModel):
-    in_this_organism: str = Field(default="NCBITaxon:9606")
-    classes_to_prioritize: set[str] = Field(...)
-    classes_to_avoid: set[str] = Field(...)
-    prefix: str = Field(...)
-    suffix: str = Field(...)
-    how_to_fill_column: Literal["forward", "backward", "min", "max", "mean", "zero", "one"] = Field(default="forward")
-    strings_to_remove: set[str] = Field(...)
-    regular_expressions: set[RegularExpression] = Field(...)
-    explode_by_delimiter: str = Field(default=",")
+    in_this_organism: Optional[str] = Field(default=None)
+    classes_to_prioritize: Optional[set[str]] = Field(default=None)
+    classes_to_avoid: Optional[set[str]] = Field(default=None)
+    prefix: Optional[str] = Field(default=None)
+    suffix: Optional[str] = Field(default=None)
+    how_to_fill_column: Optional[Literal["forward", "backward", "min", "max", "mean", "zero", "one"]] = Field(default=None)
+    strings_to_remove: Optional[set[str]] = Field(default=None)
+    regular_expressions: Optional[set[RegularExpression]] = Field(default=None)
+    explode_by_delimiter: Optional[str] = Field(default=None)
+    @field_validator("classes_to_prioritize", "classes_to_avoid", mode="after")
+    @classmethod
+    def biolink_priorities_and_avoid(cls, biolink_set: set[str]) -> set[str]:
+        if biolink_set:
+            return {biolink_fallback(thing) for thing in biolink_set}
+        return biolink_set
+    @field_validator("in_this_organism", mode="after")
+    @classmethod
+    def ncbi_taxon_fallback(cls, ncbi_taxon: str) -> str:
+        if ncbi_taxon and "NCBITaxon:" not in ncbi_taxon:
+            return "NCBITaxon:" + ncbi_taxon
+        return ncbi_taxon
 
 class tMappingHyperparameters(BaseModel):
     in_this_organism: Optional[str] = Field(default=None)
@@ -128,10 +187,6 @@ class tMappingHyperparameters(BaseModel):
     strings_to_remove: Optional[set[str]] = Field(default=None)
     regular_expressions: Optional[set[tRegularExpression]] = Field(default=None)
     explode_by_delimiter: Optional[str] = Field(default=None)
-    @field_validator("classes_to_prioritize", "classes_to_avoid", mode="after")
-    @classmethod
-    def biolink_priorities_and_avoid(cls, biolink_set: set[str]) -> set[str]:
-        return {biolink_fallback(thing) for thing in biolink_set}
 
 class GraphVertex(BaseModel):
     encoding_method: Literal["value", "column_of_values", "curie", "column_of_curies"] = Field(defult="value")
@@ -170,14 +225,14 @@ class tReindexing(BaseModel):
     value_for_comparison: Optional[Union[str, float]] = Field(default=None)
 
 class Section(BaseModel):
-    location: = Field(...)
+    location: Location = Field(...)
     provenance: Provenance = Field(...)
     attributes: Attributes = Field(...)
     triple: Triple = Field(...)
     reindexing: Optional[Reindexing] = Field(default=None)
 
 class tSection(BaseModel):
-    location: Optional[] = Field(default=None)
+    location: Optional[tLocation] = Field(default=None)
     provenance: Optional[tProvenance] = Field(default=None)
     attributes: Optional[tAttributes] = Field(default=None)
     triple: Optional[tTriple] = Field(default=None)
