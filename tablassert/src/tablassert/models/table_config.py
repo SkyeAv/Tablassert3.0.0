@@ -1,6 +1,16 @@
 from pydantic import ValidationError, BaseModel, Field
 from typing import Optional, Literal, Union
 
+class DownloadHyperparameters(BaseModel):
+
+class Location(BaseModel):
+    where_to_download_data_from: str = Field(...)
+    download_hyperparameters: = Field(...)
+
+class tLocation(BaseModel):
+    where_to_download_data_from: Optional[str] = Field(default=None)
+    download_hyperparameters: Optional[] = Field(default=None)
+
 class Provenance(BaseModel):
     article_curie: str = Field(...)
     config_curator_name: str = Field(...)
@@ -53,7 +63,7 @@ class tRegularExpression(BaseModel):
     pattern: Optional[str] = Field(default=None)
     replacement: Optional[str] = Field(default=None)
 
-class MappingParameters(BaseModel):
+class MappingHyperparameters(BaseModel):
     in_this_organism: str = Field(...)
     classes_to_prioritize: set[str] = Field(...)
     classes_to_avoid: set[str] = Field(...)
@@ -64,7 +74,7 @@ class MappingParameters(BaseModel):
     regular_expressions: set[RegularExpression] = Field(...)
     explode_by_delimiter: str = Field(...)
 
-class tMappingParameters(BaseModel):
+class tMappingHyperparameters(BaseModel):
     in_this_organism: Optional[str] = Field(default=None)
     classes_to_prioritize: Optional[set[str]] = Field(default=None)
     classes_to_avoid: Optional[set[str]] = Field(default=None)
@@ -78,12 +88,12 @@ class tMappingParameters(BaseModel):
 class GraphVertex(BaseModel):
     encoding_method: Literal["value", "column_of_values", "curie", "column_of_curies"] = Field(...)
     value_for_encoding: str = Field(...)
-    mapping_hyperparameters: MappingParameters = Field(...)
+    mapping_hyperparameters: MappingHyperparameters = Field(...)
 
 class tGraphVertex(BaseModel):
     encoding_method: Optional[Literal["value", "column_of_values", "curie", "column_of_curies"]] = Field(default=None)
     value_for_encoding: Optional[str] = Field(default=None)
-    mapping_hyperparameters: Optional[tMappingParameters] = Field(default=None)
+    mapping_hyperparameters: Optional[tMappingHyperparameters] = Field(default=None)
 
 class Triple(BaseModel):
     triple_subject: GraphVertex = Field(...)
