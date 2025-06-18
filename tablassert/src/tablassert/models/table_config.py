@@ -1,6 +1,16 @@
 from pydantic import ValidationError, BaseModel, Field
 from typing import Optional, Literal, Union
 
+class Provenance(BaseModel):
+    article_curie: str = Field(...)
+    config_curator_name: str = Field(...)
+    config_curator_organization: str = Field(...)
+
+class tProvenance(BaseModel):
+    article_curie: Optional[str] = Field(default=None)
+    config_curator_name: Optional[str] = Field(default=None)
+    config_curator_organization: Optional[str] = Field(default=None)
+
 class MathModuleTransformation(BaseModel):
     attribute: str = Field(...)
     arguments: list[Optional[str]] = Field(...)
@@ -99,14 +109,14 @@ class tReindexing(BaseModel):
 
 class Section(BaseModel):
     location: = Field(...)
-    provenance: = Field(...)
+    provenance: Provenance = Field(...)
     attributes: Attributes = Field(...)
     triple: Triple = Field(...)
     reindexing: Optional[Reindexing] = Field(default=None)
 
 class tSection(BaseModel):
     location: Optional[] = Field(default=None)
-    provenance: Optional[] = Field(default=None)
+    provenance: Optional[tProvenance] = Field(default=None)
     attributes: Optional[tAttributes] = Field(default=None)
     triple: Optional[tTriple] = Field(default=None)
     reindexing: Optional[tReindexing] = Field(default=None)
