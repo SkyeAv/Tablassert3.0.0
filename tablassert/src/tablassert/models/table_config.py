@@ -223,6 +223,20 @@ class Reindexing(BaseModel):
     column: str = Field(...)
     comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = Field(...)
     value_for_comparison: Union[str, float] = Field(...)
+    @model_validator(mode="after")
+    def mode_value_type_checking(self):
+        mode = self.mode
+        value = self.value_for_comparison
+        string_modes = {"eq", "ne"}
+        float_modes = {"ge", "le", "gt", "lt"}
+        if mode in string_modes and not isinstance(value, str):
+            self.value_for_comparison = str(value)
+        if mode in float_modes and not isinstance(value, float):
+            if isinstance(value, int):
+                self.value_for_comparison = float(value)
+            else:
+                raise ValueError("You must specify a numeric type for " + mode)
+        return self
 
 class tReindexing(BaseModel):
     mode: Optional[Literal["before", "after"]] = Field(default=None)
