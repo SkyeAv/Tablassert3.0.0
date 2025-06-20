@@ -1,5 +1,6 @@
-from tablassert.src.tablassert.utils.io import project_root
 from textual.widgets import Markdown, Button, DirectoryTree, Static
+from tablassert.src.tablassert.utils.io import project_root
+from tablassert.src.tablassert.core.build import build
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
@@ -16,6 +17,7 @@ class BuildFileConfirmation(Screen[None]):
     
     def compose(self: Self) -> ComposeResult:
         selected_path = self.selected_path
+        yield Sidebar(id="sidebar")
         yield Container(
             Static("are you sure you want to run:".upper(), id="build-are-you-sure"),
             Static(selected_path.as_posix(), id="build-selected-path"),
@@ -54,6 +56,15 @@ class Sidebar(Container):
         yield Button("BUILD", classes="sidebar buttons", id="build")
         yield Button("QUIT", classes="sidebar buttons", id="quit")
 
+    def on_button_pressed(self: Self, event: Button.Pressed) -> None:
+        match event.button.id:
+            case "build":
+                self.app.push_screen(HomePage(classes="home-page"))
+            case "quit":
+                self.app.exit()
+            case _:
+                pass
+
 class HomePage(Screen[None]):
 
     def compose(self: Self) -> ComposeResult:
@@ -63,13 +74,6 @@ class HomePage(Screen[None]):
         yield Container(
             DirectoryTree(ROOT, id="build-directory-tree"), id="build-file-selector" 
         )
-
-    def on_button_pressed(self: Self, event: Button.Pressed) -> None:
-        match event.button.id:
-            case "quit":
-                self.app.exit()
-            case _:
-                pass
 
     def on_directory_tree_file_selected(self: Self, event: DirectoryTree.FileSelected) -> None:
         selected_path: Path = event.path
