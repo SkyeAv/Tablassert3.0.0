@@ -16,7 +16,7 @@ dependencies = [
 
 
 [tool.poetry.scripts]
-tui = "tablassert.src.tablassert.tui.tui:main"
+tui = "tablassert.src.tablassert.tui.tui:app"
 
 
 [build-system]

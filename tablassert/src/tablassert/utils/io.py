@@ -1,8 +1,9 @@
+from pydantic import ValidationError, BaseModel
 from ruamel.yaml.error import YAMLError
+from typing import Any, Type, TypeVar
 from functools import lru_cache
 from ruamel.yaml import YAML
 from pathlib import Path
-from typing import Any
 
 @lru_cache(maxsize=None)
 def project_root(io_utility_path: Path = Path(__file__).resolve(), configuration_at_root: str = "pyproject.toml") -> Path:
@@ -23,3 +24,11 @@ def load_yaml(filename: Path) -> Any:
         raise RuntimeError("Permission denied: " + filename.as_posix())
     except YAMLError:
         raise RuntimeError("YAML parsing error in " + filename.as_posix())
+
+PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
+
+def load_model(dictonary: Any, model: Type[PydanticModel]) -> PydanticModel:
+    try:
+        return model.model_validate(dictonary)
+    except ValidationError as e:
+        raise RuntimeError(model.__name__ + ": " + str(e))

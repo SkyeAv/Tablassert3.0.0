@@ -1,0 +1,48 @@
+Screen {
+    layout: horizontal;
+}
+
+#intro-container {
+    align: center middle;
+    height: 100%;
+    width: 100%;
+}
+
+#intro-markdown {
+    width: 80%;
+    height: auto;
+    text-align: center;
+}
+
+#sidebar {
+    layout: horizontal;
+    dock: top;
+    height: 3;
+    width: 100%;
+    align-vertical: middle;
+    background: $boost;
+}
+
+Button:hover {
+    background: $accent;
+}
+
+.sidebar.buttons {
+    content-align: center middle;
+    padding: 0 1;  
+}
+
+#build-instructions {
+    width: 1fr;
+}
+
+#build-markdown {
+    width: 1fr;
+    height: 1fr;
+    text-align: left;
+    background: $background;
+}
+
+#build-file-explorer {
+    width: 2fr;
+}
