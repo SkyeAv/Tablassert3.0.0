@@ -54,10 +54,11 @@ Button:hover {
 
 #build-are-you-sure-container {
     height: 100%;
-    width: 100%;
+    width: 2fr;
     align: center middle;
     layout: vertical;
     content-align: center middle;
+    border: wide $primary;
     padding: 2;
 }
 

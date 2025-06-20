@@ -18,6 +18,7 @@ class BuildFileConfirmation(Screen[None]):
     def compose(self: Self) -> ComposeResult:
         selected_path = self.selected_path
         yield Sidebar(id="sidebar")
+        yield BuildInstructions(id="build-instructions")
         yield Container(
             Static("are you sure you want to run:".upper(), id="build-are-you-sure"),
             Static(selected_path.as_posix(), id="build-selected-path"),

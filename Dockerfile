@@ -2,6 +2,8 @@ FROM python:3.13
 
 WORKDIR /user/local/tablassert
 
+EXPOSE 8080
+
 ENV TERM=xterm-256color
 ENV COLORTERM=truecolor
 ENV LANG=C.UTF-8
