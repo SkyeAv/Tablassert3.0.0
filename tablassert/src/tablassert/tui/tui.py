@@ -1,5 +1,5 @@
 from tablassert.src.tablassert.utils.io import project_root
-from textual.widgets import Markdown, Button, Static
+from textual.widgets import Markdown, Button, DirectoryTree, Static
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
@@ -7,6 +7,32 @@ from textwrap import dedent
 from pathlib import Path
 from typing import Self
 from typing import Any
+
+class BuildFileConfirmation(Screen[None]):
+
+    def __init__(self: Self, selected_path: Path, **kwargs: Any) -> Self:
+        super().__init__(**kwargs)
+        self.selected_path = selected_path
+    
+    def compose(self: Self) -> ComposeResult:
+        selected_path = self.selected_path
+        yield Container(
+            Static("are you sure you want to run:".upper(), id="build-are-you-sure"),
+            Static(selected_path.as_posix(), id="build-selected-path"),
+            Container(
+                Button("YES", id="yes"),
+                Button("NO", id="no"),
+                id="buttons-in-build-are-you-sure-container"
+            ),
+            id="build-are-you-sure-container"
+        )
+
+    def on_button_pressed(self: Self, event: Button.Pressed) -> None:
+        match event.button.id:
+            case "yes":
+                self.app.exit()
+            case "no":
+                self.app.push_screen(HomePage(classes="home-page"))
 
 ROOT: Path = project_root()
 
@@ -34,7 +60,9 @@ class HomePage(Screen[None]):
 
         yield Sidebar(id="sidebar")
         yield BuildInstructions(id="build-instructions")
-        yield Static("placeholder", id="build-file-explorer")
+        yield Container(
+            DirectoryTree(ROOT, id="build-directory-tree"), id="build-file-selector" 
+        )
 
     def on_button_pressed(self: Self, event: Button.Pressed) -> None:
         match event.button.id:
@@ -42,6 +70,10 @@ class HomePage(Screen[None]):
                 self.app.exit()
             case _:
                 pass
+
+    def on_directory_tree_file_selected(self: Self, event: DirectoryTree.FileSelected) -> None:
+        selected_path: Path = event.path
+        self.app.push_screen(BuildFileConfirmation(selected_path, classes="build file confirmation"))
 
 class MainMenu(Screen[None]):
 

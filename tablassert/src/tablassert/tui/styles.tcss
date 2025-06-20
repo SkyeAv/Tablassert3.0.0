@@ -43,6 +43,36 @@ Button:hover {
     background: $background;
 }
 
-#build-file-explorer {
+#build-file-selector{
     width: 2fr;
+}
+
+#build-directory-tree {
+    background: $background;
+    border: wide $primary;
+}
+
+#build-are-you-sure-container {
+    height: 100%;
+    width: 100%;
+    align: center middle;
+    layout: vertical;
+    content-align: center middle;
+    padding: 2;
+}
+
+#build-are-you-sure {
+    text-align: center;
+    margin-bottom: 1;
+}
+
+#build-selected-path {
+    text-align: center;
+    color: $secondary;
+    margin-bottom: 1;
+}
+
+#buttons-in-build-are-you-sure-container {
+    layout: horizontal;
+    align: center middle;
 }
