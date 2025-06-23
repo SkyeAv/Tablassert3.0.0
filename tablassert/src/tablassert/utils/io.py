@@ -66,13 +66,13 @@ async def download_from_link(url: HttpUrl, filepath: Path) -> None:
 
 TABLE_CONFIG_EXTENSION: str = ".yaml"
 
-def get_sections(dirs: set[FilePath]) -> set[Optional[Section]]:
-    sections: set[Optional[Section]] = set()
+def get_sections(dirs: set[FilePath]) -> list[tuple[Section, int]]:
+    sections: List[Tuple[Section, int]] = []
     for d in dirs:
         for path in Path(str(d)).rglob("*"):
             if path.suffix.lower() == TABLE_CONFIG_EXTENSION:
                 table_yaml: Any = load_yaml(path)
                 Table: TableConfig = load_model(table_yaml, TableConfig)
-                for section in Table.sections:
-                    Sections.add(section)
+                for idx, section in enumerate(Table.sections, start=1):
+                    sections.append((section, idx))
     return sections
