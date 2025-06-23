@@ -1,5 +1,6 @@
 from typing import Annotated, Optional, Literal, Union, Self
 from urllib.parse import urlparse, unquote
+from pathlib import Path
 from pydantic import (
     field_validator,
     model_validator,
@@ -8,7 +9,6 @@ from pydantic import (
     Field,
 )
 import math
-import time
 import re
 import os
 
@@ -350,7 +350,7 @@ class tReindexing(BaseModel):
 
 
 class Section(BaseModel):
-    filename: Optional[str] = Field(default=None)
+    filepath: Optional[Path] = Field(default=None)
     location: Location = Field(...)
     provenance: Provenance = Field(...)
     attributes: Attributes = Field(...)
@@ -358,43 +358,35 @@ class Section(BaseModel):
     reindexing: Optional[Reindexing] = Field(default=None)
 
     @model_validator(mode="after")
-    def filename_generator(self: Self) -> Self:
+    def filepath_generator(self: Self) -> Self:
+        scaffold: Path = Path("tablassert/data_lake".upper())
 
         def clean_curie(curie: str) -> str:
             split: str = curie.split(":")[-1]
             return re.sub(r"[^A-Za-z0-9 ]+", "", split)
 
         curie: str = self.provenance.article_curie
-        cleaned_curie = clean_curie(curie)
+        cleaned_curie = clean_curie(curie).upper()
 
-        def get_filename_from_url(url: str) -> str:
-            parser = urlparse(url)
+        def get_filename_from_url(url: HttpUrl) -> str:
+            parser = urlparse(str(url))
             path: str = parser.path
             filename = os.path.basename(path)
-            return unquote(filename)  # cleans API related stuff
+            return unquote(filename).upper()  # cleans API related stuff
 
         url: HttpUrl = self.location.where_to_download_data_from
-        filename_from_url: str = get_filename_from_url(str(url))
+        filename: str = get_filename_from_url(url).upper()
 
-        DownloadHyperparameters = self.location.download_hyperparameters
-        if isinstance(DownloadHyperparameters, ExcelHyperparameters):
-            excel_sheetname: str = (
-                DownloadHyperparameters.which_excel_sheet_to_use
-            )
-            filename_from_url = (
-                filename_from_url + excel_sheetname
-            )  # differentiate sheets
-
-        now: float = time.time()  # UNIX time to differentiate
-        filename: str = str(now) + "_" + cleaned_curie + "." + filename_from_url
-        filename = filename.upper()  # because its easier to read
-        self.filename = filename
-
+        filepath: Path = scaffold / cleaned_curie / filename
+        filepath.parent.mkdir(
+            parents=True, exist_ok=True
+        )  # makes requrired directories
+        self.filepath = filepath
         return self
 
 
 class tSection(BaseModel):
-    filename: Optional[str] = Field(default=None)
+    filepath: Optional[str] = Field(default=None)
     location: Optional[tLocation] = Field(default=None)
     provenance: Optional[tProvenance] = Field(default=None)
     attributes: Optional[tAttributes] = Field(default=None)
