@@ -1,4 +1,4 @@
-from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters
+from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing
 from tablassert.src.tablassert.models.io import PydanticModel
 from typing import Optional
 from pathlib import Path
@@ -23,7 +23,8 @@ def dataframe_preprocessing(df: pl.DataFrame, start: Optional[int], end: Optiona
         return single_bounded_slice_dataframe(df, start, end)
     elif rows:
         return take_rows_dataframe(df, rows)
-    raise RuntimeError("Either start/end or eows must be specified")
+    else:
+        return df
 
 EXCEL_ENGINE: str = "calamine"
 
@@ -69,11 +70,25 @@ def invoke(TableLocation: Location, datapath: Path) -> pl.DataFrame:
     #elif isinstance(DownloadHyperparameters, PdfHyperparameters):   
         #return pl.DataFrame()
 
-def before_operations(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
-    
+def get_excel_style_column_names(column_name: str) -> str:
+    index: int = int(column_name[-1])
+    excel_style_letters: str = ""
+    while index >= 0:
+        excel_style_letters = chr(i % 26 + 65) + excel_style_letters
+        index = index // 26 - 1
+    return excel_style_letters
+
+def apply_excel_style_column_names(df: pl.DataFrame) -> pl.DataFrame:
+    return df.rename(lambda column_name: get_excel_style_column_names(str(column_name)))
+
+def before_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
+    TableProvenance: Provenance = Table.provenance
+    TableAttributes: Attributes = Table.attributes
+    TableReindexing: Reindexing = Table.reindexing
 
 def dataframing(Table: Section, datapath: Path) -> pl.DataFrame:
     TableLocation: Location = Table.location
     df: pl.DataFrame = invoke(TableLocation, datapath)
-    df = before_operations(df, Table)
+    df = apply_excel_style_column_names(df)
+    df = before_mapping(df, Table)
     return df
