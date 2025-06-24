@@ -1,4 +1,4 @@
-from typing import Annotated, Optional, Literal, Union, Self
+from typing import Annotated, Optional, Literal, Union, Self, Pattern, TypeAlias
 from urllib.parse import urlparse, unquote
 from pathlib import Path
 from pydantic import (
@@ -108,11 +108,11 @@ class tPdfHyperparameters(BaseModel):
     camelot_flavor: Optional[Literal["stream", "lattice"]] = Field(default=None)
 
 
-DownloadHyperparameters = Annotated[
+DownloadHyperparameters: TypeAlias = Annotated[
     Union[ExcelHyperparameters, CsvHyperparameters, PdfHyperparameters],
     Field(discriminator="extension"),
 ]
-tDownloadHyperparameters = Union[
+tDownloadHyperparameters: TypeAlias = Union[
     tExcelHyperparameters, tCsvHyperparameters, tPdfHyperparameters
 ]
 
@@ -348,9 +348,10 @@ class tReindexing(BaseModel):
     )
     value_for_comparison: Optional[Union[str, float]] = Field(default=None)
 
+REGEX: Pattern[str] = re.compile(r"[^A-Za-z0-9 ]+")
 
 class Section(BaseModel):
-    filepath: Optional[Path] = Field(default=None)
+    filepath: Path = Field(default=Path(""))
     location: Location = Field(...)
     provenance: Provenance = Field(...)
     attributes: Attributes = Field(...)
@@ -363,7 +364,7 @@ class Section(BaseModel):
 
         def clean_curie(curie: str) -> str:
             split: str = curie.split(":")[-1]
-            return re.sub(r"[^A-Za-z0-9 ]+", "", split)
+            return re.sub(REGEX, "", split)
 
         curie: str = self.provenance.article_curie
         cleaned_curie = clean_curie(curie).upper()

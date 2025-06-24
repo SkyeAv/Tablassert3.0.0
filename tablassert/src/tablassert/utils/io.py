@@ -7,7 +7,6 @@ from pydantic import HttpUrl, FilePath
 from functools import lru_cache
 from ruamel.yaml import YAML
 from pathlib import Path
-import asyncio
 
 
 @lru_cache(maxsize=None)
@@ -67,7 +66,7 @@ async def download_from_link(url: HttpUrl, filepath: Path) -> None:
 TABLE_CONFIG_EXTENSION: str = ".yaml"
 
 def get_sections(dirs: set[FilePath]) -> list[tuple[Section, int]]:
-    sections: List[Tuple[Section, int]] = []
+    sections: list[tuple[Section, int]] = []
     for d in dirs:
         for path in Path(str(d)).rglob("*"):
             if path.suffix.lower() == TABLE_CONFIG_EXTENSION:
