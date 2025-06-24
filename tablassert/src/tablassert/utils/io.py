@@ -1,9 +1,9 @@
 from tablassert.src.tablassert.models.table_config import TableConfig, Section
 from playwright.async_api import async_playwright
 from pydantic import ValidationError, BaseModel
-from typing import Any, Type, TypeVar, Optional
 from ruamel.yaml.error import YAMLError
 from pydantic import HttpUrl, FilePath
+from typing import Any, Type, TypeVar
 from functools import lru_cache
 from ruamel.yaml import YAML
 from pathlib import Path
@@ -67,7 +67,9 @@ async def download_from_link(url: HttpUrl, filepath: Path) -> Path:
 
         return datapath
 
+
 TABLE_CONFIG_EXTENSION: str = ".yaml"
+
 
 def get_sections(dirs: set[FilePath]) -> list[tuple[Section, int]]:
     sections: list[tuple[Section, int]] = []

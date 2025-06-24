@@ -186,7 +186,7 @@ class tMathModuleTransformation(BaseModel):
 class Attribute(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
     value_for_encoding: str = Field(...)
-    math_module_transformations: Optional[MathModuleTransformation] = Field(
+    math_module_transformations: Optional[set[MathModuleTransformation]] = Field(
         default=None
     )
 
@@ -204,7 +204,7 @@ class tAttribute(BaseModel):
         default=None
     )
     value_for_encoding: Optional[str] = Field(default=None)
-    math_module_transformations: Optional[tMathModuleTransformation] = Field(
+    math_module_transformations: Optional[set[tMathModuleTransformation]] = Field(
         default=None
     )
 
@@ -282,7 +282,7 @@ class tMappingHyperparameters(BaseModel):
 class GraphVertex(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
     value_for_encoding: str = Field(...)
-    mapping_hyperparameters: MappingHyperparameters = Field(...)
+    mapping_hyperparameters: Optional[MappingHyperparameters] = Field(default=None)
 
     @model_validator(mode="after")
     def column_name_fix(self: Self) -> Self:

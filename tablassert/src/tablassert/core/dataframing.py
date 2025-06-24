@@ -1,7 +1,7 @@
 from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing
 from tablassert.src.tablassert.models.graph_config import GraphConfig
 from tablassert.src.tablassert.models.io import PydanticModel
-from typing import Optional
+from typing import Optional, Literal, Union
 from pathlib import Path
 import polars as pl
 
@@ -75,12 +75,47 @@ def get_excel_style_column_names(column_name: str) -> str:
     index: int = int(column_name[-1])
     excel_style_letters: str = ""
     while index >= 0:
-        excel_style_letters = chr(i % 26 + 65) + excel_style_letters
+        excel_style_letters = chr(index % 26 + 65) + excel_style_letters
         index = index // 26 - 1
     return excel_style_letters
 
 def apply_excel_style_column_names(df: pl.DataFrame) -> pl.DataFrame:
-    return df.rename(lambda column_name: get_excel_style_column_names(str(column_name)))
+    return df.rename(lambda column: get_excel_style_column_names(str(column)))
+
+def value_column(df: pl.DataFrame, column: str, value_for_encoding: str) -> pl.DataFrame:
+    return df.with_cols(pl.lit(value_for_encoding).alias(column))
+
+def column_of_values_column(df: pl.DataFrame, column: str, value_for_encoding: str) -> pl.DataFrame:
+    if value_for_encoding in df.columns:
+        return df.with_cols(pl.col(value_for_encoding).alias(column))
+    else:
+        raise RuntimeError(column + ": Column " + value_for_encoding + " does not exist")
+
+def make_new_column(df: pl.DataFrame, column: str, encoding_method: Literal["value", "column_of_values"], value_for_encoding: str) -> pl.DataFrame:
+    match encoding_method:
+        case "value":
+            return value_column(df, column, value_for_encoding)
+        case "column_of_values":
+            return column_of_values_column(df, column, value_for_encoding)
+        case _:
+            raise RuntimeError("Only value and column_of_values encoding methods are supported")
+
+def reindex_column(df: pl.DataFrame, column: str, comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"], value_for_comparison: Union[str, float]) -> pl.DataFrame:
+    match comparison:
+        case "ge":
+            return
+        case "le":
+            return
+        case "gt":
+            return
+        case "lt":
+            return
+        case "eq":
+            return
+        case "ne":
+            return
+        case _:
+            return
 
 def before_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
     TableProvenance: Provenance = Table.provenance
