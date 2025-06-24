@@ -36,6 +36,8 @@ def read_excel(DownloadHyperparameters: ExcelHyperparameters, datapath: Path) ->
         source=datapath,
         sheet_name=sheetname,
         engine=EXCEL_ENGINE,
+        has_header=False,
+        infer_schema_length=None,
     )  # type: ignore
     return dataframe_preprocessing(df, start, end, rows)
 
@@ -46,6 +48,9 @@ def read_csv(DownloadHyperparameters: CsvHyperparameters, datapath: Path) -> pl.
     rows: Optional[set[int]] = DownloadHyperparameters.use_row_numbers
     df: pl.DataFrame = pl.read_csv(
         source=datapath,
+        separator=delimiter,
+        has_header=False,
+        infer_schema_length=None,
     )
     return dataframe_preprocessing(df, start, end, rows)
 
@@ -62,9 +67,13 @@ def invoke(TableLocation: Location, datapath: Path) -> pl.DataFrame:
     raise RuntimeError("Only xls, xlsx, csv, tsv, txt, and pdf are accepted")
     # add support later (not needed ASAP)
     #elif isinstance(DownloadHyperparameters, PdfHyperparameters):   
-        #return pl.DataFrame()   
+        #return pl.DataFrame()
+
+def before_operations(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
+    
 
 def dataframing(Table: Section, datapath: Path) -> pl.DataFrame:
     TableLocation: Location = Table.location
     df: pl.DataFrame = invoke(TableLocation, datapath)
+    df = before_operations(df, Table)
     return df
