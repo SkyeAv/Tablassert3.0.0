@@ -100,31 +100,82 @@ def make_new_column(df: pl.DataFrame, column: str, encoding_method: Literal["val
         case _:
             raise RuntimeError("Only value and column_of_values encoding methods are supported")
 
+def greater_than_or_equal_to(df: pl.DataFrame, column: str, value_for_comparison: float) -> pl.DataFrame:
+    try:
+        return df.filter(pl.col() >= value_for_comparison)
+    except Exception as e:
+        raise RuntimeError('Cannot filter with mode "ge" in ' + column + " (" + str(e) + ")")
+
+def less_than_or_equal_to(df: pl.DataFrame, column: str, value_for_comparison: float) -> pl.DataFrame:
+    try:
+        return df.filter(pl.col() <= value_for_comparison)
+    except Exception as e:
+        raise RuntimeError('Cannot filter with mode "le" in ' + column + " (" + str(e) + ")")
+
+def greater_than(df: pl.DataFrame, column: str, value_for_comparison: float) -> pl.DataFrame:
+    try:
+        return df.filter(pl.col() > value_for_comparison)
+    except Exception as e:
+        raise RuntimeError('Cannot filter with mode "gt" in ' + column + " (" + str(e) + ")")
+
+def less_than(df: pl.DataFrame, column: str, value_for_comparison: float) -> pl.DataFrame:
+    try:
+        return df.filter(pl.col() < value_for_comparison)
+    except Exception as e:
+        raise RuntimeError('Cannot filter with mode "lt" in ' + column + " (" + str(e) + ")")
+
+def equal_to(df: pl.DataFrame, column: str, value_for_comparison: Union[str, float]) -> pl.DataFrame:
+    try:
+        return df.filter(pl.col() == value_for_comparison)
+    except Exception as e:
+        raise RuntimeError('Cannot filter with mode "eq" in ' + column + " (" + str(e) + ")")
+
+def not_equal_to(df: pl.DataFrame, column: str, value_for_comparison: Union[str, float]) -> pl.DataFrame:
+    try:
+        return df.filter(pl.col() != value_for_comparison)
+    except Exception as e:
+        raise RuntimeError('Cannot filter with mode "ne" in ' + column + " (" + str(e) + ")")
+
 def reindex_column(df: pl.DataFrame, column: str, comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"], value_for_comparison: Union[str, float]) -> pl.DataFrame:
     match comparison:
         case "ge":
-            return
+            assert isinstance(value_for_comparison, float)
+            return greater_than_or_equal_to(df, column, value_for_comparison)
         case "le":
-            return
+            assert isinstance(value_for_comparison, float)
+            return less_than_or_equal_to(df, column, value_for_comparison)
         case "gt":
-            return
+            assert isinstance(value_for_comparison, float)
+            return greater_than(df, column, value_for_comparison)
         case "lt":
-            return
+            assert isinstance(value_for_comparison, float)
+            return less_than(df, column, value_for_comparison)
         case "eq":
-            return
+            return equal_to(df, column, value_for_comparison)
         case "ne":
-            return
+            return not_equal_to(df, column, value_for_comparison)
         case _:
-            return
+            raise RuntimeError("Only reindexing comparisons ge, le, gt, lt, eq, and ne are valid")
 
-def before_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
+def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) -> pl.DataFrame:
+
     TableProvenance: Provenance = Table.provenance
+
+
     TableAttributes: Attributes = Table.attributes
-    TableReindexing: Reindexing = Table.reindexing
+
+    TableReindexing: set[Reindexing] = Table.reindexing
+    for reindexing_operation in TableReindexing:
+        mode: Literal["before", "after"] = reindexing_operation.mode
+        if mode == "before":
+            column: str = reindexing_operation.mode
+            comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = reindexing_operation
+            value_for_comparison: Union[str, float] = reindexing_operation
+            df = reindex_column(df, column, comparison, value_for_comparison)
 
 def dataframing(Table: Section, Graph: GraphConfig, datapath: Path) -> pl.DataFrame:
     TableLocation: Location = Table.location
     df: pl.DataFrame = invoke(TableLocation, datapath)
     df = apply_excel_style_column_names(df)
-    df = before_mapping(df, Table)
+    df = before_mapping(df, Table, TableLocation)
     return df
