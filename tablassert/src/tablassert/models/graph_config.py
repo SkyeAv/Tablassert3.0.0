@@ -11,7 +11,7 @@ class Metadata(BaseModel):
 class SqliteDatabases(BaseModel):
     babel: FilePath = Field(...)
     kg2: FilePath = Field(...)
-    custom_patch: FilePath = Field(...)
+    mapping_patch: FilePath = Field(...)
     pubmed: FilePath = Field(...)
 
 
@@ -21,9 +21,10 @@ class Location(BaseModel):
 
 
 class Hyperparameters(BaseModel):
-    number_of_parallel_processes_to_run: Optional[int] = Field(default=None)
-    sql_progess_handler_time: Optional[float] = Field(default=None)
-    maximum_p_value_in_graph: Optional[float] = Field(default=None)
+    number_of_parallel_processes_to_run: int = Field(default=1)
+    sql_progess_handler_time: float = Field(default=1.5)
+    maximum_p_value_in_graph: float = Field(default=1.0)
+    byte_size_of_mapping_cache: int = Field(default=1e9)
 
     @field_validator(
         "maximum_p_value_in_graph", "sql_progess_handler_time", mode="before"

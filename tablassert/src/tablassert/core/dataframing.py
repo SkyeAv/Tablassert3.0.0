@@ -1,4 +1,5 @@
 from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing
+from tablassert.src.tablassert.models.graph_config import GraphConfig
 from tablassert.src.tablassert.models.io import PydanticModel
 from typing import Optional
 from pathlib import Path
@@ -86,7 +87,7 @@ def before_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
     TableAttributes: Attributes = Table.attributes
     TableReindexing: Reindexing = Table.reindexing
 
-def dataframing(Table: Section, datapath: Path) -> pl.DataFrame:
+def dataframing(Table: Section, Graph: GraphConfig, datapath: Path) -> pl.DataFrame:
     TableLocation: Location = Table.location
     df: pl.DataFrame = invoke(TableLocation, datapath)
     df = apply_excel_style_column_names(df)

@@ -47,10 +47,7 @@ def load_model(parsed_yaml: Any, model: Type[PydanticModel]) -> PydanticModel:
         raise RuntimeError(model.__name__ + ": " + str(e))
 
 
-async def download_from_link(url: HttpUrl, filepath: Path) -> None:
-
-    if filepath.exists():
-        return  # exits if the file is already downloaded
+async def download_from_link(url: HttpUrl, filepath: Path) -> Path:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -60,8 +57,15 @@ async def download_from_link(url: HttpUrl, filepath: Path) -> None:
             await page.goto(str(url))
 
         download = await download_information.value
-        await download.save_as(filepath.as_posix())
+        datapath: Path = filepath / download.suggested_filename
+
+        if datapath.exists():
+            return datapath  # exits if the file is already downloaded
+
+        await download.save_as(datapath.as_posix())
         await browser.close()
+
+        return datapath
 
 TABLE_CONFIG_EXTENSION: str = ".yaml"
 

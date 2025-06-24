@@ -10,8 +10,7 @@ import asyncio
 def build_subgraphs(Table: Section, index: int) -> None:
     download_link: HttpUrl = Table.location.where_to_download_data_from
     filepath: Path = Table.filepath
-    datapath: Path = filepath / "data".upper()
-    asyncio.run(download_from_link(download_link, datapath))
+    datapath = asyncio.run(download_from_link(download_link, filepath))
 
 def build_graph(graph_config_path: Path) -> None:
     graph_yaml: Any = load_yaml(graph_config_path)
