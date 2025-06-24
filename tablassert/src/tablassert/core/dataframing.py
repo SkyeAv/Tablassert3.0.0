@@ -1,6 +1,6 @@
 from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing
 from tablassert.src.tablassert.models.graph_config import GraphConfig
-from tablassert.src.tablassert.models.io import PydanticModel
+from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union
 from pathlib import Path
 import polars as pl
