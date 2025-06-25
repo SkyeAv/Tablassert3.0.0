@@ -160,13 +160,11 @@ def reindex_column(df: pl.DataFrame, column: str, comparison: Literal["ge", "le"
             raise RuntimeError("Only reindexing comparisons ge, le, gt, lt, eq, and ne are valid")
 
 def math_module_operation(df: pl.DataFrame, column: str, Transformation: MathModuleTransformation) -> pl.DataFrame:
-    operation: str = Transformation.attribute
-    attribute: Any = getattr(math, operation)
-    arguments: list[Optional[float]] = Transformation.attribute
-    transformation_operation = lambda 
-
-
-    return df
+    math_module_attribute: str = Transformation.attribute
+    operation: Any = getattr(math, math_module_attribute)
+    arguments: list[Optional[float]] = Transformation.arguments
+    transformation_operation: Any = lambda x: operation(*[arg if arg is not None else x for arg in arguments])
+    return df.with_cols(pl.col(column).apply(transformation_operation).alias(column))
 
 def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) -> pl.DataFrame:
 
@@ -193,6 +191,7 @@ def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) ->
         math_module_transformations: Optional[set[MathModuleTransformation]] = Attribute.math_module_transformation
         if math_module_transformations:
             for Transformation in math_module_transformations:
+                df = math_module_operation(df, attribute_name, Transformation)
 
     TableReindexing: set[Reindexing] = Table.reindexing
     for ReindexingOperation in TableReindexing:
