@@ -9,7 +9,7 @@ from ruamel.yaml import YAML
 from pathlib import Path
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=1)
 def project_root(
     io_utility_path: Path = Path(__file__).resolve(),
     configuration_at_root: str = "pyproject.toml",

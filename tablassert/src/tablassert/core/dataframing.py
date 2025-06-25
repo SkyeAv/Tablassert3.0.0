@@ -159,6 +159,8 @@ def reindex_column(df: pl.DataFrame, column: str, comparison: Literal["ge", "le"
 
 def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) -> pl.DataFrame:
 
+    TableLocation.
+
     TableProvenance: Provenance = Table.provenance
 
 
