@@ -1,7 +1,9 @@
+from tablassert.src.tablassert.models.graph_config import SqliteDatabases
 from sqlite_utils import Database
 from typing import Any, Optional
 from collections import Counter
 from functools import lru_cache
+from pydantic import FilePath
 from diskcache import Cache
 from pathlib import Path
 
@@ -78,15 +80,19 @@ def reset_column_context() -> None:
     column_context = Counter()
 
 # databases aren't hashable so I activate them all globally
-def activate_sqlites() -> None:
+def activate_sqlites(Sqlites: SqliteDatabases) -> None:
+    pubmedpath: FilePath = Sqlites.pubmed
     global pubmed
-    pubmed: Database = new_connection()
+    pubmed: Database = new_connection(Path(str(pubmedpath)).resolve())
+    babelpath: FilePath = Sqlites.babel
     global babel
-    babel: Database = new_connection()
+    babel: Database = new_connection(Path(str(babelpath)).resolve())
+    kg2path: FilePath = Sqlites.kg2
     global kg2
-    kg2: Database = new_connection()
+    kg2: Database = new_connection(Path(str(kg2path)).resolve())
+    mapping_patchpath: FilePath = Sqlites.mapping_patch
     global mapping_patch
-    mapping_patch: Database = new_connection()
+    mapping_patch: Database = new_connection(Path(str(mapping_patchpath)).resolve())
 
 @lru_cache(maxsize=2048)
 def cached_fullmap3(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:

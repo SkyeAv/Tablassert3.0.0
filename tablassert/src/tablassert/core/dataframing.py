@@ -1,5 +1,6 @@
 from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing, MathModuleTransformation, Triple
-from tablassert.src.tablassert.models.graph_config import GraphConfig
+from tablassert.src.tablassert.core.database import activate_sqlites, reset_column_context
+from tablassert.src.tablassert.models.graph_config import GraphConfig, SqliteDatabases
 from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union, Any
 from pydantic import HttpUrl
@@ -211,6 +212,9 @@ def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) ->
 def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
     predicate: str = Assertion.triple_predicate
     df = make_new_column(df, "predicate", "value", predicate)
+    for Node in [Assertion.triple_subject, Assertion.triple_object]:
+        reset_column_context()
+
 
 def after_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
     
@@ -224,6 +228,8 @@ def dataframing(Table: Section, Graph: GraphConfig, datapath: Path) -> pl.DataFr
     TableLocation: Location = Table.location
     df: pl.DataFrame = invoke(TableLocation, datapath)
     df = apply_excel_style_column_names(df)
+    Sqlites: SqliteDatabases = Graph.location.sqlite_databases
+    activate_sqlites(Sqlites)
     df = before_mapping(df, Table, TableLocation)
     Assertion: Triple = Table.triple
     df = mapping(df, Assertion)

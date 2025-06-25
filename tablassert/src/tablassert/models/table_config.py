@@ -360,7 +360,7 @@ class Section(BaseModel):
 
     @model_validator(mode="after")
     def filepath_generator(self: Self) -> Self:
-        scaffold: Path = Path("tablassert/data_lake".upper())
+        scaffold: Path = Path("tablassert/data_lake".upper()).resolve()
 
         def clean_curie(curie: str) -> str:
             split: str = curie.split(":")[-1]
