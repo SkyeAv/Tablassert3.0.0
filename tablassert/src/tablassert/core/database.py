@@ -18,61 +18,80 @@ def new_connection(sqlitepath: Path) -> Database:
 # pubmed lookups aren't frequent enough to justify a combined cache
 
 @metadatacache.memorize()
-def pubmed_metadata(db: Database, article_curie: str) -> Optional[dict[str, object]]:
+def pubmed_metadata(article_curie: str) -> Optional[dict[str, object]]:
     sql: str = """
     FROM
     """
-    return db.query(sql)
+    return pubmed.query(sql)
 
 @captionscache.memorize()
-def file_caption(db: Database, article_curie: str, filename: str) -> Optional[str]:
+def file_caption(article_curie: str, filename: str) -> Optional[str]:
     sql: str = """
     FROM
     """
-    return db.query(sql)
+    return pubmed.query(sql)
 
+# lru cache is 10-100x faster so I cache twice
 @lru_cache(maxsize=1024)
-def cached_babel_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
-    return babel_lookup(db, unprocessed_input, prioritize, avoid, taxon)
+def cached_babel_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
+    return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
 
 @babelcache.memorize()
-def babel_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
+def babel_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
     sql: str = """
     FROM
     """
-    return db.query(sql)
+    return babel.query(sql)
 
 @lru_cache(maxsize=512)
-def cached_kg2_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
-    return kg2_lookup(db, unprocessed_input, prioritize, avoid, taxon)
+def cached_kg2_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+    return kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
 
 @kg2cache.memorize()
-def kg2_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+def kg2_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
     sql: str = """
     FROM
     """
-    return db.query(sql)
+    return kg2.query(sql)
 
 # patch lookups aren't frequent enough to justify a combined cache
 
 @lru_cache(maxsize=16)
-def override_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+def override_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
     sql: str = """
     FROM
     """
-    return db.query(sql)
+    return mapping_patch.query(sql)
 
 @lru_cache(maxsize=32)
-def supplement_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+def supplement_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
     sql: str = """
     FROM
     """
-    return db.query(sql)
+    return mapping_patch.query(sql)
+
+# counter is global because it's not hashable for the caches
+column_context: Counter = Counter()
+
+def reset_column_context() -> None:
+    global column_context
+    column_context = Counter()
+
+# databases aren't hashable so I activate them all globally
+def activate_sqlites() -> None:
+    global pubmed
+    pubmed: Database = new_connection()
+    global babel
+    babel: Database = new_connection()
+    global kg2
+    kg2: Database = new_connection()
+    global mapping_patch
+    mapping_patch: Database = new_connection()
 
 @lru_cache(maxsize=2048)
-def cached_fullmap3(babel: Database, kg2: Database, mapping_patch: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str, column_context: Counter) -> Optional[]:
-    return fullmap3(babel, kg2, mapping_patch, unprocessed_input, prioritize, avoid, taxon, column_context)
+def cached_fullmap3(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
+    return fullmap3(unprocessed_input, prioritize, avoid, taxon, column_context)
 
 @fullmapcache.memorize()
-def fullmap3(babel: Database, kg2: Database, mapping_patch: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str, column_context: Counter) -> Optional[]:
+def fullmap3(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
     return

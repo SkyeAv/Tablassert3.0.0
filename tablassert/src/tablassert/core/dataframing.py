@@ -1,4 +1,4 @@
-from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing, MathModuleTransformation
+from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing, MathModuleTransformation, Triple
 from tablassert.src.tablassert.models.graph_config import GraphConfig
 from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union, Any
@@ -139,7 +139,7 @@ def not_equal_to(df: pl.DataFrame, column: str, value_for_comparison: Union[str,
         raise RuntimeError('Cannot filter with mode "ne" in ' + column + " (" + str(e) + ")")
 
 def reindex_column(df: pl.DataFrame, column: str, comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"], value_for_comparison: Union[str, float]) -> pl.DataFrame:
-    match comparison:
+    match str(comparison):
         case "ge":
             assert isinstance(value_for_comparison, float)
             return greater_than_or_equal_to(df, column, value_for_comparison)
@@ -204,9 +204,28 @@ def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) ->
     
     return df
 
+def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
+    Assertion.
+    df = make_new_column(df, attribute_name, encoding_method, value_for_encoding)
+
+def after_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
+    
+    TableReindexing: set[Reindexing] = Table.reindexing
+    for ReindexingOperation in TableReindexing:
+        mode: Literal["before", "after"] = ReindexingOperation.mode
+        if mode == "after":
+            column: str = ReindexingOperation.mode
+            comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = ReindexingOperation
+            value_for_comparison: Union[str, float] = ReindexingOperation
+            df = reindex_column(df, column, comparison, value_for_comparison)
+    
+    return df
+
 def dataframing(Table: Section, Graph: GraphConfig, datapath: Path) -> pl.DataFrame:
     TableLocation: Location = Table.location
     df: pl.DataFrame = invoke(TableLocation, datapath)
     df = apply_excel_style_column_names(df)
     df = before_mapping(df, Table, TableLocation)
-    return df
+    Assertion: Triple = Table.triple
+    df = mapping(df, Assertion)
+    return after_mapping(df, Table)
