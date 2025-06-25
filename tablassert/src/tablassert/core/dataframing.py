@@ -165,7 +165,8 @@ def reindexing_operation(df: pl.DataFrame, ReindexingOperation: Reindexing, targ
         column: str = ReindexingOperation.mode
         comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = ReindexingOperation
         value_for_comparison: Union[str, float] = ReindexingOperation
-        df = reindex_column(df, column, comparison, value_for_comparison)
+        return reindex_column(df, column, comparison, value_for_comparison)
+    return df
 
 def math_module_operation(df: pl.DataFrame, column: str, Transformation: MathModuleTransformation) -> pl.DataFrame:
     math_module_attribute: str = Transformation.attribute
@@ -208,8 +209,8 @@ def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) ->
     return df
 
 def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
-    Assertion.
-    df = make_new_column(df, attribute_name, encoding_method, value_for_encoding)
+    predicate: str = Assertion.triple_predicate
+    df = make_new_column(df, "predicate", "value", predicate)
 
 def after_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
     
