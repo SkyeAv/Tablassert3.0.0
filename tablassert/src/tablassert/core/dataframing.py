@@ -159,6 +159,14 @@ def reindex_column(df: pl.DataFrame, column: str, comparison: Literal["ge", "le"
         case _:
             raise RuntimeError("Only reindexing comparisons ge, le, gt, lt, eq, and ne are valid")
 
+def reindexing_operation(df: pl.DataFrame, ReindexingOperation: Reindexing, target_mode: Literal["before", "after"]) -> pl.DataFrame:
+    mode: Literal["before", "after"] = ReindexingOperation.mode
+    if str(mode) == str(target_mode):
+        column: str = ReindexingOperation.mode
+        comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = ReindexingOperation
+        value_for_comparison: Union[str, float] = ReindexingOperation
+        df = reindex_column(df, column, comparison, value_for_comparison)
+
 def math_module_operation(df: pl.DataFrame, column: str, Transformation: MathModuleTransformation) -> pl.DataFrame:
     math_module_attribute: str = Transformation.attribute
     operation: Any = getattr(math, math_module_attribute)
@@ -195,13 +203,8 @@ def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) ->
 
     TableReindexing: set[Reindexing] = Table.reindexing
     for ReindexingOperation in TableReindexing:
-        mode: Literal["before", "after"] = ReindexingOperation.mode
-        if mode == "before":
-            column: str = ReindexingOperation.mode
-            comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = ReindexingOperation
-            value_for_comparison: Union[str, float] = ReindexingOperation
-            df = reindex_column(df, column, comparison, value_for_comparison)
-    
+        df = reindexing_operation(df, ReindexingOperation, "before")
+
     return df
 
 def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
@@ -212,12 +215,7 @@ def after_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
     
     TableReindexing: set[Reindexing] = Table.reindexing
     for ReindexingOperation in TableReindexing:
-        mode: Literal["before", "after"] = ReindexingOperation.mode
-        if mode == "after":
-            column: str = ReindexingOperation.mode
-            comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = ReindexingOperation
-            value_for_comparison: Union[str, float] = ReindexingOperation
-            df = reindex_column(df, column, comparison, value_for_comparison)
+        df = reindexing_operation(df, ReindexingOperation, "after")
     
     return df
 
