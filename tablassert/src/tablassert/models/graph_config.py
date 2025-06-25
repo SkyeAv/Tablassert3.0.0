@@ -13,6 +13,7 @@ class SqliteDatabases(BaseModel):
     kg2: FilePath = Field(...)
     mapping_patch: FilePath = Field(...)
     pubmed: FilePath = Field(...)
+    pmc: FilePath = Field(...)
 
 
 class Location(BaseModel):

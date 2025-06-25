@@ -246,7 +246,7 @@ class MappingHyperparameters(BaseModel):
     how_to_fill_column: Optional[
         Literal["forward", "backward", "min", "max", "mean", "zero", "one"]
     ] = Field(default=None)
-    strings_to_remove: Optional[set[str]] = Field(default=None)
+    substrings_to_remove: Optional[set[str]] = Field(default=None)
     regular_expressions: Optional[set[RegularExpression]] = Field(default=None)
     explode_by_delimiter: Optional[str] = Field(default=None)
 
@@ -274,7 +274,7 @@ class tMappingHyperparameters(BaseModel):
     how_to_fill_column: Optional[
         Literal["forward", "backward", "min", "max", "mean", "zero", "one"]
     ] = Field(default=None)
-    strings_to_remove: Optional[set[str]] = Field(default=None)
+    substrings_to_remove: Optional[set[str]] = Field(default=None)
     regular_expressions: Optional[set[tRegularExpression]] = Field(default=None)
     explode_by_delimiter: Optional[str] = Field(default=None)
 

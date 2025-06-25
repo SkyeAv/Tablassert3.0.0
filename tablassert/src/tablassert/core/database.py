@@ -21,10 +21,38 @@ def new_connection(sqlitepath: Path) -> Database:
 
 @metadatacache.memorize()
 def pubmed_metadata(article_curie: str) -> Optional[dict[str, object]]:
-    sql: str = """
-    FROM
+    sql: str = f"""
+    SELECT 
+        mesh.mesh_major,
+        mesh.mesh,
+        info.firstauthor,
+        info.journal,
+        info.title,
+        info.year
+    FROM ids
+    INNER JOIN mesh ON ids.pmid = mesh.pmid
+    INNER JOIN info ON ids.pmid = info.pmid
+    WHERE ids.alt = :curie
     """
-    return pubmed.query(sql)
+    rows: Any = pubmed.query(sql, {"curie": article_curie})
+    mesh: Optional[list[str]] = [row["mesh"] for row in rows if row]
+    mesh_major: Optional[list[str]] = [row["mesh_major"] for row in rows if row]
+    mesh_zip: Any = zip(mesh, mesh_major)
+    domain: list[str] = [term for term, importance in mesh_zip if importance == "Y"]
+    mesh_terms: list[str] = [term for term, importance in mesh_zip if importance == "N"]
+    row = next(rows, {})
+    firstauthor: Optional[str] = row.get("firstauthor")
+    journal: Optional[str] = row.get("journal")
+    title: Optional[str] = row.get("title")
+    year: Optional[str] = row.get("year")
+    return {
+        "domain": domain,
+        "mesh_terms": mesh_terms,
+        "firstauthor": firstauthor,
+        "journal": journal,
+        "title": title,
+        "year": year,
+    }
 
 @captionscache.memorize()
 def file_caption(article_curie: str, filename: str) -> Optional[str]:
@@ -84,6 +112,9 @@ def activate_sqlites(Sqlites: SqliteDatabases) -> None:
     pubmedpath: FilePath = Sqlites.pubmed
     global pubmed
     pubmed: Database = new_connection(Path(str(pubmedpath)).resolve())
+    pmcpath: FilePath = Sqlites.pmc
+    global pmc
+    pmc: Database = new_connection(Path(str(pmcpath)).resolve())
     babelpath: FilePath = Sqlites.babel
     global babel
     babel: Database = new_connection(Path(str(babelpath)).resolve())

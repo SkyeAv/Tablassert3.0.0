@@ -1,22 +1,23 @@
 from tablassert.src.tablassert.models.table_config import (
-    Section,
-    Location,
-    PdfHyperparameters,
-    CsvHyperparameters,
+    MathModuleTransformation,
+    MappingHyperparameters,
     ExcelHyperparameters,
+    # PdfHyperparameters,
+    CsvHyperparameters,
+    RegularExpression,
+    GraphVertex,
     Provenance,
     Attributes,
     Reindexing,
-    MathModuleTransformation,
+    Section,
+    Location,
     Triple,
-    GraphVertex,
-    MappingHyperparameters,
 )
 from tablassert.src.tablassert.core.database import (
-    activate_sqlites,
     reset_column_context,
+    activate_sqlites,
 )
-from tablassert.src.tablassert.models.graph_config import GraphConfig, SqliteDatabases
+from tablassert.src.tablassert.models.graph_config import GraphConfig, SqliteDatabases, pubmed_metadata, file_caption, cached_fullmap3
 from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union, Any
 from pydantic import HttpUrl
@@ -146,6 +147,8 @@ def make_new_column(
     encoding_method: Literal["value", "column_of_values"],
     value_for_encoding: str,
 ) -> pl.DataFrame:
+    if not (encoding_method or value_for_encoding):
+        return value_column(df, column, "not applicable")
     match encoding_method:
         case "value":
             return value_column(df, column, value_for_encoding)
@@ -288,9 +291,15 @@ def before_mapping(
 
     DownloadHyperparameters: PydanticModel = TableLocation.download_hyperparameters
     if isinstance(DownloadHyperparameters, ExcelHyperparameters):
-        DownloadHyperparameters
+        extension: Literal["xlsx", "xls"] = DownloadHyperparameters.extension
+        df = make_new_column(df, "extension", "value", extension)
+        excel_sheet: Optional[str] = DownloadHyperparameters.which_excel_sheet_to_use
+        df = make_new_column(df, "excel_sheet", "value", excel_sheet)
     if isinstance(DownloadHyperparameters, CsvHyperparameters):
-        DownloadHyperparameters
+        extension: Literal["csv", "tsv", "txt"] = DownloadHyperparameters.extension
+        df = make_new_column(df, "extension", "value", extension)
+        excel_sheet: Optional[str] = None
+        df = make_new_column(df, "excel_sheet", "value", excel_sheet)
     # add support later (not needed ASAP)
     # if isinstance(DownloadHyperparameters, PdfHyperparameters):
 
@@ -317,8 +326,68 @@ def before_mapping(
 
 
 def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
-    column_name: str = Node.__name__[7:]
-    Hyperparameters: MappingHyperparameters = GraphVertex.mapping_hyperparameters
+
+    column: str = Node.__name__[7:]
+    encoding_method: str = Node.encoding_method
+    value_for_encoding: str = Node.value_for_encoding
+    df = make_new_column(df, +column, encoding_method, value_for_encoding)
+    # copy for metadata storage
+    df = make_new_column(
+        df, ("original_" + column), encoding_method, value_for_encoding
+    )
+
+    # I'm unsure of validator behavior because you dont have define mapping_hyperparameters so I've defined these here with none just in case
+    in_this_organism: Optional[str] = None
+    classes_to_prioritize: Optional[set[str]] = None
+    classes_to_avoid: Optional[set[str]] = None
+
+    Hyperparameters: Optional[MappingHyperparameters] = (
+        GraphVertex.mapping_hyperparameters
+    )
+    if Hyperparameters:
+
+        how_to_fill_column: Optional[
+            Literal["forward", "backward", "min", "max", "mean", "zero", "one"]
+        ] = Hyperparameters.how_to_fill_column
+        if how_to_fill_column:
+            df = df.with_columns(pl.col(column).fill_null(strategy=how_to_fill_column))
+
+        explode_by_delimiter: Optional[str] = Hyperparameters.explode_by_delimiter
+        if explode_by_delimiter:
+            df = df.with_columns(
+                pl.col(column).str.split(explode_by_delimiter)
+            ).explode(column)
+
+        regular_expressions: Optional[set[RegularExpression]] = (
+            Hyperparameters.regular_expressions
+        )
+        if regular_expressions:
+            for Expression in regular_expressions:
+                pattern: str = Expression.pattern
+                replacement: str = Expression.replacement
+                # replace all is vectorized... comeback if I get regex errors because it's not as compatible as re.sub
+                df = df.with_columns(
+                    pl.col(column).str.replace_all(pattern, replacement).alias(column)
+                )
+
+        substrings_to_remove: Optional[set[str]] = Hyperparameters.substrings_to_remove
+        if substrings_to_remove:
+            for substring in substrings_to_remove:
+                df = df.with_columns(
+                    pl.col(column).str.replace_all(substring, "").alias(column)
+                )
+
+        prefix: Optional[str] = Hyperparameters.prefix
+        if prefix:
+            df = df.with_cols((pl.lit(prefix) + pl.col(column)).alias(column))
+
+        suffix: Optional[str] = Hyperparameters.suffix
+        if suffix:
+            df = df.with_cols((pl.col(column) + pl.lit(suffix)).alias(column))
+
+        in_this_organism = Hyperparameters.in_this_organism
+        classes_to_prioritize = Hyperparameters.classes_to_prioritize
+        classes_to_avoid = Hyperparameters.classes_to_avoid
 
 
 def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
