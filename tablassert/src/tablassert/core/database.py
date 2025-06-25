@@ -53,6 +53,8 @@ def kg2_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid
     """
     return db.query(sql)
 
+# patch lookups aren't frequent enough to justify a combined cache
+
 @lru_cache(maxsize=16)
 def override_lookup(db: Database, unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
     sql: str = """

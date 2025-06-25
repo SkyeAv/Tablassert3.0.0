@@ -1,9 +1,11 @@
-from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing
+from tablassert.src.tablassert.models.table_config import Section, Location, PdfHyperparameters, CsvHyperparameters, ExcelHyperparameters, Provenance, Attributes, Reindexing, MathModuleTransformation
 from tablassert.src.tablassert.models.graph_config import GraphConfig
 from tablassert.src.tablassert.utils.io import PydanticModel
-from typing import Optional, Literal, Union
+from typing import Optional, Literal, Union, Any
+from pydantic import HttpUrl
 from pathlib import Path
 import polars as pl
+import math
 
 def take_rows_dataframe(df: pl.DataFrame, rows: set[int]) -> pl.DataFrame:
     return df.select(pl.all().take(indices=list(rows)))  # type: ignore
@@ -157,23 +159,51 @@ def reindex_column(df: pl.DataFrame, column: str, comparison: Literal["ge", "le"
         case _:
             raise RuntimeError("Only reindexing comparisons ge, le, gt, lt, eq, and ne are valid")
 
+def math_module_operation(df: pl.DataFrame, column: str, Transformation: MathModuleTransformation) -> pl.DataFrame:
+    operation: str = Transformation.attribute
+    attribute: Any = getattr(math, operation)
+    arguments: list[Optional[float]] = Transformation.attribute
+    transformation_operation = lambda 
+
+
+    return df
+
 def before_mapping(df: pl.DataFrame, Table: Section, TableLocation: Location) -> pl.DataFrame:
 
-    TableLocation.
+    download_link: HttpUrl = TableLocation.where_to_download_data_from
+    download_link = str(download_link)
+    df = make_new_column(df, "download_link", "value", download_link)
+
+    DownloadHyperparameters: PydanticModel = TableLocation.download_hyperparameters
+    if isinstance(DownloadHyperparameters, ExcelHyperparameters):
+        DownloadHyperparameters
+    if isinstance(DownloadHyperparameters, CsvHyperparameters):    
+        DownloadHyperparameters
+    # add support later (not needed ASAP)
+    #if isinstance(DownloadHyperparameters, PdfHyperparameters):   
 
     TableProvenance: Provenance = Table.provenance
 
-
     TableAttributes: Attributes = Table.attributes
+    for Attribute in TableAttributes:
+        attribute_name: str = Attribute.__name__
+        encoding_method: str = Attribute.encoding_method
+        value_for_encoding: str = Attribute.value_for_encoding
+        df = make_new_column(df, attribute_name, encoding_method, value_for_encoding)
+        math_module_transformations: Optional[set[MathModuleTransformation]] = Attribute.math_module_transformation
+        if math_module_transformations:
+            for Transformation in math_module_transformations:
 
     TableReindexing: set[Reindexing] = Table.reindexing
-    for reindexing_operation in TableReindexing:
-        mode: Literal["before", "after"] = reindexing_operation.mode
+    for ReindexingOperation in TableReindexing:
+        mode: Literal["before", "after"] = ReindexingOperation.mode
         if mode == "before":
-            column: str = reindexing_operation.mode
-            comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = reindexing_operation
-            value_for_comparison: Union[str, float] = reindexing_operation
+            column: str = ReindexingOperation.mode
+            comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = ReindexingOperation
+            value_for_comparison: Union[str, float] = ReindexingOperation
             df = reindex_column(df, column, comparison, value_for_comparison)
+    
+    return df
 
 def dataframing(Table: Section, Graph: GraphConfig, datapath: Path) -> pl.DataFrame:
     TableLocation: Location = Table.location
