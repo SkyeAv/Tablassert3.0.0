@@ -71,7 +71,8 @@ def file_caption(article_curie: str, filename: str) -> Optional[str]:
 def cached_babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
     return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
 
-def collect_babelresults(rows: Any) -> Optional[dict[str, Any]]
+def collect_babelresults(rows: Any) -> Optional[dict[str, Any]]:
+    return
 
 @babelcache.memorize()
 def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
