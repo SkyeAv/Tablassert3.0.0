@@ -40,7 +40,7 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, object]]:
     mesh_zip: Any = zip(mesh, mesh_major)
     domain: list[str] = [term for term, importance in mesh_zip if importance == "Y"]
     mesh_terms: list[str] = [term for term, importance in mesh_zip if importance == "N"]
-    row = next(rows, {})
+    row: Any = next(rows, {})
     firstauthor: Optional[str] = row.get("firstauthor")
     journal: Optional[str] = row.get("journal")
     title: Optional[str] = row.get("title")
@@ -57,28 +57,47 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, object]]:
 @captionscache.memorize()
 def file_caption(article_curie: str, filename: str) -> Optional[str]:
     sql: str = """
-    FROM
+    SELECT caption
+    FROM captions
+    WHERE pmc = :curie AND file = :filename
+    LIMIT 1;
     """
-    return pubmed.query(sql)
+    rows: Any = pubmed.query(sql, {"curie": article_curie, "filename": filename})
+    row: Any = next(rows, {})
+    return row.get("caption")
 
 # lru cache is 10-100x faster so I cache twice
 @lru_cache(maxsize=1024)
-def cached_babel_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
+def cached_babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
     return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
 
 @babelcache.memorize()
-def babel_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
-    sql: str = """
-    FROM
+def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
+    prioritize_placeholders: Optional[list[str]] = 
+    avoid_placeholders: Optional[list[str]] =
+    level: str = "L1"
+    sql: str = f"""
+    SELECT
+        NAMES.CURIE,
+        NAMES.CATEGORY,
+        NAMES.NAME,
+        NAMES.TAXON, 
+    FROM SYNONYMS
+    INNER JOIN NAMES ON SYNONYMS.CURIE = NAMES.CURIE
+    WHERE 
+        {"SYNONYMS.L1 = :input" if level == "L1" else "SYNONYMS.L2 = :input" if level == "L2" else "SYNONYMS.L3 = :input"}
+        {"AND NAMES.TAXON = :taxon" if taxon else ""}
+        {f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
+    {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \n\t\t ELSE 1 \n\t END" if prioritize_placeholders else ""}
     """
     return babel.query(sql)
 
 @lru_cache(maxsize=512)
-def cached_kg2_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+def cached_kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
     return kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
 
 @kg2cache.memorize()
-def kg2_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
     sql: str = """
     FROM
     """
@@ -87,14 +106,14 @@ def kg2_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) ->
 # patch lookups aren't frequent enough to justify a combined cache
 
 @lru_cache(maxsize=16)
-def override_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+def override_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
     sql: str = """
     FROM
     """
     return mapping_patch.query(sql)
 
 @lru_cache(maxsize=32)
-def supplement_lookup(unprocessed_input: str, prioritize: set[str], avoid: set[str]) -> Optional[]:
+def supplement_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
     sql: str = """
     FROM
     """
@@ -126,9 +145,9 @@ def activate_sqlites(Sqlites: SqliteDatabases) -> None:
     mapping_patch: Database = new_connection(Path(str(mapping_patchpath)).resolve())
 
 @lru_cache(maxsize=2048)
-def cached_fullmap3(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
+def cached_fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
     return fullmap3(unprocessed_input, prioritize, avoid, taxon, column_context)
 
 @fullmapcache.memorize()
-def fullmap3(unprocessed_input: str, prioritize: set[str], avoid: set[str], taxon: str) -> Optional[]:
+def fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
     return
