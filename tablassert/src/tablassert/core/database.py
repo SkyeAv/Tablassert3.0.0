@@ -20,7 +20,7 @@ def new_connection(sqlitepath: Path) -> Database:
 # pubmed lookups aren't frequent enough to justify a combined cache
 
 @metadatacache.memorize()
-def pubmed_metadata(article_curie: str) -> Optional[dict[str, object]]:
+def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
     sql: str = f"""
     SELECT 
         mesh.mesh_major,
@@ -71,10 +71,15 @@ def file_caption(article_curie: str, filename: str) -> Optional[str]:
 def cached_babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
     return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
 
+def collect_babelresults(rows: Any) -> Optional[dict[str, Any]]
+
 @babelcache.memorize()
 def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
     prioritize_placeholders: Optional[list[str]] = 
     avoid_placeholders: Optional[list[str]] =
+    most_common: list[Any] = column_context.most_common(1)
+    if most_common:
+        most_common: str = str(most_common[0][0])
     level: str = "L1"
     sql: str = f"""
     SELECT
@@ -88,9 +93,10 @@ def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: 
         {"SYNONYMS.L1 = :input" if level == "L1" else "SYNONYMS.L2 = :input" if level == "L2" else "SYNONYMS.L3 = :input"}
         {"AND NAMES.TAXON = :taxon" if taxon else ""}
         {f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
-    {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \n\t\t ELSE 1 \n\t END" if prioritize_placeholders else ""}
+    {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = {most_common} THEN 0 \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN NAMES.CATEGORY = {most_common} THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY = {most_common} THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
     """
-    return babel.query(sql)
+    rows: Any = babel.query(sql)
+    return 
 
 @lru_cache(maxsize=512)
 def cached_kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
