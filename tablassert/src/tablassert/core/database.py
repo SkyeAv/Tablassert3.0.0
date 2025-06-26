@@ -87,7 +87,7 @@ def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: 
         NAMES.CURIE,
         NAMES.CATEGORY,
         NAMES.NAME,
-        NAMES.TAXON, 
+        NAMES.TAXON
     FROM SYNONYMS
     INNER JOIN NAMES ON SYNONYMS.CURIE = NAMES.CURIE
     WHERE 
