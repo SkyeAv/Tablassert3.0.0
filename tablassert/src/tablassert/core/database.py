@@ -6,6 +6,7 @@ from functools import lru_cache
 from pydantic import FilePath
 from diskcache import Cache
 from pathlib import Path
+import time
 
 # all of these are hardcoded because of how hard everything got with circular imports
 fullmapcache: Cache = Cache("/tablassert/cache/.fullmap".upper(), max_size=1e10)
@@ -35,6 +36,8 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
     WHERE ids.alt = :curie
     LIMIT 1
     """
+    global start
+    start = time.time()
     rows: Any = pubmed.query(sql, {"curie": article_curie})
     mesh: Optional[list[str]] = [row["mesh"] for row in rows if row]
     mesh_major: Optional[list[str]] = [row["mesh_major"] for row in rows if row]
@@ -63,6 +66,8 @@ def file_caption(article_curie: str, filename: str) -> Optional[str]:
     WHERE pmc = :curie AND file = :filename
     LIMIT 1
     """
+    global start
+    start = time.time()
     rows: Any = pubmed.query(sql, {"curie": article_curie, "filename": filename})
     row: Any = next(rows, {})
     return row.get("caption")
@@ -110,12 +115,18 @@ def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: 
         {f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
     {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = :most_common THEN 0 \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
     """
+    global start
+    start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
     level: str = "L2"
+    start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
     level: str = "L3"
+    start = time.time()
+    rows: Any = babel.query(sql, sql_params)
+    row: Any = next(rows, {})
     return 
 
 @lru_cache(maxsize=512)
@@ -137,9 +148,12 @@ def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Op
         {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
     {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = :most_common THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
     """
+    global start
+    start = time.time()
     rows: Any = kg2.query(sql, sql_params)
     row: Any = next(rows, {})
     level: str = "L2"
+    start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
     return 
@@ -167,10 +181,20 @@ def reset_column_context() -> None:
     global column_context
     column_context = Counter()
 
-def activate_single_sqlite(name: str, path: FilePath) -> None:
-    globals()[name] = new_connection(str(path))
-    
+start: float = time.time()
 
+def progress_handler(max_time: float = 1.10) -> int
+    global start
+    if (start - time.time()) >= max_time:
+        return 1
+    return 0
+
+def activate_single_sqlite(name: str, path: FilePath) -> None:
+    database: Database = new_connection(str(path))
+    conn = database.conn
+    conn.set_progress_handler(lambda: progress_handler(), 1)
+    globals()[name] = database
+    
 # databases aren't hashable so I activate them all globally
 def activate_sqlites(Sqlites: SqliteDatabases) -> None:
     pubmedpath: FilePath = Sqlites.pubmed

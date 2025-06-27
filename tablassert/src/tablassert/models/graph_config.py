@@ -23,12 +23,9 @@ class Location(BaseModel):
 
 class Hyperparameters(BaseModel):
     number_of_parallel_processes_to_run: int = Field(default=1)
-    sql_progess_handler_time: float = Field(default=1.5)
     maximum_p_value_in_graph: float = Field(default=1.0)
 
-    @field_validator(
-        "maximum_p_value_in_graph", "sql_progess_handler_time", mode="before"
-    )
+    @field_validator("maximum_p_value_in_graph", mode="before")
     @classmethod
     def convert_int_to_float(
         cls, possible_int: Optional[Union[int, float]]
