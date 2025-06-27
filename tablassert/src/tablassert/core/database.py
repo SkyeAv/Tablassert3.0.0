@@ -33,6 +33,7 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
     INNER JOIN mesh ON ids.pmid = mesh.pmid
     INNER JOIN info ON ids.pmid = info.pmid
     WHERE ids.alt = :curie
+    LIMIT 1
     """
     rows: Any = pubmed.query(sql, {"curie": article_curie})
     mesh: Optional[list[str]] = [row["mesh"] for row in rows if row]
@@ -60,7 +61,7 @@ def file_caption(article_curie: str, filename: str) -> Optional[str]:
     SELECT caption
     FROM captions
     WHERE pmc = :curie AND file = :filename
-    LIMIT 1;
+    LIMIT 1
     """
     rows: Any = pubmed.query(sql, {"curie": article_curie, "filename": filename})
     row: Any = next(rows, {})
@@ -76,8 +77,8 @@ def collect_babelresults(rows: Any) -> Optional[dict[str, Any]]:
 
 @babelcache.memorize()
 def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
-    prioritize_placeholders: Optional[list[str]] = 
-    avoid_placeholders: Optional[list[str]] =
+    prioritize_placeholders: Optional[list[str]] = ", ".join([f":category{i}" for index, category in enumerate(prioritize)]) if prioritize else None
+    avoid_placeholders: Optional[list[str]] = ", ".join([f":category{i}" for index, category in enumerate(avoid)]) if avoid else None
     most_common: list[Any] = column_context.most_common(1)
     if most_common:
         most_common: str = str(most_common[0][0])
@@ -105,26 +106,41 @@ def cached_kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], av
 
 @kg2cache.memorize()
 def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
-    sql: str = """
-    FROM
+    prioritize_placeholders: Optional[list[str]] = ", ".join([f":prioritize{i}" for index, category in enumerate(prioritize)]) if prioritize else None
+    avoid_placeholders: Optional[list[str]] = ", ".join([f":avoid{i}" for index, category in enumerate(avoid)]) if avoid else None
+    most_common: list[Any] = column_context.most_common(1)
+    if most_common:
+        most_common: str = str(most_common[0][0])
+    level: str = "L1"
+    sql: str = f"""
+    SELECT
+        clusters.cluster_id
+        clusters.category
+        clusters.name
+    FROM id
+    INNER JOIN clusters ON nodes.cluster_id = clusters.cluster_id
+    WHERE
+        {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
+    {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = {most_common} THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = {most_common} THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category = {most_common} THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
     """
+    sqlparams = {for index, category}
     return kg2.query(sql)
 
 # patch lookups aren't frequent enough to justify a combined cache
 
+"""
+Finish adding this after the rest of the pipeline works
+
 @lru_cache(maxsize=16)
 def override_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
-    sql: str = """
-    FROM
-    """
+    sql: str = "FROM"
     return mapping_patch.query(sql)
 
 @lru_cache(maxsize=32)
 def supplement_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
-    sql: str = """
-    FROM
-    """
+    sql: str = "FROM"
     return mapping_patch.query(sql)
+"""
 
 # counter is global because it's not hashable for the caches
 column_context: Counter = Counter()
