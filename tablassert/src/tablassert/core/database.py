@@ -72,16 +72,29 @@ def file_caption(article_curie: str, filename: str) -> Optional[str]:
 def cached_babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
     return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
 
+def dynamic_build(level_input: Optional[str], prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> tuple[Optional[str], Optional[str], dict[str, str]]:
+    prioritize_placeholders: Optional[str] = ", ".join([f":prioritize{index}" for index in range(len(prioritize))]) if prioritize else None
+    avoid_placeholders: Optional[str] = ", ".join([f":avoid{index}" for index in range(len(avoid))]) if avoid else None
+    most_common: list[Any] = column_context.most_common(1)
+    most_common: Optional[str] = str(most_common[0][0]) if most_common else None
+    sql_params: dict[str, str] = {"input": level_input}
+    if prioritize:
+        sql_params.update({f":prioritize{index}": category for index, category in enumerate(prioritize)})
+    if avoid:
+        sql_params.update({f":avoid{index}": category for index, category in enumerate(avoid)})
+    if taxon:
+        sql_params[":taxon"] = taxon
+    if most_common:
+        sql_params[":most_common"] = most_common
+    return (prioritize_placeholders, avoid_placeholder, sql_params)
+
+
 def collect_babelresults(rows: Any) -> Optional[dict[str, Any]]:
     return
 
 @babelcache.memorize()
 def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
-    prioritize_placeholders: Optional[list[str]] = ", ".join([f":category{i}" for index, category in enumerate(prioritize)]) if prioritize else None
-    avoid_placeholders: Optional[list[str]] = ", ".join([f":category{i}" for index, category in enumerate(avoid)]) if avoid else None
-    most_common: list[Any] = column_context.most_common(1)
-    if most_common:
-        most_common: str = str(most_common[0][0])
+    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(unprocessed_input, prioritize, avoid, taxon)
     level: str = "L1"
     sql: str = f"""
     SELECT
@@ -95,9 +108,14 @@ def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: 
         {"SYNONYMS.L1 = :input" if level == "L1" else "SYNONYMS.L2 = :input" if level == "L2" else "SYNONYMS.L3 = :input"}
         {"AND NAMES.TAXON = :taxon" if taxon else ""}
         {f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
-    {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = {most_common} THEN 0 \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN NAMES.CATEGORY = {most_common} THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY = {most_common} THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
+    {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = :most_common THEN 0 \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
     """
-    rows: Any = babel.query(sql)
+    rows: Any = babel.query(sql, sql_params)
+    row: Any = next(rows, {})
+    level: str = "L2"
+    rows: Any = babel.query(sql, sql_params)
+    row: Any = next(rows, {})
+    level: str = "L3"
     return 
 
 @lru_cache(maxsize=512)
@@ -106,11 +124,7 @@ def cached_kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], av
 
 @kg2cache.memorize()
 def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
-    prioritize_placeholders: Optional[list[str]] = ", ".join([f":prioritize{i}" for index, category in enumerate(prioritize)]) if prioritize else None
-    avoid_placeholders: Optional[list[str]] = ", ".join([f":avoid{i}" for index, category in enumerate(avoid)]) if avoid else None
-    most_common: list[Any] = column_context.most_common(1)
-    if most_common:
-        most_common: str = str(most_common[0][0])
+    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(unprocessed_input, prioritize, avoid, taxon)
     level: str = "L1"
     sql: str = f"""
     SELECT
@@ -121,10 +135,14 @@ def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Op
     INNER JOIN clusters ON nodes.cluster_id = clusters.cluster_id
     WHERE
         {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
-    {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = {most_common} THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = {most_common} THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category = {most_common} THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
+    {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = :most_common THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else "" else ""}
     """
-    sqlparams = {for index, category}
-    return kg2.query(sql)
+    rows: Any = kg2.query(sql, sql_params)
+    row: Any = next(rows, {})
+    level: str = "L2"
+    rows: Any = babel.query(sql, sql_params)
+    row: Any = next(rows, {})
+    return 
 
 # patch lookups aren't frequent enough to justify a combined cache
 
