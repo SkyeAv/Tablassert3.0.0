@@ -14,8 +14,8 @@ kg2cache: Cache = Cache("/tablassert/cache/.kg2".upper(), max_size=1e9)
 metadatacache: Cache = Cache("/tablassert/cache/.pubmed_metadata".upper(), max_size=1e6)
 captionscache: Cache = Cache("/tablassert/cache/.pubmed_captions".upper(), max_size=1e6)
 
-def new_connection(sqlitepath: Path) -> Database:
-    return Database(sqlitepath.as_posix()).enable_wal()
+def new_connection(sqlitepath: str) -> Database:
+    return Database(sqlitepath).enable_wal()
 
 # pubmed lookups aren't frequent enough to justify a combined cache
 
@@ -167,23 +167,22 @@ def reset_column_context() -> None:
     global column_context
     column_context = Counter()
 
+def activate_single_sqlite(name: str, path: FilePath) -> None:
+    globals()[name] = new_connection(str(path))
+    
+
 # databases aren't hashable so I activate them all globally
 def activate_sqlites(Sqlites: SqliteDatabases) -> None:
     pubmedpath: FilePath = Sqlites.pubmed
-    global pubmed
-    pubmed: Database = new_connection(Path(str(pubmedpath)).resolve())
+    activate_single_sqlite("pubmed", pubmedpath)
     pmcpath: FilePath = Sqlites.pmc
-    global pmc
-    pmc: Database = new_connection(Path(str(pmcpath)).resolve())
+    activate_single_sqlite("pmc", pmcpath)
     babelpath: FilePath = Sqlites.babel
-    global babel
-    babel: Database = new_connection(Path(str(babelpath)).resolve())
+    activate_single_sqlite("babel", babelpath)
     kg2path: FilePath = Sqlites.kg2
-    global kg2
-    kg2: Database = new_connection(Path(str(kg2path)).resolve())
+    activate_single_sqlite("kg2", kg2path)
     mapping_patchpath: FilePath = Sqlites.mapping_patch
-    global mapping_patch
-    mapping_patch: Database = new_connection(Path(str(mapping_patchpath)).resolve())
+    activate_single_sqlite("mapping_path", mapping_patchpath)
 
 @lru_cache(maxsize=2048)
 def cached_fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
