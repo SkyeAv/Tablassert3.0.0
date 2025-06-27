@@ -17,10 +17,13 @@ kg2cache: Cache = Cache("/tablassert/cache/.kg2".upper(), max_size=1e9)
 metadatacache: Cache = Cache("/tablassert/cache/.pubmed_metadata".upper(), max_size=1e6)
 captionscache: Cache = Cache("/tablassert/cache/.pubmed_captions".upper(), max_size=1e6)
 
+
 def new_connection(sqlitepath: str) -> Database:
     return Database(sqlitepath).enable_wal()  # type: ignore
 
+
 # pubmed lookups aren't frequent enough to justify a combined cache
+
 
 @metadatacache.memorize()  # type: ignore
 def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
@@ -60,6 +63,7 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
         "year": year,
     }
 
+
 @captionscache.memorize()  # type: ignore
 def file_caption(article_curie: str, filename: str) -> Any:
     sql: str = """
@@ -74,34 +78,62 @@ def file_caption(article_curie: str, filename: str) -> Any:
     row: Any = next(rows, {})
     return row.get("caption")
 
+
 # lru cache is 10-100x faster so I cache twice
 @lru_cache(maxsize=1024)
-def cached_babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[dict[str, Any]]:
+def cached_babel_lookup(
+    unprocessed_input: str,
+    prioritize: Optional[set[str]],
+    avoid: Optional[set[str]],
+    taxon: Optional[str],
+) -> Optional[dict[str, Any]]:
     return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
 
-def dynamic_build(level_input: Optional[str], prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> tuple[Optional[str], Optional[str], dict[str, str]]:
-    prioritize_placeholders: Optional[str] = ", ".join([f":prioritize{index}" for index in range(len(prioritize))]) if prioritize else None
-    avoid_placeholders: Optional[str] = ", ".join([f":avoid{index}" for index in range(len(avoid))]) if avoid else None
+
+def dynamic_build(
+    level_input: Optional[str],
+    prioritize: Optional[set[str]],
+    avoid: Optional[set[str]],
+    taxon: Optional[str],
+) -> tuple[Optional[str], Optional[str], dict[str, str]]:
+    prioritize_placeholders: Optional[str] = (
+        ", ".join([f":prioritize{index}" for index in range(len(prioritize))])
+        if prioritize
+        else None
+    )
+    avoid_placeholders: Optional[str] = (
+        ", ".join([f":avoid{index}" for index in range(len(avoid))]) if avoid else None
+    )
     most_common: list[Any] = column_context.most_common(1)
     most_common: Optional[str] = str(most_common[0][0]) if most_common else None
     sql_params: dict[str, str] = {"input": level_input}
     if prioritize:
-        sql_params.update({f":prioritize{index}": category for index, category in enumerate(prioritize)})
+        sql_params.update(
+            {
+                f":prioritize{index}": category
+                for index, category in enumerate(prioritize)
+            }
+        )
     if avoid:
-        sql_params.update({f":avoid{index}": category for index, category in enumerate(avoid)})
+        sql_params.update(
+            {f":avoid{index}": category for index, category in enumerate(avoid)}
+        )
     if taxon:
         sql_params[":taxon"] = taxon
     if most_common:
         sql_params[":most_common"] = most_common
     return (prioritize_placeholders, avoid_placeholder, sql_params)
 
+
 def collect_babelresults(rows: Any) -> Optional[dict[str, Any]]:
     return
+
 
 level_one: Any = lambda x: str(x).lower()
 
 DISABLE: list[str] = ["parser", "ner", "textcat"]
 MODEL = spacy.load("en_core_web_sm", disable=DISABLE)
+
 
 def level_two(level_two_input: str) -> str:
     tokens: list[str] = MODEL(level_two_input)  # type: ignore
@@ -111,23 +143,35 @@ def level_two(level_two_input: str) -> str:
         if not token.is_stop  # is not a stopword
         and not token.is_punct  # is not punctuation
     ]
-    sorted_cleaned_unique_tokens: list[str] = sorted(list(dict.fromkeys(cleaned_tokens)))
+    sorted_cleaned_unique_tokens: list[str] = sorted(
+        list(dict.fromkeys(cleaned_tokens))
+    )
     level_two_output: str = " ".join(sorted_cleaned_unique_tokens)
     return level_two_output
 
+
 NONWORD_REGEX: Any = re.compile(r"\W+")
+
 
 def level_three(level_three_input: str) -> str:
     regex: Any = NONWORD_REGEX
     level_three_output: str = re.sub(regex, "", level_three_input)
     return level_three_output
 
+
 @babelcache.memorize()  # type: ignore
-def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[dict[str, Any]]:
-    
+def babel_lookup(
+    unprocessed_input: str,
+    prioritize: Optional[set[str]],
+    avoid: Optional[set[str]],
+    taxon: Optional[str],
+) -> Optional[dict[str, Any]]:
+
     level_one_input: str = level_one(unprocessed_input)
 
-    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(level_one_input, prioritize, avoid, taxon)
+    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(
+        level_one_input, prioritize, avoid, taxon
+    )
     level: str = "L1"
     sql: str = f"""
     SELECT
@@ -148,7 +192,6 @@ def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: 
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
 
-
     level_two_input: str = level_two(level_one_input)
     sql_params["input"] = level_two_input
     level: str = "L2"
@@ -164,18 +207,26 @@ def babel_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: 
     start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
-    return 
+    return
+
 
 @lru_cache(maxsize=512)
-def cached_kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[dict[str, Any]]:
+def cached_kg2_lookup(
+    unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]
+) -> Optional[dict[str, Any]]:
     return kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
 
+
 @kg2cache.memorize()  # type: ignore
-def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[dict[str, Any]]:
-    
+def kg2_lookup(
+    unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]
+) -> Optional[dict[str, Any]]:
+
     level_one_input: str = unprocessed_input
-    
-    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(level_one_input, prioritize, avoid, taxon)
+
+    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(
+        level_one_input, prioritize, avoid, taxon
+    )
     level: str = "L1"
     sql: str = f"""
     SELECT
@@ -188,7 +239,7 @@ def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Op
         {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
     {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = :most_common THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else "ORDER BY \n\t CASE \n\t\t WHEN clusters.category = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else ""}
     """
-    
+
     global start
     start = time.time()
     rows: Any = kg2.query(sql, sql_params)
@@ -202,7 +253,8 @@ def kg2_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Op
     start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
-    return 
+    return
+
 
 # patch lookups aren't frequent enough to justify a combined cache
 
@@ -223,23 +275,28 @@ def supplement_lookup(unprocessed_input: str, prioritize: Optional[set[str]], av
 # counter is global because it's not hashable for the caches
 column_context: Counter = Counter()
 
+
 def reset_column_context() -> None:
     global column_context
     column_context = Counter()
 
+
 start: float = time.time()
+
 
 def progress_handler(max_time: float = 1.10) -> int:
     if (start - time.time()) >= max_time:
         return 1
     return 0
 
+
 def activate_single_sqlite(name: str, path: FilePath) -> None:
     database: Database = new_connection(str(path))
     conn = database.conn
     conn.set_progress_handler(lambda: progress_handler(), 1)
     globals()[name] = database
-    
+
+
 # databases aren't hashable so I activate them all globally
 def activate_sqlites(Sqlites: SqliteDatabases) -> None:
     pubmedpath: FilePath = Sqlites.pubmed
@@ -253,10 +310,11 @@ def activate_sqlites(Sqlites: SqliteDatabases) -> None:
     mapping_patchpath: FilePath = Sqlites.mapping_patch
     activate_single_sqlite("mapping_path", mapping_patchpath)
 
-#@lru_cache(maxsize=2048)
-#def cached_fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
-    #return fullmap3(unprocessed_input, prioritize, avoid, taxon, column_context)
 
-#@fullmapcache.memorize()
-#def fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
-    #return
+# @lru_cache(maxsize=2048)
+# def cached_fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
+# return fullmap3(unprocessed_input, prioritize, avoid, taxon, column_context)
+
+# @fullmapcache.memorize()
+# def fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
+# return
