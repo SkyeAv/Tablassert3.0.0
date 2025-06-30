@@ -101,7 +101,9 @@ def dynamic_build(
         ", ".join([f":avoid{index}" for index in range(len(avoid))]) if avoid else None
     )
     most_common_list: list[Any] = column_context.most_common(1)
-    most_common: Optional[str] = str(most_common_list[0][0]) if most_common_list else None
+    most_common: Optional[str] = (
+        str(most_common_list[0][0]) if most_common_list else None
+    )
     sql_params: dict[str, str] = {"input": level_input}
     if prioritize:
         sql_params.update(
@@ -133,7 +135,7 @@ def collect_babelresults(row: Any) -> Optional[dict[str, Any]]:
             "name": name,
             "taxon": taxon,
         }
-    
+
     return None
 
 
@@ -254,20 +256,24 @@ def collect_kg2results(row: Any) -> Optional[dict[str, Any]]:
             "name": name,
             "taxon": None,
         }
-    
+
     return None
 
 
 @lru_cache(maxsize=512)
 def cached_kg2_lookup(
-    unprocessed_input: str, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]]
+    unprocessed_input: str,
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
 ) -> Optional[dict[str, Any]]:
     return kg2_lookup(unprocessed_input, prioritize, avoid)  # type: ignore
 
 
 @kg2cache.memorize()  # type: ignore
 def kg2_lookup(
-    unprocessed_input: str, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]]
+    unprocessed_input: str,
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
 ) -> Optional[dict[str, Any]]:
 
     level_one_input: str = unprocessed_input
@@ -388,7 +394,9 @@ def fullmap3(
     avoid: Optional[frozenset[str]],
     taxon: Optional[str],
 ) -> Optional[tuple[str, str, str, Optional[str], str, str]]:
-    babelresult: Optional[dict[str, Any]] = cached_kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
+    babelresult: Optional[dict[str, Any]] = cached_kg2_lookup(
+        unprocessed_input, prioritize, avoid, taxon
+    )
     if babelresult:
         assert babelresult is not None
         category: str = babelresult["category"]
@@ -400,7 +408,9 @@ def fullmap3(
         level: str = babelresult["level"]
         return (curie, category, name, taxon, db, level)
 
-    kg2result: Optional[dict[str, Any]] = cached_babel_lookup(unprocessed_input, prioritize, avoid, taxon)
+    kg2result: Optional[dict[str, Any]] = cached_babel_lookup(
+        unprocessed_input, prioritize, avoid, taxon
+    )
     if kg2result:
         assert kg2result is not None
         category = kg2result["category"]
