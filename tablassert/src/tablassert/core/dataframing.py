@@ -285,7 +285,7 @@ def math_module_operation(
 
 
 def before_mapping(
-    df: pl.DataFrame, Table: Section, TableLocation: Location
+    df: pl.DataFrame, Table: Section, TableLocation: Location, datapath: Path
 ) -> pl.DataFrame:
 
     download_link: HttpUrl = TableLocation.where_to_download_data_from
@@ -317,6 +317,14 @@ def before_mapping(
     pubmedresult: dict[str, Any] = pubmed_metadata(article_curie)
     for column_name, column_value in pubmedresult.items():
         df = make_new_column(df, column_name, "value", column_value)
+
+    datapathstring: str = datapath.as_posix()
+    df = make_new_column(df, "file_name", "value", datapathstring)
+
+    captionresult: Any = file_caption(article_curie, datapathstring)
+    if captionresult:
+        assert isinstance(captionresult, str)
+        df = make_new_column(df, "pmc_file_caption", "value", captionresult)
 
     TableAttributes: Attributes = Table.attributes
     for Attribute in TableAttributes:
@@ -428,7 +436,7 @@ def dataframing(Table: Section, Graph: GraphConfig, datapath: Path) -> pl.DataFr
     df = apply_excel_style_column_names(df)
     Sqlites: SqliteDatabases = Graph.location.sqlite_databases
     activate_sqlites(Sqlites)
-    df = before_mapping(df, Table, TableLocation)
+    df = before_mapping(df, Table, TableLocation, datapath)
     Assertion: Triple = Table.triple
     df = mapping(df, Assertion)
     return after_mapping(df, Table)
