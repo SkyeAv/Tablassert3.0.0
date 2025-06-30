@@ -356,7 +356,7 @@ class Section(BaseModel):
     provenance: Provenance = Field(...)
     attributes: Attributes = Field(...)
     triple: Triple = Field(...)
-    reindexing: Optional[Reindexing] = Field(default=None)
+    reindexing: Optional[set[Reindexing]] = Field(default=None)
 
     @model_validator(mode="after")
     def filepath_generator(self: Self) -> Self:

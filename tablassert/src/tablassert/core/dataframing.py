@@ -23,8 +23,6 @@ from tablassert.src.tablassert.core.database import (
 from tablassert.src.tablassert.models.graph_config import (
     GraphConfig,
     SqliteDatabases,
-    pubmed_metadata,
-    file_caption,
 )
 from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union, Any
@@ -108,7 +106,7 @@ def read_csv(
 
 
 def invoke(TableLocation: Location, datapath: Path) -> pl.DataFrame:
-    DownloadHyperparameters: PydanticModel = TableLocation.download_hyperparameters
+    DownloadHyperparameters: PydanticModel = TableLocation.download_hyperparameters  # type: ignore
     if isinstance(DownloadHyperparameters, ExcelHyperparameters):
         return read_excel(DownloadHyperparameters, datapath)
     elif isinstance(DownloadHyperparameters, CsvHyperparameters):
@@ -135,14 +133,14 @@ def apply_excel_style_column_names(df: pl.DataFrame) -> pl.DataFrame:
 def value_column(
     df: pl.DataFrame, column: str, value_for_encoding: str
 ) -> pl.DataFrame:
-    return df.with_cols(pl.lit(value_for_encoding).alias(column))
+    return df.with_columns(pl.lit(value_for_encoding).alias(column))
 
 
 def column_of_values_column(
     df: pl.DataFrame, column: str, value_for_encoding: str
 ) -> pl.DataFrame:
     if value_for_encoding in df.columns:
-        return df.with_cols(pl.col(value_for_encoding).alias(column))
+        return df.with_columns(pl.col(value_for_encoding).alias(column))
     else:
         raise RuntimeError(
             column + ": Column " + value_for_encoding + " does not exist"
@@ -152,15 +150,17 @@ def column_of_values_column(
 def make_new_column(
     df: pl.DataFrame,
     column: str,
-    encoding_method: Literal["value", "column_of_values"],
-    value_for_encoding: str,
+    encoding_method: str,
+    value_for_encoding: Optional[str],
 ) -> pl.DataFrame:
     if not (encoding_method or value_for_encoding):
         return value_column(df, column, "not applicable")
     match encoding_method:
         case "value":
+            assert isinstance(value_for_encoding, str)
             return value_column(df, column, value_for_encoding)
         case "column_of_values":
+            assert isinstance(value_for_encoding, str)
             return column_of_values_column(df, column, value_for_encoding)
         case _:
             raise RuntimeError(
@@ -172,7 +172,7 @@ def greater_than_or_equal_to(
     df: pl.DataFrame, column: str, value_for_comparison: float
 ) -> pl.DataFrame:
     try:
-        return df.filter(pl.col() >= value_for_comparison)
+        return df.filter(pl.col(column) >= value_for_comparison)
     except Exception as e:
         raise RuntimeError(
             'Cannot filter with mode "ge" in ' + column + " (" + str(e) + ")"
@@ -183,7 +183,7 @@ def less_than_or_equal_to(
     df: pl.DataFrame, column: str, value_for_comparison: float
 ) -> pl.DataFrame:
     try:
-        return df.filter(pl.col() <= value_for_comparison)
+        return df.filter(pl.col(column) <= value_for_comparison)
     except Exception as e:
         raise RuntimeError(
             'Cannot filter with mode "le" in ' + column + " (" + str(e) + ")"
@@ -194,7 +194,7 @@ def greater_than(
     df: pl.DataFrame, column: str, value_for_comparison: float
 ) -> pl.DataFrame:
     try:
-        return df.filter(pl.col() > value_for_comparison)
+        return df.filter(pl.col(column) > value_for_comparison)
     except Exception as e:
         raise RuntimeError(
             'Cannot filter with mode "gt" in ' + column + " (" + str(e) + ")"
@@ -205,7 +205,7 @@ def less_than(
     df: pl.DataFrame, column: str, value_for_comparison: float
 ) -> pl.DataFrame:
     try:
-        return df.filter(pl.col() < value_for_comparison)
+        return df.filter(pl.col(column) < value_for_comparison)
     except Exception as e:
         raise RuntimeError(
             'Cannot filter with mode "lt" in ' + column + " (" + str(e) + ")"
@@ -216,7 +216,7 @@ def equal_to(
     df: pl.DataFrame, column: str, value_for_comparison: Union[str, float]
 ) -> pl.DataFrame:
     try:
-        return df.filter(pl.col() == value_for_comparison)
+        return df.filter(pl.col(column) == value_for_comparison)
     except Exception as e:
         raise RuntimeError(
             'Cannot filter with mode "eq" in ' + column + " (" + str(e) + ")"
@@ -227,7 +227,7 @@ def not_equal_to(
     df: pl.DataFrame, column: str, value_for_comparison: Union[str, float]
 ) -> pl.DataFrame:
     try:
-        return df.filter(pl.col() != value_for_comparison)
+        return df.filter(pl.col(column) != value_for_comparison)
     except Exception as e:
         raise RuntimeError(
             'Cannot filter with mode "ne" in ' + column + " (" + str(e) + ")"
@@ -237,7 +237,7 @@ def not_equal_to(
 def reindex_column(
     df: pl.DataFrame,
     column: str,
-    comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"],
+    comparison: str,
     value_for_comparison: Union[str, float],
 ) -> pl.DataFrame:
     match str(comparison):
@@ -266,13 +266,15 @@ def reindex_column(
 def reindexing_operation(
     df: pl.DataFrame,
     ReindexingOperation: Reindexing,
-    target_mode: Literal["before", "after"],
+    target_mode: str,
 ) -> pl.DataFrame:
-    mode: Literal["before", "after"] = ReindexingOperation.mode
+    mode: str = ReindexingOperation.mode
     if str(mode) == str(target_mode):
         column: str = ReindexingOperation.mode
-        comparison: Literal["ge", "le", "gt", "lt", "eq", "ne"] = ReindexingOperation
-        value_for_comparison: Union[str, float] = ReindexingOperation
+        comparison: str = ReindexingOperation.comparison
+        value_for_comparison: Union[str, float] = (
+            ReindexingOperation.value_for_comparison
+        )
         return reindex_column(df, column, comparison, value_for_comparison)
     return df
 
@@ -286,27 +288,27 @@ def math_module_operation(
     transformation_operation: Any = lambda x: operation(
         *[arg if arg is not None else x for arg in arguments]
     )
-    return df.with_cols(pl.col(column).apply(transformation_operation).alias(column))
+    return df.with_columns(pl.col(column).apply(transformation_operation).alias(column))  # type: ignore
 
 
 def before_mapping(
     df: pl.DataFrame, Table: Section, TableLocation: Location, datapath: Path
 ) -> pl.DataFrame:
 
-    download_link: HttpUrl = TableLocation.where_to_download_data_from
-    download_link = str(download_link)
+    download_url: HttpUrl = TableLocation.where_to_download_data_from
+    download_link: str = str(download_url)
     df = make_new_column(df, "download_link", "value", download_link)
 
-    DownloadHyperparameters: PydanticModel = TableLocation.download_hyperparameters
+    DownloadHyperparameters: PydanticModel = TableLocation.download_hyperparameters  # type: ignore
     if isinstance(DownloadHyperparameters, ExcelHyperparameters):
-        extension: Literal["xlsx", "xls"] = DownloadHyperparameters.extension
+        extension: str = DownloadHyperparameters.extension  # type: ignore
         df = make_new_column(df, "extension", "value", extension)
-        excel_sheet: Optional[str] = DownloadHyperparameters.which_excel_sheet_to_use
+        excel_sheet: Optional[str] = DownloadHyperparameters.which_excel_sheet_to_use  # type: ignore
         df = make_new_column(df, "excel_sheet", "value", excel_sheet)
     if isinstance(DownloadHyperparameters, CsvHyperparameters):
-        extension: Literal["csv", "tsv", "txt"] = DownloadHyperparameters.extension
+        extension = DownloadHyperparameters.extension  # type: ignore
         df = make_new_column(df, "extension", "value", extension)
-        excel_sheet: Optional[str] = None
+        excel_sheet = None
         df = make_new_column(df, "excel_sheet", "value", excel_sheet)
     # add support later (not needed ASAP)
     # if isinstance(DownloadHyperparameters, PdfHyperparameters):
@@ -335,27 +337,28 @@ def before_mapping(
 
     TableAttributes: Attributes = Table.attributes
     for Attribute in TableAttributes:
-        attribute_name: str = Attribute.__name__
-        encoding_method: str = Attribute.encoding_method
-        value_for_encoding: str = Attribute.value_for_encoding
+        attribute_name: str = Attribute.__name__  # type: ignore
+        encoding_method: str = Attribute.encoding_method  # type: ignore
+        value_for_encoding: str = Attribute.value_for_encoding  # type: ignore
         df = make_new_column(df, attribute_name, encoding_method, value_for_encoding)
         math_module_transformations: Optional[set[MathModuleTransformation]] = (
-            Attribute.math_module_transformation
+            Attribute.math_module_transformation  # type: ignore
         )
         if math_module_transformations:
             for Transformation in math_module_transformations:
                 df = math_module_operation(df, attribute_name, Transformation)
 
-    TableReindexing: set[Reindexing] = Table.reindexing
-    for ReindexingOperation in TableReindexing:
-        df = reindexing_operation(df, ReindexingOperation, "before")
+    TableReindexing: Optional[set[Reindexing]] = Table.reindexing
+    if TableReindexing:
+        for ReindexingOperation in TableReindexing:
+            df = reindexing_operation(df, ReindexingOperation, "before")
 
     return df
 
 
 def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
 
-    column: str = Node.__name__[7:]
+    column: str = Node.__name__[7:]  # type: ignore
     encoding_method: str = Node.encoding_method
     value_for_encoding: str = Node.value_for_encoding
     df = make_new_column(df, (column + "_premap"), encoding_method, value_for_encoding)
@@ -407,11 +410,11 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
 
         prefix: Optional[str] = Hyperparameters.prefix
         if prefix:
-            df = df.with_cols((pl.lit(prefix) + pl.col(column)).alias(column))
+            df = df.with_columns((pl.lit(prefix) + pl.col(column)).alias(column))
 
         suffix: Optional[str] = Hyperparameters.suffix
         if suffix:
-            df = df.with_cols((pl.col(column) + pl.lit(suffix)).alias(column))
+            df = df.with_columns((pl.col(column) + pl.lit(suffix)).alias(column))
 
         in_this_organism = Hyperparameters.in_this_organism
 
@@ -423,8 +426,8 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
         if classes_to_avoid:
             avoid = frozenset(classes_to_avoid)
 
-    df = df.with_cols(
-        pl.col(column + "_premap")
+    df = df.with_columns(
+        pl.col(column + "_premap")  # type: ignore
         .apply(
             lambda x: cached_fullmap3(str(x), prioritize, avoid, in_this_organism),
             skip_nulls=True,
@@ -438,7 +441,7 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
     if df.height == 0:
         raise RuntimeError(column + " failed to map")
 
-    df = df.with_cols(
+    df = df.with_columns(
         pl.col(column + "_mapped")
         .map_elements(
             lambda tup: {
@@ -498,9 +501,10 @@ FINAL_COLUMNS: list[str] = [
 
 
 def after_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
-    TableReindexing: set[Reindexing] = Table.reindexing
-    for ReindexingOperation in TableReindexing:
-        df = reindexing_operation(df, ReindexingOperation, "after")
+    TableReindexing: Optional[set[Reindexing]] = Table.reindexing
+    if TableReindexing:
+        for ReindexingOperation in TableReindexing:
+            df = reindexing_operation(df, ReindexingOperation, "after")
 
     df = df.select(FINAL_COLUMNS)
     return df.drop_nulls()
