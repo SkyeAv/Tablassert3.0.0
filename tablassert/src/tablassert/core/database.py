@@ -5,6 +5,7 @@ from collections import Counter
 from functools import lru_cache
 from pydantic import FilePath
 from diskcache import Cache
+from loguru import logger
 from pathlib import Path
 import spacy
 import time
@@ -16,6 +17,11 @@ babelcache: Cache = Cache("/tablassert/cache/.babel".upper(), max_size=1e10)
 kg2cache: Cache = Cache("/tablassert/cache/.kg2".upper(), max_size=1e9)
 metadatacache: Cache = Cache("/tablassert/cache/.pubmed_metadata".upper(), max_size=1e6)
 captionscache: Cache = Cache("/tablassert/cache/.pubmed_captions".upper(), max_size=1e6)
+
+# logging
+log_path: Path = Path("tablassert/log/build.log".upper()).resolve()
+log_path.mkdir(parents=True, exist_ok=True)  # ensure log dir exists
+logger.add(log_path.as_posix(), rotation="10 MB", retention="10 days", compression="xz")
 
 
 def new_connection(sqlitepath: str) -> Database:
@@ -44,16 +50,16 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
     global start
     start = time.time()
     rows: Any = pubmed.query(sql, {"curie": article_curie})  # type: ignore
-    mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
-    mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
+    mesh: list[Optional[str]] = [row["mesh.mesh"] for row in rows if row]
+    mesh_major: list[Optional[str]] = [row["mesh.mesh_major"] for row in rows if row]
     mesh_zip: Any = zip(mesh, mesh_major)
     domain: list[str] = [term for term, importance in mesh_zip if importance == "Y"]
     mesh_terms: list[str] = [term for term, importance in mesh_zip if importance == "N"]
     row: Any = next(rows, {})
-    firstauthor: Optional[str] = row.get("firstauthor")
-    journal: Optional[str] = row.get("journal")
-    title: Optional[str] = row.get("title")
-    year: Optional[str] = row.get("year")
+    firstauthor: Optional[str] = row.get("info.firstauthor")
+    journal: Optional[str] = row.get("info.journal")
+    title: Optional[str] = row.get("info.title")
+    year: Optional[str] = row.get("info.year")
     return {
         "domain": domain,
         "mesh_terms": mesh_terms,
@@ -125,8 +131,18 @@ def dynamic_build(
     return (prioritize_placeholders, avoid_placeholder, sql_params)
 
 
-def collect_babelresults(rows: Any) -> Optional[dict[str, Any]]:
-    return
+def collect_babelresults(row: Any) -> Optional[dict[str, Any]]:
+    curie: str = row.get("NAMES.CURIE")
+    category: str = row.get("NAMES.CATEGORY")
+    name: str = row.get("NAMES.NAME")
+    taxon: str = row.get("NAMES.TAXON")
+    if all([curie, category, name, taxon]):
+        return {
+            "curie": curie,
+            "category": category,
+            "name": name,
+            "taxon": taxon,
+        }
 
 
 level_one: Any = lambda x: str(x).lower()
@@ -191,6 +207,9 @@ def babel_lookup(
     start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
+    result: Optional[dict[str, Any]] = collect_babelresults(row)
+    if result:
+        return result.update({"level": level})
 
     level_two_input: str = level_two(level_one_input)
     sql_params["input"] = level_two_input
@@ -199,6 +218,9 @@ def babel_lookup(
     start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
+    result: Optional[dict[str, Any]] = collect_babelresults(row)
+    if result:
+        return result.update({"level": level})
 
     level_three_input: str = level_three(level_two_input)
     sql_params["input"] = level_three_input
@@ -207,7 +229,12 @@ def babel_lookup(
     start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
-    return
+    result: Optional[dict[str, Any]] = collect_babelresults(row)
+    if result:
+        return result.update({"level": level})
+
+    sql_params["input"] = unprocessed_input
+    logger.warning()
 
 
 @lru_cache(maxsize=512)
