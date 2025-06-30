@@ -351,7 +351,7 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
     column: str = Node.__name__[7:]
     encoding_method: str = Node.encoding_method
     value_for_encoding: str = Node.value_for_encoding
-    df = make_new_column(df, +column, encoding_method, value_for_encoding)
+    df = make_new_column(df, (column + "_premap"), encoding_method, value_for_encoding)
     # copy for metadata storage
     df = make_new_column(
         df, ("original_" + column), encoding_method, value_for_encoding
@@ -415,6 +415,13 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
         classes_to_avoid = Hyperparameters.classes_to_avoid
         if classes_to_avoid:
             avoid = frozenset(classes_to_avoid)
+        
+    df = df.with_cols(pl.col(column + "_premap").apply(lambda x: cached_fullmap3(str(x), prioritize, avoid, in_this_organism), skip_nulls=True, strategy="thread_local").alias(column + "_mapped"))  # test stratergy="threading" to see if it speeds up preformance later
+    df = df.filter(pl.col(column + "_mapped").is_not_null())
+    # remember to do a check here to make sure at least something maps!!
+    df = df.with_cols(pl.col(column + "_mapped").map_elements(lambda tup: {column: tup[0], (column + "_category"): tup[1], (column + "_name"): tup[2], (column + "_mapped_in_taxon"): tup[3], (column + "_mapped_in_databased"): tup[4], (column + "_mapped_with_level"): tup[5]}, return_dtype=pl.Struct).alias(column + "_struct"))
+    df = df.unnest(f"{column}_struct")
+    return df
 
 
 def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
