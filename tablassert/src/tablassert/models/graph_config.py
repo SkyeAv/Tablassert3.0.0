@@ -1,4 +1,4 @@
-from pydantic import field_validator, BaseModel, FilePath, Field
+from pydantic import field_validator, BaseModel, DirectoryPath, FilePath, Field
 from typing import Optional, Union
 
 
@@ -17,7 +17,7 @@ class SqliteDatabases(BaseModel):
 
 
 class Location(BaseModel):
-    table_config_containing_directories: set[FilePath] = Field(...)
+    table_config_containing_directories: set[DirectoryPath] = Field(...)
     sqlite_databases: SqliteDatabases = Field(...)
 
 

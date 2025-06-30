@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 import polars as pl
 import asyncio
+import sys
 
 
 def build_subgraphs(Table: Section, Graph: GraphConfig, index: int) -> None:
@@ -24,7 +25,7 @@ def build_subgraphs(Table: Section, Graph: GraphConfig, index: int) -> None:
     return None
 
 
-def build_graph(graph_config_path: Path) -> None:
+def build_graph(graph_config_path: Path = Path(sys.argv[1])) -> None:
     graph_yaml: Any = load_yaml(graph_config_path)
     Graph: GraphConfig = load_model(graph_yaml, GraphConfig)
     table_config_locations: set[FilePath] = (

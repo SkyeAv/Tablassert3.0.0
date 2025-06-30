@@ -1,0 +1,647 @@
+2025-06-30 16:08:16.052 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:10:14.589 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.627 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.631 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.640 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.645 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.646 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.651 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.652 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.657 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.658 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.662 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.663 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.666 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.667 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.672 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.673 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.678 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.687 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.687 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.691 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.697 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.698 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.706 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.712 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.713 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.718 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.723 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.730 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.735 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.736 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.741 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.741 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.747 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.748 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.753 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.758 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.758 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.762 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.763 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.768 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.775 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.779 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.785 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.786 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.792 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.792 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.795 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.801 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.802 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.807 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.816 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.822 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.822 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.827 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.828 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.833 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.840 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.847 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.855 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.861 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.867 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.873 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.879 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.885 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.891 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.892 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.896 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.897 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.901 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.907 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.908 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.913 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.920 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.921 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.926 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.932 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.933 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.937 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.938 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.942 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.942 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.946 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.947 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.951 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.952 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.956 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.956 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.961 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.962 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.966 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.966 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.971 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.972 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.975 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.976 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.980 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.981 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.985 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.985 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.991 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.991 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:03.996 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:03.997 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.001 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.002 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.007 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.007 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.012 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.013 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.017 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.018 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.022 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.023 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.027 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.028 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.032 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.033 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.037 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.038 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.043 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.043 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.047 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.048 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.052 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.053 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.057 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.058 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30 16:24:04.062 | WARNING  | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101
+2025-06-30 16:24:04.063 | WARNING  | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102
+2025-06-30T16:28:29.584064-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': "Alzheimer's Disease"}
+2025-06-30T16:28:48.146098-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': "Alzheimer's Disease"}
+2025-06-30T16:28:48.172466-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.173154-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.177136-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Factor name', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.180943-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.181471-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.184754-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.185264-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.189342-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.189850-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.193185-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.193704-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.196974-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.197481-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.200692-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.201217-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.204365-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Weight', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.208135-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.208648-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.211756-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Height', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.215320-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.215827-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.219635-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Triglycerides', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.223433-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.223936-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.227123-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Insulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.230825-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'HOMA-IR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.234559-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Uric acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.238800-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.239355-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.242737-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.243240-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.246699-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.247206-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.250701-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Glucose', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.254581-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.255082-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.258549-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.259068-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.262497-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Diastolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.266373-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Alkaline Phosphatase', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.268010-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Globulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.271486-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.271990-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.275366-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.275873-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.277037-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'GFR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.280596-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.281142-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.284601-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Oxidized LDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.288386-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'IL-6', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.292415-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.292942-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.296701-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.297216-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.300472-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Ferritin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.304131-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Hemoglobin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.307879-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Carbon dioxide', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.311574-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Vitamin D', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.315539-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Lymphocytes %', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.319228-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Basophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.322778-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Magnesium', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.326342-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Mercury', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.330049-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Albumin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.333605-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.334128-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.337440-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.337961-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.341127-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Creatinine', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.344750-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.345255-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.348485-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Adiponectin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.352342-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.352858-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.356094-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Linoleic acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.359609-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.360141-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.363232-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.363749-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.367132-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.367637-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.370974-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.371500-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.375336-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.375836-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.379090-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.379616-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.383075-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.383596-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.387213-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.387720-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.391156-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.391671-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.395071-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.395594-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.398979-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.399495-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.402891-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.403418-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.407850-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.408358-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.412539-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.413084-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.416399-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.416908-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.420531-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.421031-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.424314-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.424830-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.428129-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.428645-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.432168-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.432674-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.436642-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.437142-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.440512-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.441020-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.444767-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.445321-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.449553-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.450080-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.453634-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.454141-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.457731-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.458257-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.462228-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.462780-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.466152-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:246 - Code 101 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:28:48.466700-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:322 - Code 102 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.554805-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': "Alzheimer's Disease"}
+2025-06-30T16:30:11.580804-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.581428-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.585169-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Factor name', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.588840-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.589301-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.592551-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.593001-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.597035-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.597503-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.600791-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.601260-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.604500-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.604943-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.608069-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.608538-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.611664-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Weight', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.615402-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.615850-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.618948-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Height', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.622479-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.622930-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.626666-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Triglycerides', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.630419-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.630873-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.633982-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Insulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.637617-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HOMA-IR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.641246-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Uric acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.645148-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.645603-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.648779-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.649229-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.652463-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.652917-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.656168-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Glucose', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.659818-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.660256-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.663508-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.663954-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.667235-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Diastolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.671070-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Alkaline Phosphatase', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.672581-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Globulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.675960-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.676422-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.679703-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.680157-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.681283-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'GFR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.684819-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.685315-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.688701-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Oxidized LDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.692534-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'IL-6', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.696379-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.696832-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.700405-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.700850-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.703941-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Ferritin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.707509-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Hemoglobin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.711171-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Carbon dioxide', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.714872-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vitamin D', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.718770-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Lymphocytes %', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.722486-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Basophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.725998-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Magnesium', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.729496-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Mercury', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.733070-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Albumin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.736554-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.737022-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.740186-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.740650-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.743770-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Creatinine', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.747273-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.747734-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.750879-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Adiponectin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.754764-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.755243-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.758465-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Linoleic acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.761924-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.762448-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.765556-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.766027-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.769401-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.769860-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.773142-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.773618-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.777463-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.777950-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.781159-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.781641-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.785001-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.785488-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.789010-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.789491-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.792904-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.793389-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.796690-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.797159-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.800476-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.800922-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.804155-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.804695-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.809148-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.809670-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.814070-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.814637-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.818038-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.818548-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.822237-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.822782-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.826109-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.826650-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.829994-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.830490-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.833935-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.834408-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.838319-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.838787-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.842134-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.842641-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.846307-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.846782-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.850626-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.851071-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.854421-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.854876-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.858239-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.858722-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.862474-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.862912-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.866112-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:11.866577-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.339960-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': "Alzheimer's Disease"}
+2025-06-30T16:30:27.368171-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.368877-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.372844-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Factor name', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.376562-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.377067-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.380419-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.380926-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.385101-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.385606-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.388974-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.389499-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.392899-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.393425-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.396744-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.397240-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.400453-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Weight', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.404351-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.404860-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.407983-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Height', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.411765-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.412255-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.416111-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Triglycerides', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.420157-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.420747-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.423904-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Insulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.427721-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HOMA-IR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.431530-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Uric acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.435696-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.436178-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.439544-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.440039-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.443419-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.443932-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.447351-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Glucose', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.451165-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.451690-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.455016-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.455543-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.459023-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Diastolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.463051-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Alkaline Phosphatase', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.464740-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Globulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.468307-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.468854-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.472348-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.472889-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.474041-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'GFR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.477672-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.478200-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.481802-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Oxidized LDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.485698-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'IL-6', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.489796-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.490334-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.493906-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.494415-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.497724-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Ferritin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.501412-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Hemoglobin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.505249-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Carbon dioxide', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.508897-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vitamin D', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.513085-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Lymphocytes %', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.516932-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Basophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.520640-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Magnesium', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.524275-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Mercury', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.527911-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Albumin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.531574-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.532075-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.535334-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.535849-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.539069-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Creatinine', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.542751-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.543245-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.546336-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Adiponectin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.550165-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.550714-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.554000-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Linoleic acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.557645-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.558166-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.561349-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.561869-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.565343-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.565845-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.569213-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.569729-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.573769-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.574268-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.577714-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.578218-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.581807-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.582329-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.586078-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.586560-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.590211-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.590731-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.594171-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.594690-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.598169-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.598692-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.601982-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.602518-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.607167-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.607713-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.612133-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.612692-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.616150-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.616685-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.620545-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.621024-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.624513-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.625020-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.628504-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.629014-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.632612-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.633153-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.637227-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.637753-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.641498-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.642004-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.645893-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.646406-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.650403-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.650907-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.654394-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.654918-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.658544-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.659097-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.663035-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.663547-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.667028-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:30:27.667579-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.564480-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': "Alzheimer's Disease"}
+2025-06-30T16:38:50.590526-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.591300-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Supplementary Data 2. Associations between host/lifestyle factors and microbiome diversity. Associations were tested by fitting linear regression models of Shannon diversity on each analyte, adjusting for age, sex, race of the individual, the season in which the microbiome sample was taken, and the microbiome sequencing vendor (see Methods). Only factors with multiple hypotheses correction FDR p-value < 0.05 are shown. ', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.595129-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Factor name', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.598807-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.599298-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Time seated (per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.602582-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.603082-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Walk or bike', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.607202-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.607720-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Moderate activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.611177-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.611734-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vigorous activity (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.615080-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.615592-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vigorous activity (duration)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.618835-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.619350-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'BMI', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.622675-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Weight', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.626598-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.627075-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Systolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.630075-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Height', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.633656-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.634152-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LPIR-score', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.637936-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Triglycerides', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.641890-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.642401-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (small particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.645510-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Insulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.649883-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HOMA-IR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.653800-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Uric acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.658326-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.658818-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'White blood cells count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.662135-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.662666-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'HbA1c', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.666004-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.666527-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'hsCRP', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.669851-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Glucose', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.673543-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.674016-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (particle number)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.677314-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.677825-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'ALAT (SGPT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.681211-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Diastolic blood pressure', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.685217-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Alkaline Phosphatase', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.686814-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Globulin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.690197-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.690707-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Platelet count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.693956-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.694469-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'GGT', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.695615-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'GFR', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.699408-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.699950-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Red blood cell count', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.703522-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Oxidized LDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.707426-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'IL-6', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.711437-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.711935-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'ASAT (SGOT)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.715585-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.716074-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Total neutrophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.719324-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Ferritin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.723047-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Hemoglobin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.726884-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Carbon dioxide', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.730643-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vitamin D', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.734697-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Lymphocytes %', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.738472-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Basophils', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.742109-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Magnesium', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.745852-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Mercury', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.749462-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Albumin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.752931-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.753442-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Omega-3', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.756684-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.757172-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'MCV', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.760423-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Creatinine', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.764015-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.764533-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'BUN', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.767705-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Adiponectin', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.771580-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.772079-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'A/G ratio', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.775225-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Linoleic acid', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.778677-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.779187-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'DHA', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.782347-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.782853-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'HDL', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.786348-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.786843-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'LDL (particle size)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.790122-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.790646-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Diarrhea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.794537-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.795032-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Bowel movements (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.798385-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.798889-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Nausea (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.802247-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.802739-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Abdominal pain (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.806390-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.806873-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vomitting (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.810252-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.810742-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'High-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.813991-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.814510-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Acid reflux (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.817961-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.818475-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Poor-appetite (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.821794-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.822319-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Bowel movements ease', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.827074-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.827585-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Potatoes/pasta/rice (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.831963-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.832530-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'French fries (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.835985-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.836506-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Second-hand smoking', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.840247-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.840788-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Sugary drinks (times per day)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.844168-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.844698-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Smoking/tobacco', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.847929-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.848441-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Alcohol (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.852012-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.852523-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Fruits (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.856390-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.856869-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.860205-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.860695-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Cruciferous vegetables (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.864391-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.864890-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Caffeinated beverages (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.869005-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.869524-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Nuts/Seeds (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.873080-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.873610-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Fresh fruit (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.877338-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.877850-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Raw vegetables salad (times per week)', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.881922-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.882415-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Frequent mood swings', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.885793-0700 | WARNING | tablassert.src.tablassert.core.database:babel_lookup:247 - Code 101 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}
+2025-06-30T16:38:50.886299-0700 | WARNING | tablassert.src.tablassert.core.database:kg2_lookup:323 - Code 102 | {'input': 'Number of children', 'avoid0': 'biolink:OrganismTaxon'}

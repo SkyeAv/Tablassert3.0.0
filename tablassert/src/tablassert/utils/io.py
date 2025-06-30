@@ -1,8 +1,8 @@
 from tablassert.src.tablassert.models.table_config import TableConfig, Section
 from playwright.async_api import async_playwright
 from pydantic import ValidationError, BaseModel
+from pydantic import HttpUrl, DirectoryPath
 from ruamel.yaml.error import YAMLError
-from pydantic import HttpUrl, FilePath
 from typing import Any, Type, TypeVar
 from functools import lru_cache
 from ruamel.yaml import YAML
@@ -33,8 +33,8 @@ def load_yaml(filename: Path) -> Any:
         raise RuntimeError(filename.as_posix() + " not found")
     except PermissionError:
         raise RuntimeError("Permission denied: " + filename.as_posix())
-    except YAMLError:
-        raise RuntimeError("YAML parsing error in " + filename.as_posix())
+    except YAMLError as e:
+        raise RuntimeError("YAML parsing error in " + filename.as_posix() + " " + str(e))
 
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
@@ -71,7 +71,7 @@ async def download_from_link(url: HttpUrl, filepath: Path) -> Path:
 TABLE_CONFIG_EXTENSION: str = ".yaml"
 
 
-def get_sections(dirs: set[FilePath]) -> list[tuple[Section, int]]:
+def get_sections(dirs: set[DirectoryPath]) -> list[tuple[Section, int]]:
     sections: list[tuple[Section, int]] = []
     for d in dirs:
         for path in Path(str(d)).rglob("*"):

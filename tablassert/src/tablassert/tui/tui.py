@@ -1,6 +1,5 @@
 from textual.widgets import Markdown, Button, DirectoryTree, Static
 from tablassert.src.tablassert.utils.io import project_root
-from tablassert.src.tablassert.core.build import build
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.screen import Screen

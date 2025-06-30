@@ -1,4 +1,4 @@
-from typing import Annotated, Optional, Literal, Union, Self, Pattern, TypeAlias
+from typing import Annotated, Optional, Literal, Union, Self, Pattern, TypeAlias, Any
 from urllib.parse import urlparse, unquote
 from pathlib import Path
 from pydantic import (
@@ -180,15 +180,23 @@ class MathModuleTransformation(BaseModel):
 
 class tMathModuleTransformation(BaseModel):
     attribute: Optional[str] = Field(default=None)
-    arguments: Optional[list[Optional[str]]] = Field(default=None)
+    arguments: Optional[list[Optional[Union[float, str, int]]]] = Field(default=None)
 
 
 class Attribute(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
-    value_for_encoding: str = Field(...)
-    math_module_transformations: Optional[set[MathModuleTransformation]] = Field(
+    value_for_encoding: Optional[Union[float, str, int]] = Field(...)
+    math_module_transformations: Optional[list[MathModuleTransformation]] = Field(
         default=None
     )
+
+    @field_validator("value_for_encoding", mode="after")
+    @classmethod
+    def cast_string(cls, x: Any) -> Optional[str]:
+        if x:
+            return str(x)
+        else:
+            return None
 
     @model_validator(mode="after")
     def column_name_fix(self: Self) -> Self:
@@ -203,8 +211,8 @@ class tAttribute(BaseModel):
     encoding_method: Optional[Literal["value", "column_of_values"]] = Field(
         default=None
     )
-    value_for_encoding: Optional[str] = Field(default=None)
-    math_module_transformations: Optional[set[tMathModuleTransformation]] = Field(
+    value_for_encoding: Optional[Union[float, str, int]] = Field(default=None)
+    math_module_transformations: Optional[list[tMathModuleTransformation]] = Field(
         default=None
     )
 
@@ -247,7 +255,7 @@ class MappingHyperparameters(BaseModel):
         Literal["forward", "backward", "min", "max", "mean", "zero", "one"]
     ] = Field(default=None)
     substrings_to_remove: Optional[set[str]] = Field(default=None)
-    regular_expressions: Optional[set[RegularExpression]] = Field(default=None)
+    regular_expressions: Optional[list[RegularExpression]] = Field(default=None)
     explode_by_delimiter: Optional[str] = Field(default=None)
 
     @field_validator("classes_to_prioritize", "classes_to_avoid", mode="after")
@@ -275,7 +283,7 @@ class tMappingHyperparameters(BaseModel):
         Literal["forward", "backward", "min", "max", "mean", "zero", "one"]
     ] = Field(default=None)
     substrings_to_remove: Optional[set[str]] = Field(default=None)
-    regular_expressions: Optional[set[tRegularExpression]] = Field(default=None)
+    regular_expressions: Optional[list[tRegularExpression]] = Field(default=None)
     explode_by_delimiter: Optional[str] = Field(default=None)
 
 

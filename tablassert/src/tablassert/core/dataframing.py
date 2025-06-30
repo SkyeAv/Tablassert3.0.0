@@ -26,6 +26,7 @@ from tablassert.src.tablassert.models.graph_config import (
 )
 from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union, Any
+from polars import Utf8, Struct, Field
 from pydantic import HttpUrl
 from pathlib import Path
 import polars as pl
@@ -64,7 +65,7 @@ def dataframe_preprocessing(
         return df
 
 
-EXCEL_ENGINE: str = "calamine"
+EXCEL_ENGINE: str = "xlsx2csv"
 
 
 def read_excel(
@@ -121,7 +122,7 @@ def get_excel_style_column_names(column_name: str) -> str:
     index: int = int(column_name[-1])
     excel_style_letters: str = ""
     while index >= 0:
-        excel_style_letters = chr(index % 26 + 65) + excel_style_letters
+        excel_style_letters = chr(index % 26 + 64) + excel_style_letters  # hasty fix for off by one error (used to be 65 instead of 64)
         index = index // 26 - 1
     return excel_style_letters
 
@@ -153,7 +154,7 @@ def make_new_column(
     encoding_method: str,
     value_for_encoding: Optional[str],
 ) -> pl.DataFrame:
-    if not (encoding_method or value_for_encoding):
+    if not encoding_method or not value_for_encoding:
         return value_column(df, column, "not applicable")
     match encoding_method:
         case "value":
@@ -323,30 +324,33 @@ def before_mapping(
         df, "config_curator_organization", "value", config_curator_organization
     )
 
-    pubmedresult: dict[str, Any] = pubmed_metadata(article_curie)
+    curie_for_query: str = article_curie.split(":")[-1]
+    pubmedresult: dict[str, Any] = pubmed_metadata(curie_for_query)
     for column_name, column_value in pubmedresult.items():
         df = make_new_column(df, column_name, "value", column_value)
 
     datapathstring: str = datapath.as_posix()
     df = make_new_column(df, "file_name", "value", datapathstring)
 
-    captionresult: Any = file_caption(article_curie, datapathstring)
+    captionresult: Any = file_caption(curie_for_query, datapathstring)
     if captionresult:
         assert isinstance(captionresult, str)
         df = make_new_column(df, "pmc_file_caption", "value", captionresult)
 
     TableAttributes: Attributes = Table.attributes
-    for Attribute in TableAttributes:
-        attribute_name: str = Attribute.__name__  # type: ignore
-        encoding_method: str = Attribute.encoding_method  # type: ignore
-        value_for_encoding: str = Attribute.value_for_encoding  # type: ignore
-        df = make_new_column(df, attribute_name, encoding_method, value_for_encoding)
-        math_module_transformations: Optional[set[MathModuleTransformation]] = (
-            Attribute.math_module_transformation  # type: ignore
-        )
-        if math_module_transformations:
-            for Transformation in math_module_transformations:
-                df = math_module_operation(df, attribute_name, Transformation)
+    for attribute_name, attribute in TableAttributes.model_dump().items():
+        if not attribute_name == "notes":
+            encoding_method: str = attribute.get("encoding_method")  # type: ignore
+            value_for_encoding: str = attribute.get("value_for_encoding")  # type: ignore
+            df = make_new_column(df, attribute_name, encoding_method, value_for_encoding)
+            math_module_transformations: Optional[list[MathModuleTransformation]] = (
+                attribute.get("math_module_transformation")  # type: ignore
+            )
+            if math_module_transformations:
+                for Transformation in math_module_transformations:
+                    df = math_module_operation(df, attribute_name, Transformation)
+        else:
+            df = make_new_column(df, attribute_name, "value", attribute)
 
     TableReindexing: Optional[set[Reindexing]] = Table.reindexing
     if TableReindexing:
@@ -356,9 +360,19 @@ def before_mapping(
     return df
 
 
-def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
+return_dtype = Struct([
+    Field("subject", Utf8),
+    Field("subject_category", Utf8),
+    Field("subject_name", Utf8),
+    Field("subject_mapped_in_taxon", Utf8),
+    Field("subject_mapped_with_database", Utf8),
+    Field("subject_mapped_with_level", Utf8),
+])
 
-    column: str = Node.__name__[7:]  # type: ignore
+
+def node_operation(df: pl.DataFrame, name: str, Node: GraphVertex) -> pl.DataFrame:
+
+    column: str = name[7:]  # type: ignore
     encoding_method: str = Node.encoding_method
     value_for_encoding: str = Node.value_for_encoding
     df = make_new_column(df, (column + "_premap"), encoding_method, value_for_encoding)
@@ -373,7 +387,7 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
     avoid: Optional[frozenset[str]] = None
 
     Hyperparameters: Optional[MappingHyperparameters] = (
-        GraphVertex.mapping_hyperparameters
+        Node.mapping_hyperparameters
     )
     if Hyperparameters:
 
@@ -381,15 +395,15 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
             Literal["forward", "backward", "min", "max", "mean", "zero", "one"]
         ] = Hyperparameters.how_to_fill_column
         if how_to_fill_column:
-            df = df.with_columns(pl.col(column).fill_null(strategy=how_to_fill_column))
+            df = df.with_columns(pl.col(column + "_premap").fill_null(strategy=how_to_fill_column))
 
         explode_by_delimiter: Optional[str] = Hyperparameters.explode_by_delimiter
         if explode_by_delimiter:
             df = df.with_columns(
-                pl.col(column).str.split(explode_by_delimiter)
-            ).explode(column)
+                pl.col(column + "_premap").str.split(explode_by_delimiter)
+            ).explode(column + "_premap")
 
-        regular_expressions: Optional[set[RegularExpression]] = (
+        regular_expressions: Optional[list[RegularExpression]] = (
             Hyperparameters.regular_expressions
         )
         if regular_expressions:
@@ -398,23 +412,23 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
                 replacement: str = Expression.replacement
                 # replace all is vectorized... comeback if I get regex errors because it's not as compatible as re.sub
                 df = df.with_columns(
-                    pl.col(column).str.replace_all(pattern, replacement).alias(column)
+                    pl.col(column + "_premap").str.replace_all(pattern, replacement).alias(column + "_premap")
                 )
 
         substrings_to_remove: Optional[set[str]] = Hyperparameters.substrings_to_remove
         if substrings_to_remove:
             for substring in substrings_to_remove:
                 df = df.with_columns(
-                    pl.col(column).str.replace_all(substring, "").alias(column)
+                    pl.col(column + "_premap").str.replace_all(substring, "").alias(column + "_premap")
                 )
 
         prefix: Optional[str] = Hyperparameters.prefix
         if prefix:
-            df = df.with_columns((pl.lit(prefix) + pl.col(column)).alias(column))
+            df = df.with_columns((pl.lit(prefix) + pl.col(column + "_premap")).alias(column + "_premap"))
 
         suffix: Optional[str] = Hyperparameters.suffix
         if suffix:
-            df = df.with_columns((pl.col(column) + pl.lit(suffix)).alias(column))
+            df = df.with_columns((pl.col(column + "_premap") + pl.lit(suffix)).alias(column + "_premap"))
 
         in_this_organism = Hyperparameters.in_this_organism
 
@@ -426,37 +440,58 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
         if classes_to_avoid:
             avoid = frozenset(classes_to_avoid)
 
-    df = df.with_columns(
-        pl.col(column + "_premap")  # type: ignore
-        .apply(
-            lambda x: cached_fullmap3(str(x), prioritize, avoid, in_this_organism),
-            skip_nulls=True,
-            strategy="thread_local",
-        )
-        .alias(column + "_mapped")
-    )  # test stratergy="threading" to see if it speeds up preformance later
+    def make_mapping_helper(column: str):
+        print(column)
+        def mapping_helper(x: Any):
+            result = cached_fullmap3(str(x), prioritize, avoid, in_this_organism)
+            if result is None:
+                return {
+                    column: None,
+                    f"{column}_category": None,
+                    f"{column}_name": None,
+                    f"{column}_mapped_in_taxon": None,
+                    f"{column}_mapped_with_database": None,
+                    f"{column}_mapped_with_level": None,
+                }
+            return {
+                column: result[0],
+                f"{column}_category": result[1],
+                f"{column}_name": result[2],
+                f"{column}_mapped_in_taxon": result[3],
+                f"{column}_mapped_with_database": result[4],
+                f"{column}_mapped_with_level": result[5],
+            }
+        return mapping_helper
 
-    # remember to do a check here to make sure at least something maps!!
-    df = df.filter(pl.col(column + "_mapped").is_not_null())
-    if df.height == 0:
-        raise RuntimeError(column + " failed to map")
-
+    print(column)
     df = df.with_columns(
-        pl.col(column + "_mapped")
-        .map_elements(
-            lambda tup: {
-                column: tup[0],
-                (column + "_category"): tup[1],
-                (column + "_name"): tup[2],
-                (column + "_mapped_in_taxon"): tup[3],
-                (column + "_mapped_with_database"): tup[4],
-                (column + "_mapped_with_level"): tup[5],
-            },
-            return_dtype=pl.Struct,
-        )
-        .alias(column + "_struct")
+        pl.col(f"{column}_premap")
+        .map_elements(make_mapping_helper(column), return_dtype=return_dtype)
+        .alias(f"{column}_struct")
     )
-    df = df.unnest(f"{column}_struct")
+
+    print("Columns before unnesting:")
+    print(df.columns)
+    print(df.head())
+
+    struct_col = f"{column}_struct"
+    struct_fields = df.schema[struct_col].fields
+    print(f"Fields in {struct_col}: {struct_fields}")
+
+    existing_columns = set(df.columns)
+    conflicts = existing_columns.intersection(struct_fields)
+
+    if conflicts:
+        print(f"Conflicts found: {conflicts}")
+        new_field_names = [f"{column}_{field}" for field in struct_fields]
+        print(f"Renaming struct fields to: {new_field_names}")
+        df = df.with_columns(pl.col(struct_col).struct.rename_fields(new_field_names))
+    else:
+        print("No conflicts. Proceeding with original field names.")
+
+    print(f"Unnesting {struct_col}")
+    df = df.unnest(struct_col)
+
     return df
 
 
@@ -464,9 +499,9 @@ def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
     predicate: str = Assertion.triple_predicate
     df = make_new_column(df, "predicate", "value", predicate)
 
-    for Node in [Assertion.triple_subject, Assertion.triple_object]:
+    for name, Node in zip(["triple_subject", "triple_object"], [Assertion.triple_subject, Assertion.triple_object]):
         reset_column_context()
-        df = node_operation(df, Node)
+        df = node_operation(df, name, Node)
 
     return df
 

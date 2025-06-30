@@ -13,26 +13,30 @@ import time
 import re
 
 # all of these are hardcoded because of how hard everything got with circular imports
-fullmapcache: Cache = Cache("/tablassert/cache/.fullmap".upper(), max_size=1e10)
-babelcache: Cache = Cache("/tablassert/cache/.babel".upper(), max_size=1e10)
-kg2cache: Cache = Cache("/tablassert/cache/.kg2".upper(), max_size=1e9)
-metadatacache: Cache = Cache("/tablassert/cache/.pubmed_metadata".upper(), max_size=1e6)
-captionscache: Cache = Cache("/tablassert/cache/.pubmed_captions".upper(), max_size=1e6)
+fullmapcache: Cache = Cache("tablassert/cache/.fullmap".upper(), max_size=1e10)
+babelcache: Cache = Cache("tablassert/cache/.babel".upper(), max_size=1e10)
+kg2cache: Cache = Cache("tablassert/cache/.kg2".upper(), max_size=1e9)
+metadatacache: Cache = Cache("tablassert/cache/.pubmed_metadata".upper(), max_size=1e6)
+captionscache: Cache = Cache("tablassert/cache/.pubmed_captions".upper(), max_size=1e6)
 
 # logging
-log_path: Path = Path("tablassert/log/build.log".upper()).resolve()
-log_path.mkdir(parents=True, exist_ok=True)  # ensure log dir exists
-logger.add(log_path.as_posix(), rotation="10 MB", retention="10 days", compression="xz")
+log_dir: Path = Path("tablassert/log/".upper()).resolve()
+log_dir.mkdir(parents=True, exist_ok=True)  # ensure log dir exists
+log_path: Path = log_dir / "build.log"
+logger.remove()
+logger.add(log_path.as_posix(), rotation="10 MB", retention="10 days", compression="xz", format="{time} | {level} | {name}:{function}:{line} - {message} | {extra}")
 
 
 def new_connection(sqlitepath: str) -> Database:
-    return Database(sqlitepath).enable_wal()  # type: ignore
+    db = Database(sqlitepath)  # type: ignore
+    db.enable_wal()
+    return db
 
 
 # pubmed lookups aren't frequent enough to justify a combined cache
 
 
-@metadatacache.memorize()  # type: ignore
+@metadatacache.memoize()  # type: ignore
 def pubmed_metadata(article_curie: str) -> dict[str, Any]:
     sql: str = """
     SELECT
@@ -50,17 +54,17 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
     """
     global start
     start = time.time()
-    rows: Any = pubmed.query(sql, {"curie": article_curie})  # type: ignore  # type: ignore  # noqa
-    mesh: list[Optional[str]] = [row["mesh.mesh"] for row in rows if row]
-    mesh_major: list[Optional[str]] = [row["mesh.mesh_major"] for row in rows if row]
+    rows: Any = pubmed.query(sql, {"curie": article_curie})  # type: ignore  # noqa
+    mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
+    mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
     mesh_zip: Any = zip(mesh, mesh_major)
     domain: list[str] = [term for term, importance in mesh_zip if importance == "Y"]
     mesh_terms: list[str] = [term for term, importance in mesh_zip if importance == "N"]
     row: Any = next(rows, {})
-    firstauthor: Optional[str] = row.get("info.firstauthor")
-    journal: Optional[str] = row.get("info.journal")
-    title: Optional[str] = row.get("info.title")
-    year: Optional[str] = row.get("info.year")
+    firstauthor: Optional[str] = row.get("firstauthor")
+    journal: Optional[str] = row.get("journal")
+    title: Optional[str] = row.get("title")
+    year: Optional[str] = row.get("year")
     return {
         "domain": ",".join(domain),
         "mesh_terms": ",".join(mesh_terms),
@@ -71,7 +75,7 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
     }
 
 
-@captionscache.memorize()  # type: ignore
+@captionscache.memoize()  # type: ignore
 def file_caption(article_curie: str, filename: str) -> Any:
     sql: str = """
     SELECT caption
@@ -81,7 +85,7 @@ def file_caption(article_curie: str, filename: str) -> Any:
     """
     global start
     start = time.time()
-    rows: Any = pubmed.query(sql, {"curie": article_curie, "filename": filename})  # type: ignore  # type: ignore  # noqa
+    rows: Any = pmc.query(sql, {"curie": article_curie, "filename": filename})  # type: ignore  # type: ignore  # noqa
     row: Any = next(rows, {})
     return row.get("caption")
 
@@ -108,13 +112,13 @@ def dynamic_build(
     if prioritize:
         sql_params.update(
             {
-                f":prioritize{index}": category
+                f"prioritize{index}": category
                 for index, category in enumerate(prioritize)
             }
         )
     if avoid:
         sql_params.update(
-            {f":avoid{index}": category for index, category in enumerate(avoid)}
+            {f"avoid{index}": category for index, category in enumerate(avoid)}
         )
     if taxon:
         sql_params[":taxon"] = taxon
@@ -124,10 +128,10 @@ def dynamic_build(
 
 
 def collect_babelresults(row: Any) -> Optional[dict[str, Any]]:
-    curie: str = row.get("NAMES.CURIE")
-    category: str = row.get("NAMES.CATEGORY")
-    name: str = row.get("NAMES.NAME")
-    taxon: str = row.get("NAMES.TAXON")
+    curie: str = row.get("CURIE")
+    category: str = row.get("CATEGORY")
+    name: str = row.get("NAME")
+    taxon: str = row.get("TAXON")
     if all([curie, category, name, taxon]):
         return {
             "curie": curie,
@@ -180,7 +184,7 @@ def cached_babel_lookup(
     return babel_lookup(unprocessed_input, prioritize, avoid, taxon)  # type: ignore
 
 
-@babelcache.memorize()  # type: ignore
+@babelcache.memoize()  # type: ignore
 def babel_lookup(
     unprocessed_input: str,
     prioritize: Optional[frozenset[str]],
@@ -246,9 +250,9 @@ def babel_lookup(
 
 
 def collect_kg2results(row: Any) -> Optional[dict[str, Any]]:
-    curie: str = row.get("clusters.cluster_id")
-    category: str = row.get("clusters.category")
-    name: str = row.get("clusters.name")
+    curie: str = row.get("cluster_id")
+    category: str = row.get("category")
+    name: str = row.get("name")
     if all([curie, category, name]):
         return {
             "curie": curie,
@@ -269,7 +273,7 @@ def cached_kg2_lookup(
     return kg2_lookup(unprocessed_input, prioritize, avoid)  # type: ignore
 
 
-@kg2cache.memorize()  # type: ignore
+@kg2cache.memoize()  # type: ignore
 def kg2_lookup(
     unprocessed_input: str,
     prioritize: Optional[frozenset[str]],
@@ -285,10 +289,10 @@ def kg2_lookup(
     level: str = "L1"
     sql: str = f"""
     SELECT
-        clusters.cluster_id
-        clusters.category
+        clusters.cluster_id,
+        clusters.category,
         clusters.name
-    FROM id
+    FROM nodes
     INNER JOIN clusters ON nodes.cluster_id = clusters.cluster_id
     WHERE
         {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
@@ -387,14 +391,14 @@ def cached_fullmap3(
     return fullmap3(unprocessed_input, prioritize, avoid, taxon)  # type: ignore
 
 
-@fullmapcache.memorize()  # type: ignore
+@fullmapcache.memoize()  # type: ignore
 def fullmap3(
     unprocessed_input: str,
     prioritize: Optional[frozenset[str]],
     avoid: Optional[frozenset[str]],
     taxon: Optional[str],
 ) -> Optional[tuple[str, str, str, Optional[str], str, str]]:
-    babelresult: Optional[dict[str, Any]] = cached_kg2_lookup(
+    babelresult: Optional[dict[str, Any]] = cached_babel_lookup(
         unprocessed_input, prioritize, avoid, taxon
     )
     if babelresult:
@@ -408,8 +412,8 @@ def fullmap3(
         level: str = babelresult["level"]
         return (curie, category, name, taxon, db, level)
 
-    kg2result: Optional[dict[str, Any]] = cached_babel_lookup(
-        unprocessed_input, prioritize, avoid, taxon
+    kg2result: Optional[dict[str, Any]] = cached_kg2_lookup(
+        unprocessed_input, prioritize, avoid
     )
     if kg2result:
         assert kg2result is not None
