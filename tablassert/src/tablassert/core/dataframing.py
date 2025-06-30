@@ -359,8 +359,8 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
 
     # I'm unsure of validator behavior because you dont have define mapping_hyperparameters so I've defined these here with none just in case
     in_this_organism: Optional[str] = None
-    classes_to_prioritize: Optional[set[str]] = None
-    classes_to_avoid: Optional[set[str]] = None
+    prioritize: Optional[frozenset[str]] = None
+    avoid: Optional[frozenset[str]] = None
 
     Hyperparameters: Optional[MappingHyperparameters] = (
         GraphVertex.mapping_hyperparameters
@@ -407,8 +407,14 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
             df = df.with_cols((pl.col(column) + pl.lit(suffix)).alias(column))
 
         in_this_organism = Hyperparameters.in_this_organism
+
         classes_to_prioritize = Hyperparameters.classes_to_prioritize
+        if classes_to_prioritize:
+            prioritize = frozenset(classes_to_prioritize)
+        
         classes_to_avoid = Hyperparameters.classes_to_avoid
+        if classes_to_avoid:
+            avoid = frozenset(classes_to_avoid)
 
 
 def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
