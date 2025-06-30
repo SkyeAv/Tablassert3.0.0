@@ -361,9 +361,44 @@ def activate_sqlites(Sqlites: SqliteDatabases) -> None:
 
 
 @lru_cache(maxsize=2048)
-def cached_fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
+def cached_fullmap3(
+    unprocessed_input: str,
+    prioritize: Optional[set[str]],
+    avoid: Optional[set[str]],
+    taxon: Optional[str],
+) -> Optional[tuple[str, str, str, str, str, str]]:
     return fullmap3(unprocessed_input, prioritize, avoid, taxon)
 
+
 @fullmapcache.memorize()
-def fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
-    return
+def fullmap3(
+    unprocessed_input: str,
+    prioritize: Optional[set[str]],
+    avoid: Optional[set[str]],
+    taxon: Optional[str],
+) -> Optional[tuple[str, str, str, str, str, str]]:
+    babelresult = cached_kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
+    if babelresult:
+        category: str = babelresult["category"]
+        column_context[category] += 1
+        return (
+            babelresult["curie"],
+            category,
+            babelresult["name"],
+            babelresult["taxon"],
+            babelresult["db"],
+            babelresult["level"],
+        )
+
+    kg2result = cached_babel_lookup(unprocessed_input, prioritize, avoid, taxon)
+    if kg2result:
+        category: str = babelresult["category"]
+        column_context[category] += 1
+        return (
+            babelresult["curie"],
+            category,
+            babelresult["name"],
+            babelresult["taxon"],
+            babelresult["db"],
+            babelresult["level"],
+        )
