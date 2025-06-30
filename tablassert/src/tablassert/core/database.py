@@ -185,7 +185,7 @@ def babel_lookup(
 
     level_one_input: str = level_one(unprocessed_input)
 
-    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(
+    prioritize_placeholders, avoid_placeholders, sql_params = dynamic_build(
         level_one_input, prioritize, avoid, taxon
     )
     level: str = "L1"
@@ -264,7 +264,7 @@ def kg2_lookup(
 
     level_one_input: str = unprocessed_input
 
-    prioritize_placeholders, avoid_placeholder, sql_params = dynamic_build(
+    prioritize_placeholders, avoid_placeholders, sql_params = dynamic_build(
         level_one_input, prioritize, avoid, taxon
     )
     level: str = "L1"
@@ -277,6 +277,7 @@ def kg2_lookup(
     INNER JOIN clusters ON nodes.cluster_id = clusters.cluster_id
     WHERE
         {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
+        {f"AND clusters.category NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
     {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = :most_common THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else "ORDER BY \n\t CASE \n\t\t WHEN clusters.category = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else ""}
     """
 
