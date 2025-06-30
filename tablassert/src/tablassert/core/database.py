@@ -209,7 +209,7 @@ def babel_lookup(
     row: Any = next(rows, {})
     result: Optional[dict[str, Any]] = collect_babelresults(row)
     if result:
-        return result.update({"level": level})
+        return result.update({"db": "babel", "level": level})
 
     level_two_input: str = level_two(level_one_input)
     sql_params["input"] = level_two_input
@@ -220,7 +220,7 @@ def babel_lookup(
     row: Any = next(rows, {})
     result: Optional[dict[str, Any]] = collect_babelresults(row)
     if result:
-        return result.update({"level": level})
+        return result.update({"db": "babel", "level": level})
 
     level_three_input: str = level_three(level_two_input)
     sql_params["input"] = level_three_input
@@ -231,10 +231,23 @@ def babel_lookup(
     row: Any = next(rows, {})
     result: Optional[dict[str, Any]] = collect_babelresults(row)
     if result:
-        return result.update({"level": level})
+        return result.update({"db": "babel", "level": level})
 
     sql_params["input"] = unprocessed_input
-    logger.warning()
+    logger.bind(**sql_params).warning("Error 101")
+
+
+def collect_kg2results(row: Any) -> Optional[dict[str, Any]]:
+    curie: str = row.get("clusters.cluster_id")
+    category: str = row.get("clusters.category")
+    name: str = row.get("clusters.name")
+    if all([curie, category, name]):
+        return {
+            "curie": curie,
+            "category": category,
+            "name": name,
+            "taxon": None,
+        }
 
 
 @lru_cache(maxsize=512)
@@ -271,6 +284,9 @@ def kg2_lookup(
     start = time.time()
     rows: Any = kg2.query(sql, sql_params)
     row: Any = next(rows, {})
+    result: Optional[dict[str, Any]] = collect_kg2results(row)
+    if result:
+        return result.update({"db": "kg2", "level": level})
 
     level_three_input: str = level_three(level_two_input)
     sql_params["input"] = level_three_input
@@ -280,7 +296,12 @@ def kg2_lookup(
     start = time.time()
     rows: Any = babel.query(sql, sql_params)
     row: Any = next(rows, {})
-    return
+    result: Optional[dict[str, Any]] = collect_kg2results(row)
+    if result:
+        return result.update({"db": "kg2", "level": level})
+
+    sql_params["input"] = unprocessed_input
+    logger.bind(**sql_params).warning("Error 102")
 
 
 # patch lookups aren't frequent enough to justify a combined cache
@@ -338,10 +359,10 @@ def activate_sqlites(Sqlites: SqliteDatabases) -> None:
     activate_single_sqlite("mapping_path", mapping_patchpath)
 
 
-# @lru_cache(maxsize=2048)
-# def cached_fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
-# return fullmap3(unprocessed_input, prioritize, avoid, taxon, column_context)
+@lru_cache(maxsize=2048)
+def cached_fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
+    return fullmap3(unprocessed_input, prioritize, avoid, taxon)
 
-# @fullmapcache.memorize()
-# def fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
-# return
+@fullmapcache.memorize()
+def fullmap3(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]], taxon: Optional[str]) -> Optional[]:
+    return
