@@ -85,17 +85,6 @@ def file_caption(article_curie: str, filename: str) -> Any:
     return row.get("caption")
 
 
-# lru cache is 10-100x faster so I cache twice
-@lru_cache(maxsize=1024)
-def cached_babel_lookup(
-    unprocessed_input: str,
-    prioritize: Optional[set[str]],
-    avoid: Optional[set[str]],
-    taxon: Optional[str],
-) -> Optional[dict[str, Any]]:
-    return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
-
-
 def dynamic_build(
     level_input: Optional[str],
     prioritize: Optional[set[str]],
@@ -173,6 +162,17 @@ def level_three(level_three_input: str) -> str:
     regex: Any = NONWORD_REGEX
     level_three_output: str = re.sub(regex, "", level_three_input)
     return level_three_output
+
+
+# lru cache is 10-100x faster so I cache twice
+@lru_cache(maxsize=1024)
+def cached_babel_lookup(
+    unprocessed_input: str,
+    prioritize: Optional[set[str]],
+    avoid: Optional[set[str]],
+    taxon: Optional[str],
+) -> Optional[dict[str, Any]]:
+    return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
 
 
 @babelcache.memorize()  # type: ignore
