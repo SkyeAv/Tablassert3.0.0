@@ -20,7 +20,12 @@ from tablassert.src.tablassert.core.database import (
     pubmed_metadata,
     file_caption,
 )
-from tablassert.src.tablassert.models.graph_config import GraphConfig, SqliteDatabases, pubmed_metadata, file_caption
+from tablassert.src.tablassert.models.graph_config import (
+    GraphConfig,
+    SqliteDatabases,
+    pubmed_metadata,
+    file_caption,
+)
 from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union, Any
 from pydantic import HttpUrl
@@ -312,7 +317,9 @@ def before_mapping(
     config_curator_name: str = TableProvenance.config_curator_name
     df = make_new_column(df, "config_curator_name", "value", config_curator_name)
     config_curator_organization: str = TableProvenance.config_curator_organization
-    df = make_new_column(df, "config_curator_organization", "value", config_curator_organization)
+    df = make_new_column(
+        df, "config_curator_organization", "value", config_curator_organization
+    )
 
     pubmedresult: dict[str, Any] = pubmed_metadata(article_curie)
     for column_name, column_value in pubmedresult.items():
@@ -411,15 +418,41 @@ def node_operation(df: pl.DataFrame, Node: GraphVertex) -> pl.DataFrame:
         classes_to_prioritize = Hyperparameters.classes_to_prioritize
         if classes_to_prioritize:
             prioritize = frozenset(classes_to_prioritize)
-        
+
         classes_to_avoid = Hyperparameters.classes_to_avoid
         if classes_to_avoid:
             avoid = frozenset(classes_to_avoid)
-        
-    df = df.with_cols(pl.col(column + "_premap").apply(lambda x: cached_fullmap3(str(x), prioritize, avoid, in_this_organism), skip_nulls=True, strategy="thread_local").alias(column + "_mapped"))  # test stratergy="threading" to see if it speeds up preformance later
-    df = df.filter(pl.col(column + "_mapped").is_not_null())
+
+    df = df.with_cols(
+        pl.col(column + "_premap")
+        .apply(
+            lambda x: cached_fullmap3(str(x), prioritize, avoid, in_this_organism),
+            skip_nulls=True,
+            strategy="thread_local",
+        )
+        .alias(column + "_mapped")
+    )  # test stratergy="threading" to see if it speeds up preformance later
+
     # remember to do a check here to make sure at least something maps!!
-    df = df.with_cols(pl.col(column + "_mapped").map_elements(lambda tup: {column: tup[0], (column + "_category"): tup[1], (column + "_name"): tup[2], (column + "_mapped_in_taxon"): tup[3], (column + "_mapped_in_databased"): tup[4], (column + "_mapped_with_level"): tup[5]}, return_dtype=pl.Struct).alias(column + "_struct"))
+    df = df.filter(pl.col(column + "_mapped").is_not_null())
+    if df.height == 0:
+        raise RuntimeError(column + " failed to map")
+
+    df = df.with_cols(
+        pl.col(column + "_mapped")
+        .map_elements(
+            lambda tup: {
+                column: tup[0],
+                (column + "_category"): tup[1],
+                (column + "_name"): tup[2],
+                (column + "_mapped_in_taxon"): tup[3],
+                (column + "_mapped_with_database"): tup[4],
+                (column + "_mapped_with_level"): tup[5],
+            },
+            return_dtype=pl.Struct,
+        )
+        .alias(column + "_struct")
+    )
     df = df.unnest(f"{column}_struct")
     return df
 
@@ -435,12 +468,42 @@ def mapping(df: pl.DataFrame, Assertion: Triple) -> pl.DataFrame:
     return df
 
 
+FINAL_COLUMNS: list[str] = [
+    "subject",
+    "origonal_subject",
+    "subject_name",
+    "subject_category",
+    "subject_mapped_in_taxon",
+    "subject_mapped_with_database",
+    "subject_mapped_with_level",
+    "object",
+    "origonal_object",
+    "object_name",
+    "object_category",
+    "object_mapped_in_taxon",
+    "object_mapped_with_database",
+    "object_mapped_with_level",
+    "article_curie",
+    "config_curator_name",
+    "config_curator_organization",
+    "file_name",
+    "pmc_file_caption",
+    "sample_size",
+    "p_value",
+    "multiple_testing_correction_method",
+    "assertion_strength",
+    "assertion_method",
+    "notes",
+]
+
+
 def after_mapping(df: pl.DataFrame, Table: Section) -> pl.DataFrame:
     TableReindexing: set[Reindexing] = Table.reindexing
     for ReindexingOperation in TableReindexing:
         df = reindexing_operation(df, ReindexingOperation, "after")
 
-    return df
+    df = df.select(FINAL_COLUMNS)
+    return df.drop_nulls()
 
 
 def dataframing(Table: Section, Graph: GraphConfig, datapath: Path) -> pl.DataFrame:
