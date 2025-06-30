@@ -240,7 +240,7 @@ def babel_lookup(
         return result.update({"db": "babel", "level": level})
 
     sql_params["input"] = unprocessed_input
-    logger.bind(**sql_params).warning("Error 101")
+    logger.bind(**sql_params).warning("Code 101")
 
     return None
 
@@ -316,7 +316,7 @@ def kg2_lookup(
         return result.update({"db": "kg2", "level": level})
 
     sql_params["input"] = unprocessed_input
-    logger.bind(**sql_params).warning("Error 102")
+    logger.bind(**sql_params).warning("Code 102")
 
     return None
 
