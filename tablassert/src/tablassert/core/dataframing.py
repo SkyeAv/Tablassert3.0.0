@@ -16,8 +16,9 @@ from tablassert.src.tablassert.models.table_config import (
 from tablassert.src.tablassert.core.database import (
     reset_column_context,
     activate_sqlites,
+    cached_fullmap3,
 )
-from tablassert.src.tablassert.models.graph_config import GraphConfig, SqliteDatabases, pubmed_metadata, file_caption, cached_fullmap3
+from tablassert.src.tablassert.models.graph_config import GraphConfig, SqliteDatabases, pubmed_metadata, file_caption
 from tablassert.src.tablassert.utils.io import PydanticModel
 from typing import Optional, Literal, Union, Any
 from pydantic import HttpUrl

@@ -3,6 +3,7 @@ from sqlite_utils import Database
 from typing import Any, Optional
 from collections import Counter
 from functools import lru_cache
+from spacy.tokens import Token
 from pydantic import FilePath
 from diskcache import Cache
 from loguru import logger
@@ -33,8 +34,8 @@ def new_connection(sqlitepath: str) -> Database:
 
 @metadatacache.memorize()  # type: ignore
 def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
-    sql: str = f"""
-    SELECT 
+    sql: str = """
+    SELECT
         mesh.mesh_major,
         mesh.mesh,
         info.firstauthor,
@@ -49,7 +50,7 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
     """
     global start
     start = time.time()
-    rows: Any = pubmed.query(sql, {"curie": article_curie})  # type: ignore
+    rows: Any = pubmed.query(sql, {"curie": article_curie})  # type: ignore  # type: ignore  # noqa
     mesh: list[Optional[str]] = [row["mesh.mesh"] for row in rows if row]
     mesh_major: list[Optional[str]] = [row["mesh.mesh_major"] for row in rows if row]
     mesh_zip: Any = zip(mesh, mesh_major)
@@ -80,15 +81,15 @@ def file_caption(article_curie: str, filename: str) -> Any:
     """
     global start
     start = time.time()
-    rows: Any = pubmed.query(sql, {"curie": article_curie, "filename": filename})  # type: ignore
+    rows: Any = pubmed.query(sql, {"curie": article_curie, "filename": filename})  # type: ignore  # type: ignore  # noqa
     row: Any = next(rows, {})
     return row.get("caption")
 
 
 def dynamic_build(
-    level_input: Optional[str],
-    prioritize: Optional[set[str]],
-    avoid: Optional[set[str]],
+    level_input: str,
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
     taxon: Optional[str],
 ) -> tuple[Optional[str], Optional[str], dict[str, str]]:
     prioritize_placeholders: Optional[str] = (
@@ -99,8 +100,8 @@ def dynamic_build(
     avoid_placeholders: Optional[str] = (
         ", ".join([f":avoid{index}" for index in range(len(avoid))]) if avoid else None
     )
-    most_common: list[Any] = column_context.most_common(1)
-    most_common: Optional[str] = str(most_common[0][0]) if most_common else None
+    most_common_list: list[Any] = column_context.most_common(1)
+    most_common: Optional[str] = str(most_common_list[0][0]) if most_common_list else None
     sql_params: dict[str, str] = {"input": level_input}
     if prioritize:
         sql_params.update(
@@ -117,7 +118,7 @@ def dynamic_build(
         sql_params[":taxon"] = taxon
     if most_common:
         sql_params[":most_common"] = most_common
-    return (prioritize_placeholders, avoid_placeholder, sql_params)
+    return (prioritize_placeholders, avoid_placeholders, sql_params)
 
 
 def collect_babelresults(row: Any) -> Optional[dict[str, Any]]:
@@ -132,6 +133,8 @@ def collect_babelresults(row: Any) -> Optional[dict[str, Any]]:
             "name": name,
             "taxon": taxon,
         }
+    
+    return None
 
 
 level_one: Any = lambda x: str(x).lower()
@@ -141,7 +144,7 @@ MODEL = spacy.load("en_core_web_sm", disable=DISABLE)
 
 
 def level_two(level_two_input: str) -> str:
-    tokens: list[str] = MODEL(level_two_input)  # type: ignore
+    tokens: list[Token] = MODEL(level_two_input)
     cleaned_tokens: list[str] = [
         token.lemma_  # yield lemma
         for token in tokens  # iterate through tokens
@@ -168,18 +171,18 @@ def level_three(level_three_input: str) -> str:
 @lru_cache(maxsize=1024)
 def cached_babel_lookup(
     unprocessed_input: str,
-    prioritize: Optional[set[str]],
-    avoid: Optional[set[str]],
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
     taxon: Optional[str],
 ) -> Optional[dict[str, Any]]:
-    return babel_lookup(unprocessed_input, prioritize, avoid, taxon)
+    return babel_lookup(unprocessed_input, prioritize, avoid, taxon)  # type: ignore
 
 
 @babelcache.memorize()  # type: ignore
 def babel_lookup(
     unprocessed_input: str,
-    prioritize: Optional[set[str]],
-    avoid: Optional[set[str]],
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
     taxon: Optional[str],
 ) -> Optional[dict[str, Any]]:
 
@@ -188,6 +191,7 @@ def babel_lookup(
     prioritize_placeholders, avoid_placeholders, sql_params = dynamic_build(
         level_one_input, prioritize, avoid, taxon
     )
+    most_common: Optional[str] = sql_params.get("most_common")
     level: str = "L1"
     sql: str = f"""
     SELECT
@@ -205,7 +209,7 @@ def babel_lookup(
     """
     global start
     start = time.time()
-    rows: Any = babel.query(sql, sql_params)
+    rows: Any = babel.query(sql, sql_params)  # type: ignore  # noqa
     row: Any = next(rows, {})
     result: Optional[dict[str, Any]] = collect_babelresults(row)
     if result:
@@ -213,28 +217,30 @@ def babel_lookup(
 
     level_two_input: str = level_two(level_one_input)
     sql_params["input"] = level_two_input
-    level: str = "L2"
+    level = "L2"
 
     start = time.time()
-    rows: Any = babel.query(sql, sql_params)
-    row: Any = next(rows, {})
-    result: Optional[dict[str, Any]] = collect_babelresults(row)
+    rows = babel.query(sql, sql_params)  # type: ignore  # noqa
+    row = next(rows, {})
+    result = collect_babelresults(row)
     if result:
         return result.update({"db": "babel", "level": level})
 
     level_three_input: str = level_three(level_two_input)
     sql_params["input"] = level_three_input
-    level: str = "L3"
+    level = "L3"
 
     start = time.time()
-    rows: Any = babel.query(sql, sql_params)
-    row: Any = next(rows, {})
-    result: Optional[dict[str, Any]] = collect_babelresults(row)
+    rows = babel.query(sql, sql_params)  # type: ignore  # noqa
+    row = next(rows, {})
+    result = collect_babelresults(row)
     if result:
         return result.update({"db": "babel", "level": level})
 
     sql_params["input"] = unprocessed_input
     logger.bind(**sql_params).warning("Error 101")
+
+    return None
 
 
 def collect_kg2results(row: Any) -> Optional[dict[str, Any]]:
@@ -248,25 +254,28 @@ def collect_kg2results(row: Any) -> Optional[dict[str, Any]]:
             "name": name,
             "taxon": None,
         }
+    
+    return None
 
 
 @lru_cache(maxsize=512)
 def cached_kg2_lookup(
-    unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]
+    unprocessed_input: str, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]]
 ) -> Optional[dict[str, Any]]:
-    return kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
+    return kg2_lookup(unprocessed_input, prioritize, avoid)  # type: ignore
 
 
 @kg2cache.memorize()  # type: ignore
 def kg2_lookup(
-    unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]
+    unprocessed_input: str, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]]
 ) -> Optional[dict[str, Any]]:
 
     level_one_input: str = unprocessed_input
 
     prioritize_placeholders, avoid_placeholders, sql_params = dynamic_build(
-        level_one_input, prioritize, avoid, taxon
+        level_one_input, prioritize, avoid, None
     )
+    most_common: Optional[str] = sql_params.get("most_common")
     level: str = "L1"
     sql: str = f"""
     SELECT
@@ -283,26 +292,27 @@ def kg2_lookup(
 
     global start
     start = time.time()
-    rows: Any = kg2.query(sql, sql_params)
+    rows: Any = kg2.query(sql, sql_params)  # type: ignore  # noqa
     row: Any = next(rows, {})
     result: Optional[dict[str, Any]] = collect_kg2results(row)
     if result:
         return result.update({"db": "kg2", "level": level})
 
-    level_three_input: str = level_three(level_two_input)
+    level_three_input: str = level_three(level_one_input)
     sql_params["input"] = level_three_input
-    level: str = "L3"
+    level = "L3"
 
-    level: str = "L3"
     start = time.time()
-    rows: Any = babel.query(sql, sql_params)
-    row: Any = next(rows, {})
-    result: Optional[dict[str, Any]] = collect_kg2results(row)
+    rows = kg2.query(sql, sql_params)  # type: ignore  # noqa
+    row = next(rows, {})
+    result = collect_kg2results(row)
     if result:
         return result.update({"db": "kg2", "level": level})
 
     sql_params["input"] = unprocessed_input
     logger.bind(**sql_params).warning("Error 102")
+
+    return None
 
 
 # patch lookups aren't frequent enough to justify a combined cache
@@ -311,18 +321,18 @@ def kg2_lookup(
 Finish adding this after the rest of the pipeline works
 
 @lru_cache(maxsize=16)
-def override_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
+def override_lookup(unprocessed_input: str, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]]) -> Optional[]:
     sql: str = "FROM"
     return mapping_patch.query(sql)
 
 @lru_cache(maxsize=32)
-def supplement_lookup(unprocessed_input: str, prioritize: Optional[set[str]], avoid: Optional[set[str]]) -> Optional[]:
+def supplement_lookup(unprocessed_input: str, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]]) -> Optional[]:
     sql: str = "FROM"
     return mapping_patch.query(sql)
 """
 
 # counter is global because it's not hashable for the caches
-column_context: Counter = Counter()
+column_context: Counter[str] = Counter()
 
 
 def reset_column_context() -> None:
@@ -339,6 +349,7 @@ def progress_handler(max_time: float = 1.10) -> int:
     return 0
 
 
+# this causes linting errors so ignore all pertaining to undefined databases
 def activate_single_sqlite(name: str, path: FilePath) -> None:
     database: Database = new_connection(str(path))
     conn = database.conn
@@ -363,42 +374,42 @@ def activate_sqlites(Sqlites: SqliteDatabases) -> None:
 @lru_cache(maxsize=2048)
 def cached_fullmap3(
     unprocessed_input: str,
-    prioritize: Optional[set[str]],
-    avoid: Optional[set[str]],
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
     taxon: Optional[str],
-) -> Optional[tuple[str, str, str, str, str, str]]:
-    return fullmap3(unprocessed_input, prioritize, avoid, taxon)
+) -> Optional[tuple[str, str, str, Optional[str], str, str]]:
+    return fullmap3(unprocessed_input, prioritize, avoid, taxon)  # type: ignore
 
 
-@fullmapcache.memorize()
+@fullmapcache.memorize()  # type: ignore
 def fullmap3(
     unprocessed_input: str,
-    prioritize: Optional[set[str]],
-    avoid: Optional[set[str]],
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
     taxon: Optional[str],
-) -> Optional[tuple[str, str, str, str, str, str]]:
-    babelresult = cached_kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
+) -> Optional[tuple[str, str, str, Optional[str], str, str]]:
+    babelresult: Optional[dict[str, Any]] = cached_kg2_lookup(unprocessed_input, prioritize, avoid, taxon)
     if babelresult:
+        assert babelresult is not None
         category: str = babelresult["category"]
         column_context[category] += 1
-        return (
-            babelresult["curie"],
-            category,
-            babelresult["name"],
-            babelresult["taxon"],
-            babelresult["db"],
-            babelresult["level"],
-        )
+        curie: str = babelresult["curie"]
+        name: str = babelresult["name"]
+        taxon = babelresult["taxon"]
+        db: str = babelresult["db"]
+        level: str = babelresult["level"]
+        return (curie, category, name, taxon, db, level)
 
-    kg2result = cached_babel_lookup(unprocessed_input, prioritize, avoid, taxon)
+    kg2result: Optional[dict[str, Any]] = cached_babel_lookup(unprocessed_input, prioritize, avoid, taxon)
     if kg2result:
-        category: str = babelresult["category"]
+        assert kg2result is not None
+        category = kg2result["category"]
         column_context[category] += 1
-        return (
-            babelresult["curie"],
-            category,
-            babelresult["name"],
-            babelresult["taxon"],
-            babelresult["db"],
-            babelresult["level"],
-        )
+        curie = kg2result["curie"]
+        name = kg2result["name"]
+        taxon = kg2result["taxon"]
+        db = kg2result["db"]
+        level = kg2result["level"]
+        return (curie, category, name, taxon, db, level)
+
+    return None
