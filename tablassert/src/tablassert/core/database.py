@@ -33,7 +33,7 @@ def new_connection(sqlitepath: str) -> Database:
 
 
 @metadatacache.memorize()  # type: ignore
-def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
+def pubmed_metadata(article_curie: str) -> dict[str, Any]:
     sql: str = """
     SELECT
         mesh.mesh_major,
@@ -62,12 +62,12 @@ def pubmed_metadata(article_curie: str) -> Optional[dict[str, Any]]:
     title: Optional[str] = row.get("info.title")
     year: Optional[str] = row.get("info.year")
     return {
-        "domain": domain,
-        "mesh_terms": mesh_terms,
-        "firstauthor": firstauthor,
+        "domain": ",".join(domain),
+        "mesh_terms": ",".join(mesh_terms),
+        "first_author": firstauthor,
         "journal": journal,
-        "title": title,
-        "year": year,
+        "article_title": title,
+        "year_published": year,
     }
 
 

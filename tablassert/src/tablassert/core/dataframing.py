@@ -17,6 +17,8 @@ from tablassert.src.tablassert.core.database import (
     reset_column_context,
     activate_sqlites,
     cached_fullmap3,
+    pubmed_metadata,
+    file_caption,
 )
 from tablassert.src.tablassert.models.graph_config import GraphConfig, SqliteDatabases, pubmed_metadata, file_caption
 from tablassert.src.tablassert.utils.io import PydanticModel
@@ -305,6 +307,16 @@ def before_mapping(
     # if isinstance(DownloadHyperparameters, PdfHyperparameters):
 
     TableProvenance: Provenance = Table.provenance
+    article_curie: str = TableProvenance.article_curie
+    df = make_new_column(df, "article_curie", "value", article_curie)
+    config_curator_name: str = TableProvenance.config_curator_name
+    df = make_new_column(df, "config_curator_name", "value", config_curator_name)
+    config_curator_organization: str = TableProvenance.config_curator_organization
+    df = make_new_column(df, "config_curator_organization", "value", config_curator_organization)
+
+    pubmedresult: dict[str, Any] = pubmed_metadata(article_curie)
+    for column_name, column_value in pubmedresult.items():
+        df = make_new_column(df, column_name, "value", column_value)
 
     TableAttributes: Attributes = Table.attributes
     for Attribute in TableAttributes:
