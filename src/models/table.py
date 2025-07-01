@@ -1,4 +1,11 @@
-from pydantic import BaseModel, field_validator, model_validator, FilePath, HttpUrl, Field
+from pydantic import (
+    BaseModel,
+    field_validator,
+    model_validator,
+    FilePath,
+    HttpUrl,
+    Field,
+)
 from typing import Any, Self, Optional, Literal, Annotated, Union, TypeAlias
 from playwright.async_api import async_playwright
 from pathlib import Path
@@ -25,7 +32,7 @@ class Reindexing(BaseModel):
                 self.value_for_comparison = float(value)
             else:
                 raise ValueError(
-                    "CODE:103 | You must specify a numeric type for " + mode
+                    f"CODE:103 | You must specify a numeric type for {mode}"
                 )
         return self
 
