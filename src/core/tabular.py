@@ -3,16 +3,6 @@ from diskcache import Cache
 from loguru import logger
 import polars as pl
 
-# diskcache setup (sqlite caches)
-fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=1e9)
-babelcache: Cache = Cache("TABLASSERT/CACHE/BABEL", max_size=1e10)
-kg2cache: Cache = Cache("TABLASSERT/CACHE/KG2", max_size=1e9)
-
-def connect(sqlitepath: str) -> Database:
-    db: Database = Database(sqlitepath)
-    db.enable_wal()
-    return db
-
 def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.DataFrame:
     start: Optional[int] = download_hyperparameters.get("start_at_line_number")
     end: Optional[int] = download_hyperparameters.get("end_at_line_number")
@@ -57,7 +47,56 @@ def initate(posix_filepath: str, download_hyperparameters: dict[str, Any]) -> pl
         case _:
             raise RuntimeError(f"CODE:120 | Tablassert doesn't support {extension}... yet")
 
+def excel_style_column_name(idx: int) -> str:
+    letters: str = ""
+    while idx >= 0:
+        letters = chr(idx % 26 + 65) + letters
+        idx = idx // 26 - 1
+    return letters
+
+def new_column(df: pl.DataFrame, column: str, encoding_method: str, value_for_encoding: Optional[str]) -> pl.DataFrame:
+    if not value_for_encoding:
+        value_for_encoding = "not applicable"
+    if encoding_method == "value":
+        return df.with_columns(pl.lit(value_for_encoding).alias(column))
+    elif encoding_method == "column_of_values":
+        return df.with_columns(pl.col(value_for_encoding).alias(column))
+    else:
+        raise RuntimeError(f"CODE:121 | Unrecognized encoding_method {encoding_method}")
+
+def reindex(df: pl.DataFrame, column: str, comparison: str, value_for_comparison: Union[str, float]) -> pl.DataFrame:
+    match comparison:
+        case "ge":
+            assert isinstance(value_for_comparison, float)
+            return df.filter(pl.col(column) >= value_for_comparison)
+        case "le":
+            assert isinstance(value_for_comparison, float)
+            return df.filter(pl.col(column) <= value_for_comparison)
+        case "gt":
+            assert isinstance(value_for_comparison, float)
+            return df.filter(pl.col(column) > value_for_comparison)
+        case "lt":
+            assert isinstance(value_for_comparison, float)
+            return df.filter(pl.col(column) < value_for_comparison)
+        case "eq":
+            return df.filter(pl.col(column) == value_for_comparison)
+        case "ne":
+            return df.filter(pl.col(column) != value_for_comparison)
+        case _:
+            raise RuntimeError(f"CODE: 122 | Only reindexing comparisons ge, le, gt, lt, eq, and ne are valid {comparison}")
+
 def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]]) -> pl.DataFrame:
     posix_filepath: str = subsectionmodel["posix_filepath"]
     download_hyperparameters: dict[str, Any] = graphmodel["location"]["download_hyperparameters"]
     df = initate(posix_filepath, download_hyperparameters)
+    df = df.rename(columns={old_name: excel_style_column_name(idx) for idx, old_name in enumerate(df.columns)})
+
+# diskcache setup (sqlite caches)
+fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=1e9)
+babelcache: Cache = Cache("TABLASSERT/CACHE/BABEL", max_size=1e10)
+kg2cache: Cache = Cache("TABLASSERT/CACHE/KG2", max_size=1e9)
+
+def connect(sqlitepath: str) -> Database:
+    db: Database = Database(sqlitepath)
+    db.enable_wal()
+    return db
