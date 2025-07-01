@@ -104,6 +104,8 @@ def apply_math_module(df: pl.DataFrame, name: str, transformation: dict[str, Any
 # diskcache setup (sqlite caches)
 fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=3e10)
 
+start: float = 0.0  # default for typechecking
+
 def progress_handler(maxtime: float = 1.10) -> int:
     if (start - time.time()) >= maxtime:
         return 1
@@ -123,7 +125,7 @@ DISABLE: list[str] = ["parser", "ner", "textcat"]
 MODEL = spacy.load("en_core_web_sm", disable=DISABLE)
 
 def leveltwo(leveloneoutput: str) -> str:
-    tokens: list[Token] = MODEL(leveloneoutput)
+    tokens: list[Token] = MODEL(leveloneoutput)  # type: ignore
     cleaned_tokens: list[str] = [
         token.lemma_  # yield lemma
         for token in tokens  # iterate through tokens
@@ -146,7 +148,7 @@ ColumnContext: Counter[str] = Counter()
 # because the double cache header alters how they both behave
 @lru_cache(maxsize=1024)
 def cached_fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]], taxon: Optional[str]) -> dict[str, Any]:
-    return fullmap3(name, unprocessedinput, prioritize, avoid, taxon)
+    return fullmap3(name, unprocessedinput, prioritize, avoid, taxon)  # type: ignore
 
 def fullmap_struct(name: Any, curie: Any, preferred: Any, category: Any, taxon: Any, level: Any, db: Any) -> dict[str, Any]:
     return {
@@ -184,13 +186,13 @@ def kg2results(name: str, rows: Any, level: str, db: str="kg2") -> Optional[dict
     )
     return struct if all(value for key, value in struct.items() if key != f"{name}_mapped_with_taxon") else None
 
-@fullmap3cache.memoize()
+@fullmap3cache.memoize()  # type: ignore
 def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]], taxon: Optional[str]) -> dict[str, Any]:
     
     prioritize_placeholders: Optional[str] = (", ".join([f":prioritize{idx}" for idx in range(len(prioritize))]) if prioritize else None)
     avoid_placeholders: Optional[str] = (", ".join([f":avoid{idx}" for idx in range(len(avoid))]) if avoid else None)
     common_categories: list[Any] = ColumnContext.most_common(1)
-    most_common: Optional[str] = (str(most_common_list[0][0]) if common_categories else None)
+    most_common: Optional[str] = (str(common_categories[0][0]) if common_categories else None)
     leveloneoutput: str = levelone(unprocessedinput)
     sql_params: dict[str, str] = {"input": leveloneoutput}
     level: str = "L1"
@@ -220,11 +222,11 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     """
 
     global start  # for progress handler
-    start: float = time.time()
-    rows: Any = babel.query(babelsql, sql_params)
+    start = time.time()
+    rows: Any = babel.query(babelsql, sql_params)  # type: ignore
     result: Optional[dict[str, Any]] = babelresults(name, rows, level)
     if result:
-        CategoryFrequency[str(result[f"{name}_category"])] += 1
+        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     kg2sql: str = f"""
@@ -241,10 +243,10 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     """
 
     start = time.time()
-    rows: Any = kg2.query(kg2sql, sql_params)
-    result = kg2esults(name, rows, level)
+    rows = kg2.query(kg2sql, sql_params)  # type: ignore
+    result = kg2results(name, rows, level)
     if result:
-        CategoryFrequency[str(result[f"{name}_category"])] += 1
+        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     level = "L2"
@@ -252,17 +254,17 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     sql_params["input"] = leveltwooutput
 
     start = time.time()
-    rows: Any = babel.query(babelsql, sql_params)
+    rows = babel.query(babelsql, sql_params)  # type: ignore
     result = babelresults(name, rows, level)
     if result:
-        CategoryFrequency[str(result[f"{name}_category"])] += 1
+        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     start = time.time()
-    rows: Any = kg2.query(kg2sql, sql_params)
-    result = kg2esults(name, rows, level)
+    rows = kg2.query(kg2sql, sql_params)  # type: ignore
+    result = kg2results(name, rows, level)
     if result:
-        CategoryFrequency[str(result[f"{name}_category"])] += 1
+        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     level = "L3"
@@ -270,20 +272,20 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     sql_params["input"] = leveltwooutput
 
     start = time.time()
-    rows: Any = babel.query(babelsql, sql_params)
+    rows = babel.query(babelsql, sql_params)  # type: ignore
     result = babelresults(name, rows, level)
     if result:
-        CategoryFrequency[str(result[f"{name}_category"])] += 1
+        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     levelthreeoutputkg2: str = levelthree(leveloneoutput)
     sql_params["input"] = levelthreeoutputkg2
 
     start = time.time()
-    rows: Any = kg2.query(kg2sql, sql_params)
-    result = kg2esults(name, rows, level)
+    rows = kg2.query(kg2sql, sql_params)  # type: ignore
+    result = kg2results(name, rows, level)
     if result:
-        CategoryFrequency[str(result[f"{name}_category"])] += 1
+        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
     
     return fullmap_struct(name, None, None, None, None, None, None)
@@ -297,7 +299,7 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
     df = new_column(df, "file_name", "value", basename(posix_filepath))
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
     global pmc  # databases are global to enable caching because they're unhashable types
-    pmc: Database = connect(sqlites["pmc"])
+    pmc: Database = connect(sqlites["pmc"])  # type: ignore
     # get filecaptions
     df = new_column(df, "file_caption", "value", basename(posix_filepath))
     df = new_column(df, "extension", "value", download_hyperparameters["extension"])
@@ -307,7 +309,7 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
     df = new_column(df, "config_curator_name", "value", provenance["config_curator_name"])
     df = new_column(df, "config_curator_organization", "value", provenance["config_curator_organization"])
     global pubmed
-    pubmed: Database = connect(sqlites["pubmed"])
+    pubmed: Database = connect(sqlites["pubmed"])  # type: ignore
     # get pubmed_metadata
     reindexing: Optional[list[dict[str, Any]]] = subsectionmodel["reindexing"]
     if reindexing:
@@ -326,9 +328,9 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
             df = new_column(df, name, "value", str(attribute))
     triple: dict[str, Any] = subsectionmodel["provenance"]
     global babel
-    babel: Database = connect(sqlites["babel"])
+    babel: Database = connect(sqlites["babel"])  # type: ignore
     global kg2
-    kg2 = connect(sqlites["kg2"])
+    kg2: Database = connect(sqlites["kg2"])  # type: ignore
     for name, spoconfig in triple.items():
         name = name[7:]
         if name == "predicate":
@@ -339,9 +341,9 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
             df = new_column(df, f"origonal_{name}", encoding_method, value_for_encoding)
             df = new_column(df, name, encoding_method, value_for_encoding)
             mapping_hyperparameters: dict[str, Any] = spoconfig["mapping_hyperparameters"]
-            how_to_fill_column: Optional[str] = mapping_hyperparameters.get("how_to_fill_column")
+            how_to_fill_column: Optional[str] = str(mapping_hyperparameters.get("how_to_fill_column"))
             if how_to_fill_column:
-                df = df.with_columns(pl.col(name).fill_null(strategy=how_to_fill_column))
+                df = df.with_columns(pl.col(name).fill_null(strategy=how_to_fill_column))  # type: ignore
             explode_by_delimiter: Optional[str] = mapping_hyperparameters.get("explode_by_delimiter")
             if explode_by_delimiter:
                 df = df.with_columns(pl.col(name).str.split(explode_by_delimiter)).explode(name)
