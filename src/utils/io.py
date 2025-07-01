@@ -53,9 +53,10 @@ def load_model(parsed_yaml: Any, model: Type[PydanticModel]) -> PydanticModel:
 TABLE_CONFIG_EXTENSION: str = ".yaml"
 
 
-def get_sections(
-    directories: list[DirectoryPath], Graph: GraphConfig
-) -> list[tuple[Section, GraphConfig, int]]:
+def build_sections(Graph: GraphConfig) -> list[tuple[Section, GraphConfig, int]]:
+    directories: list[DirectoryPath] = (
+        Graph.location.table_config_containing_directories
+    )
     sections: list[tuple[Section, GraphConfig, int]] = []
     for d in directories:
         for path in Path(str(d)).rglob("*"):

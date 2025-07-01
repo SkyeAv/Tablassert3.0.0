@@ -35,4 +35,4 @@ class Hyperparameters(BaseModel):
 class GraphConfig(BaseModel):
     metadata: Metadata = Field(...)
     location: Location = Field(...)
-    hyperparameters: Optional[Hyperparameters] = Field(default=None)
+    hyperparameters: Hyperparameters = Field(default_factory=Hyperparameters)
