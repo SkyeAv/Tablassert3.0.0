@@ -1,10 +1,16 @@
 from typing import Any, Optional, Union
 from sqlite_utils import Database
+from functools import lru_cache
+from collections import Counter
+from spacy.tokens import Token
 from os.path import basename
 from diskcache import Cache
 from loguru import logger
 import polars as pl
+import spacy
 import math
+import time
+import re
 
 def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.DataFrame:
     start: Optional[int] = download_hyperparameters.get("start_at_line_number")
@@ -96,14 +102,185 @@ def apply_math_module(df: pl.DataFrame, name: str, transformation: dict[str, Any
     return df.with_columns(pl.col(name).cast(pl.Float64).map_elements(transformation_operation).alias(name))
 
 # diskcache setup (sqlite caches)
-fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=1e9)
-babelcache: Cache = Cache("TABLASSERT/CACHE/BABEL", max_size=1e10)
-kg2cache: Cache = Cache("TABLASSERT/CACHE/KG2", max_size=1e9)
+fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=3e10)
+
+def progress_handler(maxtime: float = 1.10) -> int:
+    if (start - time.time()) >= maxtime:
+        return 1
+    return 0
 
 def connect(sqlitepath: str) -> Database:
     db: Database = Database(sqlitepath)
     db.enable_wal()  # type: ignore
+    conn = db.conn
+    conn.set_progress_handler(lambda: progress_handler(), 1)
     return db
+
+def levelone(x: Any) -> str:
+    return str(x).lower()
+
+DISABLE: list[str] = ["parser", "ner", "textcat"]
+MODEL = spacy.load("en_core_web_sm", disable=DISABLE)
+
+def leveltwo(leveloneoutput: str) -> str:
+    tokens: list[Token] = MODEL(leveloneoutput)
+    cleaned_tokens: list[str] = [
+        token.lemma_  # yield lemma
+        for token in tokens  # iterate through tokens
+        if not token.is_stop  # is not a stopword
+        and not token.is_punct  # is not punctuation
+    ]
+    sorted_cleaned_unique_tokens: list[str] = sorted(list(dict.fromkeys(cleaned_tokens)))
+    leveltwooutput: str = " ".join(sorted_cleaned_unique_tokens)
+    return leveltwooutput
+
+NONWORD_REGEX: Any = re.compile(r"\W+")
+
+def levelthree(leveltwooutput: str) -> str:
+    regex: Any = NONWORD_REGEX
+    levelthreeoutput: str = re.sub(regex, "", leveltwooutput)
+    return levelthreeoutput
+
+ColumnContext: Counter[str] = Counter()
+
+# because the double cache header alters how they both behave
+@lru_cache(maxsize=1024)
+def cached_fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]], taxon: Optional[str]) -> dict[str, Any]:
+    return fullmap3(name, unprocessedinput, prioritize, avoid, taxon)
+
+def fullmap_struct(name: Any, curie: Any, preferred: Any, category: Any, taxon: Any, level: Any, db: Any) -> dict[str, Any]:
+    return {
+        name: curie,
+        f"{name}_name": preferred,
+        f"{name}_category": f"biolink:{category}",
+        f"{name}_mapped_with_taxon": f"NCBITaxon:{taxon}",
+        f"{name}_mapped_with_level": level,
+        f"{name}_mapped_with_database": db,
+        }
+
+def babelresults(name: str, rows: Any, level: str, db: str="babel") -> Optional[dict[str, Any]]:
+    row: Any = next(rows, {})
+    struct: dict[str, Any] = fullmap_struct(
+        name,
+        row.get("CURIE"),
+        row.get("NAME"),
+        row.get("CATEGORY"),
+        row.get("TAXON"),
+        level,
+        db,
+    )
+    return struct if all(value for key, value in struct.items() if key != f"{name}_mapped_with_taxon") else None
+
+def kg2results(name: str, rows: Any, level: str, db: str="kg2") -> Optional[dict[str, Any]]:
+    row: Any = next(rows, {})
+    struct = fullmap_struct(
+        name,
+        row.get("cluster_id"),
+        row.get("name"),
+        row.get("category"),
+        None,
+        level,
+        db,
+    )
+    return struct if all(value for key, value in struct.items() if key != f"{name}_mapped_with_taxon") else None
+
+@fullmap3cache.memoize()
+def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]], taxon: Optional[str]) -> dict[str, Any]:
+    
+    prioritize_placeholders: Optional[str] = (", ".join([f":prioritize{idx}" for idx in range(len(prioritize))]) if prioritize else None)
+    avoid_placeholders: Optional[str] = (", ".join([f":avoid{idx}" for idx in range(len(avoid))]) if avoid else None)
+    common_categories: list[Any] = ColumnContext.most_common(1)
+    most_common: Optional[str] = (str(most_common_list[0][0]) if common_categories else None)
+    leveloneoutput: str = levelone(unprocessedinput)
+    sql_params: dict[str, str] = {"input": leveloneoutput}
+    level: str = "L1"
+
+    if prioritize:
+        sql_params.update({f"prioritize{idx}": category for idx, category in enumerate(prioritize)})
+    if avoid:
+        sql_params.update({f"avoid{idx}": category for idx, category in enumerate(avoid)})
+    if taxon:
+        sql_params["taxon"] = taxon
+    if most_common:
+        sql_params["most_common"] = most_common
+
+    babelsql: str = f"""
+    SELECT
+        NAMES.CURIE,
+        NAMES.CATEGORY,
+        NAMES.NAME,
+        NAMES.TAXON
+    FROM SYNONYMS
+    INNER JOIN NAMES ON SYNONYMS.CURIE = NAMES.CURIE
+    WHERE 
+        {"SYNONYMS.L1 = :input" if level == "L1" else "SYNONYMS.L2 = :input" if level == "L2" else "SYNONYMS.L3 = :input"}
+        {"AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = :taxon)" if taxon else ""}
+        {f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
+    {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = :most_common THEN 0 \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else "ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else ""}
+    """
+
+    global start  # for progress handler
+    start: float = time.time()
+    rows: Any = babel.query(babelsql, sql_params)
+    result: Optional[dict[str, Any]] = babelresults(name, rows, level)
+    if result:
+        return result
+
+    kg2sql: str = f"""
+    SELECT
+        clusters.cluster_id,
+        clusters.category,
+        clusters.name
+    FROM nodes
+    INNER JOIN clusters ON nodes.cluster_id = clusters.cluster_id
+    WHERE
+        {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
+        {f"AND clusters.category NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
+    {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = :most_common THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else "ORDER BY \n\t CASE \n\t\t WHEN clusters.category = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else ""}
+    """
+
+    start = time.time()
+    rows: Any = kg2.query(kg2sql, sql_params)
+    result = kg2esults(name, rows, level)
+    if result:
+        return result
+
+    level = "L2"
+    leveltwooutput: str = leveltwo(leveloneoutput)
+    sql_params["input"] = leveltwooutput
+
+    start = time.time()
+    rows: Any = babel.query(babelsql, sql_params)
+    result = babelresults(name, rows, level)
+    if result:
+        return result
+
+    start = time.time()
+    rows: Any = kg2.query(kg2sql, sql_params)
+    result = kg2esults(name, rows, level)
+    if result:
+        return result
+
+    level = "L3"
+    levelthreeoutput: str = levelthree(leveltwooutput)
+    sql_params["input"] = leveltwooutput
+
+    start = time.time()
+    rows: Any = babel.query(babelsql, sql_params)
+    result = babelresults(name, rows, level)
+    if result:
+        return result
+
+    levelthreeoutputkg2: str = levelthree(leveloneoutput)
+    sql_params["input"] = levelthreeoutputkg2
+
+    start = time.time()
+    rows: Any = kg2.query(kg2sql, sql_params)
+    result = kg2esults(name, rows, level)
+    if result:
+        return result
+    
+    return fullmap_struct(name, None, None, None, None, None, None)
 
 def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]]) -> pl.DataFrame:
     posix_filepath: str = subsectionmodel["posix_filepath"]
@@ -113,6 +290,7 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
     df = new_column(df, "download_link", "value", graphmodel["location"]["where_to_download_data_from"])
     df = new_column(df, "file_name", "value", basename(posix_filepath))
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
+    global pmc  # databases are global to enable caching because they're unhashable types
     pmc: Database = connect(sqlites["pmc"])
     # get filecaptions
     df = new_column(df, "file_caption", "value", basename(posix_filepath))
@@ -122,6 +300,7 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
     df = new_column(df, "article_curie", "value", provenance["article_curie"])
     df = new_column(df, "config_curator_name", "value", provenance["config_curator_name"])
     df = new_column(df, "config_curator_organization", "value", provenance["config_curator_organization"])
+    global pubmed
     pubmed: Database = connect(sqlites["pubmed"])
     # get pubmed_metadata
     reindexing: Optional[list[dict[str, Any]]] = subsectionmodel["reindexing"]
@@ -140,6 +319,10 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
         else:
             df = new_column(df, name, "value", str(attribute))
     triple: dict[str, Any] = subsectionmodel["provenance"]
+    global babel
+    babel: Database = connect(sqlites["babel"])
+    global kg2
+    kg2 = connect(sqlites["kg2"])
     for name, spoconfig in triple.items():
         name = name[7:]
         if name == "predicate":
@@ -168,11 +351,15 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
             if prefix:
                 df = df.with_columns((pl.lit(prefix) + pl.col(name)).alias(name))
             suffix: Optional[str] = mapping_hyperparameters.get("suffix")
-            if suffix:     
+            if suffix:
                 df = df.with_columns((pl.col(name) + pl.lit(suffix)).alias(name))
-    babel = connect(sqlites["babel"])
-    kg2 = connect(sqlites["kg2"])
-    # introduce fullmap3
+            in_this_organism: Optional[str] = mapping_hyperparameters.get("in_this_organism")
+            taxon = in_this_organism[9:] if in_this_organism else None
+            classes_to_prioritize: Optional[list[str]] = mapping_hyperparameters.get("classes_to_prioritize")
+            prioritize = frozenset(priority[7:] for priority in classes_to_prioritize) if classes_to_prioritize else None
+            classes_to_avoid: Optional[list[str]] = mapping_hyperparameters.get("classes_to_avoid")
+            avoid = frozenset(void[7:] for void in classes_to_avoid) if classes_to_avoid else None
+        # introduce fullmap3
     if reindexing:
         for operation in reindexing:
             if operation["mode"] == "after":
