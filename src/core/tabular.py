@@ -97,9 +97,24 @@ def reindex(df: pl.DataFrame, column: str, comparison: str, value_for_comparison
         case _:
             raise RuntimeError(f"CODE: 122 | Only reindexing comparisons ge, le, gt, lt, eq, and ne are valid {comparison}")
 
+def apply_reindexing(df: pl.DataFrame, operation: dict[str, str], mode: str) -> pl.DataFrame:
+    if operation["mode"] == mode:
+        return reindex(df, operation["column"], operation["comparison"], operation["value_for_comparison"])
+
 def apply_math_module(df: pl.DataFrame, name: str, transformation: dict[str, Any]) -> pl.DataFrame:
     transformation_operation = lambda x: getattr(math, transformation["attribute"])(*[arg if arg is not None else x for arg in transformation["arguments"]])
     return df.with_columns(pl.col(name).cast(pl.Float64).map_elements(transformation_operation).alias(name))
+
+def process_attribute(df: pl.DataFrame, name: str, attribute: dict[str, Any]) -> pl.DataFrame:
+    if name != "notes":
+        df = new_column(df, name, attribute.get("encoding_method"), attribute.get("value_for_encoding"))
+        math_transformations: Optional[list[dict[str, Any]]] = attribute.get("math_module_transformation")
+        if math_transformations:
+            for transformation in math_transformations:
+                df = apply_math_module(df, name, transformation)
+        return df
+    else:
+        return new_column(df, name, "value", str(attribute))
 
 # diskcache setup (sqlite caches)
 fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=3e10)
@@ -206,20 +221,53 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     if most_common:
         sql_params["most_common"] = most_common
 
+    babel_levelcondtion: dict[str, str] = {"L1": "SYNONYMS.L1 = :input", "L2": "SYNONYMS.L2 = :input", "L3": "SYNONYMS.L3 = :input"}.get(level, "")
+    babel_taxoncondition: str = "AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = :taxon)" if taxon else ""
+    avoid_condition: str = f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})" if avoid_placeholders else ""
+
+    if prioritize_placeholders and most_common:
+        babel_orderbyclause: str = f"""
+            ORDER BY
+                CASE
+                    WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = :most_common THEN 0
+                    WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1
+                    WHEN NAMES.CATEGORY = :most_common THEN 2
+                    ELSE 3
+                END
+            """
+    elif prioritize_placeholders:
+        babel_orderbyclause = f"""
+            ORDER BY
+                CASE
+                    WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0
+                    ELSE 1
+                END
+            """
+    elif most_common:
+        babel_orderbyclause = """
+            ORDER BY
+                CASE
+                    WHEN NAMES.CATEGORY = :most_common THEN 0
+                    ELSE 1
+                END
+            """
+    else:
+        babel_orderbyclause = ""
+
     babelsql: str = f"""
-    SELECT
-        NAMES.CURIE,
-        NAMES.CATEGORY,
-        NAMES.NAME,
-        NAMES.TAXON
-    FROM SYNONYMS
-    INNER JOIN NAMES ON SYNONYMS.CURIE = NAMES.CURIE
-    WHERE 
-        {"SYNONYMS.L1 = :input" if level == "L1" else "SYNONYMS.L2 = :input" if level == "L2" else "SYNONYMS.L3 = :input"}
-        {"AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = :taxon)" if taxon else ""}
-        {f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
-    {f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = :most_common THEN 0 \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else "ORDER BY \n\t CASE \n\t\t WHEN NAMES.CATEGORY = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else ""}
-    """
+        SELECT
+            NAMES.CURIE,
+            NAMES.CATEGORY,
+            NAMES.NAME,
+            NAMES.TAXON
+            FROM SYNONYMS
+            INNER JOIN NAMES ON SYNONYMS.CURIE = NAMES.CURIE
+        WHERE
+            {level_condition}
+            {taxon_condition}
+            {avoid_condition}
+        {order_by_clause}
+        """
 
     global start  # for progress handler
     start = time.time()
@@ -288,7 +336,45 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
         ColumnContext[str(result[f"{name}_category"])] += 1
         return result
     
+    # add loguru logging here
     return fullmap_struct(name, None, None, None, None, None, None)
+
+def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
+    name = name[7:]
+    if name == "predicate":
+        return new_column(df, name, "value", str(spoconfig))
+    else:
+        encoding_method: str = spoconfig["encoding_method"]
+        value_for_encoding: str = spoconfig["value_for_encoding"]
+        df = new_column(df, f"origonal_{name}", encoding_method, value_for_encoding)
+        df = new_column(df, name, encoding_method, value_for_encoding)
+        mapping_hyperparameters: dict[str, Any] = spoconfig["mapping_hyperparameters"]
+        how_to_fill_column: Optional[str] = str(mapping_hyperparameters.get("how_to_fill_column"))
+        if how_to_fill_column:
+            df = df.with_columns(pl.col(name).fill_null(strategy=how_to_fill_column))  # type: ignore
+        explode_by_delimiter: Optional[str] = mapping_hyperparameters.get("explode_by_delimiter")
+        if explode_by_delimiter:
+            df = df.with_columns(pl.col(name).str.split(explode_by_delimiter)).explode(name)
+        regular_expressions: Optional[list[dict[str, Any]]] = mapping_hyperparameters.get("regular_expressions")
+        if regular_expressions:
+            for regex in regular_expressions:
+                df = df.with_columns(pl.col(name).str.replace_all(regex["pattern"], regex["replacement"]).alias(name))
+        substrings_to_remove: Optional[list[str]] = mapping_hyperparameters.get("substrings_to_remove")
+        if substrings_to_remove:
+            for substring in substrings_to_remove:
+                df = df.with_columns(pl.col(name).str.replace_all(substring, "").alias(name))
+        prefix: Optional[str] = mapping_hyperparameters.get("prefix")
+        if prefix:
+            df = df.with_columns((pl.lit(prefix) + pl.col(name)).alias(name))
+        suffix: Optional[str] = mapping_hyperparameters.get("suffix")
+        if suffix:
+            df = df.with_columns((pl.col(name) + pl.lit(suffix)).alias(name))
+        in_this_organism: Optional[str] = mapping_hyperparameters.get("in_this_organism")
+        taxon = in_this_organism[9:] if in_this_organism else None
+        classes_to_prioritize: Optional[list[str]] = mapping_hyperparameters.get("classes_to_prioritize")            prioritize = frozenset(priority[7:] for priority in classes_to_prioritize) if classes_to_prioritize else None
+        classes_to_avoid: Optional[list[str]] = mapping_hyperparameters.get("classes_to_avoid")
+        avoid = frozenset(void[7:] for void in classes_to_avoid) if classes_to_avoid else None
+        # introduce fullmap3
 
 def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]]) -> pl.DataFrame:
     posix_filepath: str = subsectionmodel["posix_filepath"]
@@ -314,64 +400,20 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
     reindexing: Optional[list[dict[str, Any]]] = subsectionmodel["reindexing"]
     if reindexing:
         for operation in reindexing:
-            if operation["mode"] == "before":
-                df = reindex(df, operation["column"], operation["comparison"], operation["value_for_comparison"])
+            df = apply_reindexing(df, operation, "before")
     attributes: dict[str, Any] = subsectionmodel["attributes"]
     for name, attribute in attributes.items():
-        if name != "notes":
-            df = new_column(df, name, attribute.get("encoding_method"), attribute.get("value_for_encoding"))
-            math_transformations: Optional[list[dict[str, Any]]] = attribute.get("math_module_transformation")
-            if math_transformations:
-                for transformation in math_transformations:
-                    df = apply_math_module(df, name, transformation)
-        else:
-            df = new_column(df, name, "value", str(attribute))
+        df = process_attribute(df, name, attribute)
     triple: dict[str, Any] = subsectionmodel["provenance"]
     global babel
     babel: Database = connect(sqlites["babel"])  # type: ignore
     global kg2
     kg2: Database = connect(sqlites["kg2"])  # type: ignore
     for name, spoconfig in triple.items():
-        name = name[7:]
-        if name == "predicate":
-            df = new_column(df, name, "value", str(spoconfig))
-        else:
-            encoding_method: str = spoconfig["encoding_method"]
-            value_for_encoding: str = spoconfig["value_for_encoding"]
-            df = new_column(df, f"origonal_{name}", encoding_method, value_for_encoding)
-            df = new_column(df, name, encoding_method, value_for_encoding)
-            mapping_hyperparameters: dict[str, Any] = spoconfig["mapping_hyperparameters"]
-            how_to_fill_column: Optional[str] = str(mapping_hyperparameters.get("how_to_fill_column"))
-            if how_to_fill_column:
-                df = df.with_columns(pl.col(name).fill_null(strategy=how_to_fill_column))  # type: ignore
-            explode_by_delimiter: Optional[str] = mapping_hyperparameters.get("explode_by_delimiter")
-            if explode_by_delimiter:
-                df = df.with_columns(pl.col(name).str.split(explode_by_delimiter)).explode(name)
-            regular_expressions: Optional[list[dict[str, Any]]] = mapping_hyperparameters.get("regular_expressions")
-            if regular_expressions:
-                for regex in regular_expressions:
-                    df = df.with_columns(pl.col(name).str.replace_all(regex["pattern"], regex["replacement"]).alias(name))
-            substrings_to_remove: Optional[list[str]] = mapping_hyperparameters.get("substrings_to_remove")
-            if substrings_to_remove:
-                for substring in substrings_to_remove:
-                    df = df.with_columns(pl.col(name).str.replace_all(substring, "").alias(name))
-            prefix: Optional[str] = mapping_hyperparameters.get("prefix")
-            if prefix:
-                df = df.with_columns((pl.lit(prefix) + pl.col(name)).alias(name))
-            suffix: Optional[str] = mapping_hyperparameters.get("suffix")
-            if suffix:
-                df = df.with_columns((pl.col(name) + pl.lit(suffix)).alias(name))
-            in_this_organism: Optional[str] = mapping_hyperparameters.get("in_this_organism")
-            taxon = in_this_organism[9:] if in_this_organism else None
-            classes_to_prioritize: Optional[list[str]] = mapping_hyperparameters.get("classes_to_prioritize")
-            prioritize = frozenset(priority[7:] for priority in classes_to_prioritize) if classes_to_prioritize else None
-            classes_to_avoid: Optional[list[str]] = mapping_hyperparameters.get("classes_to_avoid")
-            avoid = frozenset(void[7:] for void in classes_to_avoid) if classes_to_avoid else None
-        # introduce fullmap3
+        df = spocolumn(df, name, spoconfig)
     if reindexing:
         for operation in reindexing:
-            if operation["mode"] == "after":
-                df = reindex(df, operation["column"], operation["comparison"], operation["value_for_comparison"])
+            df = apply_reindexing(df, operation, "after")
     return df
 
 
