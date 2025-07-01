@@ -38,18 +38,18 @@ template: &template
       encoding_method: column_of_values
       value_for_encoding: A
       mapping_hyperparameters:
-        strings_to_remove: !!set
-          ? \(.*
-          ? s$
-          ? ^[^a-zA-Z]*
-          ? \s+$
+        strings_to_remove:
+          - \(.*
+          - s$
+          - ^[^a-zA-Z]*
+          - \s+$
         regular_expressions:
           - pattern: Diastolic
             replacement: Diastolic blood pressure
           - pattern: Systolic BP
             replacement: Systolic blood pressure
-        classes_to_avoid: !!set
-          ? biolink:OrganismTaxon
+        classes_to_avoid:
+          - biolink:OrganismTaxon
     triple_predicate: biolink:associated_with
 
 sections:
