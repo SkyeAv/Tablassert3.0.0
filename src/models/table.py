@@ -162,11 +162,11 @@ class Attribute(BaseModel):
 
 
 class Attributes(BaseModel):
-    sample_size: Optional[Attribute] = Field(default=None)
-    p_value: Optional[Attribute] = Field(default=None)
-    multiple_testing_correction_method: Optional[Attribute] = Field(default=None)
-    assertion_strength: Optional[Attribute] = Field(default=None)
-    assertion_method: Optional[Attribute] = Field(default=None)
+    sample_size: Attribute = Field(default_factory=Attribute)
+    p_value: Attribute = Field(default_factory=Attribute)
+    multiple_testing_correction_method: Attribute = Field(default_factory=Attribute)
+    assertion_strength: Attribute = Field(default_factory=Attribute)
+    assertion_method: Attribute = Field(default_factory=Attribute)
     notes: Optional[str] = Field(default=None)
 
 
