@@ -91,7 +91,7 @@ def reindex(df: pl.DataFrame, column: str, comparison: str, value_for_comparison
         case _:
             raise RuntimeError(f"CODE: 122 | Only reindexing comparisons ge, le, gt, lt, eq, and ne are valid {comparison}")
 
-def math_module(df: pl.DataFrame, name: str, transformation: dict[str, Any]) -> pl.DataFrame:
+def apply_math_module(df: pl.DataFrame, name: str, transformation: dict[str, Any]) -> pl.DataFrame:
     transformation_operation = lambda x: getattr(math, transformation["attribute"])(*[arg if arg is not None else x for arg in transformation["arguments"]])
     return df.with_columns(pl.col(name).cast(pl.Float64).map_elements(transformation_operation).alias(name))
 
@@ -107,7 +107,7 @@ def connect(sqlitepath: str) -> Database:
 
 def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]]) -> pl.DataFrame:
     posix_filepath: str = subsectionmodel["posix_filepath"]
-    download_hyperparameters: dict[str, Any] = graphmodel["location"]["download_hyperparameters"]
+    download_hyperparameters: dict[str, Any] = subsectionmodel["location"]["download_hyperparameters"]
     df = initate(posix_filepath, download_hyperparameters)
     df = df.rename({old_name: excel_style_column_name(idx) for idx, old_name in enumerate(df.columns)})
     df = new_column(df, "download_link", "value", graphmodel["location"]["where_to_download_data_from"])
@@ -118,27 +118,58 @@ def dataframing(subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str,
     df = new_column(df, "file_caption", "value", basename(posix_filepath))
     df = new_column(df, "extension", "value", download_hyperparameters["extension"])
     df = new_column(df, "excel_sheet", "value", download_hyperparameters.get("which_excel_sheet_to_use"))
-    provenance: dict[str, str] = graphmodel["provenance"]
+    provenance: dict[str, str] = subsectionmodel["provenance"]
     df = new_column(df, "article_curie", "value", provenance["article_curie"])
     df = new_column(df, "config_curator_name", "value", provenance["config_curator_name"])
     df = new_column(df, "config_curator_organization", "value", provenance["config_curator_organization"])
     pubmed: Database = connect(sqlites["pubmed"])
     # get pubmed_metadata
-    reindexing: Optional[list[dict[str, Any]]] = graphmodel["reindexing"]
+    reindexing: Optional[list[dict[str, Any]]] = subsectionmodel["reindexing"]
     if reindexing:
         for operation in reindexing:
             if operation["mode"] == "before":
                 df = reindex(df, operation["column"], operation["comparison"], operation["value_for_comparison"])
-    attributes: dict[str, Any] = graphmodel["attributes"]
+    attributes: dict[str, Any] = subsectionmodel["attributes"]
     for name, attribute in attributes.items():
         if name != "notes":
             df = new_column(df, name, attribute.get("encoding_method"), attribute.get("value_for_encoding"))
             math_transformations: Optional[list[dict[str, Any]]] = attribute.get("math_module_transformation")
             if math_transformations:
                 for transformation in math_transformations:
-                    df = math_module(df, name, transformation)
+                    df = apply_math_module(df, name, transformation)
         else:
             df = new_column(df, name, "value", str(attribute))
+    triple: dict[str, Any] = subsectionmodel["provenance"]
+    for name, spoconfig in triple.items():
+        name = name[7:]
+        if name == "predicate":
+            df = new_column(df, name, "value", str(spoconfig))
+        else:
+            encoding_method: str = spoconfig["encoding_method"]
+            value_for_encoding: str = spoconfig["value_for_encoding"]
+            df = new_column(df, f"origonal_{name}", encoding_method, value_for_encoding)
+            df = new_column(df, name, encoding_method, value_for_encoding)
+            mapping_hyperparameters: dict[str, Any] = spoconfig["mapping_hyperparameters"]
+            how_to_fill_column: Optional[str] = mapping_hyperparameters.get("how_to_fill_column")
+            if how_to_fill_column:
+                df = df.with_columns(pl.col(name).fill_null(strategy=how_to_fill_column))
+            explode_by_delimiter: Optional[str] = mapping_hyperparameters.get("explode_by_delimiter")
+            if explode_by_delimiter:
+                df = df.with_columns(pl.col(name).str.split(explode_by_delimiter)).explode(name)
+            regular_expressions: Optional[list[dict[str, Any]]] = mapping_hyperparameters.get("regular_expressions")
+            if regular_expressions:
+                for regex in regular_expressions:
+                    df = df.with_columns(pl.col(name).str.replace_all(regex["pattern"], regex["replacement"]).alias(name))
+            substrings_to_remove: Optional[list[str]] = mapping_hyperparameters.get("substrings_to_remove")
+            if substrings_to_remove:
+                for substring in substrings_to_remove:
+                    df = df.with_columns(pl.col(name).str.replace_all(substring, "").alias(name))
+            prefix: Optional[str] = mapping_hyperparameters.get("prefix")
+            if prefix:
+                df = df.with_columns((pl.lit(prefix) + pl.col(name)).alias(name))
+            suffix: Optional[str] = mapping_hyperparameters.get("suffix")
+            if suffix:     
+                df = df.with_columns((pl.col(name) + pl.lit(suffix)).alias(name))
     babel = connect(sqlites["babel"])
     kg2 = connect(sqlites["kg2"])
     # introduce fullmap3

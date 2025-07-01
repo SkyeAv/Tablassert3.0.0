@@ -41,6 +41,11 @@ class RegularExpression(BaseModel):
     pattern: str = Field(...)
     replacement: str = Field(...)
 
+    @field_validator("replacement", "pattern", mode="before")
+    @classmethod
+    def cast_string(cls, x: Any) -> str:
+        return str(x)
+
 
 def biolink_fallback(x: str) -> str:
     if "biolink:" not in x:
@@ -79,7 +84,7 @@ class MappingHyperparameters(BaseModel):
 class GraphVertex(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
     value_for_encoding: str = Field(...)
-    mapping_hyperparameters: Optional[MappingHyperparameters] = Field(default=None)
+    mapping_hyperparameters: MappingHyperparameters = Field(default_factory=MappingHyperparameters)
 
     @model_validator(mode="after")
     def column_name_fix(self: Self) -> Self:
@@ -147,7 +152,7 @@ class Attribute(BaseModel):
 
     @field_validator("value_for_encoding", mode="after")
     @classmethod
-    def cast_string(cls, x: Any) -> Optional[str]:
+    def cast_string_with_nulls(cls, x: Any) -> Optional[str]:
         if x and not isinstance(x, str):
             return str(x)
         return None
