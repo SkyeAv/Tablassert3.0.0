@@ -224,6 +224,7 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     rows: Any = babel.query(babelsql, sql_params)
     result: Optional[dict[str, Any]] = babelresults(name, rows, level)
     if result:
+        CategoryFrequency[str(result[f"{name}_category"])] += 1
         return result
 
     kg2sql: str = f"""
@@ -243,6 +244,7 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     rows: Any = kg2.query(kg2sql, sql_params)
     result = kg2esults(name, rows, level)
     if result:
+        CategoryFrequency[str(result[f"{name}_category"])] += 1
         return result
 
     level = "L2"
@@ -253,12 +255,14 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     rows: Any = babel.query(babelsql, sql_params)
     result = babelresults(name, rows, level)
     if result:
+        CategoryFrequency[str(result[f"{name}_category"])] += 1
         return result
 
     start = time.time()
     rows: Any = kg2.query(kg2sql, sql_params)
     result = kg2esults(name, rows, level)
     if result:
+        CategoryFrequency[str(result[f"{name}_category"])] += 1
         return result
 
     level = "L3"
@@ -269,6 +273,7 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     rows: Any = babel.query(babelsql, sql_params)
     result = babelresults(name, rows, level)
     if result:
+        CategoryFrequency[str(result[f"{name}_category"])] += 1
         return result
 
     levelthreeoutputkg2: str = levelthree(leveloneoutput)
@@ -278,6 +283,7 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     rows: Any = kg2.query(kg2sql, sql_params)
     result = kg2esults(name, rows, level)
     if result:
+        CategoryFrequency[str(result[f"{name}_category"])] += 1
         return result
     
     return fullmap_struct(name, None, None, None, None, None, None)
