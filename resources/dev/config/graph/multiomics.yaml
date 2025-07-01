@@ -1,0 +1,19 @@
+# author --> Skye Lane Goetz
+
+metadata:
+  knowledge_graph_name: MULTIOMICS_KG
+  graph_version: 2.0.0
+  graph_description: Connecting Multiomic Factors with Host Health
+
+location:
+  table_config_containing_directories:
+    - /local/sgoetz/PROJECTS/TABLASSERT/4.2.0_REFACTOR/resources/dev_config/table/
+  sqlite_databases:
+    babel: /ssd/sqlite/BABEL.db
+    kg2: /ssd/sqlite/KG2.10.1.db
+    pubmed: /ssd/sqlite/PubMed.db
+    pmc: /ssd/sqlite/PMCSuppCaptions.db
+
+hyperparameters:
+  number_of_parallel_processes_to_run: 1
+  maximum_p_value_in_graph: 1
