@@ -1,7 +1,7 @@
-from tablassert.utils.io import load_yaml, load_model, build_sections
-from tablassert.core.tabular import dataframing
-from tablassert.models.graph import GraphConfig
-from tablassert.models.table import Section
+from src.tablassert.utils.io import load_yaml, load_model, build_sections
+from src.tablassert.core.tabular import dataframing
+from src.tablassert.models.graph import GraphConfig
+from src.tablassert.models.table import Section
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any

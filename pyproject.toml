@@ -24,13 +24,8 @@ dependencies = [
 ]
 
 
-[[tool.poetry.packages]]
-include = "tablassert"
-from = "src"
-
-
 [tool.poetry.scripts]
-cli = "tablassert.core.build:cli"
+cli = "src.tablassert.core.build:cli"
 
 
 [build-system]

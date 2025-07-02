@@ -1,6 +1,6 @@
 from pydantic import ValidationError, BaseModel, DirectoryPath
-from tablassert.models.table import TableConfig, Section
-from tablassert.models.graph import GraphConfig
+from src.tablassert.models.table import TableConfig, Section
+from src.tablassert.models.graph import GraphConfig
 from ruamel.yaml.error import YAMLError
 from typing import Any, Type, TypeVar
 from functools import lru_cache

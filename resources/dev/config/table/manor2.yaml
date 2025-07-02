@@ -4,6 +4,7 @@ template: &template
     download_hyperparameters:
       extension: xlsx
       which_excel_sheet_to_use: Supplementary Data 2
+      
   provenance:
     article_curie: PMC:PMC7562722
     config_curator_name: Skye Lane Goetz
@@ -38,7 +39,7 @@ template: &template
       encoding_method: column_of_values
       value_for_encoding: A
       mapping_hyperparameters:
-        strings_to_remove:
+        substrings_to_remove:
           - \(.*
           - s$
           - ^[^a-zA-Z]*

@@ -84,7 +84,9 @@ class MappingHyperparameters(BaseModel):
 class GraphVertex(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
     value_for_encoding: str = Field(...)
-    mapping_hyperparameters: MappingHyperparameters = Field(default_factory=MappingHyperparameters)
+    mapping_hyperparameters: MappingHyperparameters = Field(
+        default_factory=MappingHyperparameters
+    )
 
     @model_validator(mode="after")
     def column_name_fix(self: Self) -> Self:
@@ -155,7 +157,7 @@ class Attribute(BaseModel):
     def cast_string_with_nulls(cls, x: Any) -> Optional[str]:
         if x and not isinstance(x, str):
             return str(x)
-        return None
+        return x
 
     @model_validator(mode="after")
     def column_name_fix(self: Self) -> Self:
@@ -268,20 +270,20 @@ async def download(link: str, storagepath: Path) -> Path:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
-    posix_storagepath: str = storagepath.as_posix()
+        posix_storagepath: str = storagepath.as_posix()
 
-    async with page.expect_download() as download_information:
-        await page.goto(posix_storagepath)
+        async with page.expect_download() as download_information:
+            await page.goto(link)
 
-    config = await download_information.value
-    filepath: Path = storagepath / config.suggested_filename
-    posix_filepath: str = filepath.as_posix()
+        config = await download_information.value
+        filepath: Path = storagepath / config.suggested_filename
+        posix_filepath: str = filepath.as_posix()
 
-    if not filepath.exists():
-        await config.save_as(posix_filepath)
-        await browser.close()
+        if not filepath.exists():
+            await config.save_as(posix_filepath)
+            await browser.close()
 
-    return filepath
+        return filepath
 
 
 class Section(BaseModel):

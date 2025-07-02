@@ -60,7 +60,7 @@ def load_excel(
     posix_filepath: str, download_hyperparameters: dict[str, Any]
 ) -> pl.DataFrame:
     sheetname: str = download_hyperparameters["which_excel_sheet_to_use"]
-    df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=EXCEL_ENGINE, has_header=False, infer_schema=False)  # type: ignore
+    df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
     return slicing(df, download_hyperparameters)
 
 
@@ -96,9 +96,9 @@ def new_column(
     if not value_for_encoding:
         value_for_encoding = "not applicable"
     if encoding_method == "value":
-        return df.with_columns(pl.lit(value_for_encoding).alias(column))
+        return df.with_columns(pl.lit(str(value_for_encoding)).alias(column))
     elif encoding_method == "column_of_values":
-        return df.with_columns(pl.col(value_for_encoding).alias(column))
+        return df.with_columns(pl.col(str(value_for_encoding)).alias(column))
     else:
         raise RuntimeError(f"CODE:121 | Unrecognized encoding_method {encoding_method}")
 
@@ -429,6 +429,30 @@ def fullmap_struct(
     }
 
 
+subject_struct: pl.Struct = pl.Struct(
+    [
+        pl.Field("subject", pl.String),
+        pl.Field("subject_name", pl.String),
+        pl.Field("subject_category", pl.String),
+        pl.Field("subject_mapped_with_taxon", pl.String),
+        pl.Field("subject_mapped_with_level", pl.String),
+        pl.Field("subject_mapped_with_database", pl.String),
+    ]
+)
+
+
+object_struct: pl.Struct = pl.Struct(
+    [
+        pl.Field("object", pl.String),
+        pl.Field("object_name", pl.String),
+        pl.Field("object_category", pl.String),
+        pl.Field("object_mapped_with_taxon", pl.String),
+        pl.Field("object_mapped_with_level", pl.String),
+        pl.Field("object_mapped_with_database", pl.String),
+    ]
+)
+
+
 def babelresult(name: str, rows: Any, level: str, db: str = "babel") -> dict[str, Any]:
     row: Any = next(rows, {})
     return fullmap_struct(
@@ -572,8 +596,8 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
         df = new_column(df, f"origonal_{name}", encoding_method, value_for_encoding)
         df = new_column(df, name, encoding_method, value_for_encoding)
         mapping_hyperparameters: dict[str, Any] = spoconfig["mapping_hyperparameters"]
-        how_to_fill_column: Optional[str] = str(
-            mapping_hyperparameters.get("how_to_fill_column")
+        how_to_fill_column: Optional[str] = mapping_hyperparameters.get(
+            "how_to_fill_column"
         )
         if how_to_fill_column:
             df = df.with_columns(pl.col(name).fill_null(strategy=how_to_fill_column))  # type: ignore
@@ -632,7 +656,7 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
             pl.col(name)
             .map_elements(
                 lambda x: cached_fullmap3(name, x, prioritize, avoid, taxon),
-                return_dtype=pl.Struct,
+                return_dtype=subject_struct if name == "subject" else object_struct,
                 skip_nulls=True,
             )
             .alias(f"{name}_struct")
@@ -661,7 +685,7 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
 
     global start
     start = time.time()
-    rows = list(pubmed.query(pubmedsql, {"curie", article_curie[3:]}))  # type: ignore
+    rows = list(pubmed.query(pubmedsql, {"curie": article_curie[3:]}))  # type: ignore
     mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
     mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
     mesh_zip: Any = zip(mesh, mesh_major)
@@ -678,6 +702,18 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
         "article_title": row.get("title"),
         "year_published": row.get("year"),
     }
+
+
+pubmed_struct: pl.Struct = pl.Struct(
+    [
+        pl.Field("domain", pl.String),
+        pl.Field("mesh_terms", pl.String),
+        pl.Field("first_author", pl.String),
+        pl.Field("journal", pl.String),
+        pl.Field("article_title", pl.String),
+        pl.Field("year_published", pl.String),
+    ]
+)
 
 
 # no cache because of how I'm building this
@@ -704,14 +740,14 @@ FINAL_COLUMNS: list[str] = [
     "origonal_subject",
     "subject_name",
     "subject_category",
-    "subject_mapped_in_taxon",
+    "subject_mapped_with_taxon",
     "subject_mapped_with_database",
     "subject_mapped_with_level",
     "object",
     "origonal_object",
     "object_name",
     "object_category",
-    "object_mapped_in_taxon",
+    "object_mapped_with_taxon",
     "object_mapped_with_database",
     "object_mapped_with_level",
     "article_curie",
@@ -746,7 +782,7 @@ def dataframing(
         df,
         "download_link",
         "value",
-        graphmodel["location"]["where_to_download_data_from"],
+        subsectionmodel["location"]["where_to_download_data_from"],
     )
     df = new_column(df, "file_name", "value", basename(posix_filepath))
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
@@ -781,7 +817,7 @@ def dataframing(
     df = df.with_columns(
         pl.col("article_curie")
         .map_elements(
-            lambda x: pubmed_metadata(x), return_dtype=pl.Struct, skip_nulls=True
+            lambda x: pubmed_metadata(x), return_dtype=pubmed_struct, skip_nulls=True
         )
         .alias("pubmed_struct")
     )
@@ -793,7 +829,7 @@ def dataframing(
     attributes: dict[str, Any] = subsectionmodel["attributes"]
     for name, attribute in attributes.items():
         df = process_attribute(df, name, attribute)
-    triple: dict[str, Any] = subsectionmodel["provenance"]
+    triple: dict[str, Any] = subsectionmodel["triple"]
     global babel
     babel = connect(sqlites["babel"])  # type: ignore
     global kg2
