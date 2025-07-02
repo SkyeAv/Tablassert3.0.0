@@ -370,6 +370,7 @@ def babelsql(
     {babel_orderbyclause}
     """
 
+
 def kg2sql(
     prioritize_placeholders: Optional[str],
     avoid_placeholders: Optional[str],
@@ -430,6 +431,7 @@ def kg2sql(
     {kg2_orderbyclause}
     """
 
+
 @fullmap3cache.memoize()  # type: ignore
 def fullmap3(
     name: str,
@@ -453,7 +455,6 @@ def fullmap3(
     )
     leveloneoutput: str = levelone(unprocessedinput)
     sql_params: dict[str, str] = {"input": leveloneoutput}
-    level: str = "L1"
 
     if prioritize:
         sql_params.update(
@@ -468,16 +469,21 @@ def fullmap3(
     if most_common:
         sql_params["most_common"] = most_common
 
+    level: str = "L1"
     global start  # for progress handler
     start = time.time()
-    rows: Any = babel.query(babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level), sql_params)  # type: ignore
+    sql: str = babelsql(
+        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
+    )
+    rows: Any = babel.query(sql, sql_params)  # type: ignore
     result: Optional[dict[str, Any]] = babelresults(name, rows, level)
     if result:
         ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     start = time.time()
-    rows = kg2.query(kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level), sql_params)  # type: ignore
+    sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
+    rows = kg2.query(sql, sql_params)  # type: ignore
     result = kg2results(name, rows, level)
     if result:
         ColumnContext[str(result[f"{name}_category"])] += 1
@@ -488,15 +494,11 @@ def fullmap3(
     sql_params["input"] = leveltwooutput
 
     start = time.time()
-    rows = babel.query(babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level), sql_params)  # type: ignore
+    sql = babelsql(
+        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
+    )
+    rows = babel.query(sql, sql_params)  # type: ignore
     result = babelresults(name, rows, level)
-    if result:
-        ColumnContext[str(result[f"{name}_category"])] += 1
-        return result
-
-    start = time.time()
-    rows = kg2.query(kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level), sql_params)  # type: ignore
-    result = kg2results(name, rows, level)
     if result:
         ColumnContext[str(result[f"{name}_category"])] += 1
         return result
@@ -506,7 +508,10 @@ def fullmap3(
     sql_params["input"] = leveltwooutput
 
     start = time.time()
-    rows = babel.query(babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level), sql_params)  # type: ignore
+    sql = babelsql(
+        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
+    )
+    rows = babel.query(sql, sql_params)  # type: ignore
     result = babelresults(name, rows, level)
     if result:
         ColumnContext[str(result[f"{name}_category"])] += 1
@@ -516,7 +521,8 @@ def fullmap3(
     sql_params["input"] = levelthreeoutputkg2
 
     start = time.time()
-    rows = kg2.query(kg2sql, sql_params)  # type: ignore
+    sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
+    rows = kg2.query(sql, sql_params)  # type: ignore
     result = kg2results(name, rows, level)
     if result:
         ColumnContext[str(result[f"{name}_category"])] += 1
