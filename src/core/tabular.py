@@ -432,6 +432,31 @@ def kg2sql(
     """
 
 
+# building in a function to improve readability
+def sqlparams(
+    leveloneoutput: str,
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
+    taxon: Optional[str],
+) -> dict[str, str]:
+
+    sql_params: dict[str, str] = {"input": leveloneoutput}
+    if prioritize:
+        sql_params.update(
+            {f"prioritize{idx}": category for idx, category in enumerate(prioritize)}
+        )
+    if avoid:
+        sql_params.update(
+            {f"avoid{idx}": category for idx, category in enumerate(avoid)}
+        )
+    if taxon:
+        sql_params["taxon"] = taxon
+    if most_common:
+        sql_params["most_common"] = most_common
+
+    return sql_params
+
+
 @fullmap3cache.memoize()  # type: ignore
 def fullmap3(
     name: str,
@@ -453,23 +478,11 @@ def fullmap3(
     most_common: Optional[str] = (
         str(common_categories[0][0]) if common_categories else None
     )
-    leveloneoutput: str = levelone(unprocessedinput)
-    sql_params: dict[str, str] = {"input": leveloneoutput}
-
-    if prioritize:
-        sql_params.update(
-            {f"prioritize{idx}": category for idx, category in enumerate(prioritize)}
-        )
-    if avoid:
-        sql_params.update(
-            {f"avoid{idx}": category for idx, category in enumerate(avoid)}
-        )
-    if taxon:
-        sql_params["taxon"] = taxon
-    if most_common:
-        sql_params["most_common"] = most_common
 
     level: str = "L1"
+    leveloneoutput: str = levelone(unprocessedinput)
+    sql_params = sqlparams(leveloneoutput, prioritize, avoid, taxon)
+
     global start  # for progress handler
     start = time.time()
     sql: str = babelsql(
