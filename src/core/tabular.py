@@ -320,7 +320,7 @@ def babelsql(
     babel_taxoncondition: str = (
         "AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = :taxon)" if taxon else ""
     )
-    avoid_condition: str = (
+    babel_avoidcondition: str = (
         f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})"
         if avoid_placeholders
         else ""
@@ -364,12 +364,71 @@ def babelsql(
         FROM SYNONYMS
         INNER JOIN NAMES ON SYNONYMS.CURIE = NAMES.CURIE
     WHERE
-        {level_condition}
-        {taxon_condition}
-        {avoid_condition}
-    {order_by_clause}
+        {babel_levelcondtion}
+        {babel_taxoncondition}
+        {babel_avoidcondition}
+    {babel_orderbyclause}
     """
 
+def kg2sql(
+    prioritize_placeholders: Optional[str],
+    avoid_placeholders: Optional[str],
+    most_common: Optional[str],
+    level: str,
+) -> str:
+
+    kg2_levelcondtion: dict[str, str] = {
+        "L1": "nodes.name = :input",
+        "L3": "nodes.name_simplified = :input",
+    }.get(level, "")
+
+    kg2_avoidcondition: str = (
+        f"AND clusters.category NOT IN ({avoid_placeholders})"
+        if avoid_placeholders
+        else ""
+    )
+
+    if prioritize_placeholders and most_common:
+        kg2_orderbyclause: str = f"""
+        ORDER BY
+            CASE
+                WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = :most_common THEN 0
+                WHEN clusters.category IN ({prioritize_placeholders}) THEN 1
+                WHEN clusters.category = :most_common THEN 2
+                ELSE 3
+            END
+        """
+    elif prioritize_placeholders:
+        kg2_orderbyclause = f"""
+        ORDER BY
+            CASE
+                WHEN clusters.category IN ({prioritize_placeholders}) THEN 0
+                ELSE 1
+            END
+        """
+    elif most_common:
+        kg2_orderbyclause = """
+        ORDER BY
+            CASE
+                WHEN clusters.category = :most_common THEN 0
+                ELSE 1
+            END
+        """
+    else:
+        kg2_orderbyclause = ""
+
+    return f"""
+    SELECT
+        clusters.cluster_id,
+        clusters.category,
+        clusters.name
+    FROM nodes
+    INNER JOIN clusters ON nodes.cluster_id = clusters.cluster_id
+    WHERE
+        {kg2_levelcondition}
+        {kg2_avoidcondition}
+    {kg2_orderbyclause}
+    """
 
 @fullmap3cache.memoize()  # type: ignore
 def fullmap3(
@@ -417,21 +476,8 @@ def fullmap3(
         ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
-    kg2sql: str = f"""
-    SELECT
-        clusters.cluster_id,
-        clusters.category,
-        clusters.name
-    FROM nodes
-    INNER JOIN clusters ON nodes.cluster_id = clusters.cluster_id
-    WHERE
-        {"nodes.name = :input" if level == "L1" else "nodes.name_simplified = :input"}
-        {f"AND clusters.category NOT IN ({avoid_placeholders})" if avoid_placeholders else ""}
-    {f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) AND clusters.category = :most_common THEN 0 \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 1 \n\t\t WHEN clusters.category = :most_common THEN 2 \n\t\t ELSE 3 \n\t END" if prioritize_placeholders and most_common else f"ORDER BY \n\t CASE \n\t\t WHEN clusters.category IN ({prioritize_placeholders}) THEN 0 \\n\t\t ELSE 1 \n\t END" if prioritize_placeholders else "ORDER BY \n\t CASE \n\t\t WHEN clusters.category = :most_common THEN 0 \n\t\t ELSE 1 \n\t END" if most_common else ""}
-    """
-
     start = time.time()
-    rows = kg2.query(kg2sql, sql_params)  # type: ignore
+    rows = kg2.query(kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level), sql_params)  # type: ignore
     result = kg2results(name, rows, level)
     if result:
         ColumnContext[str(result[f"{name}_category"])] += 1
@@ -449,7 +495,7 @@ def fullmap3(
         return result
 
     start = time.time()
-    rows = kg2.query(kg2sql, sql_params)  # type: ignore
+    rows = kg2.query(kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level), sql_params)  # type: ignore
     result = kg2results(name, rows, level)
     if result:
         ColumnContext[str(result[f"{name}_category"])] += 1
