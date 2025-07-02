@@ -145,7 +145,7 @@ class MathModuleTransformation(BaseModel):
 
 class Attribute(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
-    value_for_encoding: Optional[Union[float, str, int]] = Field(...)
+    value_for_encoding: Optional[Union[float, str, int]] = Field(default=None)
     math_module_transformations: Optional[list[MathModuleTransformation]] = Field(
         default=None
     )

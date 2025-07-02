@@ -1,17 +1,21 @@
 from src.utils.io import load_yaml, load_model, build_sections
+from src.core.tabular import dataframing
 from src.models.graph import GraphConfig
 from src.models.table import Section
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
+import polars as pl
 import typer
 
 app = typer.Typer()
 
 
 def subgraph(SubSection: Section, Graph: GraphConfig, index: int) -> None:
-    subsectionmodel = SubSection.model_dump()
-    graphmodel = Graph.model_dump()
+    subsectionmodel: dict[str, Any] = SubSection.model_dump()
+    graphmodel: dict[str, Any] = Graph.model_dump()
+    df: pl.DataFrame = dataframing(subsectionmodel, graphmodel)
+    df.write_csv("TEST.csv", separator="\t")
     return None
 
 

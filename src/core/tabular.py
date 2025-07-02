@@ -633,6 +633,7 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
             .map_elements(
                 lambda x: cached_fullmap3(name, x, prioritize, avoid, taxon),
                 return_dtype=pl.Struct,
+                skip_nulls=True,
             )
             .alias(f"{name}_struct")
         )
@@ -698,6 +699,35 @@ def pmc_captions(article_curie: str, filename: str) -> Optional[str]:
     return row.get("caption")
 
 
+FINAL_COLUMNS: list[str] = [
+    "subject",
+    "origonal_subject",
+    "subject_name",
+    "subject_category",
+    "subject_mapped_in_taxon",
+    "subject_mapped_with_database",
+    "subject_mapped_with_level",
+    "object",
+    "origonal_object",
+    "object_name",
+    "object_category",
+    "object_mapped_in_taxon",
+    "object_mapped_with_database",
+    "object_mapped_with_level",
+    "article_curie",
+    "config_curator_name",
+    "config_curator_organization",
+    "file_name",
+    "pmc_file_caption",
+    "sample_size",
+    "p_value",
+    "multiple_testing_correction_method",
+    "assertion_strength",
+    "assertion_method",
+    "notes",
+]
+
+
 def dataframing(
     subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]]
 ) -> pl.DataFrame:
@@ -750,7 +780,9 @@ def dataframing(
     pubmed: Database = connect(sqlites["pubmed"])  # type: ignore
     df = df.with_columns(
         pl.col("article_curie")
-        .map_elements(lambda x: pubmed_metadata(x), return_dtype=pl.Struct)
+        .map_elements(
+            lambda x: pubmed_metadata(x), return_dtype=pl.Struct, skip_nulls=True
+        )
         .alias("pubmed_struct")
     )
     df = df.unnest("pubmed_struct")
@@ -771,4 +803,5 @@ def dataframing(
     if reindexing:
         for operation in reindexing:
             df = apply_reindexing(df, operation, "after")
-    return df
+    df = df.select(FINAL_COLUMNS)
+    return df.drop_nulls()
