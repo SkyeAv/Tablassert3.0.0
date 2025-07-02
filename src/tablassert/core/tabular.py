@@ -6,7 +6,7 @@ from spacy.tokens import Token
 from os.path import basename
 from diskcache import Cache
 from loguru import logger
-from parthlib import Path
+from pathlib import Path
 import polars as pl
 import spacy
 import math
@@ -14,7 +14,7 @@ import time
 import re
 
 LOG_PATH: Path = Path("TABLASSERT/LOG/didntmap.log").resolve()
-LOG_PATH.parents.mkdir(parents=True, exist_ok=True)
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logger.add(LOG_PATH.as_posix())
 
 
@@ -769,7 +769,7 @@ def dataframing(
         provenance["config_curator_organization"],
     )
     global pmc  # databases are global to enable caching because they're unhashable types
-    pmc: Database = connect(sqlites["pmc"])  # type: ignore
+    pmc = connect(sqlites["pmc"])  # type: ignore
     df = new_column(
         df,
         "pmc_file_caption",
@@ -777,7 +777,7 @@ def dataframing(
         pmc_captions(provenance["article_curie"], posix_filepath),
     )
     global pubmed
-    pubmed: Database = connect(sqlites["pubmed"])  # type: ignore
+    pubmed = connect(sqlites["pubmed"])  # type: ignore
     df = df.with_columns(
         pl.col("article_curie")
         .map_elements(
@@ -795,9 +795,9 @@ def dataframing(
         df = process_attribute(df, name, attribute)
     triple: dict[str, Any] = subsectionmodel["provenance"]
     global babel
-    babel: Database = connect(sqlites["babel"])  # type: ignore
+    babel = connect(sqlites["babel"])  # type: ignore
     global kg2
-    kg2: Database = connect(sqlites["kg2"])  # type: ignore
+    kg2 = connect(sqlites["kg2"])  # type: ignore
     for name, spoconfig in triple.items():
         df = spocolumn(df, name, spoconfig)
     if reindexing:
