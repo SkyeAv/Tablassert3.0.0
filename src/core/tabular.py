@@ -641,6 +641,63 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
     return df
 
 
+@lru_cache(maxsize=1)  # maxsize == 1 because these caches are threadspecific
+def pubmed_metadata(article_curie: str) -> dict[str, Any]:
+
+    pubmedsql: str = """
+    SELECT
+        mesh.mesh_major,
+        mesh.mesh,
+        info.firstauthor,
+        info.journal,
+        info.title,
+        info.year
+    FROM ids
+    INNER JOIN mesh ON ids.pmid = mesh.pmid
+    INNER JOIN info ON ids.pmid = info.pmid
+    WHERE ids.alt = :curie
+    """
+
+    global start
+    start = time.time()
+    rows = list(pubmed.query(pubmedsql, {"curie", article_curie[3:]}))  # type: ignore
+    mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
+    mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
+    mesh_zip: Any = zip(mesh, mesh_major)
+    domain: str = ",".join([term for term, importance in mesh_zip if importance == "Y"])
+    mesh_terms: str = ",".join(
+        [term for term, importance in mesh_zip if importance == "N"]
+    )
+    row = rows[0] if rows else {}
+    return {
+        "domain": domain,
+        "mesh_terms": mesh_terms,
+        "first_author": row.get("firstauthor"),
+        "journal": row.get("journal"),
+        "article_title": row.get("title"),
+        "year_published": row.get("year"),
+    }
+
+
+# no cache because of how I'm building this
+def pmc_captions(article_curie: str, filename: str) -> Optional[str]:
+
+    pmcsql: str = """
+    SELECT caption
+    FROM captions
+    WHERE pmc = :curie AND file = :filename
+    LIMIT 1
+    """
+
+    global start
+    start = time.time()
+    rows = pmc.query(  # type: ignore
+        pmcsql, {"curie": article_curie[7:], "filename": basename(filename)}
+    )
+    row: dict[str, Any] = next(rows, {})
+    return row.get("caption")
+
+
 def dataframing(
     subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]]
 ) -> pl.DataFrame:
@@ -663,10 +720,6 @@ def dataframing(
     )
     df = new_column(df, "file_name", "value", basename(posix_filepath))
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
-    global pmc  # databases are global to enable caching because they're unhashable types
-    pmc: Database = connect(sqlites["pmc"])  # type: ignore
-    # get filecaptions
-    df = new_column(df, "file_caption", "value", basename(posix_filepath))
     df = new_column(df, "extension", "value", download_hyperparameters["extension"])
     df = new_column(
         df,
@@ -685,9 +738,22 @@ def dataframing(
         "value",
         provenance["config_curator_organization"],
     )
+    global pmc  # databases are global to enable caching because they're unhashable types
+    pmc: Database = connect(sqlites["pmc"])  # type: ignore
+    df = new_column(
+        df,
+        "pmc_file_caption",
+        "value",
+        pmc_captions(provenance["article_curie"], posix_filepath),
+    )
     global pubmed
     pubmed: Database = connect(sqlites["pubmed"])  # type: ignore
-    # get pubmed_metadata
+    df = df.with_columns(
+        pl.col("article_curie")
+        .map_elements(lambda x: pubmed_metadata(x), return_dtype=pl.Struct)
+        .alias("pubmed_struct")
+    )
+    df = df.unnest("pubmed_struct")
     reindexing: Optional[list[dict[str, Any]]] = subsectionmodel["reindexing"]
     if reindexing:
         for operation in reindexing:
