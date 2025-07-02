@@ -143,6 +143,7 @@ def apply_reindexing(
             operation["comparison"],
             operation["value_for_comparison"],
         )
+    return df
 
 
 def apply_math_module(
@@ -167,7 +168,7 @@ def process_attribute(
         df = new_column(
             df,
             name,
-            attribute.get("encoding_method"),
+            attribute["encoding_method"],
             attribute.get("value_for_encoding"),
         )
         math_transformations: Optional[list[dict[str, Any]]] = attribute.get(
@@ -245,7 +246,7 @@ def babelsql(
     level: str,
 ) -> str:
 
-    babel_levelcondtion: dict[str, str] = {
+    babel_levelcondtion: str = {
         "L1": "SYNONYMS.L1 = :input",
         "L2": "SYNONYMS.L2 = :input",
         "L3": "SYNONYMS.L3 = :input",
@@ -312,7 +313,7 @@ def kg2sql(
     level: str,
 ) -> str:
 
-    kg2_levelcondition: dict[str, str] = {
+    kg2_levelcondition: str = {
         "L1": "nodes.name = :input",
         "L3": "nodes.name_simplified = :input",
     }.get(level, "")
