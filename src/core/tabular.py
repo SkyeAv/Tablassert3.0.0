@@ -432,6 +432,22 @@ def kg2sql(
     """
 
 
+def placeholders(
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
+) -> tuple[Optional[str], Optional[str]]:
+
+    prioritize_placeholders: Optional[str] = (
+        ", ".join([f":prioritize{idx}" for idx in range(len(prioritize))])
+        if prioritize
+        else None
+    )
+    avoid_placeholders: Optional[str] = (
+        ", ".join([f":avoid{idx}" for idx in range(len(avoid))]) if avoid else None
+    )
+
+    return (prioritize_placeholders, avoid_placeholders)
+
 # building in a function to improve readability
 def sqlparams(
     leveloneoutput: str,
@@ -439,6 +455,11 @@ def sqlparams(
     avoid: Optional[frozenset[str]],
     taxon: Optional[str],
 ) -> dict[str, str]:
+
+    common_categories: list[Any] = ColumnContext.most_common(1)
+    most_common: Optional[str] = (
+        str(common_categories[0][0]) if common_categories else None
+    )
 
     sql_params: dict[str, str] = {"input": leveloneoutput}
     if prioritize:
@@ -456,7 +477,6 @@ def sqlparams(
 
     return sql_params
 
-
 @fullmap3cache.memoize()  # type: ignore
 def fullmap3(
     name: str,
@@ -466,18 +486,7 @@ def fullmap3(
     taxon: Optional[str],
 ) -> dict[str, Any]:
 
-    prioritize_placeholders: Optional[str] = (
-        ", ".join([f":prioritize{idx}" for idx in range(len(prioritize))])
-        if prioritize
-        else None
-    )
-    avoid_placeholders: Optional[str] = (
-        ", ".join([f":avoid{idx}" for idx in range(len(avoid))]) if avoid else None
-    )
-    common_categories: list[Any] = ColumnContext.most_common(1)
-    most_common: Optional[str] = (
-        str(common_categories[0][0]) if common_categories else None
-    )
+    prioritize_placeholders, avoid_placeholders = placeholders(prioritize, avoid)
 
     level: str = "L1"
     leveloneoutput: str = levelone(unprocessedinput)
