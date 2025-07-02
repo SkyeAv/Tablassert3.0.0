@@ -239,69 +239,6 @@ def cached_fullmap3(
     return fullmap3(name, unprocessedinput, prioritize, avoid, taxon)  # type: ignore
 
 
-def fullmap_struct(
-    name: Any,
-    curie: Any,
-    preferred: Any,
-    category: Any,
-    taxon: Any,
-    level: Any,
-    db: Any,
-) -> dict[str, Any]:
-    return {
-        name: curie,
-        f"{name}_name": preferred,
-        f"{name}_category": f"biolink:{category}",
-        f"{name}_mapped_with_taxon": f"NCBITaxon:{taxon}",
-        f"{name}_mapped_with_level": level,
-        f"{name}_mapped_with_database": db,
-    }
-
-
-def babelresults(
-    name: str, rows: Any, level: str, db: str = "babel"
-) -> Optional[dict[str, Any]]:
-    row: Any = next(rows, {})
-    struct: dict[str, Any] = fullmap_struct(
-        name,
-        row.get("CURIE"),
-        row.get("NAME"),
-        row.get("CATEGORY"),
-        row.get("TAXON"),
-        level,
-        db,
-    )
-    return (
-        struct
-        if all(
-            value for key, value in struct.items() if key != f"{name}_mapped_with_taxon"
-        )
-        else None
-    )
-
-
-def kg2results(
-    name: str, rows: Any, level: str, db: str = "kg2"
-) -> Optional[dict[str, Any]]:
-    row: Any = next(rows, {})
-    struct = fullmap_struct(
-        name,
-        row.get("cluster_id"),
-        row.get("name"),
-        row.get("category"),
-        None,
-        level,
-        db,
-    )
-    return (
-        struct
-        if all(
-            value for key, value in struct.items() if key != f"{name}_mapped_with_taxon"
-        )
-        else None
-    )
-
-
 # dynamic query build because f strings only evaluate once at their creation
 def babelsql(
     prioritize_placeholders: Optional[str],
@@ -448,6 +385,7 @@ def placeholders(
 
     return (prioritize_placeholders, avoid_placeholders)
 
+
 # building in a function to improve readability
 def sqlparams(
     leveloneoutput: str,
@@ -477,14 +415,68 @@ def sqlparams(
 
     return sql_params
 
-@fullmap3cache.memoize()  # type: ignore
-def fullmap3(
-    name: str,
-    unprocessedinput: Any,
-    prioritize: Optional[frozenset[str]],
-    avoid: Optional[frozenset[str]],
-    taxon: Optional[str],
+
+def fullmap_struct(
+    name: Any,
+    curie: Any,
+    preferred: Any,
+    category: Any,
+    taxon: Any,
+    level: Any,
+    db: Any,
 ) -> dict[str, Any]:
+    return {
+        name: curie,
+        f"{name}_name": preferred,
+        f"{name}_category": f"biolink:{category}",
+        f"{name}_mapped_with_taxon": f"NCBITaxon:{taxon}",
+        f"{name}_mapped_with_level": level,
+        f"{name}_mapped_with_database": db,
+    }
+
+def babelresult(
+    name: str, rows: Any, level: str, db: str = "babel"
+) -> dict[str, Any]:
+    row: Any = next(rows, {})
+    return fullmap_struct(
+        name,
+        row.get("CURIE"),
+        row.get("NAME"),
+        row.get("CATEGORY"),
+        row.get("TAXON"),
+        level,
+        db,
+    )
+
+def kg2result(
+    name: str, rows: Any, level: str, db: str = "kg2"
+) -> dict[str, Any]:
+    row: Any = next(rows, {})
+    return fullmap_struct(
+        name,
+        row.get("cluster_id"),
+        row.get("name"),
+        row.get("category"),
+        None,
+        level,
+        db,
+    )
+
+def collectresults(name: str, rows: Any, level: str, db: str) -> Optional[dict[str, Any]]:
+    if db == "babel":
+        result = babelresult(name, rows, level)
+    elif db == "kg2":
+        result = kg2result(name, rows, level)
+    else:
+        raise RuntimeError(f"CODE:124 | The database ({db}) is not supported yet")
+    if all(v for k, v in result.items() if k != f"{name}_mapped_with_taxon"):
+        ColumnContext[str(result[f"{name}_category"])] += 1
+        return result
+    else:
+        return None
+
+@fullmap3cache.memoize()  # type: ignore
+def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]], taxon: Optional[str]) -> dict[str, Any]:
 
     prioritize_placeholders, avoid_placeholders = placeholders(prioritize, avoid)
 
@@ -494,21 +486,17 @@ def fullmap3(
 
     global start  # for progress handler
     start = time.time()
-    sql: str = babelsql(
-        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
-    )
+    sql: str = babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level)
     rows: Any = babel.query(sql, sql_params)  # type: ignore
-    result: Optional[dict[str, Any]] = babelresults(name, rows, level)
+    result: Optional[dict[str, Any]] = collectresults(name, rows, level, "babel")
     if result:
-        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     start = time.time()
     sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
     rows = kg2.query(sql, sql_params)  # type: ignore
-    result = kg2results(name, rows, level)
+    result = collectresults(name, rows, level, "kg2")
     if result:
-        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     level = "L2"
@@ -516,13 +504,10 @@ def fullmap3(
     sql_params["input"] = leveltwooutput
 
     start = time.time()
-    sql = babelsql(
-        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
-    )
+    sql = babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level)
     rows = babel.query(sql, sql_params)  # type: ignore
-    result = babelresults(name, rows, level)
+    result = collectresults(name, rows, level, "babel")
     if result:
-        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     level = "L3"
@@ -530,13 +515,10 @@ def fullmap3(
     sql_params["input"] = leveltwooutput
 
     start = time.time()
-    sql = babelsql(
-        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
-    )
+    sql = babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level)
     rows = babel.query(sql, sql_params)  # type: ignore
-    result = babelresults(name, rows, level)
+    result = collectresults(name, rows, level, "babel")
     if result:
-        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     levelthreeoutputkg2: str = levelthree(leveloneoutput)
@@ -545,9 +527,8 @@ def fullmap3(
     start = time.time()
     sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
     rows = kg2.query(sql, sql_params)  # type: ignore
-    result = kg2results(name, rows, level)
+    result = collectresults(name, rows, level, "kg2")
     if result:
-        ColumnContext[str(result[f"{name}_category"])] += 1
         return result
 
     # add loguru logging here
