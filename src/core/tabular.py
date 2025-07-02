@@ -6,11 +6,16 @@ from spacy.tokens import Token
 from os.path import basename
 from diskcache import Cache
 from loguru import logger
+from parthlib import Path
 import polars as pl
 import spacy
 import math
 import time
 import re
+
+LOG_PATH: Path = Path("TABLASSERT/LOG/didntmap.log").resolve()
+LOG_PATH.parents.mkdir(parents=True, exist_ok=True)
+logger.add(LOG_PATH.as_posix())
 
 
 def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.DataFrame:
@@ -143,11 +148,15 @@ def apply_reindexing(
 def apply_math_module(
     df: pl.DataFrame, name: str, transformation: dict[str, Any]
 ) -> pl.DataFrame:
-    transformation_operation = lambda x: getattr(math, transformation["attribute"])(
-        *[arg if arg is not None else x for arg in transformation["arguments"]]
-    )
     return df.with_columns(
-        pl.col(name).cast(pl.Float64).map_elements(transformation_operation).alias(name)
+        pl.col(name)
+        .cast(pl.Float64)
+        .map_elements(
+            lambda x: getattr(math, transformation["attribute"])(
+                *[arg if arg is not None else x for arg in transformation["arguments"]]
+            )
+        )
+        .alias(name)
     )
 
 
@@ -227,18 +236,6 @@ def levelthree(leveltwooutput: str) -> str:
 ColumnContext: Counter[str] = Counter()
 
 
-# because the double cache header alters how they both behave
-@lru_cache(maxsize=1024)
-def cached_fullmap3(
-    name: str,
-    unprocessedinput: Any,
-    prioritize: Optional[frozenset[str]],
-    avoid: Optional[frozenset[str]],
-    taxon: Optional[str],
-) -> dict[str, Any]:
-    return fullmap3(name, unprocessedinput, prioritize, avoid, taxon)  # type: ignore
-
-
 # dynamic query build because f strings only evaluate once at their creation
 def babelsql(
     prioritize_placeholders: Optional[str],
@@ -315,7 +312,7 @@ def kg2sql(
     level: str,
 ) -> str:
 
-    kg2_levelcondtion: dict[str, str] = {
+    kg2_levelcondition: dict[str, str] = {
         "L1": "nodes.name = :input",
         "L3": "nodes.name_simplified = :input",
     }.get(level, "")
@@ -392,12 +389,8 @@ def sqlparams(
     prioritize: Optional[frozenset[str]],
     avoid: Optional[frozenset[str]],
     taxon: Optional[str],
+    most_common: Optional[str],
 ) -> dict[str, str]:
-
-    common_categories: list[Any] = ColumnContext.most_common(1)
-    most_common: Optional[str] = (
-        str(common_categories[0][0]) if common_categories else None
-    )
 
     sql_params: dict[str, str] = {"input": leveloneoutput}
     if prioritize:
@@ -434,9 +427,8 @@ def fullmap_struct(
         f"{name}_mapped_with_database": db,
     }
 
-def babelresult(
-    name: str, rows: Any, level: str, db: str = "babel"
-) -> dict[str, Any]:
+
+def babelresult(name: str, rows: Any, level: str, db: str = "babel") -> dict[str, Any]:
     row: Any = next(rows, {})
     return fullmap_struct(
         name,
@@ -448,9 +440,8 @@ def babelresult(
         db,
     )
 
-def kg2result(
-    name: str, rows: Any, level: str, db: str = "kg2"
-) -> dict[str, Any]:
+
+def kg2result(name: str, rows: Any, level: str, db: str = "kg2") -> dict[str, Any]:
     row: Any = next(rows, {})
     return fullmap_struct(
         name,
@@ -462,7 +453,10 @@ def kg2result(
         db,
     )
 
-def collectresults(name: str, rows: Any, level: str, db: str) -> Optional[dict[str, Any]]:
+
+def collectresults(
+    name: str, rows: Any, level: str, db: str
+) -> Optional[dict[str, Any]]:
     if db == "babel":
         result = babelresult(name, rows, level)
     elif db == "kg2":
@@ -475,18 +469,32 @@ def collectresults(name: str, rows: Any, level: str, db: str) -> Optional[dict[s
     else:
         return None
 
+
 @fullmap3cache.memoize()  # type: ignore
-def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[str]], avoid: Optional[frozenset[str]], taxon: Optional[str]) -> dict[str, Any]:
+def fullmap3(
+    name: str,
+    unprocessedinput: Any,
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
+    taxon: Optional[str],
+) -> dict[str, Any]:
 
     prioritize_placeholders, avoid_placeholders = placeholders(prioritize, avoid)
 
+    common_categories: list[Any] = ColumnContext.most_common(1)
+    most_common: Optional[str] = (
+        str(common_categories[0][0]) if common_categories else None
+    )
+
     level: str = "L1"
     leveloneoutput: str = levelone(unprocessedinput)
-    sql_params = sqlparams(leveloneoutput, prioritize, avoid, taxon)
+    sql_params = sqlparams(leveloneoutput, prioritize, avoid, taxon, most_common)
 
     global start  # for progress handler
     start = time.time()
-    sql: str = babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level)
+    sql: str = babelsql(
+        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
+    )
     rows: Any = babel.query(sql, sql_params)  # type: ignore
     result: Optional[dict[str, Any]] = collectresults(name, rows, level, "babel")
     if result:
@@ -504,7 +512,9 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     sql_params["input"] = leveltwooutput
 
     start = time.time()
-    sql = babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level)
+    sql = babelsql(
+        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
+    )
     rows = babel.query(sql, sql_params)  # type: ignore
     result = collectresults(name, rows, level, "babel")
     if result:
@@ -512,10 +522,12 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
 
     level = "L3"
     levelthreeoutput: str = levelthree(leveltwooutput)
-    sql_params["input"] = leveltwooutput
+    sql_params["input"] = levelthreeoutput
 
     start = time.time()
-    sql = babelsql(prioritize_placeholders, avoid_placeholders, taxon, most_common, level)
+    sql = babelsql(
+        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
+    )
     rows = babel.query(sql, sql_params)  # type: ignore
     result = collectresults(name, rows, level, "babel")
     if result:
@@ -531,8 +543,22 @@ def fullmap3(name: str, unprocessedinput: Any, prioritize: Optional[frozenset[st
     if result:
         return result
 
-    # add loguru logging here
+    # for logging
+    sql_params["input"] = unprocessedinput
+    logger.warning(f"{str(sql_params)} failed to map")
     return fullmap_struct(name, None, None, None, None, None, None)
+
+
+# because the double cache header alters how they both behave
+@lru_cache(maxsize=1024)
+def cached_fullmap3(
+    name: str,
+    unprocessedinput: Any,
+    prioritize: Optional[frozenset[str]],
+    avoid: Optional[frozenset[str]],
+    taxon: Optional[str],
+) -> dict[str, Any]:
+    return fullmap3(name, unprocessedinput, prioritize, avoid, taxon)  # type: ignore
 
 
 def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
@@ -601,7 +627,17 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
             if classes_to_avoid
             else None
         )
-        # introduce fullmap3
+        df = df.with_columns(
+            pl.col(name)
+            .map_elements(
+                lambda x: cached_fullmap3(name, x, prioritize, avoid, taxon),
+                return_dtype=pl.Struct,
+            )
+            .alias(f"{name}_struct")
+        )
+        df = df.drop(name).unnest(f"{name}_struct")
+        df = df.filter(pl.col(name).is_not_null())
+    return df
 
 
 def dataframing(

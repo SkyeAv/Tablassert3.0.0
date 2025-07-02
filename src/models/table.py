@@ -258,7 +258,7 @@ class Location(BaseModel):
     download_hyperparameters: DownloadHyperparameters = Field(...)
 
 
-DATALAKE_INTERNAL: Path = Path("/TABLASSERT/DATALAKE")
+DATALAKE_INTERNAL: Path = Path("TABLASSERT/DATALAKE")
 DATALAKE_INTERNAL.mkdir(parents=True, exist_ok=True)
 
 
