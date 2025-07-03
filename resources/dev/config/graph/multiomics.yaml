@@ -8,6 +8,7 @@ metadata:
 location:
   table_config_containing_directories:
     - /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/microbiome
+    - /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/multiomics
   sqlite_databases:
     babel: /ssd/sqlite/BABEL.db
     kg2: /ssd/sqlite/KG2.10.1.db
@@ -15,5 +16,5 @@ location:
     pmc: /ssd/sqlite/PMCSuppCaptions.db
 
 hyperparameters:
-  number_of_parallel_processes_to_run: 1
+  number_of_parallel_processes_to_run: 2
   maximum_p_value_in_graph: 1

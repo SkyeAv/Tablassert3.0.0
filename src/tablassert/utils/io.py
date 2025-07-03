@@ -5,6 +5,7 @@ from typing import Any, Type, TypeVar
 from deepmerge.merger import Merger
 from functools import lru_cache
 from ruamel.yaml import YAML
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -53,7 +54,9 @@ def load_model(parsed_yaml: Any, model: Type[PydanticModel]) -> PydanticModel:
 TABLE_CONFIG_EXTENSION: str = ".yaml"
 # merger because default yaml merging doesn't work
 merger: Merger = Merger(
-    [(dict, ["merge"]), (list, ["append"])], ["override"], ["override"]
+    [(dict, ["merge"]), (list, ["append"]), (set, ["union"])],
+    ["override"],
+    ["override"],
 )
 
 
@@ -72,7 +75,14 @@ def build_sections(
                 subsections = table_yaml.get("sections", [])
                 if subsections != []:
                     for idx, section in enumerate(subsections, start=1):
-                        merged_section = merger.merge(template.copy(), section if section else {})
+                        merged_section = merger.merge(
+                            deepcopy(template),
+                            (
+                                deepcopy(section)
+                                if section and isinstance(section, dict)
+                                else {}
+                            ),
+                        )
                         SubSection: Section = load_model(merged_section, Section)
                         sections.append((SubSection, graphmodel, idx))
     return sections

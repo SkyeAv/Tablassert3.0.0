@@ -524,7 +524,7 @@ def fullmap3(
 
     common_categories: list[Any] = ColumnContext.most_common(1)
     most_common: Optional[str] = (
-        str(common_categories[0][0]) if common_categories else None
+        str(common_categories[0][0])[10:] if common_categories else None
     )
 
     level: str = "L1"
@@ -653,7 +653,7 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
         in_this_organism: Optional[str] = mapping_hyperparameters.get(
             "in_this_organism"
         )
-        taxon = in_this_organism[9:] if in_this_organism else None
+        taxon = in_this_organism[10:] if in_this_organism else None
         classes_to_prioritize: Optional[list[str]] = mapping_hyperparameters.get(
             "classes_to_prioritize"
         )
