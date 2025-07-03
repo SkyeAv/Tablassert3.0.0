@@ -4,7 +4,7 @@ template: &template
     download_hyperparameters:
       extension: xlsx
       which_excel_sheet_to_use: Supplementary Data 2
-      
+      start_at_line_number: 3
   provenance:
     article_curie: PMC:PMC7562722
     config_curator_name: Skye Lane Goetz
