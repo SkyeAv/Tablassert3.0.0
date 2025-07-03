@@ -13,7 +13,7 @@ import math
 import time
 import re
 
-LOG_PATH: Path = Path("TABLASSERT/LOG/didntmap.log").resolve()
+LOG_PATH: Path = Path("TABLASSERT/LOG/mapping.log").resolve()
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logger.remove()
 logger.add(LOG_PATH.as_posix(), rotation="10 MB", compression="xz", retention="1 month")
@@ -481,7 +481,7 @@ def kg2result(name: str, rows: Any, level: str, db: str = "kg2") -> dict[str, An
 
 
 def collectresults(
-    name: str, rows: Any, level: str, db: str
+    name: str, rows: Any, level: str, db: str, sql_params: dict[str, str]
 ) -> Optional[dict[str, Any]]:
     if db == "babel":
         result = babelresult(name, rows, level)
@@ -491,6 +491,7 @@ def collectresults(
         raise RuntimeError(f"CODE:124 | The database ({db}) is not supported yet")
     if all(v for k, v in result.items() if k != f"{name}_mapped_with_taxon"):
         ColumnContext[str(result[f"{name}_category"])] += 1
+        logger.success(f"{str(sql_params)} mapped to {str(result)}")
         return result
     else:
         return None
@@ -529,7 +530,7 @@ def fullmap3(
     start = time.time()
     sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
     rows = kg2.query(sql, sql_params)  # type: ignore
-    result = collectresults(name, rows, level, "kg2")
+    result = collectresults(name, rows, level, "kg2", sql_params)
     if result:
         return result
 
@@ -542,7 +543,7 @@ def fullmap3(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
     )
     rows = babel.query(sql, sql_params)  # type: ignore
-    result = collectresults(name, rows, level, "babel")
+    result = collectresults(name, rows, level, "babel", sql_params)
     if result:
         return result
 
@@ -555,7 +556,7 @@ def fullmap3(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
     )
     rows = babel.query(sql, sql_params)  # type: ignore
-    result = collectresults(name, rows, level, "babel")
+    result = collectresults(name, rows, level, "babel", sql_params)
     if result:
         return result
 
@@ -565,7 +566,7 @@ def fullmap3(
     start = time.time()
     sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
     rows = kg2.query(sql, sql_params)  # type: ignore
-    result = collectresults(name, rows, level, "kg2")
+    result = collectresults(name, rows, level, "kg2", sql_params)
     if result:
         return result
 
@@ -763,6 +764,8 @@ FINAL_COLUMNS: list[str] = [
     "assertion_strength",
     "assertion_method",
     "notes",
+    "knowledge_level",
+    "agent_type",
 ]
 
 
@@ -841,5 +844,7 @@ def dataframing(
     if reindexing:
         for operation in reindexing:
             df = apply_reindexing(df, operation, "after")
+    df = new_column(df, "knowledge_level", "value", "statistical_association")
+    df = new_column(df, "agent_type", "value", "data_analysis_pipeline")
     df = df.select(FINAL_COLUMNS)
     return df.drop_nulls()
