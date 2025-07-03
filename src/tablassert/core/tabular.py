@@ -13,19 +13,26 @@ import math
 import time
 import re
 
-LOG_PATH: Path = Path("TABLASSERT/LOG/mapping.log").resolve()
-LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-logger.remove()
-logger.add(LOG_PATH.as_posix(), rotation="10 MB", compression="xz", retention="1 month")
-# added separate log for things that don't map
-logger.add(
-    "TABLASSERT/LOG/didntmap.log",
-    filter=lambda record: record["level"].name == "WARNING",
-    level="WARNING",
-    rotation="10 MB",
-    compression="xz",
-    retention="1 month",
-)
+
+# I have to do this because of Pool
+def initialize_logger() -> None:
+    LOG_PATH: Path = Path("TABLASSERT/LOG/mapping.log").resolve()
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    logger.remove()
+    logger.add(
+        LOG_PATH.as_posix(), rotation="250 MB", compression="xz", retention="1 month"
+    )
+    # added separate log for things that don't map
+    DIDNTMAP_LOG_PATH = LOG_PATH.parent / "didntmap.log"
+    DIDNTMAP_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    logger.add(
+        DIDNTMAP_LOG_PATH.as_posix(),
+        filter=lambda record: record["level"].name == "WARNING",
+        level="WARNING",
+        rotation="250 MB",
+        compression="xz",
+        retention="1 month",
+    )
 
 
 def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.DataFrame:

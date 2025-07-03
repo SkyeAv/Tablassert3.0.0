@@ -1,6 +1,6 @@
 from src.tablassert.utils.io import load_yaml, load_model, build_sections
+from src.tablassert.core.tabular import dataframing, initialize_logger
 from src.tablassert.core.export import save, savepath, aggregate
-from src.tablassert.core.tabular import dataframing
 from src.tablassert.models.graph import GraphConfig
 from src.tablassert.models.table import Section
 from multiprocessing import Pool
@@ -14,7 +14,6 @@ app = typer.Typer()
 
 def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
     subsectionmodel: dict[str, Any] = SubSection.model_dump()
-    print(subsectionmodel)
     posix_filepath: str = subsectionmodel["posix_filepath"]
     sheetname: Optional[str] = subsectionmodel["location"][
         "download_hyperparameters"
@@ -37,7 +36,7 @@ def build(graphconfig: str) -> None:
     graphmodel: dict[str, Any] = Graph.model_dump()
     sections: list[tuple[Section, dict[str, Any], int]] = build_sections(graphmodel)
     workers: int = graphmodel["hyperparameters"]["number_of_parallel_processes_to_run"]
-    with Pool(processes=workers) as pool:
+    with Pool(processes=workers, initializer=initialize_logger) as pool:
         _ = pool.starmap(subgraph, sections)
     aggregate(graphmodel)
     return None
