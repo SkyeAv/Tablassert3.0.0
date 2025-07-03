@@ -15,7 +15,7 @@ import re
 
 LOG_PATH: Path = Path("TABLASSERT/LOG/didntmap.log").resolve()
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-logger.add(LOG_PATH.as_posix())
+logger.add(LOG_PATH.as_posix(), rotation="10 MB", compression="xz", retention="1 month")
 
 
 def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.DataFrame:
