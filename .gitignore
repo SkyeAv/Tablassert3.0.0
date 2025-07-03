@@ -2,3 +2,5 @@
 .mypy_cache
 TABLASSERT/
 TEST.csv
+src/tests/
+MULTIOMICS_KG_2.0.0.tsv
