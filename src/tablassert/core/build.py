@@ -1,8 +1,8 @@
 from src.tablassert.utils.io import load_yaml, load_model, build_sections
+from src.tablassert.core.export import save, savepath, aggregate
 from src.tablassert.core.tabular import dataframing
 from src.tablassert.models.graph import GraphConfig
 from src.tablassert.models.table import Section
-from src.tablassert.core.export import save, savepath
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
@@ -35,7 +35,7 @@ def build(graphconfig: str) -> None:
     workers: int = graphmodel["hyperparameters"]["number_of_parallel_processes_to_run"]
     with Pool(processes=workers) as pool:
         _ = pool.starmap(subgraph, sections)
-
+    aggregate(graphmodel)
     return None
 
 

@@ -55,8 +55,8 @@ TABLE_CONFIG_EXTENSION: str = ".yaml"
 def build_sections(
     graphmodel: dict[str, Any],
 ) -> list[tuple[Section, dict[str, Any], int]]:
-    directories: list[DirectoryPath] = graphmodel[
-        "location.table_config_containing_directories"
+    directories: list[DirectoryPath] = graphmodel["location"][
+        "table_config_containing_directories"
     ]
     sections: list[tuple[Section, dict[str, Any], int]] = []
     for d in directories:

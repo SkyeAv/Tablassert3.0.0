@@ -4,7 +4,6 @@ from typing import Any
 import polars as pl
 
 EXPORT_PATH: Path = Path("TABLASSERT/EXPORT").resolve()
-EXPORT_PATH.mkdir(parents=True, exist_ok=True)
 
 
 def savepath(posix_filepath: str, metadata: dict[str, Any], idx: int) -> Path:
@@ -16,6 +15,7 @@ def savepath(posix_filepath: str, metadata: dict[str, Any], idx: int) -> Path:
         / version
         / f"SECTION_{str(idx)}_{basename(posix_filepath)}"
     )
+    savepath.parent.mkdir(parents=True, exist_ok=True)
     return savepath.with_suffix(".tsv")
 
 
