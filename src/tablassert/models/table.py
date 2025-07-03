@@ -187,7 +187,12 @@ class Provenance(BaseModel):
     def is_article_curie(cls, article_curie: str) -> str:
         accepted_domains = {"PMC:", "PMID:", "doi:"}
         if all(domain not in article_curie for domain in accepted_domains):
-            return "PMC:" + article_curie
+            if "PMC" in article_curie:
+                return "PMC:" + article_curie
+            elif "/" in article_curie:
+                return "doi:" + article_curie
+            else:
+                return "PMID:" + article_curie
         return article_curie
 
 
