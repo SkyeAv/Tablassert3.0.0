@@ -15,7 +15,7 @@ def savepath(
         EXPORT_PATH
         / graphname
         / version
-        / f"SECTION_{str(idx)}_{sheetname if sheetname else ""}_{basename(posix_filepath)}"
+        / f"SECTION_{str(idx)}{f"_{sheetname}" if sheetname else ""}_{basename(posix_filepath)}"
     )
     savepath.parent.mkdir(parents=True, exist_ok=True)
     return savepath.with_suffix(".tsv")
