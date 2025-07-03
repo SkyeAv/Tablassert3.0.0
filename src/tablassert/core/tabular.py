@@ -73,6 +73,7 @@ def load_csv(
     return slicing(df, download_hyperparameters)
 
 
+# silly goofy engine here sometimes parses gene symbols to dates... we're stuck with this because our CPU can't support a better engine
 EXCEL_ENGINE: str = "xlsx2csv"
 
 
