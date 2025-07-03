@@ -640,7 +640,7 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
             "classes_to_prioritize"
         )
         prioritize = (
-            frozenset(priority[7:] for priority in classes_to_prioritize)
+            frozenset(priority[8:] for priority in classes_to_prioritize)
             if classes_to_prioritize
             else None
         )
@@ -648,7 +648,7 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
             "classes_to_avoid"
         )
         avoid = (
-            frozenset(void[7:] for void in classes_to_avoid)
+            frozenset(void[8:] for void in classes_to_avoid)
             if classes_to_avoid
             else None
         )
@@ -661,6 +661,7 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
             )
             .alias(f"{name}_struct")
         )
+        ColumnContext.clear()  # remember to reset ColumnContext
         df = df.drop(name).unnest(f"{name}_struct")
         df = df.filter(pl.col(name).is_not_null())
     return df
