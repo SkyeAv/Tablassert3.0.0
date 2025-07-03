@@ -154,7 +154,7 @@ class Attribute(BaseModel):
 
     @field_validator("value_for_encoding", mode="after")
     @classmethod
-    def cast_string_with_nulls(cls, x: Any) -> Optional[str]:
+    def cast_string_with_nulls(cls, x: Any) -> Any:
         if x and not isinstance(x, str):
             return str(x)
         return x
@@ -274,8 +274,6 @@ async def download(link: str, storagepath: Path) -> Path:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-
-        posix_storagepath: str = storagepath.as_posix()
 
         async with page.expect_download() as download_information:
             await page.goto(link)

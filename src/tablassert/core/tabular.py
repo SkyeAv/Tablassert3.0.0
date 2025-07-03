@@ -424,7 +424,9 @@ def fullmap_struct(
         name: curie,
         f"{name}_name": preferred,
         f"{name}_category": f"biolink:{category}",
-        f"{name}_mapped_with_taxon": f"NCBITaxon:{taxon}" if taxon else "not applicable",
+        f"{name}_mapped_with_taxon": (
+            f"NCBITaxon:{taxon}" if taxon else "not applicable"
+        ),
         f"{name}_mapped_with_level": level,
         f"{name}_mapped_with_database": db,
     }
@@ -523,7 +525,9 @@ def fullmap3(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
     )
     rows: Any = babel.query(sql, sql_params)  # type: ignore
-    result: Optional[dict[str, Any]] = collectresults(name, rows, level, "babel", sql_params)
+    result: Optional[dict[str, Any]] = collectresults(
+        name, rows, level, "babel", sql_params
+    )
     if result:
         return result
 
