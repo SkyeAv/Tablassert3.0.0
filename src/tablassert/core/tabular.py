@@ -524,7 +524,7 @@ def fullmap3(
 
     common_categories: list[Any] = ColumnContext.most_common(1)
     most_common: Optional[str] = (
-        str(common_categories[0][0])[10:] if common_categories else None
+        str(common_categories[0][0])[8:] if common_categories else None
     )
 
     level: str = "L1"

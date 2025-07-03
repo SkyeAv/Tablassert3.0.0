@@ -22,16 +22,18 @@ template:
   triple:
     triple_subject: 
       encoding_method: column_of_values
-      value_for_encoding: A
+      value_for_encoding: E
       mapping_hyperparameters:
-        prefix: "ENSEMBL:"
+        classes_to_prioritize:
+          - biolink:Gene
         in_this_organism: NCBITaxon:9606
     triple_object: 
       encoding_method: column_of_values
       value_for_encoding: B
-      classes_to_prioritize:
-        - biolink:Gene
-      in_this_organism: NCBITaxon:9606
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Gene
+        in_this_organism: NCBITaxon:9606
 
 sections:
   - triple:
