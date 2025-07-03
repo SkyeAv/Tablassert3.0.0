@@ -2,6 +2,7 @@ from src.tablassert.utils.io import load_yaml, load_model, build_sections
 from src.tablassert.core.tabular import dataframing
 from src.tablassert.models.graph import GraphConfig
 from src.tablassert.models.table import Section
+from src.tablassert.core.export import save, savepath
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
@@ -11,11 +12,14 @@ import typer
 app = typer.Typer()
 
 
-def subgraph(SubSection: Section, Graph: GraphConfig, index: int) -> None:
+def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
     subsectionmodel: dict[str, Any] = SubSection.model_dump()
-    graphmodel: dict[str, Any] = Graph.model_dump()
-    df: pl.DataFrame = dataframing(subsectionmodel, graphmodel)
-    df.write_csv("TEST.csv", separator="\t")
+    posix_filepath: str = subsectionmodel["posix_filepath"]
+    metadata: dict[str, Any] = graphmodel["metadata"]
+    exportpath: Path = savepath(posix_filepath, metadata, idx)
+    if not exportpath.exists():
+        df: pl.DataFrame = dataframing(subsectionmodel, graphmodel)
+        save(df, exportpath)
     return None
 
 
@@ -26,10 +30,12 @@ def build(graphconfig: str) -> None:
     graphconfigpath: Path = Path(graphconfig)
     graph_yaml: Any = load_yaml(graphconfigpath)
     Graph: GraphConfig = load_model(graph_yaml, GraphConfig)
-    sections: list[tuple[Section, GraphConfig, int]] = build_sections(Graph)
-    workers: int = Graph.hyperparameters.number_of_parallel_processes_to_run
+    graphmodel: dict[str, Any] = Graph.model_dump()
+    sections: list[tuple[Section, dict[str, Any], int]] = build_sections(graphmodel)
+    workers: int = graphmodel["hyperparameters"]["number_of_parallel_processes_to_run"]
     with Pool(processes=workers) as pool:
         _ = pool.starmap(subgraph, sections)
+
     return None
 
 

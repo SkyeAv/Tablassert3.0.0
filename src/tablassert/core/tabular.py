@@ -18,7 +18,15 @@ LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logger.remove()
 logger.add(LOG_PATH.as_posix(), rotation="10 MB", compression="xz", retention="1 month")
 # added separate log for things that don't map
-logger.add("TABLASSERT/LOG/didntmap.log", filter=lambda record: record["level"].name == "WARNING", level="WARNING", rotation="10 MB", compression="xz", retention="1 month")
+logger.add(
+    "TABLASSERT/LOG/didntmap.log",
+    filter=lambda record: record["level"].name == "WARNING",
+    level="WARNING",
+    rotation="10 MB",
+    compression="xz",
+    retention="1 month",
+)
+
 
 def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.DataFrame:
     start: Optional[int] = download_hyperparameters.get("start_at_line_number")
@@ -50,7 +58,10 @@ def load_csv(
 ) -> pl.DataFrame:
     delimiter: str = download_hyperparameters["file_delimiter"]
     df: pl.DataFrame = pl.read_csv(
-        source=posix_filepath, separator=delimiter, has_header=False, infer_schema=False
+        source=posix_filepath,
+        separator=delimiter,
+        has_header=False,
+        infer_schema=False,
     )
     return slicing(df, download_hyperparameters)
 

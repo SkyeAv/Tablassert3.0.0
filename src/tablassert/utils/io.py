@@ -1,6 +1,5 @@
 from pydantic import ValidationError, BaseModel, DirectoryPath
 from src.tablassert.models.table import TableConfig, Section
-from src.tablassert.models.graph import GraphConfig
 from ruamel.yaml.error import YAMLError
 from typing import Any, Type, TypeVar
 from functools import lru_cache
@@ -53,11 +52,13 @@ def load_model(parsed_yaml: Any, model: Type[PydanticModel]) -> PydanticModel:
 TABLE_CONFIG_EXTENSION: str = ".yaml"
 
 
-def build_sections(Graph: GraphConfig) -> list[tuple[Section, GraphConfig, int]]:
-    directories: list[DirectoryPath] = (
-        Graph.location.table_config_containing_directories
-    )
-    sections: list[tuple[Section, GraphConfig, int]] = []
+def build_sections(
+    graphmodel: dict[str, Any],
+) -> list[tuple[Section, dict[str, Any], int]]:
+    directories: list[DirectoryPath] = graphmodel[
+        "location.table_config_containing_directories"
+    ]
+    sections: list[tuple[Section, dict[str, Any], int]] = []
     for d in directories:
         for path in Path(str(d)).rglob("*"):
             if path.suffix.lower() == TABLE_CONFIG_EXTENSION:
@@ -68,5 +69,5 @@ def build_sections(Graph: GraphConfig) -> list[tuple[Section, GraphConfig, int]]
                 if subsections:
                     for idx, section in enumerate(subsections, start=1):
                         SubSection: Section = load_model(section, Section)
-                        sections.append((SubSection, Graph, idx))
+                        sections.append((SubSection, graphmodel, idx))
     return sections
