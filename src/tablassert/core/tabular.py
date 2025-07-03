@@ -424,7 +424,7 @@ def fullmap_struct(
         name: curie,
         f"{name}_name": preferred,
         f"{name}_category": f"biolink:{category}",
-        f"{name}_mapped_with_taxon": f"NCBITaxon:{taxon}",
+        f"{name}_mapped_with_taxon": f"NCBITaxon:{taxon}" if taxon else "not applicable",
         f"{name}_mapped_with_level": level,
         f"{name}_mapped_with_database": db,
     }
