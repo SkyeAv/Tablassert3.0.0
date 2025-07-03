@@ -1,7 +1,8 @@
 from pydantic import ValidationError, BaseModel, DirectoryPath
-from src.tablassert.models.table import TableConfig, Section
+from src.tablassert.models.table import Section
 from ruamel.yaml.error import YAMLError
 from typing import Any, Type, TypeVar
+from deepmerge.merger import Merger
 from functools import lru_cache
 from ruamel.yaml import YAML
 from pathlib import Path
@@ -50,6 +51,10 @@ def load_model(parsed_yaml: Any, model: Type[PydanticModel]) -> PydanticModel:
 
 
 TABLE_CONFIG_EXTENSION: str = ".yaml"
+# merger because default yaml merging doesn't work
+merger: Merger = Merger(
+    [(dict, ["merge"]), (list, ["append"])], ["override"], ["override"]
+)
 
 
 def build_sections(
@@ -63,11 +68,11 @@ def build_sections(
         for path in Path(str(d)).rglob("*"):
             if path.suffix.lower() == TABLE_CONFIG_EXTENSION:
                 table_yaml: Any = load_yaml(path)
-                Table: TableConfig = load_model(table_yaml, TableConfig)
-                model = Table.model_dump()
-                subsections = model.get("sections", [])
-                if subsections:
+                template = table_yaml.get("template", {})
+                subsections = table_yaml.get("sections", [])
+                if subsections != []:
                     for idx, section in enumerate(subsections, start=1):
-                        SubSection: Section = load_model(section, Section)
+                        merged_section = merger.merge(template.copy(), section if section else {})
+                        SubSection: Section = load_model(merged_section, Section)
                         sections.append((SubSection, graphmodel, idx))
     return sections

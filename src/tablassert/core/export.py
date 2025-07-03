@@ -1,19 +1,21 @@
+from typing import Any, Optional
 from os.path import basename
 from pathlib import Path
-from typing import Any
 import polars as pl
 
 EXPORT_PATH: Path = Path("TABLASSERT/EXPORT").resolve()
 
 
-def savepath(posix_filepath: str, metadata: dict[str, Any], idx: int) -> Path:
+def savepath(
+    posix_filepath: str, sheetname: Optional[str], metadata: dict[str, Any], idx: int
+) -> Path:
     graphname: str = metadata["knowledge_graph_name"]
     version: str = metadata["graph_version"]
     savepath: Path = (
         EXPORT_PATH
         / graphname
         / version
-        / f"SECTION_{str(idx)}_{basename(posix_filepath)}"
+        / f"SECTION_{str(idx)}_{sheetname if sheetname else ""}_{basename(posix_filepath)}"
     )
     savepath.parent.mkdir(parents=True, exist_ok=True)
     return savepath.with_suffix(".tsv")

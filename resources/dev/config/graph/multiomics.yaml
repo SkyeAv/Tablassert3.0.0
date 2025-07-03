@@ -7,7 +7,7 @@ metadata:
 
 location:
   table_config_containing_directories:
-    - /local/sgoetz/PROJECTS/TABLASSERT/4.2.1_REFACTOR/resources/dev/config/table
+    - /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/microbiome
   sqlite_databases:
     babel: /ssd/sqlite/BABEL.db
     kg2: /ssd/sqlite/KG2.10.1.db

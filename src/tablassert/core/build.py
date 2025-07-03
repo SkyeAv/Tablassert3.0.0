@@ -4,8 +4,8 @@ from src.tablassert.core.tabular import dataframing
 from src.tablassert.models.graph import GraphConfig
 from src.tablassert.models.table import Section
 from multiprocessing import Pool
+from typing import Any, Optional
 from pathlib import Path
-from typing import Any
 import polars as pl
 import typer
 
@@ -15,8 +15,11 @@ app = typer.Typer()
 def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
     subsectionmodel: dict[str, Any] = SubSection.model_dump()
     posix_filepath: str = subsectionmodel["posix_filepath"]
+    sheetname: Optional[str] = subsectionmodel["location"][
+        "download_hyperparameters"
+    ].get("which_excel_sheet_to_use")
     metadata: dict[str, Any] = graphmodel["metadata"]
-    exportpath: Path = savepath(posix_filepath, metadata, idx)
+    exportpath: Path = savepath(posix_filepath, sheetname, metadata, idx)
     if not exportpath.exists():
         df: pl.DataFrame = dataframing(subsectionmodel, graphmodel)
         save(df, exportpath)
