@@ -523,7 +523,7 @@ def fullmap3(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
     )
     rows: Any = babel.query(sql, sql_params)  # type: ignore
-    result: Optional[dict[str, Any]] = collectresults(name, rows, level, "babel")
+    result: Optional[dict[str, Any]] = collectresults(name, rows, level, "babel", sql_params)
     if result:
         return result
 
