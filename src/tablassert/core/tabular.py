@@ -17,7 +17,8 @@ LOG_PATH: Path = Path("TABLASSERT/LOG/mapping.log").resolve()
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logger.remove()
 logger.add(LOG_PATH.as_posix(), rotation="10 MB", compression="xz", retention="1 month")
-
+# added separate log for things that don't map
+logger.add("TABLASSERT/LOG/didntmap.log", filter=lambda record: record["level"].name == "WARNING", level="WARNING", rotation="10 MB", compression="xz", retention="1 month")
 
 def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.DataFrame:
     start: Optional[int] = download_hyperparameters.get("start_at_line_number")
