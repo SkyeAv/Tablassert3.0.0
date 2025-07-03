@@ -1,4 +1,6 @@
 .vscode
 .mypy_cache
 TABLASSERT/
+src/tests/
 TEST.csv
+MULTIOMICS_KG_2.0.0.tsv/
