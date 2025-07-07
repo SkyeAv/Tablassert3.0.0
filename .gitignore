@@ -1,5 +1,6 @@
 .vscode
-.mypy_cache
+*.mypy_cache/
 TABLASSERT/
-src/tests/
+*tests/
 MULTIOMICS_KG_2.0.0.tsv
+*temp/

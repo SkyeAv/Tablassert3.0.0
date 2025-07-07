@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Iterator
 from sqlite_utils import Database
 from functools import lru_cache
 from collections import Counter
@@ -8,6 +8,7 @@ from diskcache import Cache
 from loguru import logger
 from pathlib import Path
 import polars as pl
+import sqlite3
 import spacy
 import math
 import time
@@ -27,7 +28,6 @@ def initialize_logger() -> None:
     DIDNTMAP_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     logger.add(
         DIDNTMAP_LOG_PATH.as_posix(),
-        filter=lambda record: record["level"].name == "WARNING",
         level="WARNING",
         rotation="250 MB",
         compression="xz",
@@ -210,7 +210,7 @@ start: float = 0.0  # default for typechecking
 
 
 def progress_handler(maxtime: float = 1.10) -> int:
-    if (start - time.time()) >= maxtime:
+    if (time.time() - start) >= maxtime:
         return 1
     return 0
 
@@ -519,6 +519,22 @@ def collectresults(
         return None
 
 
+# generator function because multiprocessing doesn't correctly catch the error in a normal try, except
+def safe_query(db: str, sql: str, sql_params: dict[str, str]) -> Iterator[Any]:
+    try:
+        if db == "babel":
+            yield from babel.query(sql, sql_params)  # type: ignore
+        elif db == "kg2":
+            yield from kg2.query(sql, sql_params)  # type: ignore
+        else:
+            raise RuntimeError(f"CODE:126 | A method for querying {db} does not exist")
+    except sqlite3.OperationalError as e:
+        logger.critical(
+            f"CODE:125 | {db}, {str(sql_params)} triggered the progress handler {str(e)}"
+        )
+        return iter(())
+
+
 @fullmap3cache.memoize()  # type: ignore
 def fullmap3(
     name: str,
@@ -544,7 +560,7 @@ def fullmap3(
     sql: str = babelsql(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
     )
-    rows: Any = babel.query(sql, sql_params)  # type: ignore
+    rows: Any = safe_query("babel", sql, sql_params)
     result: Optional[dict[str, Any]] = collectresults(
         name, rows, level, "babel", sql_params
     )
@@ -553,7 +569,7 @@ def fullmap3(
 
     start = time.time()
     sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
-    rows = kg2.query(sql, sql_params)  # type: ignore
+    rows = safe_query("kg2", sql, sql_params)
     result = collectresults(name, rows, level, "kg2", sql_params)
     if result:
         return result
@@ -566,7 +582,7 @@ def fullmap3(
     sql = babelsql(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
     )
-    rows = babel.query(sql, sql_params)  # type: ignore
+    rows = safe_query("babel", sql, sql_params)
     result = collectresults(name, rows, level, "babel", sql_params)
     if result:
         return result
@@ -579,7 +595,7 @@ def fullmap3(
     sql = babelsql(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
     )
-    rows = babel.query(sql, sql_params)  # type: ignore
+    rows = safe_query("babel", sql, sql_params)
     result = collectresults(name, rows, level, "babel", sql_params)
     if result:
         return result
@@ -589,7 +605,7 @@ def fullmap3(
 
     start = time.time()
     sql = kg2sql(prioritize_placeholders, avoid_placeholders, most_common, level)
-    rows = kg2.query(sql, sql_params)  # type: ignore
+    rows = safe_query("kg2", sql, sql_params)
     result = collectresults(name, rows, level, "kg2", sql_params)
     if result:
         return result
