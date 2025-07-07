@@ -532,7 +532,7 @@ def safe_query(db: str, sql: str, sql_params: dict[str, str]) -> Iterator[Any]:
         logger.critical(
             f"CODE:125 | {db}, {str(sql_params)} triggered the progress handler {str(e)}"
         )
-        return iter(())
+        return None
 
 
 @fullmap3cache.memoize()  # type: ignore
