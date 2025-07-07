@@ -732,18 +732,20 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
     mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
     mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
     mesh_zip: Any = zip(mesh, mesh_major)
-    domain: str = ",".join([term for term, importance in mesh_zip if importance == "Y"])
-    mesh_terms: str = ",".join(
-        [term for term, importance in mesh_zip if importance == "N"]
-    )
+    domain: list[Optional[str]] = [
+        term for term, importance in mesh_zip if importance == "Y"
+    ]
+    mesh_terms: list[Optional[str]] = [
+        term for term, importance in mesh_zip if importance == "N"
+    ]
     row = rows[0] if rows else {}
     return {
-        "domain": domain,
-        "mesh_terms": mesh_terms,
-        "first_author": row.get("firstauthor"),
-        "journal": row.get("journal"),
-        "article_title": row.get("title"),
-        "year_published": row.get("year"),
+        "domain": ",".join(domain) if domain else "not applicable",  # type: ignore
+        "mesh_terms": ",".join(mesh_terms) if mesh_terms else "not applicable",  # type: ignore
+        "first_author": row.get("firstauthor", "not applicable"),
+        "journal": row.get("journal", "not applicable"),
+        "article_title": row.get("title", "not applicable"),
+        "year_published": row.get("year", "not applicable"),
     }
 
 
@@ -780,24 +782,9 @@ def pmc_captions(article_curie: str, filename: str) -> Optional[str]:
 
 FINAL_COLUMNS: list[str] = [
     "subject",
-    "origonal_subject",
-    "subject_name",
-    "subject_category",
-    "subject_mapped_with_taxon",
-    "subject_mapped_with_database",
-    "subject_mapped_with_level",
     "object",
-    "origonal_object",
-    "object_name",
-    "object_category",
-    "object_mapped_with_taxon",
-    "object_mapped_with_database",
-    "object_mapped_with_level",
-    "article_curie",
-    "config_curator_name",
-    "config_curator_organization",
-    "file_name",
-    "pmc_file_caption",
+    "domain",
+    "mesh_terms",
     "sample_size",
     "p_value",
     "multiple_testing_correction_method",
@@ -806,6 +793,30 @@ FINAL_COLUMNS: list[str] = [
     "notes",
     "knowledge_level",
     "agent_type",
+    "article_curie",
+    "first_author",
+    "journal",
+    "article_title",
+    "year_published",
+    "download_link",
+    "file_name",
+    "extension",
+    "excel_sheet",
+    "pmc_file_caption",
+    "origonal_subject",
+    "subject_name",
+    "subject_category",
+    "subject_mapped_with_taxon",
+    "subject_mapped_with_database",
+    "subject_mapped_with_level",
+    "origonal_object",
+    "object_name",
+    "object_category",
+    "object_mapped_with_taxon",
+    "object_mapped_with_database",
+    "object_mapped_with_level",
+    "config_curator_name",
+    "config_curator_organization",
 ]
 
 

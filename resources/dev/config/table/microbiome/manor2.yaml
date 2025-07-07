@@ -34,7 +34,7 @@ template:
   triple:
     triple_subject: 
       encoding_method: value
-      value_for_encoding: Alzheimer's Disease  #EUPATH:0009259
+      value_for_encoding: Shannon Alpha Diversity
     triple_object: 
       encoding_method: column_of_values
       value_for_encoding: A
