@@ -273,10 +273,15 @@ async def download(link: str, storagepath: Path) -> Path:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+        context = await browser.new_context(accept_downloads=True)
+        page = await context.new_page()
 
-        async with page.expect_download() as download_information:
-            await page.goto(link)
+        async with page.expect_download(timeout=60_000) as download_information:  # doubled timeout because it wouldn't work sometimes
+            try:
+                await page.goto(link, wait_until="commit")
+            except Exception as e:
+                if "net::ERR_ABORTED" not in e.message:
+                    raise e
 
         config = await download_information.value
         filepath: Path = storagepath / config.suggested_filename
@@ -284,6 +289,7 @@ async def download(link: str, storagepath: Path) -> Path:
 
         if not filepath.exists():
             await config.save_as(posix_filepath)
+            await context.close()
             await browser.close()
 
         return filepath
