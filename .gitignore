@@ -5,3 +5,4 @@ TABLASSERT/
 MULTIOMICS_KG_2.0.0.tsv
 MICROBIOME_KG_2.0.0.tsv
 *temp/
+**__pycache__/*
