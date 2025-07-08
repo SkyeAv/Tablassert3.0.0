@@ -76,6 +76,7 @@ def load_csv(
 
 # silly goofy engine here sometimes parses gene symbols to dates... we're stuck with this because our CPU can't support a better engine
 DEFAULT_EXCEL_ENGINE: str = "xlsx2csv"
+FALLBACK_EXCEL_ENGINE: str = "openpyxl"
 XLS_ENGINE: str = "xlrd"
 
 
@@ -94,7 +95,11 @@ def load_excel(
         )
         df = pl.from_pandas(pandasdf)  # you need pyarrow in the environment for this
     else:
-        df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=DEFAULT_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
+        try:
+            df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=DEFAULT_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
+        except TypeError as e:
+            if "NoneType" in str(e):  # for that one weird nonetype bug
+                df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=FALLBACK_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
     return slicing(df, download_hyperparameters)
 
 

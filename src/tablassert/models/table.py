@@ -342,17 +342,20 @@ class Section(BaseModel):
 
     @model_validator(mode="after")
     def file_downloader_and_path_generator(self: Self) -> Self:
-        # THIS ALSO DOWNLOADS THE FILE
-        article_curie: str = self.provenance.article_curie
+        
+        if not self.posix_filepath:
+            # THIS ALSO DOWNLOADS THE FILE
+            article_curie: str = self.provenance.article_curie
 
-        storagepath: Path = DATALAKE_INTERNAL / article_curie
-        storagepath.mkdir(parents=True, exist_ok=True)
+            storagepath: Path = DATALAKE_INTERNAL / article_curie
+            storagepath.mkdir(parents=True, exist_ok=True)
 
-        link: str = str(self.location.where_to_download_data_from)
-        try:
-            self.posix_filepath = asyncio.run(download(link, storagepath))
-        except TimeoutError:
-            self.posix_filepath = downloadfallback(link, storagepath)
+            link: str = str(self.location.where_to_download_data_from)
+            try:
+                self.posix_filepath = asyncio.run(download(link, storagepath))
+            except TimeoutError:
+                self.posix_filepath = downloadfallback(link, storagepath)
+
         return self
 
 
