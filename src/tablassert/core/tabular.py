@@ -744,23 +744,6 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
         "MESH:" + term for term, importance in mesh_zip if importance == "N"
     ]
     row = rows[0] if rows else {}
-    print(
-        str(
-            {
-                "orig": article_curie,
-                "curie": article_curie[4:],
-                "rows": rows,
-                "mesh": mesh,
-                "mesh_major": mesh_major,
-                "domain": ",".join(domain) if domain else "not applicable",  # type: ignore
-                "mesh_terms": ",".join(mesh_terms) if mesh_terms else "not applicable",  # type: ignore
-                "first_author": row.get("firstauthor", "not applicable"),
-                "journal": row.get("journal", "not applicable"),
-                "article_title": row.get("title", "not applicable"),
-                "year_published": row.get("year", "not applicable"),
-            }
-        )
-    )
     return {
         "domain": ",".join(domain) if domain else "not applicable",  # type: ignore
         "mesh_terms": ",".join(mesh_terms) if mesh_terms else "not applicable",  # type: ignore

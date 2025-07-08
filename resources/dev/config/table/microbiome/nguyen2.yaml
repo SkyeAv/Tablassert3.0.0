@@ -5,7 +5,7 @@ template:
       extension: xlsx
       start_at_line_number: 2
   provenance:
-    article_curie: PMC:PMC5622077
+    article_curie: PMC:PMC8400760
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
