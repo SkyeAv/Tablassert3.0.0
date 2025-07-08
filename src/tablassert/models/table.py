@@ -7,8 +7,10 @@ from pydantic import (
     Field,
 )
 from typing import Any, Self, Optional, Literal, Annotated, Union, TypeAlias
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError
+from urllib.parse import urlparse
 from pathlib import Path
+import requests
 import asyncio
 import math
 
@@ -277,13 +279,15 @@ async def download(link: str, storagepath: Path) -> Path:
         page = await context.new_page()
 
         async with page.expect_download(
-            timeout=120_000
+            timeout=60_000  # or 1 minute
         ) as download_information:  # quadrupled timeout because it wouldn't work sometimes
             try:
-                await page.goto(link, wait_until="commit")
+                await page.goto(link, wait_until="load")
             except Exception as e:
-                if "net::ERR_ABORTED" not in e.message:
-                    raise e
+                if "net::ERR_ABORTED" not in str(e):
+                    raise RuntimeError(
+                        f"CODE:104 | Unanticipated playright error: {str(e)}"
+                    )
 
         config = await download_information.value
         filepath: Path = storagepath / config.suggested_filename
@@ -295,6 +299,35 @@ async def download(link: str, storagepath: Path) -> Path:
             await browser.close()
 
         return filepath
+
+
+def downloadfallback(link: str, storagepath: Path) -> Path:
+    storagepath.mkdir(parents=True, exist_ok=True)
+
+    parsed = urlparse(link)
+    name: str = Path(parsed.path).name or "not_applicable.ext"
+    filepath: Path = storagepath / name
+
+    if not filepath.exists():
+
+        try:
+            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+            headers = {"User-Agent": user_agent}
+            resp = requests.get(link, headers=headers, stream=True, timeout=60)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            raise RuntimeError(
+                f"CODE:105 | Error downloading file with requests: {str(e)}"
+            )
+
+        try:
+            with open(filepath, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        except OSError as e:
+            raise RuntimeError(f"CODE:106 | Error saving downloaded file: {str(e)}")
+
+    return filepath
 
 
 class Section(BaseModel):
@@ -316,7 +349,10 @@ class Section(BaseModel):
         storagepath.mkdir(parents=True, exist_ok=True)
 
         link: str = str(self.location.where_to_download_data_from)
-        self.posix_filepath = asyncio.run(download(link, storagepath))
+        try:
+            self.posix_filepath = asyncio.run(download(link, storagepath))
+        except TimeoutError:
+            self.posix_filepath = downloadfallback(link, storagepath)
         return self
 
 

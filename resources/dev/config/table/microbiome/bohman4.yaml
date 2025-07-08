@@ -12,37 +12,27 @@ template:
   attributes:
     sample_size:
       encoding_method: value
-      value_for_encoding: 474
+      value_for_encoding: 4706
     p_value:
       encoding_method: column_of_values
-      value_for_encoding: H
+      value_for_encoding: C
     multiple_testing_correction_method:
       encoding_method: value
-      value_for_encoding: FDR of 10 percent
-    assertion_strength:
-      encoding_method: column_of_values
-      value_for_encoding: E
+      value_for_encoding: Benjamini Hochberg
     assertion_method:
       encoding_method: value
-      value_for_encoding: LME model
+      value_for_encoding: ANOVA
     notes: Upper respiratory tract micobiota associated with age in healthy controls. Using 10 studies for which age metadata was available, ANCOVA was conducted using the following formula “clr ~ age + age2 + variable_region + sequencing + URT_site + region” that was used to determine significant associations with age, accounting for URT sampling site, geographic region, sequencing method, and 16S rRNA hypervariable region. The square term for age was included to determine if non-linear relationships existed between CLR and age. The p-values were corrected for multiple comparisons via the Benjamini–Hochberg FDR correction
   triple:
     triple_subject: 
       encoding_method: column_of_values
-      value_for_encoding: B
+      value_for_encoding: A
       mapping_hyperparameters:
         classes_to_prioritize:
           - biolink:OrganismTaxon
-        substrings_to_remove:
-          - .*;
     triple_object:
-      encoding_method: column_of_values
-      value_for_encoding: D
-      mapping_hyperparameters:
-        classes_to_prioritize:
-          - biolink:OrganismTaxon
-        substrings_to_remove:
-          - .*;
+      encoding_method: value
+      value_for_encoding: age
     triple_predicate: biolink:associated_with
 
 sections:
