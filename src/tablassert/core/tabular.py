@@ -8,6 +8,7 @@ from diskcache import Cache
 from loguru import logger
 from pathlib import Path
 import polars as pl
+import pandas as pd
 import sqlite3
 import spacy
 import math
@@ -74,14 +75,26 @@ def load_csv(
 
 
 # silly goofy engine here sometimes parses gene symbols to dates... we're stuck with this because our CPU can't support a better engine
-EXCEL_ENGINE: str = "xlsx2csv"
+DEFAULT_EXCEL_ENGINE: str = "xlsx2csv"
+XLS_ENGINE: str = "xlrd"
 
 
 def load_excel(
     posix_filepath: str, download_hyperparameters: dict[str, Any]
 ) -> pl.DataFrame:
     sheetname: str = download_hyperparameters["which_excel_sheet_to_use"]
-    df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
+    extension: str = download_hyperparameters["extension"]
+    if extension == "xls":  # this is only because xlsx2csv and all of the polars readers don't support the old xls encoding
+        pandasdf: pd.DataFrame = pd.read_excel(
+            posix_filepath,
+            sheet_name=sheetname,
+            header=None,
+            dtype=str,
+            engine=XLS_ENGINE,
+        )
+        df = pl.from_pandas(pandasdf)  # you need pyarrow in the environment for this
+    else:
+        df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=DEFAULT_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
     return slicing(df, download_hyperparameters)
 
 
