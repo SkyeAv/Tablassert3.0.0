@@ -276,7 +276,9 @@ async def download(link: str, storagepath: Path) -> Path:
         context = await browser.new_context(accept_downloads=True)
         page = await context.new_page()
 
-        async with page.expect_download(timeout=60_000) as download_information:  # doubled timeout because it wouldn't work sometimes
+        async with page.expect_download(
+            timeout=120_000
+        ) as download_information:  # quadrupled timeout because it wouldn't work sometimes
             try:
                 await page.goto(link, wait_until="commit")
             except Exception as e:

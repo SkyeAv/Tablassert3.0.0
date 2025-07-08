@@ -204,7 +204,7 @@ def process_attribute(
 
 
 # diskcache setup (sqlite caches)
-fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=3e10)
+fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=1e8)
 
 start: float = 0.0  # default for typechecking
 
@@ -709,7 +709,10 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
     return df
 
 
-@lru_cache(maxsize=1)  # maxsize == 1 because these caches are threadspecific
+pubmedmetadatacache: Cache = Cache("TABLASSERT/CACHE/PUBMEDMETADATA", max_size=1e6)
+
+
+@pubmedmetadatacache.memoize()  # type: ignore  # diskcache because these caches are threadspecific
 def pubmed_metadata(article_curie: str) -> dict[str, Any]:
 
     pubmedsql: str = """
@@ -728,24 +731,43 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
 
     global start
     start = time.time()
-    rows = list(pubmed.query(pubmedsql, {"curie": article_curie[3:]}))  # type: ignore
+    rows = list(pubmed.query(pubmedsql, {"curie": article_curie[4:]}))  # type: ignore
     mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
     mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
-    mesh_zip: Any = zip(mesh, mesh_major)
+    mesh_zip: Any = list(
+        zip(mesh, mesh_major)
+    )  # zip objects aren't reusable for some stupid reason so we have to list them
     domain: list[Optional[str]] = [
-        term for term, importance in mesh_zip if importance == "Y"
+        "MESH:" + term for term, importance in mesh_zip if importance == "Y"
     ]
     mesh_terms: list[Optional[str]] = [
-        term for term, importance in mesh_zip if importance == "N"
+        "MESH:" + term for term, importance in mesh_zip if importance == "N"
     ]
     row = rows[0] if rows else {}
+    print(
+        str(
+            {
+                "orig": article_curie,
+                "curie": article_curie[4:],
+                "rows": rows,
+                "mesh": mesh,
+                "mesh_major": mesh_major,
+                "domain": ",".join(domain) if domain else "not applicable",  # type: ignore
+                "mesh_terms": ",".join(mesh_terms) if mesh_terms else "not applicable",  # type: ignore
+                "first_author": row.get("firstauthor", "not applicable"),
+                "journal": row.get("journal", "not applicable"),
+                "article_title": row.get("title", "not applicable"),
+                "year_published": row.get("year", "not applicable"),
+            }
+        )
+    )
     return {
         "domain": ",".join(domain) if domain else "not applicable",  # type: ignore
         "mesh_terms": ",".join(mesh_terms) if mesh_terms else "not applicable",  # type: ignore
         "first_author": row.get("firstauthor", "not applicable"),
         "journal": row.get("journal", "not applicable"),
         "article_title": row.get("title", "not applicable"),
-        "year_published": row.get("year", "not applicable"),
+        "year_published": str(row.get("year", "not applicable")),
     }
 
 
@@ -760,8 +782,10 @@ pubmed_struct: pl.Struct = pl.Struct(
     ]
 )
 
+pmccaptionscache: Cache = Cache("TABLASSERT/CACHE/PMCCAPTIONS", max_size=1e6)
 
-# no cache because of how I'm building this
+
+@pmccaptionscache.memoize()  # type: ignore
 def pmc_captions(article_curie: str, filename: str) -> Optional[str]:
 
     pmcsql: str = """

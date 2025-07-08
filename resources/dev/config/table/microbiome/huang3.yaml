@@ -1,0 +1,77 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/11310467/bin/41467_2024_51074_MOESM6_ESM.xlsx
+    download_hyperparameters:
+      extension: xlsx
+      which_excel_sheet_to_use: A
+      start_at_line_number: 2
+  provenance:
+    article_curie: PMC:PMC11310467
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 5
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Unspecified
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Log2 Fold Change from Bayesian linear model
+  triple:
+    triple_object: 
+      encoding_method: value
+      value_for_encoding: monkey pox
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Gene
+        in_this_organism: NCBITaxon:9606
+    triple_predicate: biolink:affects
+
+sections:
+  - attributes:
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: J
+      assertion_strength:
+        encoding_method: column_of_values
+        value_for_encoding: I
+      notes: Statistical analysis of proteomic changes in HFF cells 6 hours post MPXV infection (n=5 independent experiments) compared to the respective mock infection. The two-sided p-values were derived from the Bayesian linear model (see materials and methods); no multiple hypothesis correction was performed. The direction of significant proteomic change in VACV (Soday et al., 2019) and MVA (Albarnaz et al., 2022, preprint) infection of HFFF defined by the respective manuscripts was also included.
+    reindexing:
+      - mode: before
+        column: G
+        comparison: ne
+        value_for_comparison: 'FALSE'
+  - attributes:
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: O
+      assertion_strength:
+        encoding_method: column_of_values
+        value_for_encoding: 'N'
+      notes: Statistical analysis of proteomic changes in HFF cells 12 hours post MPXV infection (n=5 independent experiments) compared to the respective mock infection. The two-sided p-values were derived from the Bayesian linear model (see materials and methods); no multiple hypothesis correction was performed. The direction of significant proteomic change in VACV (Soday et al., 2019) and MVA (Albarnaz et al., 2022, preprint) infection of HFFF defined by the respective manuscripts was also included.
+    reindexing:
+      - mode: before
+        column: L
+        comparison: ne
+        value_for_comparison: 'FALSE'
+  - attributes:
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: T
+      assertion_strength:
+        encoding_method: column_of_values
+        value_for_encoding: S
+      notes: Statistical analysis of proteomic changes in HFF cells 24 hours post MPXV infection (n=5 independent experiments) compared to the respective mock infection. The two-sided p-values were derived from the Bayesian linear model (see materials and methods); no multiple hypothesis correction was performed. The direction of significant proteomic change in VACV (Soday et al., 2019) and MVA (Albarnaz et al., 2022, preprint) infection of HFFF defined by the respective manuscripts was also included.
+    reindexing:
+      - mode: before
+        column: Q
+        comparison: ne
+        value_for_comparison: 'FALSE'
