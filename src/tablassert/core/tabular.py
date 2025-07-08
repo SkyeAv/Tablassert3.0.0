@@ -635,7 +635,7 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
     else:
         encoding_method: str = spoconfig["encoding_method"]
         value_for_encoding: str = spoconfig["value_for_encoding"]
-        df = new_column(df, f"origonal_{name}", encoding_method, value_for_encoding)
+        df = new_column(df, f"original_{name}", encoding_method, value_for_encoding)
         df = new_column(df, name, encoding_method, value_for_encoding)
         mapping_hyperparameters: dict[str, Any] = spoconfig["mapping_hyperparameters"]
         how_to_fill_column: Optional[str] = mapping_hyperparameters.get(
@@ -810,13 +810,13 @@ FINAL_COLUMNS: list[str] = [
     "extension",
     "excel_sheet",
     "pmc_file_caption",
-    "origonal_subject",
+    "original_subject",
     "subject_name",
     "subject_category",
     "subject_mapped_with_taxon",
     "subject_mapped_with_database",
     "subject_mapped_with_level",
-    "origonal_object",
+    "original_object",
     "object_name",
     "object_category",
     "object_mapped_with_taxon",
