@@ -40,6 +40,9 @@ def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.Da
     start: Optional[int] = download_hyperparameters.get("start_at_line_number")
     end: Optional[int] = download_hyperparameters.get("end_at_line_number")
     rows: Optional[list[int]] = download_hyperparameters.get("use_row_numbers")
+    # added to the end of the df not to mess up excel style names, also before the slice for reliable rows
+    row_index: pl.Series = pl.Series("extracted_from_row_number", list(range(1, df.height + 1))).cast(pl.String)  # to correct for the excel style indexing
+    df.insert_column(len(df.columns), row_index)  # because this is the only thing that modifies in place apparently
     if start or end:
         height: int = df.height
         # the -1 is to convert from excels 1 based indexing to polars 0 based indexing
@@ -136,7 +139,7 @@ def new_column(
     value_for_encoding: Optional[str],
 ) -> pl.DataFrame:
     if not value_for_encoding:
-        value_for_encoding = "not applicable"
+        value_for_encoding = "Not applicable"
     if encoding_method == "value":
         return df.with_columns(pl.lit(str(value_for_encoding)).alias(column))
     elif encoding_method == "column_of_values":
@@ -466,7 +469,7 @@ def fullmap_struct(
         f"{name}_name": preferred,
         f"{name}_category": f"biolink:{category}",
         f"{name}_mapped_with_taxon": (
-            f"NCBITaxon:{taxon}" if taxon else "not applicable"
+            f"NCBITaxon:{taxon}" if taxon else "Not applicable"
         ),
         f"{name}_mapped_with_level": level,
         f"{name}_mapped_with_database": db,
@@ -767,12 +770,12 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
     ]
     row = rows[0] if rows else {}
     return {
-        "domain": ",".join(domain) if domain else "not applicable",  # type: ignore
-        "mesh_terms": ",".join(mesh_terms) if mesh_terms else "not applicable",  # type: ignore
-        "first_author": row.get("firstauthor", "not applicable"),
-        "journal": row.get("journal", "not applicable"),
-        "article_title": row.get("title", "not applicable"),
-        "year_published": str(row.get("year", "not applicable")),
+        "domain": ",".join(domain) if domain else "Not applicable",  # type: ignore
+        "mesh_terms": ",".join(mesh_terms) if mesh_terms else "Not applicable",  # type: ignore
+        "first_author": row.get("firstauthor", "Not applicable"),
+        "journal": row.get("journal", "Not applicable"),
+        "article_title": row.get("title", "Not applicable"),
+        "year_published": str(row.get("year", "Not applicable")),
     }
 
 
@@ -817,7 +820,7 @@ def is_significant(x: str, p_value_threshold: float) -> str:
         else:
             return "NO"
     except ValueError:
-        if str(x) == "not applicable":
+        if str(x) == "Not applicable":
             return "YES"
         else:
             return "NO"
@@ -846,6 +849,7 @@ FINAL_COLUMNS: list[str] = [
     "file_name",
     "extension",
     "excel_sheet",
+    "extracted_from_row_number",
     "pmc_file_caption",
     "original_subject",
     "subject_name",
@@ -875,6 +879,8 @@ def dataframing(
     df = df.rename(
         {
             old_name: excel_style_column_name(idx)
+            if old_name != "extracted_from_row_number"
+            else old_name
             for idx, old_name in enumerate(df.columns)
         }
     )
@@ -944,6 +950,12 @@ def dataframing(
     df = new_column(df, "knowledge_level", "value", "statistical_association")
     df = new_column(df, "agent_type", "value", "data_analysis_pipeline")
     p_value_threshold: float = graphmodel["hyperparameters"]["maximum_p_value_in_graph"]
-    df = df.with_columns(pl.col("p_value").map_elements(lambda x: is_significant(x, p_value_threshold), return_dtype=pl.String).alias("significant?"))
+    df = df.with_columns(
+        pl.col("p_value")
+        .map_elements(
+            lambda x: is_significant(x, p_value_threshold), return_dtype=pl.String
+        )
+        .alias("significant?")
+    )
     df = df.select(FINAL_COLUMNS)
     return df.drop_nulls()

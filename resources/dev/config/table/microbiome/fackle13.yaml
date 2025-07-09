@@ -41,6 +41,8 @@ template:
       encoding_method: column_of_values
       value_for_encoding: H
       mapping_hyperparameters:
+        classes_to_avoid:
+          - biolink:OrganismTaxon
         regular_expressions:
           - pattern: '_'
             replacement: ' '

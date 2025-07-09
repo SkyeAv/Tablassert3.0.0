@@ -45,12 +45,13 @@ def aggregate(graphmodel: dict[str, Any]) -> None:
     if lazy_frames:
         edges: pl.LazyFrame = pl.concat(lazy_frames, rechunk=False)
         edgespath: Path = Path(f"{graphname}_{version}_edges.tsv").resolve()
-        save(edges, edgespath)
+        save(edges.unique(), edgespath)
         subjectnodes: pl.LazyFrame = edges.select(
             [
                 pl.col("subject").alias("id"),
                 pl.col("subject_name").alias("name"),
                 pl.col("subject_category").alias("category"),
+                pl.col("subject_mapped_with_taxon").alias("taxon"),
             ]
         )
         objectnodes: pl.LazyFrame = edges.select(
@@ -58,11 +59,12 @@ def aggregate(graphmodel: dict[str, Any]) -> None:
                 pl.col("object").alias("id"),
                 pl.col("object_name").alias("name"),
                 pl.col("object_category").alias("category"),
+                pl.col("object_mapped_with_taxon").alias("taxon"),
             ]
         )
         nodes: pl.LazyFrame = pl.concat(
             [subjectnodes, objectnodes], how="vertical"
-        ).unique(maintain_order=True)
+        ).unique(subset=["id"], maintain_order=True)
         nodespath: Path = Path(f"{graphname}_{version}_nodes.tsv").resolve()
         save(nodes, nodespath)
     return None
