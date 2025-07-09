@@ -37,6 +37,7 @@ template:
           - ' \[.*'
           - uncharacterized protein
           - ^.*?\]
+          - ' \(.*'
     triple_object:
       encoding_method: value
       value_for_encoding: COVID-19
