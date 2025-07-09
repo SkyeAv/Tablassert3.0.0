@@ -814,8 +814,13 @@ def is_significant(x: str, p_value_threshold: float) -> str:
     try:
         if float(x) <= p_value_threshold:
             return "YES"
+        else:
+            return "NO"
     except ValueError:
-        return "NO"
+        if str(x) == "not applicable":
+            return "YES"
+        else:
+            return "NO"
 
 
 FINAL_COLUMNS: list[str] = [
