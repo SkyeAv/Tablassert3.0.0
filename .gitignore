@@ -1,5 +1,6 @@
 .vscode
 *.mypy_cache/
+poetry.lock
 TABLASSERT/
 *tests/
 MULTIOMICS_KG*
@@ -10,3 +11,4 @@ MICROBIOME_KG*
 resources/dev/config/bin/
 stdout.out
 stderr.out
+QC.json
