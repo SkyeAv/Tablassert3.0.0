@@ -56,6 +56,7 @@ def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.Da
         else:
             raise RuntimeError("CODE 123 | At least one start or end must be defined")
     elif rows:
+        rows = [row - 1 for row in rows]
         return df.select(pl.all().take(indices=rows))  # type: ignore
     else:
         return df
@@ -85,7 +86,9 @@ def load_excel(
 ) -> pl.DataFrame:
     sheetname: str = download_hyperparameters["which_excel_sheet_to_use"]
     extension: str = download_hyperparameters["extension"]
-    if extension == "xls":  # this is only because xlsx2csv and all of the polars readers don't support the old xls encoding
+    if (
+        extension == "xls"
+    ):  # this is only because xlsx2csv and all of the polars readers don't support the old xls encoding
         pandasdf: pd.DataFrame = pd.read_excel(
             posix_filepath,
             sheet_name=sheetname,
@@ -630,6 +633,7 @@ def fullmap3(
 
     # for logging
     sql_params["input"] = unprocessedinput
+    sql_params["curie"] = article_curie  # type: ignore
     logger.warning(f"{str(sql_params)} failed to map")
     return fullmap_struct(name, None, None, None, None, None, None)
 
@@ -875,7 +879,9 @@ def dataframing(
         download_hyperparameters.get("which_excel_sheet_to_use"),
     )
     provenance: dict[str, str] = subsectionmodel["provenance"]
-    df = new_column(df, "article_curie", "value", provenance["article_curie"])
+    global article_curie
+    article_curie = provenance["article_curie"]  # type: ignore
+    df = new_column(df, "article_curie", "value", article_curie)  # type: ignore
     df = new_column(
         df, "config_curator_name", "value", provenance["config_curator_name"]
     )
@@ -891,7 +897,7 @@ def dataframing(
         df,
         "pmc_file_caption",
         "value",
-        pmc_captions(provenance["article_curie"], posix_filepath),
+        pmc_captions(article_curie, posix_filepath),  # type: ignore
     )
     global pubmed
     pubmed = connect(sqlites["pubmed"])  # type: ignore

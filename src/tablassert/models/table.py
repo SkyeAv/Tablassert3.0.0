@@ -149,7 +149,9 @@ class MathModuleTransformation(BaseModel):
 
 class Attribute(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
-    value_for_encoding: Optional[Union[float, str, int]] = Field(default=None)
+    value_for_encoding: Optional[Union[float, str, int]] = Field(
+        default="not applicable"
+    )
     math_module_transformations: Optional[list[MathModuleTransformation]] = Field(
         default=None
     )
@@ -342,7 +344,7 @@ class Section(BaseModel):
 
     @model_validator(mode="after")
     def file_downloader_and_path_generator(self: Self) -> Self:
-        
+
         if not self.posix_filepath:
             # THIS ALSO DOWNLOADS THE FILE
             article_curie: str = self.provenance.article_curie

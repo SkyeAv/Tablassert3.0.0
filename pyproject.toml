@@ -44,7 +44,7 @@ package-mode = false
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
-black = "^25.1.0"
+black = {extras = ["jupyter"], version = "^25.1.0"}
 flake8 = "^7.2.0"
 flake8-pyproject = "^1.2.3"
 mypy = "^1.16.1"

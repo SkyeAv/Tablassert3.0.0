@@ -33,7 +33,7 @@ sections:
             - biolink:OrganismTaxon
       triple_object:
         encoding_method: value
-        value_for_encoding: 7α-HSDH
+        value_for_encoding: 7alpha-hydroxysteroid dehydrogenase
         mapping_hyperparameters:
           classes_to_prioritize:
             - biolink:Gene
@@ -87,7 +87,7 @@ sections:
             - biolink:OrganismTaxon
       triple_object:
         encoding_method: value
-        value_for_encoding: 12α-HSDH
+        value_for_encoding: 12alpha-hydroxysteroid dehydrogenase
         mapping_hyperparameters:
           classes_to_prioritize:
             - biolink:Gene
@@ -123,7 +123,7 @@ sections:
             - biolink:OrganismTaxon
       triple_object:
         encoding_method: value
-        value_for_encoding: 7α-HSDH
+        value_for_encoding: 7alpha-hydroxysteroid dehydrogenase
         mapping_hyperparameters:
           classes_to_prioritize:
             - biolink:Gene
@@ -159,7 +159,7 @@ sections:
             - biolink:OrganismTaxon
       triple_object:
         encoding_method: value
-        value_for_encoding: 3α-HSDH
+        value_for_encoding: 3alpha-hydroxysteroid dehydrogenase
         mapping_hyperparameters:
           classes_to_prioritize:
             - biolink:Gene
