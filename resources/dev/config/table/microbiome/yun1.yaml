@@ -34,7 +34,7 @@ template:
         substrings_to_remove:
           - .*__
     triple_object:
-      value_for_encoding: MONDO:0013209
+      value_for_encoding: Nonalcoholic Fatty Liver Disease
       mapping_hyperparameters:
         classes_to_prioritize:
           - biolink:Disease

@@ -8,3 +8,5 @@ MICROBIOME_KG*
 *venv/
 *__pycache__/
 resources/dev/config/bin/
+stdout.out
+stderr.out
