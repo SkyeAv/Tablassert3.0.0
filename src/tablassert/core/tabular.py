@@ -41,8 +41,14 @@ def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.Da
     end: Optional[int] = download_hyperparameters.get("end_at_line_number")
     rows: Optional[list[int]] = download_hyperparameters.get("use_row_numbers")
     # added to the end of the df not to mess up excel style names, also before the slice for reliable rows
-    row_index: pl.Series = pl.Series("extracted_from_row_number", list(range(1, df.height + 1))).cast(pl.String)  # to correct for the excel style indexing
-    df.insert_column(len(df.columns), row_index)  # because this is the only thing that modifies in place apparently
+    row_index: pl.Series = pl.Series(
+        "extracted_from_row_number", list(range(1, df.height + 1))
+    ).cast(
+        pl.String
+    )  # to correct for the excel style indexing
+    df.insert_column(
+        len(df.columns), row_index
+    )  # because this is the only thing that modifies in place apparently
     if start or end:
         height: int = df.height
         # the -1 is to convert from excels 1 based indexing to polars 0 based indexing
@@ -878,9 +884,11 @@ def dataframing(
     df = initate(posix_filepath, download_hyperparameters)
     df = df.rename(
         {
-            old_name: excel_style_column_name(idx)
-            if old_name != "extracted_from_row_number"
-            else old_name
+            old_name: (
+                excel_style_column_name(idx)
+                if old_name != "extracted_from_row_number"
+                else old_name
+            )
             for idx, old_name in enumerate(df.columns)
         }
     )
