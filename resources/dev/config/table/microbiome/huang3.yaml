@@ -28,8 +28,9 @@ template:
           - biolink:Disease
     triple_subject: 
       encoding_method: column_of_values
-      value_for_encoding: A
+      value_for_encoding: B
       mapping_hyperparameters:
+        explode_by_delimiter: ;
         classes_to_prioritize:
           - biolink:Gene
         in_this_organism: NCBITaxon:9606

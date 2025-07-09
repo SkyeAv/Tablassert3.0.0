@@ -35,8 +35,9 @@ template:
     triple_subject: 
       encoding_method: column_of_values
       value_for_encoding: F
-      substrings_to_remove:
-        - \(.*
+      mapping_hyperparameters:
+        substrings_to_remove:
+          - \(.*
     triple_object: 
       encoding_method: column_of_values
       value_for_encoding: A

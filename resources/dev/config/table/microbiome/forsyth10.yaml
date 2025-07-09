@@ -32,7 +32,9 @@ template:
           - biolink:Gene
         substrings_to_remove:
           - _Gn
+          - Gn
           - _Gp
+          - Gp
         regular_expressions:
           - pattern: '_'
             replacement: ' '
@@ -46,7 +48,9 @@ template:
           - biolink:Gene
         substrings_to_remove:
           - _Gn
+          - Gn
           - _Gp
+          - Gp
         regular_expressions:
           - pattern: '_'
             replacement: ' '

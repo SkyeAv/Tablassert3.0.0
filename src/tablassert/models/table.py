@@ -7,7 +7,7 @@ from pydantic import (
     Field,
 )
 from typing import Any, Self, Optional, Literal, Annotated, Union, TypeAlias
-from playwright.async_api import async_playwright, TimeoutError
+from playwright.async_api import async_playwright
 from urllib.parse import urlparse
 from pathlib import Path
 import requests
@@ -273,7 +273,8 @@ DATALAKE_INTERNAL: Path = Path("TABLASSERT/DATALAKE")
 DATALAKE_INTERNAL.mkdir(parents=True, exist_ok=True)
 
 
-async def download(link: str, storagepath: Path) -> Path:
+# made download fallback because it takes longer to get the filepath like this
+async def downloadfallback(link: str, storagepath: Path) -> Path:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -303,7 +304,7 @@ async def download(link: str, storagepath: Path) -> Path:
         return filepath
 
 
-def downloadfallback(link: str, storagepath: Path) -> Path:
+def download(link: str, storagepath: Path) -> Path:
     storagepath.mkdir(parents=True, exist_ok=True)
 
     parsed = urlparse(link)
@@ -315,7 +316,9 @@ def downloadfallback(link: str, storagepath: Path) -> Path:
         try:
             user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
             headers = {"User-Agent": user_agent}
-            resp = requests.get(link, headers=headers, stream=True, timeout=60)
+            resp = requests.get(
+                link, headers=headers, stream=True, timeout=30
+            )  # or 30 seconds
             resp.raise_for_status()
         except requests.RequestException as e:
             raise RuntimeError(
@@ -354,10 +357,9 @@ class Section(BaseModel):
 
             link: str = str(self.location.where_to_download_data_from)
             try:
-                self.posix_filepath = asyncio.run(download(link, storagepath))
-            except TimeoutError:
-                self.posix_filepath = downloadfallback(link, storagepath)
-
+                self.posix_filepath = download(link, storagepath)
+            except Exception:
+                self.posix_filepath = asyncio.run(downloadfallback(link, storagepath))
         return self
 
 

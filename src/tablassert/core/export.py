@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from os.path import basename
 from pathlib import Path
 import polars as pl
@@ -21,7 +21,9 @@ def savepath(
     return savepath.with_suffix(".tsv")
 
 
-def save(df: pl.DataFrame, savepath: Path) -> None:
+def save(df: Union[pl.DataFrame, pl.LazyFrame], savepath: Path) -> None:
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
     df.write_csv(savepath, separator="\t", float_scientific=None, float_precision=4)
     return None
 
@@ -41,7 +43,26 @@ def aggregate(graphmodel: dict[str, Any]) -> None:
             lazy_frames.append(lf)
 
     if lazy_frames:
-        df: pl.LazyFrame = pl.concat(lazy_frames, rechunk=False)
-        finalpath: Path = Path(f"{graphname}_{version}.tsv").resolve()
-        save(df.collect(), finalpath)
+        edges: pl.LazyFrame = pl.concat(lazy_frames, rechunk=False)
+        edgespath: Path = Path(f"{graphname}_{version}_edges.tsv").resolve()
+        save(edges, edgespath)
+        subjectnodes: pl.LazyFrame = edges.select(
+            [
+                pl.col("subject").alias("id"),
+                pl.col("subject_name").alias("name"),
+                pl.col("subject_category").alias("category"),
+            ]
+        )
+        objectnodes: pl.LazyFrame = edges.select(
+            [
+                pl.col("object").alias("id"),
+                pl.col("object_name").alias("name"),
+                pl.col("object_category").alias("category"),
+            ]
+        )
+        nodes: pl.LazyFrame = pl.concat(
+            [subjectnodes, objectnodes], how="vertical"
+        ).unique(maintain_order=True)
+        nodespath: Path = Path(f"{graphname}_{version}_nodes.tsv").resolve()
+        save(nodes, nodespath)
     return None

@@ -43,6 +43,10 @@ template:
             replacement : ' '
           - pattern : ' OTU.*'
             replacement : ''
+          - pattern : 'Unclassified '
+            replacement : ''
+          - pattern : ' unclassified'
+            replacement : ''
         classes_to_prioritize:
           - biolink:OrganismTaxon
     triple_predicate: biolink:associated_with

@@ -25,7 +25,7 @@ sections:
     triple:
       triple_subject:
         encoding_method: value
-        value_for_encoding: MONDO:0005002
+        value_for_encoding: chronic obstructive pulmonary disease
       triple_object:
         encoding_method: column_of_values
         value_for_encoding: A

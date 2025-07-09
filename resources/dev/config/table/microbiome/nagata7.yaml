@@ -26,6 +26,7 @@ template:
           - biolink:OrganismTaxon
         substrings_to_remove:
           - ' species.*'
+          - ^.*?\]
     triple_predicate: biolink:associated_with
   reindexing:
     - mode: after

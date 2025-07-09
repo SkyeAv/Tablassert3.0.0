@@ -33,6 +33,8 @@ template:
       mapping_hyperparameters:
         classes_to_prioritize:
           - biolink:OrganismTaxon
+        substrings_to_remove:
+          - ^.*?\]
     triple_object:
       encoding_method: value
       value_for_encoding: COVID-19
