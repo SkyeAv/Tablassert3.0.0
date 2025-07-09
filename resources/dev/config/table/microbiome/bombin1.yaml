@@ -34,6 +34,7 @@ template:
           - ' \[.*'
           - \.*
           - uncharacterized protein
+          - ;.*
     triple_object:
       encoding_method: column_of_values
       value_for_encoding: F
@@ -46,6 +47,7 @@ template:
           - ' \[.*'
           - \.*
           - uncharacterized protein
+          - ;.*
     triple_predicate: biolink:correlated_with
 
 sections:

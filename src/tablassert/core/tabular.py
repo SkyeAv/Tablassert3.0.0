@@ -672,14 +672,17 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
             df = df.with_columns(pl.col(name).str.split(explode_by_delimiter)).explode(
                 name
             )
-        regular_expressions: Optional[list[dict[str, Any]]] = (
-            mapping_hyperparameters.get("regular_expressions")
+        substrings_to_remove: Optional[list[str]] = mapping_hyperparameters.get(
+            "substrings_to_remove"
         )
         if substrings_to_remove:
             for substring in substrings_to_remove:
                 df = df.with_columns(
                     pl.col(name).str.replace_all(substring, "").alias(name)
                 )
+        regular_expressions: Optional[list[dict[str, Any]]] = (
+            mapping_hyperparameters.get("regular_expressions")
+        )
         if regular_expressions:
             for regex in regular_expressions:
                 df = df.with_columns(
@@ -687,9 +690,6 @@ def spocolumn(df: pl.DataFrame, name: str, spoconfig: Any) -> pl.DataFrame:
                     .str.replace_all(regex["pattern"], regex["replacement"])
                     .alias(name)
                 )
-        substrings_to_remove: Optional[list[str]] = mapping_hyperparameters.get(
-            "substrings_to_remove"
-        )
         prefix: Optional[str] = mapping_hyperparameters.get("prefix")
         if prefix:
             df = df.with_columns((pl.lit(prefix) + pl.col(name)).alias(name))
