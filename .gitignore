@@ -2,8 +2,8 @@
 *.mypy_cache/
 TABLASSERT/
 *tests/
-MULTIOMICS_KG_2.0.0.tsv
-MICROBIOME_KG_2.0.0.tsv
+MULTIOMICS_KG*
+MICROBIOME_KG*
 *temp/
 *venv/
 *__pycache__/

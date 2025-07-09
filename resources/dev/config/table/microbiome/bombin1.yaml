@@ -26,6 +26,7 @@ template:
       encoding_method: column_of_values
       value_for_encoding: C
       mapping_hyperparameters:
+        explode_by_delimiter: ','
         in_this_organism: NCBITaxon:9606
         substrings_to_remove:
           - .*Plasma_
@@ -35,10 +36,12 @@ template:
           - \.*
           - uncharacterized protein
           - ;.*
+          - /.*
     triple_object:
       encoding_method: column_of_values
       value_for_encoding: F
       mapping_hyperparameters:
+        explode_by_delimiter: ','
         in_this_organism: NCBITaxon:9606
         substrings_to_remove:
           - .*Plasma_
@@ -48,6 +51,7 @@ template:
           - \.*
           - uncharacterized protein
           - ;.*
+          - /.*
     triple_predicate: biolink:correlated_with
 
 sections:

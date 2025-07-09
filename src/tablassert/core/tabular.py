@@ -809,9 +809,19 @@ def pmc_captions(article_curie: str, filename: str) -> Optional[str]:
     return row.get("caption")
 
 
+@lru_cache(maxsize=32)
+def is_significant(x: str, p_value_threshold: float) -> str:
+    try:
+        if float(x) <= p_value_threshold:
+            return "YES"
+    except ValueError:
+        return "NO"
+
+
 FINAL_COLUMNS: list[str] = [
     "subject",
     "object",
+    "significant?",
     "domain",
     "mesh_terms",
     "sample_size",
@@ -928,5 +938,7 @@ def dataframing(
             df = apply_reindexing(df, operation, "after")
     df = new_column(df, "knowledge_level", "value", "statistical_association")
     df = new_column(df, "agent_type", "value", "data_analysis_pipeline")
+    p_value_threshold: float = graphmodel["hyperparameters"]["maximum_p_value_in_graph"]
+    df = df.with_columns(pl.col("p_value").map_elements(lambda x: is_significant(x, p_value_threshold), return_dtype=pl.String).alias("significant?"))
     df = df.select(FINAL_COLUMNS)
     return df.drop_nulls()

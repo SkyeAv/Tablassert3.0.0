@@ -33,6 +33,7 @@ template:
         substrings_to_remove:
           - \..*
           - s__
+          - ' unclassified.*'
         regular_expressions:
           - pattern: '_'
             replacement: ' '
