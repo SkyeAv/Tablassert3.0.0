@@ -7,10 +7,8 @@ from pydantic import (
     Field,
 )
 from typing import Any, Self, Optional, Literal, Annotated, Union, TypeAlias
-from playwright.async_api import async_playwright
-from urllib.parse import urlparse
+from src.tablassert.utils.io import download, downloadfallback
 from pathlib import Path
-import requests
 import asyncio
 import math
 
@@ -271,68 +269,6 @@ class Location(BaseModel):
 
 DATALAKE_INTERNAL: Path = Path("TABLASSERT/DATALAKE")
 DATALAKE_INTERNAL.mkdir(parents=True, exist_ok=True)
-
-
-# made download fallback because it takes longer to get the filepath like this
-async def downloadfallback(link: str, storagepath: Path) -> Path:
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(accept_downloads=True)
-        page = await context.new_page()
-
-        async with page.expect_download(
-            timeout=60_000  # or 1 minute
-        ) as download_information:  # quadrupled timeout because it wouldn't work sometimes
-            try:
-                await page.goto(link, wait_until="load")
-            except Exception as e:
-                if "net::ERR_ABORTED" not in str(e):
-                    raise RuntimeError(
-                        f"CODE:104 | Unanticipated playright error: {str(e)}"
-                    )
-
-        config = await download_information.value
-        filepath: Path = storagepath / config.suggested_filename
-        posix_filepath: str = filepath.as_posix()
-
-        if not filepath.exists():
-            await config.save_as(posix_filepath)
-            await context.close()
-            await browser.close()
-
-        return filepath
-
-
-def download(link: str, storagepath: Path) -> Path:
-    storagepath.mkdir(parents=True, exist_ok=True)
-
-    parsed = urlparse(link)
-    name: str = Path(parsed.path).name or "not_applicable.ext"
-    filepath: Path = storagepath / name
-
-    if not filepath.exists():
-
-        try:
-            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-            headers = {"User-Agent": user_agent}
-            resp = requests.get(
-                link, headers=headers, stream=True, timeout=30
-            )  # or 30 seconds
-            resp.raise_for_status()
-        except requests.RequestException as e:
-            raise RuntimeError(
-                f"CODE:105 | Error downloading file with requests: {str(e)}"
-            )
-
-        try:
-            with open(filepath, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        except OSError as e:
-            raise RuntimeError(f"CODE:106 | Error saving downloaded file: {str(e)}")
-
-    return filepath
 
 
 class Section(BaseModel):
