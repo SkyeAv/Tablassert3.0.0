@@ -9,6 +9,7 @@ location:
   table_config_containing_directories:
     - /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/microbiome
     #- /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/multiomics
+  local_pmc_download: /15TB_1/users/gglusman/PMC/tars
   sqlite_databases:
     babel: /ssd/sqlite/BABEL.db
     kg2: /ssd/sqlite/KG2.10.1.db
@@ -18,3 +19,4 @@ location:
 hyperparameters:
   number_of_parallel_processes_to_run: 30
   maximum_p_value_in_graph: 0.1
+  sql_progress_handler_timeout: 1.2

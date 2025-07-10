@@ -6,6 +6,7 @@ from src.tablassert.models.table import Section
 from multiprocessing import Pool
 from typing import Any, Optional
 from pathlib import Path
+from os import environ
 import polars as pl
 import typer
 
@@ -34,6 +35,7 @@ def build(graphconfig: str) -> None:
     graph_yaml: Any = load_yaml(graphconfigpath)
     Graph: GraphConfig = load_model(graph_yaml, GraphConfig)
     graphmodel: dict[str, Any] = Graph.model_dump()
+    environ["LOCAL_PMC_DOWNLOAD"] = graphmodel["location"]["local_pmc_download"]
     sections: list[tuple[Section, dict[str, Any], int]] = build_sections(graphmodel)
     workers: int = graphmodel["hyperparameters"]["number_of_parallel_processes_to_run"]
     with Pool(processes=workers, initializer=initialize_logger) as pool:

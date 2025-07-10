@@ -54,7 +54,7 @@ types-requests = "^2.32.4.20250611"
 [tool.flake8]
 max-line-length = 88
 ignore = ["E203", "E501", "W503", "F722"]
-exclude = [".git", "__pycache__", "*.pyc"]
+exclude = [".git", "__pycache__", "*.pyc", "resources/dev/trainingdata"]
 
 
 [tool.black]
@@ -68,3 +68,4 @@ strict = true
 disallow_untyped_defs = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+

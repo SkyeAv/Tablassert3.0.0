@@ -239,17 +239,17 @@ fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=1e8)
 start: float = 0.0  # default for typechecking
 
 
-def progress_handler(maxtime: float = 1.10) -> int:
+def progress_handler(maxtime: float) -> int:
     if (time.time() - start) >= maxtime:
         return 1
     return 0
 
 
-def connect(sqlitepath: str) -> Database:
+def connect(sqlitepath: str, maxtime: float) -> Database:
     db: Database = Database(sqlitepath)
     db.enable_wal()  # type: ignore
     conn = db.conn
-    conn.set_progress_handler(lambda: progress_handler(), 1)
+    conn.set_progress_handler(lambda: progress_handler(maxtime), 1)
     return db
 
 
@@ -834,6 +834,7 @@ def is_significant(x: str, p_value_threshold: float) -> str:
 
 FINAL_COLUMNS: list[str] = [
     "subject",
+    "predicate",
     "object",
     "significant?",
     "domain",
@@ -900,6 +901,7 @@ def dataframing(
     )
     df = new_column(df, "file_name", "value", basename(posix_filepath))
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
+    maxtime: float = graphmodel["hyperparameters"]["sql_progress_handler_timeout"]
     df = new_column(df, "extension", "value", download_hyperparameters["extension"])
     df = new_column(
         df,
@@ -921,7 +923,7 @@ def dataframing(
         provenance["config_curator_organization"],
     )
     global pmc  # databases are global to enable caching because they're unhashable types
-    pmc = connect(sqlites["pmc"])  # type: ignore
+    pmc = connect(sqlites["pmc"], maxtime)  # type: ignore
     df = new_column(
         df,
         "pmc_file_caption",
@@ -929,7 +931,7 @@ def dataframing(
         pmc_captions(article_curie, posix_filepath),  # type: ignore
     )
     global pubmed
-    pubmed = connect(sqlites["pubmed"])  # type: ignore
+    pubmed = connect(sqlites["pubmed"], maxtime)  # type: ignore
     df = df.with_columns(
         pl.col("article_curie")
         .map_elements(
@@ -947,9 +949,9 @@ def dataframing(
         df = process_attribute(df, name, attribute)
     triple: dict[str, Any] = subsectionmodel["triple"]
     global babel
-    babel = connect(sqlites["babel"])  # type: ignore
+    babel = connect(sqlites["babel"], maxtime)  # type: ignore
     global kg2
-    kg2 = connect(sqlites["kg2"])  # type: ignore
+    kg2 = connect(sqlites["kg2"], maxtime)  # type: ignore
     for name, spoconfig in triple.items():
         df = spocolumn(df, name, spoconfig)
     if reindexing:

@@ -17,14 +17,18 @@ class SqliteDatabases(BaseModel):
 
 class Location(BaseModel):
     table_config_containing_directories: list[DirectoryPath] = Field(...)
+    local_pmc_download: str = Field(default="Not applicable")
     sqlite_databases: SqliteDatabases = Field(...)
 
 
 class Hyperparameters(BaseModel):
     number_of_parallel_processes_to_run: int = Field(default=1)
     maximum_p_value_in_graph: float = Field(default=1.0)
+    sql_progress_handler_timeout: float = Field(default=1.0)
 
-    @field_validator("maximum_p_value_in_graph", mode="before")
+    @field_validator(
+        "maximum_p_value_in_graph", "sql_progress_handler_timeout", mode="before"
+    )
     @classmethod
     def int_to_float(cls, possible_int: Any) -> Any:
         if possible_int and isinstance(possible_int, int):

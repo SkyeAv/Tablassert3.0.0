@@ -7,9 +7,13 @@ from pydantic import (
     Field,
 )
 from typing import Any, Self, Optional, Literal, Annotated, Union, TypeAlias
-from src.tablassert.utils.io import download, downloadfallback
+from playwright.async_api import async_playwright
+from urllib.parse import urlparse
 from pathlib import Path
+from os import environ
+import requests
 import asyncio
+import tarfile
 import math
 
 
@@ -271,6 +275,114 @@ DATALAKE_INTERNAL: Path = Path("TABLASSERT/DATALAKE")
 DATALAKE_INTERNAL.mkdir(parents=True, exist_ok=True)
 
 
+# I can't put this in IO because of a circular import
+def filepathgen(link: str, storagepath: Path) -> Path:
+    parsed = urlparse(link)
+    name: str = Path(parsed.path).name or "not_applicable.ext"
+    return storagepath / name
+
+
+def download(link: str, storagepath: Path) -> Path:
+    storagepath.mkdir(parents=True, exist_ok=True)
+
+    filepath: Path = filepathgen(link, storagepath)
+    if not filepath.exists():
+
+        try:
+            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.112 Safari/537.36"
+            headers = {"User-Agent": user_agent}
+            resp = requests.get(
+                link, headers=headers, stream=True, timeout=30
+            )  # or 30 seconds
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            raise RuntimeError(
+                f"CODE:105 | Error downloading file with requests: {str(e)}"
+            )
+
+        # for accidental html downloads
+        content_type: str = resp.headers.get("Content-Type", "").lower()
+        if "text/html" in content_type:
+            raise RuntimeError(
+                f"CODE:109A | Downloaded content is HTML, not a file: {link}"
+            )
+
+        first_chunk: bytes = next(resp.iter_content(chunk_size=8192), b"")
+        if b"<html" in first_chunk.lower() or b"<!doctype html" in first_chunk.lower():
+            raise RuntimeError(
+                f"CODE:109B | Downloaded content looks like HTML, not a file: {link}"
+            )
+
+        try:
+            with open(filepath, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        except OSError as e:
+            raise RuntimeError(f"CODE:106 | Error saving downloaded file: {str(e)}")
+
+    return filepath
+
+
+# made download fallback because it takes longer to get the filepath like this
+async def downloadfallback(link: str, storagepath: Path) -> Path:
+    storagepath.mkdir(parents=True, exist_ok=True)
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(accept_downloads=True)
+        page = await context.new_page()
+
+        async with page.expect_download(
+            timeout=120_000  # or 2 minutes
+        ) as download_information:  # quadrupled timeout because it wouldn't work sometimes
+            try:
+                await page.goto(link, wait_until="load")
+            except Exception as e:
+                if "net::ERR_ABORTED" not in str(e):
+                    raise RuntimeError(
+                        f"CODE:104 | Unanticipated playright error: {str(e)}"
+                    )
+
+        config = await download_information.value
+        filepath: Path = storagepath / config.suggested_filename
+        posix_filepath: str = filepath.as_posix()
+
+        if not filepath.exists():
+            await config.save_as(posix_filepath)
+            await context.close()
+            await browser.close()
+
+        return filepath
+
+
+def trypmctarfiles(
+    link: str, pmcpath: Path, article_curie: str, storagepath: Path
+) -> Path:
+    storagepath.mkdir(parents=True, exist_ok=True)
+
+    filepath: Path = filepathgen(link, storagepath)
+    if filepath.exists():
+        return filepath
+
+    tarpath: Path = pmcpath / article_curie[-2:] / f"{article_curie[4:]}.tar.gz"
+    if not tarpath.exists():
+        raise RuntimeError(f"CODE:107 | {tarpath.as_posix()} does not exist")
+
+    with tarfile.open(tarpath, "r|gz") as tar:  # type: ignore
+        for zippedfile in tar:
+            if zippedfile.name == filepath.name:
+                with (
+                    tar.extractfile(zippedfile) as unzipped,
+                    filepath.open("wb") as outfile,
+                ):
+                    outfile.write(unzipped.read())
+                return filepath
+
+        raise RuntimeError(
+            f"CODE:108 | {filepath.name} does not exist in {tarpath.as_posix()}"
+        )
+
+
 class Section(BaseModel):
     location: Location = Field(...)
     provenance: Provenance = Field(...)
@@ -292,10 +404,29 @@ class Section(BaseModel):
             storagepath.mkdir(parents=True, exist_ok=True)
 
             link: str = str(self.location.where_to_download_data_from)
-            try:
-                self.posix_filepath = download(link, storagepath)
-            except Exception:
-                self.posix_filepath = asyncio.run(downloadfallback(link, storagepath))
+
+            local_pmc_download: str = environ["LOCAL_PMC_DOWNLOAD"]
+            if not local_pmc_download == "Not applicable":
+                pmcpath: Path = Path(local_pmc_download)
+                if pmcpath.exists():
+                    try:
+                        self.posix_filepath = trypmctarfiles(
+                            link, pmcpath, article_curie, storagepath
+                        )
+                    except Exception:
+                        try:
+                            self.posix_filepath = download(link, storagepath)
+                        except Exception:
+                            self.posix_filepath = asyncio.run(
+                                downloadfallback(link, storagepath)
+                            )
+            else:
+                try:
+                    self.posix_filepath = download(link, storagepath)
+                except Exception:
+                    self.posix_filepath = asyncio.run(
+                        downloadfallback(link, storagepath)
+                    )
         return self
 
 
