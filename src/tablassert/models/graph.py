@@ -17,7 +17,7 @@ class SqliteDatabases(BaseModel):
 
 class Location(BaseModel):
     table_config_containing_directories: list[DirectoryPath] = Field(...)
-    local_pmc_download: str = Field(default="Not applicable")
+    local_pmc_download: str = Field(default="NA")
     sqlite_databases: SqliteDatabases = Field(...)
 
 

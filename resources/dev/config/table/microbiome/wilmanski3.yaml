@@ -1,9 +1,10 @@
 template:
+  posix_filepath: TABLASSERT/DATALAKE/PMID:31477923/41587_2019_233_MOESM5_ESM.csv
   location:
     where_to_download_data_from: https://static-content.springer.com/esm/art%3A10.1038%2Fs41587-019-0233-9/MediaObjects/41587_2019_233_MOESM5_ESM.xls
     download_hyperparameters:
-      extension: xls
-      which_excel_sheet_to_use: proteomics_analysis
+      extension: csv
+      file_delimiter: ","
       start_at_line_number: 3
   provenance:
     article_curie: PMID:31477923

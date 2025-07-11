@@ -1,5 +1,7 @@
 from typing import Any, Optional, Union, Iterator
+from polars.exceptions import ComputeError
 from sqlite_utils import Database
+from xlrd.biffh import XLRDError
 from functools import lru_cache
 from collections import Counter
 from spacy.tokens import Token
@@ -9,6 +11,7 @@ from loguru import logger
 from pathlib import Path
 import polars as pl
 import pandas as pd
+import zipfile
 import sqlite3
 import spacy
 import math
@@ -75,12 +78,21 @@ def load_csv(
     posix_filepath: str, download_hyperparameters: dict[str, Any]
 ) -> pl.DataFrame:
     delimiter: str = download_hyperparameters["file_delimiter"]
-    df: pl.DataFrame = pl.read_csv(
-        source=posix_filepath,
-        separator=delimiter,
-        has_header=False,
-        infer_schema=False,
-    )
+    try:
+        df: pl.DataFrame = pl.read_csv(
+            source=posix_filepath,
+            separator=delimiter,
+            has_header=False,
+            infer_schema=False,
+        )
+    except ComputeError:
+        df = pl.read_csv(
+            source=posix_filepath,
+            separator=delimiter,
+            has_header=False,
+            infer_schema=False,
+            truncate_ragged_lines=True,
+        )
     return slicing(df, download_hyperparameters)
 
 
@@ -98,20 +110,34 @@ def load_excel(
     if (
         extension == "xls"
     ):  # this is only because xlsx2csv and all of the polars readers don't support the old xls encoding
-        pandasdf: pd.DataFrame = pd.read_excel(
-            posix_filepath,
-            sheet_name=sheetname,
-            header=None,
-            dtype=str,
-            engine=XLS_ENGINE,
-        )
-        df = pl.from_pandas(pandasdf)  # you need pyarrow in the environment for this
-    else:
         try:
-            df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=DEFAULT_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
-        except TypeError as e:
-            if "NoneType" in str(e):  # for that one weird nonetype bug
-                df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=FALLBACK_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
+            pandasdf: pd.DataFrame = pd.read_excel(
+                posix_filepath,
+                sheet_name=sheetname,
+                header=None,
+                dtype=str,
+                engine=XLS_ENGINE,
+            )
+            df = pl.from_pandas(
+                pandasdf
+            )  # you need pyarrow in the environment for this
+        except XLRDError:
+            raise RuntimeError(
+                f"CODE:141 | Cannot parse legacy xls spreadheet {posix_filepath}"
+            )
+    else:
+        if zipfile.is_zipfile(posix_filepath):
+            try:
+                df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=DEFAULT_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False})  # type: ignore
+            except Exception:
+                try:
+                    df = pl.read_excel(source=posix_filepath, sheet_name=sheetname, engine=FALLBACK_EXCEL_ENGINE, has_header=False, read_options={"infer_schema": False, "truncate_ragged_lines": True})  # type: ignore
+                except OSError:
+                    raise RuntimeError(f"CODE:142 | Error reading {posix_filepath}")
+        else:
+            raise RuntimeError(
+                f"CODE:140 | {posix_filepath} is not a valid XLSX (zip archive)"
+            )
     return slicing(df, download_hyperparameters)
 
 
@@ -145,7 +171,7 @@ def new_column(
     value_for_encoding: Optional[str],
 ) -> pl.DataFrame:
     if not value_for_encoding:
-        value_for_encoding = "Not applicable"
+        value_for_encoding = "NA"
     if encoding_method == "value":
         return df.with_columns(pl.lit(str(value_for_encoding)).alias(column))
     elif encoding_method == "column_of_values":
@@ -254,7 +280,7 @@ def connect(sqlitepath: str, maxtime: float) -> Database:
 
 
 def levelone(x: Any) -> str:
-    return str(x).lower()
+    return str(x).lower().strip()
 
 
 DISABLE: list[str] = ["parser", "ner", "textcat"]
@@ -474,9 +500,7 @@ def fullmap_struct(
         name: curie,
         f"{name}_name": preferred,
         f"{name}_category": f"biolink:{category}",
-        f"{name}_mapped_with_taxon": (
-            f"NCBITaxon:{taxon}" if taxon else "Not applicable"
-        ),
+        f"{name}_mapped_with_taxon": (f"NCBITaxon:{taxon}" if taxon else "NA"),
         f"{name}_mapped_with_level": level,
         f"{name}_mapped_with_database": db,
     }
@@ -776,12 +800,12 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
     ]
     row = rows[0] if rows else {}
     return {
-        "domain": ",".join(domain) if domain else "Not applicable",  # type: ignore
-        "mesh_terms": ",".join(mesh_terms) if mesh_terms else "Not applicable",  # type: ignore
-        "first_author": row.get("firstauthor", "Not applicable"),
-        "journal": row.get("journal", "Not applicable"),
-        "article_title": row.get("title", "Not applicable"),
-        "year_published": str(row.get("year", "Not applicable")),
+        "domain": ",".join(domain) if domain else "NA",  # type: ignore
+        "mesh_terms": ",".join(mesh_terms) if mesh_terms else "NA",  # type: ignore
+        "first_author": row.get("firstauthor", "NA"),
+        "journal": row.get("journal", "NA"),
+        "article_title": row.get("title", "NA"),
+        "year_published": str(row.get("year", "NA")),
     }
 
 
@@ -826,7 +850,7 @@ def is_significant(x: str, p_value_threshold: float) -> str:
         else:
             return "NO"
     except ValueError:
-        if str(x) == "Not applicable":
+        if str(x) == "NA":
             return "YES"
         else:
             return "NO"
@@ -836,7 +860,7 @@ FINAL_COLUMNS: list[str] = [
     "subject",
     "predicate",
     "object",
-    "significant?",
+    "significant",
     "domain",
     "mesh_terms",
     "sample_size",
@@ -965,7 +989,7 @@ def dataframing(
         .map_elements(
             lambda x: is_significant(x, p_value_threshold), return_dtype=pl.String
         )
-        .alias("significant?")
+        .alias("significant")
     )
     df = df.select(FINAL_COLUMNS)
     return df.drop_nulls()

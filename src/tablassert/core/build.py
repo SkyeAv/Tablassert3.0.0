@@ -15,6 +15,7 @@ app = typer.Typer()
 
 def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
     subsectionmodel: dict[str, Any] = SubSection.model_dump()
+    print(subsectionmodel, end="\n\n")
     posix_filepath: str = subsectionmodel["posix_filepath"]
     sheetname: Optional[str] = subsectionmodel["location"][
         "download_hyperparameters"

@@ -9,10 +9,11 @@ from pydantic import (
 from typing import Any, Self, Optional, Literal, Annotated, Union, TypeAlias
 from playwright.async_api import async_playwright
 from urllib.parse import urlparse
+from os import environ, remove
 from pathlib import Path
-from os import environ
 import requests
 import asyncio
+import zipfile
 import tarfile
 import math
 
@@ -151,9 +152,7 @@ class MathModuleTransformation(BaseModel):
 
 class Attribute(BaseModel):
     encoding_method: Literal["value", "column_of_values"] = Field(default="value")
-    value_for_encoding: Optional[Union[float, str, int]] = Field(
-        default="Not applicable"
-    )
+    value_for_encoding: Optional[Union[float, str, int]] = Field(default="NA")
     math_module_transformations: Optional[list[MathModuleTransformation]] = Field(
         default=None
     )
@@ -282,6 +281,16 @@ def filepathgen(link: str, storagepath: Path) -> Path:
     return storagepath / name
 
 
+def iscorrupted(filepath: Path) -> None:
+    extension: str = filepath.suffix
+    if extension.lower() in ["xlsx", "xls"]:
+        posix_filepath: str = filepath.as_posix()
+        if not zipfile.is_zipfile(posix_filepath):
+            remove(posix_filepath)
+            raise RuntimeError(f"CODE:141 | {posix_filepath} is corrupted")
+    return None
+
+
 def download(link: str, storagepath: Path) -> Path:
     storagepath.mkdir(parents=True, exist_ok=True)
 
@@ -320,6 +329,7 @@ def download(link: str, storagepath: Path) -> Path:
         except OSError as e:
             raise RuntimeError(f"CODE:106 | Error saving downloaded file: {str(e)}")
 
+    iscorrupted(filepath)
     return filepath
 
 
@@ -352,6 +362,7 @@ async def downloadfallback(link: str, storagepath: Path) -> Path:
             await context.close()
             await browser.close()
 
+        iscorrupted(filepath)
         return filepath
 
 
@@ -376,6 +387,8 @@ def trypmctarfiles(
                     filepath.open("wb") as outfile,
                 ):
                     outfile.write(unzipped.read())
+
+                iscorrupted(filepath)
                 return filepath
 
         raise RuntimeError(
@@ -396,7 +409,8 @@ class Section(BaseModel):
     @model_validator(mode="after")
     def file_downloader_and_path_generator(self: Self) -> Self:
 
-        if not self.posix_filepath:
+        posix_filepath: Optional[FilePath] = self.posix_filepath
+        if not posix_filepath or not posix_filepath.exists():
             # THIS ALSO DOWNLOADS THE FILE
             article_curie: str = self.provenance.article_curie
 
@@ -406,7 +420,7 @@ class Section(BaseModel):
             link: str = str(self.location.where_to_download_data_from)
 
             local_pmc_download: str = environ["LOCAL_PMC_DOWNLOAD"]
-            if not local_pmc_download == "Not applicable":
+            if not local_pmc_download == "NA":
                 pmcpath: Path = Path(local_pmc_download)
                 if pmcpath.exists():
                     try:
@@ -427,6 +441,7 @@ class Section(BaseModel):
                     self.posix_filepath = asyncio.run(
                         downloadfallback(link, storagepath)
                     )
+
         return self
 
 
