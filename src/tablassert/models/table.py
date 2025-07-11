@@ -7,14 +7,15 @@ from pydantic import (
     Field,
 )
 from typing import Any, Self, Optional, Literal, Annotated, Union, TypeAlias
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError
 from urllib.parse import urlparse
-from os import environ, remove
+from random import randint
 from pathlib import Path
+from os import environ
 import requests
 import asyncio
-import zipfile
 import tarfile
+import shutil
 import math
 
 
@@ -275,125 +276,91 @@ DATALAKE_INTERNAL.mkdir(parents=True, exist_ok=True)
 
 
 # I can't put this in IO because of a circular import
-def filepathgen(link: str, storagepath: Path) -> Path:
+def get_savepath(link: str, storagepath: Path) -> Path:
     parsed = urlparse(link)
     name: str = Path(parsed.path).name or "not_applicable.ext"
     return storagepath / name
 
 
-def iscorrupted(filepath: Path) -> None:
-    extension: str = filepath.suffix
-    if extension.lower() in ["xlsx", "xls"]:
-        posix_filepath: str = filepath.as_posix()
-        if not zipfile.is_zipfile(posix_filepath):
-            remove(posix_filepath)
-            raise RuntimeError(f"CODE:141 | {posix_filepath} is corrupted")
+def check_local_tarfiles(
+    savepath: Path, local_pmc_download: FilePath, article_curie: str
+) -> Optional[Path]:
+    tarpath: FilePath = (
+        local_pmc_download / article_curie[-2:] / f"{article_curie[4:]}.tar.gz"
+    )
+
+    if not tarpath.exists():
+        return None
+
+    with tarfile.open(tarpath, "r|gz") as tar:  # type: ignore
+        for zippedfile in tar:
+            if zippedfile.name == savepath.name:
+                extracted = tar.extractfile(zippedfile)
+                if extracted is None:
+                    return None
+                with extracted, savepath.open("wb") as save:
+                    shutil.copyfileobj(extracted, save)
+                    return savepath
+
     return None
 
 
-def download(link: str, storagepath: Path) -> Path:
-    storagepath.mkdir(parents=True, exist_ok=True)
-
-    filepath: Path = filepathgen(link, storagepath)
-    if not filepath.exists():
-
-        try:
-            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.112 Safari/537.36"
-            headers = {"User-Agent": user_agent}
-            resp = requests.get(
-                link, headers=headers, stream=True, timeout=30
-            )  # or 30 seconds
-            resp.raise_for_status()
-        except requests.RequestException as e:
-            raise RuntimeError(
-                f"CODE:105 | Error downloading file with requests: {str(e)}"
-            )
-
-        # for accidental html downloads
-        content_type: str = resp.headers.get("Content-Type", "").lower()
-        if "text/html" in content_type:
-            raise RuntimeError(
-                f"CODE:109A | Downloaded content is HTML, not a file: {link}"
-            )
-
-        first_chunk: bytes = next(resp.iter_content(chunk_size=8192), b"")
-        if b"<html" in first_chunk.lower() or b"<!doctype html" in first_chunk.lower():
-            raise RuntimeError(
-                f"CODE:109B | Downloaded content looks like HTML, not a file: {link}"
-            )
-
-        try:
-            with open(filepath, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        except OSError as e:
-            raise RuntimeError(f"CODE:106 | Error saving downloaded file: {str(e)}")
-
-    iscorrupted(filepath)
-    return filepath
-
-
-# made download fallback because it takes longer to get the filepath like this
-async def downloadfallback(link: str, storagepath: Path) -> Path:
-    storagepath.mkdir(parents=True, exist_ok=True)
-
+async def playwright_download(
+    link: str, savepath: Path, repeats: int = 1
+) -> Optional[Path]:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(accept_downloads=True)
         page = await context.new_page()
 
-        async with page.expect_download(
-            timeout=120_000  # or 2 minutes
-        ) as download_information:  # quadrupled timeout because it wouldn't work sometimes
-            try:
-                await page.goto(link, wait_until="load")
-            except Exception as e:
-                if "net::ERR_ABORTED" not in str(e):
-                    raise RuntimeError(
-                        f"CODE:104 | Unanticipated playright error: {str(e)}"
-                    )
-
-        config = await download_information.value
-        filepath: Path = storagepath / config.suggested_filename
-        posix_filepath: str = filepath.as_posix()
-
-        if not filepath.exists():
-            await config.save_as(posix_filepath)
+        try:
+            async with page.expect_download(timeout=30_000) as download_information:
+                try:
+                    await page.goto(link, wait_until="load")
+                except Exception as e:
+                    if "net::ERR_ABORTED" in str(e):
+                        return None
+        except TimeoutError:
             await context.close()
             await browser.close()
+            repeats += 1
+            if repeats <= 3:
+                return await playwright_download(link, savepath, repeats)
+            else:
+                return None
 
-        iscorrupted(filepath)
-        return filepath
+        download = await download_information.value
+
+        await download.save_as(savepath)
+        await context.close()
+        await browser.close()
+
+        return savepath
 
 
-def trypmctarfiles(
-    link: str, pmcpath: Path, article_curie: str, storagepath: Path
-) -> Path:
-    storagepath.mkdir(parents=True, exist_ok=True)
+def requests_download(link: str, savepath: Path) -> Path:
 
-    filepath: Path = filepathgen(link, storagepath)
-    if filepath.exists():
-        return filepath
+    webagents: dict[int, str] = {
+        1: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.112 Safari/537.36",
+        2: "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Safari/537.36",
+        3: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.112 Safari/537.36 Edg/125.0.2535.67",
+    }
 
-    tarpath: Path = pmcpath / article_curie[-2:] / f"{article_curie[4:]}.tar.gz"
-    if not tarpath.exists():
-        raise RuntimeError(f"CODE:107 | {tarpath.as_posix()} does not exist")
+    headers = {"User-Agent": webagents.get(randint(1, 3))}
 
-    with tarfile.open(tarpath, "r|gz") as tar:  # type: ignore
-        for zippedfile in tar:
-            if zippedfile.name == filepath.name:
-                with (
-                    tar.extractfile(zippedfile) as unzipped,
-                    filepath.open("wb") as outfile,
-                ):
-                    outfile.write(unzipped.read())
+    try:
+        response = requests.get(link, headers=headers, stream=True, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException:
+        raise RuntimeError(f"CODE:105A | Could not download {savepath.as_posix()}")
 
-                iscorrupted(filepath)
-                return filepath
+    if "text/html" in response.headers.get("Content-Type", "").lower():
+        raise RuntimeError(f"CODE:105A | Could not download {savepath.as_posix()}")
 
-        raise RuntimeError(
-            f"CODE:108 | {filepath.name} does not exist in {tarpath.as_posix()}"
-        )
+    with savepath.open("wb") as save:
+        save.write(response.content)
+
+    return savepath
 
 
 class Section(BaseModel):
@@ -407,40 +374,37 @@ class Section(BaseModel):
     posix_filepath: Optional[FilePath] = Field(default=None)
 
     @model_validator(mode="after")
-    def file_downloader_and_path_generator(self: Self) -> Self:
-
+    def file_downloader(self: Self) -> Self:
         posix_filepath: Optional[FilePath] = self.posix_filepath
-        if not posix_filepath or not posix_filepath.exists():
-            # THIS ALSO DOWNLOADS THE FILE
-            article_curie: str = self.provenance.article_curie
 
-            storagepath: Path = DATALAKE_INTERNAL / article_curie
-            storagepath.mkdir(parents=True, exist_ok=True)
+        if posix_filepath:
+            return self
 
-            link: str = str(self.location.where_to_download_data_from)
+        article_curie: str = self.provenance.article_curie
+        storagepath: Path = DATALAKE_INTERNAL / article_curie
+        storagepath.mkdir(parents=True, exist_ok=True)
 
-            local_pmc_download: str = environ["LOCAL_PMC_DOWNLOAD"]
-            if not local_pmc_download == "NA":
-                pmcpath: Path = Path(local_pmc_download)
-                if pmcpath.exists():
-                    try:
-                        self.posix_filepath = trypmctarfiles(
-                            link, pmcpath, article_curie, storagepath
-                        )
-                    except Exception:
-                        try:
-                            self.posix_filepath = download(link, storagepath)
-                        except Exception:
-                            self.posix_filepath = asyncio.run(
-                                downloadfallback(link, storagepath)
-                            )
-            else:
-                try:
-                    self.posix_filepath = download(link, storagepath)
-                except Exception:
-                    self.posix_filepath = asyncio.run(
-                        downloadfallback(link, storagepath)
-                    )
+        link: str = str(self.location.where_to_download_data_from)
+        savepath: Path = get_savepath(link, storagepath)
+        if savepath.exists():
+            self.posix_filepath = savepath
+            return self
+
+        local_pmc_download: Union[FilePath, str] = environ["LOCAL_PMC_DOWNLOAD"]
+        if isinstance(local_pmc_download, Path):
+            result: Optional[Path] = check_local_tarfiles(
+                savepath, local_pmc_download, article_curie
+            )
+            if result and result.exists():
+                self.posix_filepath = result
+                return self
+
+        result = asyncio.run(playwright_download(link, savepath))
+        if result and result.exists():
+            self.posix_filepath = result
+            return self
+
+        self.posix_filepath = requests_download(link, savepath)
 
         return self
 

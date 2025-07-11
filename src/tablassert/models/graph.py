@@ -1,5 +1,5 @@
 from pydantic import field_validator, BaseModel, DirectoryPath, FilePath, Field
-from typing import Optional, Any
+from typing import Optional, Any, Union
 
 
 class Metadata(BaseModel):
@@ -17,7 +17,7 @@ class SqliteDatabases(BaseModel):
 
 class Location(BaseModel):
     table_config_containing_directories: list[DirectoryPath] = Field(...)
-    local_pmc_download: str = Field(default="NA")
+    local_pmc_download: Union[FilePath, str] = Field(default="NA")
     sqlite_databases: SqliteDatabases = Field(...)
 
 
