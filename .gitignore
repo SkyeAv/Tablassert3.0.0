@@ -9,6 +9,7 @@ MICROBIOME_KG*
 *trainingdata/
 *temp/
 *venv/
+*weights/
 *__pycache__/
 resources/dev/config/bin/
 stdout.out

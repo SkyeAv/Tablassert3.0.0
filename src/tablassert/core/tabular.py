@@ -21,17 +21,17 @@ import re
 
 # I have to do this because of Pool
 def initialize_logger() -> None:
-    LOG_PATH: Path = Path("TABLASSERT/LOG/mapping.log").resolve()
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    log_path: Path = Path("TABLASSERT/LOG/mapping.log").resolve()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     logger.remove()
     logger.add(
-        LOG_PATH.as_posix(), rotation="250 MB", compression="xz", retention="1 month"
+        log_path.as_posix(), rotation="250 MB", compression="xz", retention="1 month"
     )
     # added separate log for things that don't map
-    DIDNTMAP_LOG_PATH = LOG_PATH.parent / "didntmap.log"
-    DIDNTMAP_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    didntmap_log_path = log_path.parent / "didntmap.log"
+    didntmap_log_path.parent.mkdir(parents=True, exist_ok=True)
     logger.add(
-        DIDNTMAP_LOG_PATH.as_posix(),
+        didntmap_log_path.as_posix(),
         level="WARNING",
         rotation="250 MB",
         compression="xz",
