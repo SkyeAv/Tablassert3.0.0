@@ -1,7 +1,6 @@
 from src.tablassert.scoring.preprocessing import encode_data, load_data
 from torch.utils.data import Dataset, DataLoader, random_split
 from src.tablassert.scoring.config import SEED, DEVICE
-from src.tablassert.utils.io import project_root
 from collections import OrderedDict
 from typing import Any, Self
 from loguru import logger
@@ -20,6 +19,7 @@ random.seed(SEED)
 # setup training.log
 TRAINING_LOG_PATH: Path = Path("TABLASSERT/LOG/training.log").resolve()
 TRAINING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+logger.remove()
 logger.add(
     TRAINING_LOG_PATH.as_posix(),
     rotation="250 MB",
@@ -115,17 +115,17 @@ def training_loop(train_dataloader: DataLoader, test_dataloader: DataLoader, epo
         logger.info(
             f"epochs: {epoch}/{epochs} | training loss: {average_training_loss} | validation loss: {average_validation_loss}"
         )
-    return MODEL.state_dict()
+    return MODEL.state_dict()  # type: ignore
 
-WEIGHTS_PATH: Path = project_root() / "src/tablassert/weights"
-WEIGHTS_PATH.mkdir(parents=True, exist_ok=True)
 
-def trainscoringmodel(trainingdata: str, epochs: int, saveto: str) -> None:
+def trainscoringmodel(trainingdata: str, saveto: str, epochs: int) -> None:
     trainingdatapath: Path = Path(trainingdata)
-    savepath: Path = WEIGHTS_PATH / saveto
+    savepath: Path = Path(saveto)
     df: pl.DataFrame = read_jsonl(trainingdatapath)
     dataset: Dataset = encode_data(df)  # type: ignore
     train_dataloader, test_dataloader = load_training_data(dataset)
-    weights: OrderedDict[str, torch.Tensor] = training_loop(train_dataloader, test_dataloader, epochs)
+    weights: OrderedDict[str, torch.Tensor] = training_loop(
+        train_dataloader, test_dataloader, epochs
+    )
     torch.save(weights, savepath)
     return None

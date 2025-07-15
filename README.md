@@ -23,7 +23,7 @@ poetry install
 3. Run the Tablassert CLI with Poetry
 
 ```bash
-poetry run cli <path-to-graph-config>
+poetry run cli --help
 ```
 
 The CLI still needs to be fleshed out and can only build a KG from a GraphConfig at the moment, hence the lack of a command after the CLI entrypoint.

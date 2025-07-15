@@ -18,6 +18,7 @@ class SqliteDatabases(BaseModel):
 class Location(BaseModel):
     table_config_containing_directories: list[DirectoryPath] = Field(...)
     local_pmc_download: Union[FilePath, str] = Field(default="NA")
+    edge_scoring_model_weights: FilePath = Field(...)
     sqlite_databases: SqliteDatabases = Field(...)
 
 

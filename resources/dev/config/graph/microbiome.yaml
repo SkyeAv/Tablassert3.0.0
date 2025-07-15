@@ -10,11 +10,13 @@ location:
     - /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/microbiome
     #- /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/multiomics
   local_pmc_download: /15TB_1/users/gglusman/PMC/tars
+  edge_scoring_model_weights: 
   sqlite_databases:
     babel: /local/sqlite/BABEL.db  #/ssd/sqlite/backup/BABEL-250625.db
     kg2: /ssd/sqlite/KG2.10.1.db
     pubmed: /ssd/sqlite/PubMed.db
     pmc: /ssd/sqlite/PMCSuppCaptions.db
+
 
 hyperparameters:
   number_of_parallel_processes_to_run: 30

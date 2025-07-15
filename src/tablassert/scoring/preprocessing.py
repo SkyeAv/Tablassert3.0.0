@@ -40,8 +40,8 @@ LABEL_ENCODER: LabelEncoder = LabelEncoder()
 
 
 def label_encoder(df: pl.DataFrame, column: str) -> np.ndarray:
-    x: np.ndarray = df.select(pl.col(column)).to_numpy().reshape(-1, 1)
-    return LABEL_ENCODER.fit_transform(x).flatten().astype(float)  # type: ignore
+    x: np.ndarray = df.select(pl.col(column)).to_numpy().ravel()
+    return LABEL_ENCODER.fit_transform(x).astype(float)  # type: ignore
 
 
 STANDARD_SCALER: StandardScaler = StandardScaler()
@@ -51,14 +51,13 @@ def cast_to_numeric(df: pl.DataFrame, column: str) -> np.ndarray:
     x: np.ndarray = (
         df.select(pl.col(column).cast(pl.Float64, strict=False).fill_null(0))
         .to_numpy()
-        .reshape(-1, 1)
     )
-    return STANDARD_SCALER.fit_transform(x).flatten().astype(float)  # type: ignore
+    return STANDARD_SCALER.fit_transform(x).ravel().astype(float)  # type: ignore
 
 
 class EdgeScoringData(Dataset):  # type: ignore
     def __init__(self: Self, X: torch.Tensor, y: np.ndarray) -> None:
-        self.X = torch.tensor(X, dtype=torch.float32)
+        self.X = X.detach().clone().float()
         self.y = torch.tensor(y, dtype=torch.float32)
         return None
 
@@ -102,7 +101,7 @@ def encode_data(df: pl.DataFrame) -> Dataset:  # type: ignore
         freetext_embeddings.append(embedded_row)
     freetext_tensor: torch.Tensor = torch.stack(freetext_embeddings)
     X = torch.cat([structured_tensor, freetext_tensor], dim=1)  # shape: (3079,)
-    y = df.select(pl.col("score")).to_numpy().reshape(-1, 1).flatten().astype(float)
+    y = df.select(pl.col("score")).to_numpy().reshape(-1, 1).astype(float)
     return EdgeScoringData(X, y)
 
 

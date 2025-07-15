@@ -18,7 +18,9 @@ def build(graphconfig: str) -> None:
 
 
 @app.command()
-def train(trainingdata: str, epochs: int = 25, saveto: str = "scoring_model.pt") -> None:
+def train(
+    trainingdata: str, saveto: str, epochs: int, 
+) -> None:
     """
     Trains the Neural Network for Edge Scoring with Specified JSONLINES
     ---
@@ -37,10 +39,10 @@ def train(trainingdata: str, epochs: int = 25, saveto: str = "scoring_model.pt")
         "object_mapped_with_level":
         "score":
     }
-    epochs: the number of epochs to train model (default=25)
-    saveto: a path to the file you want to save weights to (default="scoring_model.pt")
+    saveto: a path to the file you want to save weights to
+    epochs: the number of epochs to train model
     """
-    trainscoringmodel(trainingdata, epochs, saveto)
+    trainscoringmodel(trainingdata, saveto, epochs)
     return None
 
 
