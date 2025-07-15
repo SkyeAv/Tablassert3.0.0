@@ -8,14 +8,10 @@ from typing import Any, Optional
 from pathlib import Path
 from os import environ
 import polars as pl
-import typer
-
-app = typer.Typer()
 
 
 def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
     subsectionmodel: dict[str, Any] = SubSection.model_dump()
-    print(subsectionmodel, end="\n\n")
     posix_filepath: str = subsectionmodel["posix_filepath"]
     sheetname: Optional[str] = subsectionmodel["location"][
         "download_hyperparameters"
@@ -28,10 +24,7 @@ def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
     return None
 
 
-@app.command()
-def build(graphconfig: str) -> None:
-    # typer uses docstrings for command descriptions
-    """Build a Knowledge Graph with a GraphConfig"""
+def buildgraph(graphconfig: str) -> None:
     graphconfigpath: Path = Path(graphconfig)
     graph_yaml: Any = load_yaml(graphconfigpath)
     Graph: GraphConfig = load_model(graph_yaml, GraphConfig)
@@ -42,10 +35,4 @@ def build(graphconfig: str) -> None:
     with Pool(processes=workers, initializer=initialize_logger) as pool:
         _ = pool.starmap(subgraph, sections)
     aggregate(graphmodel)
-    return None
-
-
-# wrapper for poety entrypoint
-def cli() -> None:
-    app()
     return None

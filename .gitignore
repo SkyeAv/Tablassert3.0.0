@@ -5,6 +5,8 @@ TABLASSERT/
 *tests/
 MULTIOMICS_KG*
 MICROBIOME_KG*
+*.tsv
+*trainingdata/
 *temp/
 *venv/
 *__pycache__/
@@ -12,3 +14,6 @@ resources/dev/config/bin/
 stdout.out
 stderr.out
 QC.json
+*.json
+MANUALDOWNLOADS/
+*.pt

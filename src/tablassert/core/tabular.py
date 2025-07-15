@@ -584,7 +584,7 @@ def safe_query(db: str, sql: str, sql_params: dict[str, str]) -> Iterator[Any]:
             raise RuntimeError(f"CODE:126 | A method for querying {db} does not exist")
     except sqlite3.OperationalError as e:
         logger.critical(
-            f"CODE:125 | {db}, {str(sql_params)} triggered the progress handler {str(e)}"
+            f"CODE:125 | {db}, {str(sql_params)} triggered the progress handler {str(e)}, {sql}"
         )
         return None
 
@@ -632,6 +632,7 @@ def fullmap3(
     leveltwooutput: str = leveltwo(leveloneoutput)
     sql_params["input"] = leveltwooutput
 
+    """
     start = time.time()
     sql = babelsql(
         prioritize_placeholders, avoid_placeholders, taxon, most_common, level
@@ -640,6 +641,7 @@ def fullmap3(
     result = collectresults(name, rows, level, "babel", sql_params)
     if result:
         return result
+    """
 
     level = "L3"
     levelthreeoutput: str = levelthree(leveltwooutput)

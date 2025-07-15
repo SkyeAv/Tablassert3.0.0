@@ -15,7 +15,7 @@ template:
       value_for_encoding: 21561
     p_value:
       encoding_method: column_of_values
-      value_for_encoding: H
+      value_for_encoding: G
     multiple_testing_correction_method:
       encoding_method: value
       value_for_encoding: Benjamini Hochberg
