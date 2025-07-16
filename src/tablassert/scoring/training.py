@@ -1,10 +1,14 @@
-from src.tablassert.scoring.preprocessing import encode_data, load_data
+from src.tablassert.scoring.preprocessing import (
+    ScoringRegression,
+    encode_data,
+    load_data,
+)
 from torch.utils.data import Dataset, DataLoader, random_split
 from src.tablassert.scoring.config import SEED, DEVICE
 from collections import OrderedDict
-from typing import Any, Self
 from loguru import logger
 from pathlib import Path
+from typing import Any
 from torch import nn
 import polars as pl
 import numpy as np
@@ -56,25 +60,6 @@ def load_training_data(dataset: Dataset) -> tuple[DataLoader, DataLoader]:  # ty
     return load_data(train_dataset), load_data(test_dataset, 64, False)
 
 
-class ScoringRegression(nn.Module):
-    def __init__(self: Self) -> None:
-        super().__init__()
-        self.model = nn.Sequential(
-            # this preforms better with the extra layer
-            nn.Linear(2312, 32),  # 3079 is the shape of the input
-            nn.LeakyReLU(),
-            # this was overfitting before
-            nn.Dropout(0.2),  # put between densest layers
-            nn.Linear(32, 16),
-            nn.LeakyReLU(),  # alpha = 0.1 by default
-            nn.Linear(16, 1),
-        )
-        return None
-
-    def forward(self: Self, x: torch.Tensor) -> Any:
-        return self.model(x)
-
-
 MODEL = ScoringRegression().to(DEVICE)
 LOSS_FN = nn.SmoothL1Loss(beta=1.0)  # Huber Loss
 OPTIMIZER = torch.optim.Adam(
@@ -121,8 +106,9 @@ def training_loop(train_dataloader: DataLoader, test_dataloader: DataLoader, epo
 def trainscoringmodel(trainingdata: str, saveto: str, epochs: int) -> None:
     trainingdatapath: Path = Path(trainingdata)
     savepath: Path = Path(saveto)
+    savepath.parent.mkdir(parents=True, exist_ok=True)
     df: pl.DataFrame = read_jsonl(trainingdatapath)
-    dataset: Dataset = encode_data(df)  # type: ignore
+    dataset: Dataset = encode_data(df, savepath, "training")  # type: ignore
     train_dataloader, test_dataloader = load_training_data(dataset)
     weights: OrderedDict[str, torch.Tensor] = training_loop(
         train_dataloader, test_dataloader, epochs

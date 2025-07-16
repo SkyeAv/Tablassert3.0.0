@@ -19,7 +19,9 @@ def build(graphconfig: str) -> None:
 
 @app.command()
 def train(
-    trainingdata: str, saveto: str, epochs: int, 
+    trainingdata: str,
+    saveto: str,
+    epochs: int,
 ) -> None:
     """
     Trains the Neural Network for Edge Scoring with Specified JSONLINES

@@ -1,3 +1,4 @@
+from src.tablassert.scoring.implimentations import score_edges
 from typing import Any, Optional, Union, Iterator
 from polars.exceptions import ComputeError
 from sqlite_utils import Database
@@ -584,7 +585,7 @@ def safe_query(db: str, sql: str, sql_params: dict[str, str]) -> Iterator[Any]:
             raise RuntimeError(f"CODE:126 | A method for querying {db} does not exist")
     except sqlite3.OperationalError as e:
         logger.critical(
-            f"CODE:125 | {db}, {str(sql_params)} triggered the progress handler {str(e)}, {sql}"
+            f"CODE:125 | {db}: {str(sql_params)} triggered the progress handler {str(e)}"
         )
         return None
 
@@ -863,6 +864,7 @@ FINAL_COLUMNS: list[str] = [
     "predicate",
     "object",
     "significant",
+    "score",
     "domain",
     "mesh_terms",
     "sample_size",
@@ -993,5 +995,7 @@ def dataframing(
         )
         .alias("significant")
     )
+    df = new_column(df, "score", "value", "NA")
     df = df.select(FINAL_COLUMNS)
-    return df.drop_nulls()
+    df = df.drop_nulls()
+    return score_edges(df, graphmodel["location"]["edge_scoring_model_weights"]) if df.height != 0 else df

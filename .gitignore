@@ -12,8 +12,10 @@ MICROBIOME_KG*
 *weights/
 *__pycache__/
 resources/dev/config/bin/
+resources/dev/distribution/
 stdout.out
 stderr.out
+nohup.out
 QC.json
 *.json
 MANUALDOWNLOADS/

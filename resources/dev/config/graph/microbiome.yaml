@@ -1,7 +1,7 @@
 # author --> Skye Lane Goetz
 
 metadata:
-  knowledge_graph_name: MICROBIOME_KG_TEST
+  knowledge_graph_name: MICROBIOME_KG_TEST_SCORES
   graph_version: 2.0.0
   graph_description: Connecting Multiomic Factors with Host Health
 
@@ -10,15 +10,14 @@ location:
     - /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/microbiome
     #- /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/config/table/multiomics
   local_pmc_download: /15TB_1/users/gglusman/PMC/tars
-  edge_scoring_model_weights: 
+  edge_scoring_model_weights: /local/sgoetz/PROJECTS/TABLASSERT/STABLE/4.2.1/resources/dev/weights/50_EPOCHS_SOFTPLUS_07_16.pt
   sqlite_databases:
-    babel: /local/sqlite/BABEL.db  #/ssd/sqlite/backup/BABEL-250625.db
+    babel: /15TB_2/sgoetz/DBSTORE/BABEL.db  #/ssd/sqlite/BABEL.db
     kg2: /ssd/sqlite/KG2.10.1.db
     pubmed: /ssd/sqlite/PubMed.db
     pmc: /ssd/sqlite/PMCSuppCaptions.db
 
-
 hyperparameters:
   number_of_parallel_processes_to_run: 30
   maximum_p_value_in_graph: 0.1
-  sql_progress_handler_timeout: 1.2
+  sql_progress_handler_timeout: 5.0
