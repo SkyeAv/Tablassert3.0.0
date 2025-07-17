@@ -2,10 +2,10 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/9691620/bin/NIHMS1845232-supplement-1845232_Sup_Tab_1-5.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Table S3
   provenance:
-    article_curie: PMC:PMC9691620
+    publication: PMC:PMC9691620
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -18,7 +18,7 @@ template:
     multiple_testing_correction_method:
       encoding_method: value
       value_for_encoding: Bonferroni
-    assertion_strength:
+    relationship_strength:
       encoding_method: column_of_values
       value_for_encoding: E
     assertion_method:

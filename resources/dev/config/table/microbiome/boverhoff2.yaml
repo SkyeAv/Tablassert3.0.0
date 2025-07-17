@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://ars.els-cdn.com/content/image/1-s2.0-S2211124724010805-mmc2.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Supplementary Table 1
       start_at_line_number: 2
   provenance:
-    article_curie: PMID:39264809
+    publication: PMID:39264809
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -19,7 +19,7 @@ template:
     multiple_testing_correction_method:
       encoding_method: value
       value_for_encoding: Benjamini Hochberg
-    assertion_strength:
+    relationship_strength:
       encoding_method: column_of_values
       value_for_encoding: E
     assertion_method:

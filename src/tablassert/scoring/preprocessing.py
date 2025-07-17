@@ -101,7 +101,7 @@ class EdgeScoringData(Dataset):  # type: ignore
 
 
 def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type: ignore
-    numeric: list[str] = ["sample_size", "assertion_strength"]
+    numeric: list[str] = ["sample_size", "relationship_strength"]
     categorical: list[str] = [
         "significant",
         "multiple_testing_correction_method",
@@ -113,7 +113,7 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
     freetext: list[str] = [
         "assertion_method",
         "notes",
-        "pmc_file_caption",
+        "supplementary_file_caption",
     ]
 
     structured_encodings: list[torch.Tensor] = []

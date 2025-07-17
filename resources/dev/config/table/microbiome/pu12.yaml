@@ -2,10 +2,10 @@ template:
   location:
     where_to_download_data_from: https://static-content.springer.com/esm/art%3A10.1038%2Fs43587-024-00678-0/MediaObjects/43587_2024_678_MOESM12_ESM.csv
     download_hyperparameters:
-      extension: csv
+      file_extension: csv
       file_delimiter: ","
   provenance:
-    article_curie: PMID:39054372
+    publication: PMID:39054372
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -18,7 +18,7 @@ template:
     multiple_testing_correction_method:
       encoding_method: value
       value_for_encoding: Benjamini Hochberg
-    assertion_strength:
+    relationship_strength:
       encoding_method: column_of_values
       value_for_encoding: C
     assertion_method:

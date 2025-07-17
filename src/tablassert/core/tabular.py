@@ -46,7 +46,7 @@ def slicing(df: pl.DataFrame, download_hyperparameters: dict[str, Any]) -> pl.Da
     rows: Optional[list[int]] = download_hyperparameters.get("use_row_numbers")
     # added to the end of the df not to mess up excel style names, also before the slice for reliable rows
     row_index: pl.Series = pl.Series(
-        "extracted_from_row_number", list(range(1, df.height + 1))
+        "source_row_number", list(range(1, df.height + 1))
     ).cast(
         pl.String
     )  # to correct for the excel style indexing
@@ -107,9 +107,9 @@ def load_excel(
     posix_filepath: str, download_hyperparameters: dict[str, Any]
 ) -> pl.DataFrame:
     sheetname: str = download_hyperparameters["which_excel_sheet_to_use"]
-    extension: str = download_hyperparameters["extension"]
+    file_extension: str = download_hyperparameters["file_extension"]
     if (
-        extension == "xls"
+        file_extension == "xls"
     ):  # this is only because xlsx2csv and all of the polars readers don't support the old xls encoding
         try:
             pandasdf: pd.DataFrame = pd.read_excel(
@@ -145,8 +145,8 @@ def load_excel(
 def initate(
     posix_filepath: str, download_hyperparameters: dict[str, Any]
 ) -> pl.DataFrame:
-    extension: str = download_hyperparameters["extension"]
-    match extension.lower():
+    file_extension: str = download_hyperparameters["file_extension"]
+    match file_extension.lower():
         case "xls" | "xlsx":
             return load_excel(posix_filepath, download_hyperparameters)
         case "csv" | "tsv" | "txt":
@@ -669,7 +669,7 @@ def fullmap3(
 
     # for logging
     sql_params["input"] = unprocessedinput
-    sql_params["curie"] = article_curie  # type: ignore
+    sql_params["curie"] = publication  # type: ignore
     logger.warning(f"{str(sql_params)} failed to map")
     return fullmap_struct(name, None, None, None, None, None, None)
 
@@ -771,7 +771,7 @@ pubmedmetadatacache: Cache = Cache("TABLASSERT/CACHE/PUBMEDMETADATA", max_size=1
 
 
 @pubmedmetadatacache.memoize()  # type: ignore  # diskcache because these caches are threadspecific
-def pubmed_metadata(article_curie: str) -> dict[str, Any]:
+def pubmed_metadata(publication: str) -> dict[str, Any]:
 
     pubmedsql: str = """
     SELECT
@@ -789,7 +789,7 @@ def pubmed_metadata(article_curie: str) -> dict[str, Any]:
 
     global start
     start = time.time()
-    rows = list(pubmed.query(pubmedsql, {"curie": article_curie[4:]}))  # type: ignore
+    rows = list(pubmed.query(pubmedsql, {"curie": publication[4:]}))  # type: ignore
     mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
     mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
     mesh_zip: Any = list(
@@ -827,7 +827,7 @@ pmccaptionscache: Cache = Cache("TABLASSERT/CACHE/PMCCAPTIONS", max_size=1e6)
 
 
 @pmccaptionscache.memoize()  # type: ignore
-def pmc_captions(article_curie: str, filename: str) -> Optional[str]:
+def pmc_captions(publication: str, filename: str) -> Optional[str]:
 
     pmcsql: str = """
     SELECT caption
@@ -839,7 +839,7 @@ def pmc_captions(article_curie: str, filename: str) -> Optional[str]:
     global start
     start = time.time()
     rows = pmc.query(  # type: ignore
-        pmcsql, {"curie": article_curie[7:], "filename": basename(filename)}
+        pmcsql, {"curie": publication[7:], "filename": basename(filename)}
     )
     row: dict[str, Any] = next(rows, {})
     return row.get("caption")
@@ -870,22 +870,23 @@ FINAL_COLUMNS: list[str] = [
     "sample_size",
     "p_value",
     "multiple_testing_correction_method",
-    "assertion_strength",
+    "relationship_strength",
     "assertion_method",
     "notes",
     "knowledge_level",
     "agent_type",
-    "article_curie",
+    "publication",
     "first_author",
     "journal",
     "article_title",
     "year_published",
     "download_link",
     "file_name",
-    "extension",
-    "excel_sheet",
-    "extracted_from_row_number",
-    "pmc_file_caption",
+    "section_number",
+    "file_extension",
+    "sheet_name",
+    "source_row_number",
+    "supplementary_file_caption",
     "original_subject",
     "subject_name",
     "subject_category",
@@ -904,7 +905,7 @@ FINAL_COLUMNS: list[str] = [
 
 
 def dataframing(
-    subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]]
+    subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]], idx: int
 ) -> pl.DataFrame:
     posix_filepath: str = subsectionmodel["posix_filepath"]
     download_hyperparameters: dict[str, Any] = subsectionmodel["location"][
@@ -915,7 +916,7 @@ def dataframing(
         {
             old_name: (
                 excel_style_column_name(idx)
-                if old_name != "extracted_from_row_number"
+                if old_name != "source_row_number"
                 else old_name
             )
             for idx, old_name in enumerate(df.columns)
@@ -928,19 +929,20 @@ def dataframing(
         subsectionmodel["location"]["where_to_download_data_from"],
     )
     df = new_column(df, "file_name", "value", basename(posix_filepath))
+    df = new_column(df, "section_number", "value", idx)
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
     maxtime: float = graphmodel["hyperparameters"]["sql_progress_handler_timeout"]
-    df = new_column(df, "extension", "value", download_hyperparameters["extension"])
+    df = new_column(df, "file_extension", "value", download_hyperparameters["file_extension"])
     df = new_column(
         df,
-        "excel_sheet",
+        "sheet_name",
         "value",
         download_hyperparameters.get("which_excel_sheet_to_use"),
     )
     provenance: dict[str, str] = subsectionmodel["provenance"]
-    global article_curie
-    article_curie = provenance["article_curie"]  # type: ignore
-    df = new_column(df, "article_curie", "value", article_curie)  # type: ignore
+    global publication
+    publication = provenance["publication"]  # type: ignore
+    df = new_column(df, "publication", "value", publication)  # type: ignore
     df = new_column(
         df, "config_curator_name", "value", provenance["config_curator_name"]
     )
@@ -954,14 +956,14 @@ def dataframing(
     pmc = connect(sqlites["pmc"], maxtime)  # type: ignore
     df = new_column(
         df,
-        "pmc_file_caption",
+        "supplementary_file_caption",
         "value",
-        pmc_captions(article_curie, posix_filepath),  # type: ignore
+        pmc_captions(publication, posix_filepath),  # type: ignore
     )
     global pubmed
     pubmed = connect(sqlites["pubmed"], maxtime)  # type: ignore
     df = df.with_columns(
-        pl.col("article_curie")
+        pl.col("publication")
         .map_elements(
             lambda x: pubmed_metadata(x), return_dtype=pubmed_struct, skip_nulls=True
         )

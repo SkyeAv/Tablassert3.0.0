@@ -2,10 +2,10 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/11748489/bin/msystems.00817-24-s0009.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       start_at_line_number: 4
   provenance:
-    article_curie: PMC:PMC11748489
+    publication: PMC:PMC11748489
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:

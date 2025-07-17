@@ -1,11 +1,11 @@
 template:
   location:
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: 시트1
       start_at_line_number: 5
   provenance:
-    article_curie: PMC:PMC6417675
+    publication: PMC:PMC6417675
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -18,7 +18,7 @@ template:
     multiple_testing_correction_method:
       encoding_method: value
       value_for_encoding: Bonferroni
-    assertion_strength:
+    relationship_strength:
       encoding_method: column_of_values
       value_for_encoding: D
     assertion_method:

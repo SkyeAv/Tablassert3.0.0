@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://static-content.springer.com/esm/art%3A10.1038%2Fs41591-024-03038-y/MediaObjects/41591_2024_3038_MOESM2_ESM.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: STable7
       start_at_line_number: 5
   provenance:
-    article_curie: PMID:38844795
+    publication: PMID:38844795
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -42,7 +42,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: D
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: B
   - triple:
@@ -52,7 +52,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: G
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: E
   - triple:
@@ -62,7 +62,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: J
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: H
   - triple:
@@ -72,7 +72,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: M
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: K
   - triple:
@@ -82,7 +82,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: P
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: 'N'
   - triple:
@@ -92,7 +92,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: S
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: Q
   - triple:
@@ -102,7 +102,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: V
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: T
   - triple:
@@ -112,7 +112,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: 'Y'
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: W
   - triple:
@@ -122,7 +122,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AB
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: Z
   - triple:
@@ -132,7 +132,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AE
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AC
   - triple:
@@ -142,7 +142,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AH
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AF
   - triple:
@@ -152,7 +152,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AK
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AI
   - triple:
@@ -162,7 +162,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BF
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: BD
   - triple:
@@ -172,7 +172,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BI
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: BG
   - triple:
@@ -182,7 +182,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BC
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: BA
   - triple:
@@ -192,7 +192,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BL
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: BJ
   - triple:
@@ -202,6 +202,6 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AN
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AL

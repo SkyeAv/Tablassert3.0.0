@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/5622077/bin/41598_2017_12325_MOESM2_ESM.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: ST10
       start_at_line_number: 6
   provenance:
-    article_curie: PMC:PMC5622077
+    publication: PMC:PMC5622077
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:

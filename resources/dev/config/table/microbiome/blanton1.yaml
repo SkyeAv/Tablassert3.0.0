@@ -2,10 +2,10 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/4787260/bin/NIHMS762705-supplement-Supplementary_Tables_1-17.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Table S17.
   provenance:
-    article_curie: PMC:PMC4787260
+    publication: PMC:PMC4787260
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -39,7 +39,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AI
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: B
   - location:
@@ -53,7 +53,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AI
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: B
   - location:
@@ -67,7 +67,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AJ
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: C
   - location:
@@ -81,7 +81,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AM
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: F
   - location:
@@ -95,7 +95,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AS
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: L
   - location:
@@ -109,7 +109,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AT
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: M
   - location:
@@ -123,7 +123,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AY
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: R
   - location:
@@ -137,7 +137,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AZ
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: S
   - location:
@@ -151,7 +151,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BB
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: U
   - location:
@@ -165,7 +165,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BC
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: V
   - location:
@@ -179,7 +179,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BC
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: V
   - location:
@@ -193,7 +193,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BD
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: W
   - location:
@@ -207,7 +207,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BE
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: X
   - location:
@@ -221,7 +221,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BF
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: 'Y'
   - location:
@@ -235,7 +235,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BG
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: Z
   - location:
@@ -249,7 +249,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BH
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AA
   - location:
@@ -263,7 +263,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: BI
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AB
   - location:
@@ -277,7 +277,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: T
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: C
   - location:
@@ -291,7 +291,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: V
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: E
   - location:
@@ -305,7 +305,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: W
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: F
   - location:
@@ -319,7 +319,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: X
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: G
   - location:
@@ -333,7 +333,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: 'Y'
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: H
   - location:
@@ -347,7 +347,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AB
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: K
   - location:
@@ -361,7 +361,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AD
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: M
   - location:
@@ -375,6 +375,6 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AF
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: O

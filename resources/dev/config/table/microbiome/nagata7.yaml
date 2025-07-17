@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/9499989/bin/mmc2.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: S7
       start_at_line_number: 4
   provenance:
-    article_curie: PMC:PMC9499989
+    publication: PMC:PMC9499989
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -31,7 +31,7 @@ template:
     triple_predicate: biolink:associated_with
   reindexing:
     - mode: after
-      column: assertion_strength
+      column: relationship_strength
       comparison: ne
       value_for_comparison: NA
 
@@ -50,7 +50,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: 'N'
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: J
   - triple:
@@ -67,7 +67,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: S
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: O
   - triple:
@@ -84,7 +84,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: X
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: T
   - triple:
@@ -101,7 +101,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AC
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: 'Y'
   - triple:
@@ -118,7 +118,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AH
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AD
   - triple:
@@ -135,6 +135,6 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: AM
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: AI

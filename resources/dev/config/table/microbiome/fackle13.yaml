@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://static-content.springer.com/esm/art%3A10.1038%2Fs41564-024-01870-z/MediaObjects/41564_2024_1870_MOESM4_ESM.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Supplementary Table 13
       start_at_line_number: 2
   provenance:
-    article_curie: PMC:PMC11726441
+    publication: PMC:PMC11726441
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:

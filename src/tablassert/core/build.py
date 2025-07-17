@@ -19,7 +19,7 @@ def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
     metadata: dict[str, Any] = graphmodel["metadata"]
     exportpath: Path = savepath(posix_filepath, sheetname, metadata, idx)
     if not exportpath.exists():
-        df: pl.DataFrame = dataframing(subsectionmodel, graphmodel)
+        df: pl.DataFrame = dataframing(subsectionmodel, graphmodel, idx)
         save(df, exportpath)
     return None
 

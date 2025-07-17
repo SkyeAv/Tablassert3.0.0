@@ -178,28 +178,28 @@ class Attributes(BaseModel):
     sample_size: Attribute = Field(default_factory=Attribute)
     p_value: Attribute = Field(default_factory=Attribute)
     multiple_testing_correction_method: Attribute = Field(default_factory=Attribute)
-    assertion_strength: Attribute = Field(default_factory=Attribute)
+    relationship_strength: Attribute = Field(default_factory=Attribute)
     assertion_method: Attribute = Field(default_factory=Attribute)
     notes: Optional[str] = Field(default=None)
 
 
 class Provenance(BaseModel):
-    article_curie: str = Field(...)
+    publication: str = Field(...)
     config_curator_name: str = Field(...)
     config_curator_organization: str = Field(...)
 
-    @field_validator("article_curie", mode="after")
+    @field_validator("publication", mode="after")
     @classmethod
-    def is_article_curie(cls, article_curie: str) -> str:
+    def is_publication(cls, publication: str) -> str:
         accepted_domains = {"PMC:", "PMID:", "doi:"}
-        if all(domain not in article_curie for domain in accepted_domains):
-            if "PMC" in article_curie:
-                return "PMC:" + article_curie
-            elif "/" in article_curie:
-                return "doi:" + article_curie
+        if all(domain not in publication for domain in accepted_domains):
+            if "PMC" in publication:
+                return "PMC:" + publication
+            elif "/" in publication:
+                return "doi:" + publication
             else:
-                return "PMID:" + article_curie
-        return article_curie
+                return "PMID:" + publication
+        return publication
 
 
 def start_end_rows_fallback(
@@ -219,7 +219,7 @@ def start_end_rows_fallback(
 
 
 class ExcelHyperparameters(BaseModel):
-    extension: Literal["xlsx", "xls"] = Field(...)
+    file_extension: Literal["xlsx", "xls"] = Field(...)
     which_excel_sheet_to_use: str = Field(default="Sheet1")
     start_at_line_number: Optional[int] = Field(default=None)
     end_at_line_number: Optional[int] = Field(default=None)
@@ -237,7 +237,7 @@ class ExcelHyperparameters(BaseModel):
 
 
 class CsvHyperparameters(BaseModel):
-    extension: Literal["csv", "tsv", "txt"] = Field(...)
+    file_extension: Literal["csv", "tsv", "txt"] = Field(...)
     file_delimiter: str = Field(default=",")
     start_at_line_number: Optional[int] = Field(default=None)
     end_at_line_number: Optional[int] = Field(default=None)
@@ -255,14 +255,14 @@ class CsvHyperparameters(BaseModel):
 
 
 class PdfHyperparameters(BaseModel):
-    extension: Literal["pdf"] = Field(...)
+    file_extension: Literal["pdf"] = Field(...)
     pages_table_is_on: Optional[list[int]] = Field(default=None)
     camelot_flavor: Literal["stream", "lattice"] = Field(default="lattice")
 
 
 DownloadHyperparameters: TypeAlias = Annotated[
     Union[ExcelHyperparameters, CsvHyperparameters, PdfHyperparameters],
-    Field(discriminator="extension"),
+    Field(discriminator="file_extension"),
 ]
 
 
@@ -283,10 +283,10 @@ def get_savepath(link: str, storagepath: Path) -> Path:
 
 
 def check_local_tarfiles(
-    savepath: Path, local_pmc_download: FilePath, article_curie: str
+    savepath: Path, local_pmc_download: FilePath, publication: str
 ) -> Optional[Path]:
     tarpath: FilePath = (
-        local_pmc_download / article_curie[-2:] / f"{article_curie[4:]}.tar.gz"
+        local_pmc_download / publication[-2:] / f"{publication[4:]}.tar.gz"
     )
 
     if not tarpath.exists():
@@ -380,8 +380,8 @@ class Section(BaseModel):
         if posix_filepath:
             return self
 
-        article_curie: str = self.provenance.article_curie
-        storagepath: Path = DATALAKE_INTERNAL / article_curie
+        publication: str = self.provenance.publication
+        storagepath: Path = DATALAKE_INTERNAL / publication
         storagepath.mkdir(parents=True, exist_ok=True)
 
         link: str = str(self.location.where_to_download_data_from)
@@ -393,7 +393,7 @@ class Section(BaseModel):
         local_pmc_download: Union[FilePath, str] = environ["LOCAL_PMC_DOWNLOAD"]
         if isinstance(local_pmc_download, Path):
             result: Optional[Path] = check_local_tarfiles(
-                savepath, local_pmc_download, article_curie
+                savepath, local_pmc_download, publication
             )
             if result and result.exists():
                 self.posix_filepath = result

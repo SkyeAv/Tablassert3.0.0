@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/11792502/bin/spectrum.01368-24-s0002.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Table S13
       start_at_line_number: 3
   provenance:
-    article_curie: PMC:PMC11792502
+    publication: PMC:PMC11792502
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -16,7 +16,7 @@ template:
     p_value:
       encoding_method: column_of_values
       value_for_encoding: G
-    assertion_strength:
+    relationship_strength:
       encoding_method: column_of_values
       value_for_encoding: D
     assertion_method:

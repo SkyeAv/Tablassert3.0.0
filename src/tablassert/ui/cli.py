@@ -31,10 +31,10 @@ def train(
         "significant":
         "sample_size":
         "multiple_testing_correction_method":
-        "assertion_strength":
+        "relationship_strength":
         "assertion_method":
         "notes":
-        "pmc_file_caption":
+        "supplementary_file_caption":
         "subject_mapped_with_database":
         "subject_mapped_with_level":
         "object_mapped_with_database":

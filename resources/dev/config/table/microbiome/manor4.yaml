@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/7562722/bin/41467_2020_18871_MOESM4_ESM.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Supplementary Data 4
       start_at_line_number: 3
   provenance:
-    article_curie: PMC:PMC7562722
+    publication: PMC:PMC7562722
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -19,7 +19,7 @@ template:
     multiple_testing_correction_method:
       encoding_method: value
       value_for_encoding: Benjamini Hochberg
-    assertion_strength:
+    relationship_strength:
       encoding_method: column_of_values
       value_for_encoding: E
       math_module_transformations:

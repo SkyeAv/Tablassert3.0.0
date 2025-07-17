@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://static-content.springer.com/esm/art%3A10.1038%2Fs41598-023-31115-8/MediaObjects/41598_2023_31115_MOESM7_ESM.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Supplementary Table 6
       start_at_line_number: 4
   provenance:
-    article_curie: PMC:PMC10052271
+    publication: PMC:PMC10052271
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -41,7 +41,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: E
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: C
   - triple:
@@ -67,6 +67,6 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: K
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: I

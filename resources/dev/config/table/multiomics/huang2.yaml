@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/11310467/bin/41467_2024_51074_MOESM5_ESM.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: A
       start_at_line_number: 2
   provenance:
-    article_curie: PMC:PMC11310467
+    publication: PMC:PMC11310467
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -40,7 +40,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: F
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: D
       notes: Statistical analysis of transcriptomic changes in HFF cells 6 hours post MPXV infection (n=4 independent experiments). The two-sided p-values were calculated by Wald test and FDR-adjusted as per standard DESeq2 workflow (see materials and methods).
@@ -53,7 +53,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: K
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: I
       notes: Statistical analysis of transcriptomic changes in HFF cells 12 hours post MPXV infection (n=4 independent experiments). The two-sided p-values were calculated by Wald test and FDR-adjusted as per standard DESeq2 workflow (see materials and methods).
@@ -66,7 +66,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: 'N'
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: P
       notes: Statistical analysis of transcriptomic changes in HFF cells 24 hours post MPXV infection (n=4 independent experiments). The two-sided p-values were calculated by Wald test and FDR-adjusted as per standard DESeq2 workflow (see materials and methods).

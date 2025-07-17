@@ -2,11 +2,11 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/9212162/bin/pntd.0010491.s003.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: OTUs
       start_at_line_number: 2
   provenance:
-    article_curie: PMC:PMC9212162
+    publication: PMC:PMC9212162
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:

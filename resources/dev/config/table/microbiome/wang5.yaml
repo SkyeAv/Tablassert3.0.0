@@ -2,10 +2,10 @@ template:
   location:
     where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/6555748/bin/12931_2019_1085_MOESM5_ESM.xlsx
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       start_at_line_number: 3
   provenance:
-    article_curie: PMC:PMC6555748
+    publication: PMC:PMC6555748
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -44,7 +44,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: C
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: D
   - location:
@@ -57,7 +57,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: F
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: E
   - location:
@@ -70,7 +70,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: C
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: D
   - location:
@@ -83,7 +83,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: F
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: E
   - location:
@@ -96,7 +96,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: C
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: D
   - location:
@@ -109,7 +109,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: F
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: E
   - location:
@@ -122,7 +122,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: C
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: D
   - location:
@@ -135,7 +135,7 @@ sections:
       p_value:
         encoding_method: column_of_values
         value_for_encoding: F
-      assertion_strength:
+      relationship_strength:
         encoding_method: column_of_values
         value_for_encoding: E
     

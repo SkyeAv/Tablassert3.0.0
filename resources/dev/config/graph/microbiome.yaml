@@ -1,8 +1,8 @@
 # author --> Skye Lane Goetz
 
 metadata:
-  knowledge_graph_name: MICROBIOME_KG_TEST_SCORES
-  graph_version: 2.0.0
+  knowledge_graph_name: MICROBIOME_KG
+  graph_version: 2.1.0
   graph_description: Connecting Multiomic Factors with Host Health
 
 location:

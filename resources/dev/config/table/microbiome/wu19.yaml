@@ -3,11 +3,11 @@ template:
   location:
     where_to_download_data_from: https://ndownloader.figstatic.com/collections/7296079/versions/1
     download_hyperparameters:
-      extension: xlsx
+      file_extension: xlsx
       which_excel_sheet_to_use: Table S19
       start_at_line_number: 4
   provenance:
-    article_curie: PMC:PMC11224521
+    publication: PMC:PMC11224521
     config_curator_name: Skye Lane Goetz
     config_curator_organization: Institute for Systems Biology
   attributes:
@@ -17,7 +17,7 @@ template:
     p_value:
       encoding_method: column_of_values
       value_for_encoding: I
-    assertion_strength:
+    relationship_strength:
       encoding_method: column_of_values
       value_for_encoding: E
     assertion_method:
