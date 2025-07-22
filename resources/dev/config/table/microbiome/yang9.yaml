@@ -55,6 +55,8 @@ sections:
         mapping_hyperparameters:
           classes_to_prioritize:
             - biolink:Gene
+          classes_to_avoid:
+            - biolink:Disease
           in_this_organism: NCBITaxon:9606
   - attributes:
       p_value:
@@ -109,6 +111,8 @@ sections:
         mapping_hyperparameters:
           classes_to_prioritize:
             - biolink:Gene
+          classes_to_avoid:
+            - biolink:Disease
           in_this_organism: NCBITaxon:9606
   - attributes:
       p_value:

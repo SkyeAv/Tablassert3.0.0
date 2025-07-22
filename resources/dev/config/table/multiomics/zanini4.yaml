@@ -1,0 +1,63 @@
+template:
+  location:
+    where_to_download_data_from: https://static-content.springer.com/esm/art%3A10.1038%2Fs41591-024-03142-z/MediaObjects/41591_2024_3142_MOESM3_ESM.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      which_excel_sheet_to_use: Supplementary Table 4
+      start_at_line_number: 5
+  provenance:
+    publication: PMC:PMC11405273
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Cox regression
+    notes: Predictive performance of protein-based model compared to benchmark patient information models.
+  triple:
+    triple_subject: 
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Protein
+        substrings_to_remove:
+          - _.*
+          - ^[^a-zA-Z]*
+        explode_by_delimiter: ','
+    triple_object:
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+        regular_expressions:
+          - pattern : '.$'
+            replacement : ''
+          - pattern : 'coeliac disease'
+            replacement : 'celiac disease'
+          - pattern : '_'
+            replacement : ''
+    triple_predicate: biolink:associated_with_increased_likelihood_of
+
+sections:
+  - attributes:
+      sample_size:
+        encoding_method: column_of_values
+        value_for_encoding: I
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: F
+    triple:
+      triple_subject:
+        encoding_method: column_of_values
+        value_for_encoding: L
+  - attributes:
+      sample_size:
+        encoding_method: column_of_values
+        value_for_encoding: S
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: P
+    triple:
+      triple_subject:
+        encoding_method: column_of_values
+        value_for_encoding: V

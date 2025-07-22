@@ -1,6 +1,6 @@
 template:
   location:
-    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/11401200/bin/mmc3.xlsx
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/11401200/bin/mmc2.xlsx
     download_hyperparameters:
       file_extension: xlsx
       start_at_line_number: 2
@@ -14,40 +14,39 @@ template:
       value_for_encoding: 969
     relationship_strength:
       encoding_method: column_of_values
-      value_for_encoding: C
+      value_for_encoding: D
     assertion_method:
       encoding_method: value
-      value_for_encoding: LASSO Regression
-    notes: Our result shows most of the drugs show the best model accuracy based on the feature sets that include the relative gene expression guided by the KG in the independent test dataset Beat AML wave 3/4
+      value_for_encoding: LASSO regression
+    notes: Gene expression —drug associations identified in LASSO regression models, related to STAR Methods
   triple:
     triple_subject: 
       encoding_method: column_of_values
       value_for_encoding: A
       mapping_hyperparameters:
-        prefix: "ENSEMBL:"
-        classes_to_prioritize:
-          - biolink:Gene
-        in_this_organism: NCBITaxon:9606
-    triple_object: 
+        substrings_to_remove:
+          - \s*\(.*
+    triple_object:
       encoding_method: column_of_values
       value_for_encoding: B
       mapping_hyperparameters:
+        in_this_organism: NCBITaxon:9606
+        prefix: "ENSEMBL:"
         classes_to_prioritize:
           - biolink:Gene
-        in_this_organism: NCBITaxon:9606
 
 sections:
   - triple:
       triple_predicate: biolink:associated_with_resistance_to
     reindexing:
       - mode: before
-        column: C
+        column: D
         comparison: ge
         value_for_comparison: 0
   - triple:
       triple_predicate: biolink:associated_with_sensitivity_to
     reindexing:
       - mode: before
-        column: C
-        comparison: le
+        column: D
+        comparison: lt
         value_for_comparison: 0

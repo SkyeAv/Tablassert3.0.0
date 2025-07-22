@@ -1,0 +1,57 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/7474629/bin/pnas.2001429117.sd03.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      start_at_line_number: 2
+  provenance:
+    publication: PMC:PMC7474629
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 4905
+    p_value:
+      encoding_method: column_of_values
+      value_for_encoding: E
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: FDR of 10 percent
+    relationship_strength:
+      encoding_method: column_of_values
+      value_for_encoding: C
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Linear regression
+    notes: We obtained 219 protein–PRS, 259 metabolite–PRS, and 288 clinical lab–PRS correlations at a false discovery rate (FDR) of 10%, for a total of 766 significant analyte–PRS correlations.
+  triple:
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        how_to_fill_column: backward
+    triple_object:
+      encoding_method: column_of_values
+      value_for_encoding: B
+    triple_predicate: biolink:correlated_with
+
+sections:
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Clinical labs, by disease
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Clinical labs, by analyte
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Metabolomics, by disease
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Metabolomics, by analyte
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Proteomics, by disease
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Metabolomics, by analyte

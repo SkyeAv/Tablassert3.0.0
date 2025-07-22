@@ -1,0 +1,78 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/10622416/bin/41467_2023_42626_MOESM7_ESM.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      which_excel_sheet_to_use: snRNAseq_MAST_pseudobulk
+      start_at_line_number: 2
+  provenance:
+    publication: PMC:PMC10622416
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 408
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Benjamini Hochberg
+    notes: Upon comparison of the expression levels between PSP and control nuclei in each cluster, we identified significant DEGs at FDR < 0.05 for genes expressed in >10% of the nuclei in the cluster analyzed. We detected significantly up- or down-regulated DEGs in both neuronal and glial clusters
+  triple:
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Gene
+        in_this_organism: NCBITaxon:9606
+    triple_object:
+      encoding_method: column_of_values
+      value_for_encoding: B
+      mapping_hyperparameters:
+        regular_expressions: 
+          - pattern: ast
+            replacement: Astrocytes
+          - pattern: end
+            replacement: Endothelial cells
+          - pattern: exc_neu
+            replacement: Excitatory neurons
+          - pattern: inh_neu
+            replacement: Inhibitory neurons
+          - pattern: mic
+            replacement: Microglia
+          - pattern: neu
+            replacement: Broad neuronal population
+          - pattern: oli
+            replacement: Oligodendrocytes
+          - pattern: opc
+            replacement: Oligodendrocyte precursor cells
+          - pattern: per
+            replacement: Pericytes
+    triple_predicate: biolink:associated_with
+  reindexing:
+    - mode: before
+      column: B
+      comparison: ne
+      value_for_comparison: None
+  
+sections:
+  - attributes:
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: H
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: D
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Log fold change from MAST analysis
+  - attributes:
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: K
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: I
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Log fold change from Pseudobulk analysis with edgeR

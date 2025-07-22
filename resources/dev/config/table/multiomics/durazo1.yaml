@@ -1,0 +1,77 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/10349864/bin/42003_2023_5113_MOESM4_ESM.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      start_at_line_number: 3
+  provenance:
+    publication: PMC:PMC10349864
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: column_of_values
+      value_for_encoding: G
+    p_value:
+      encoding_method: column_of_values
+      value_for_encoding: P
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Unspecified
+    relationship_strength:
+      encoding_method: column_of_values
+      value_for_encoding: J
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Spearman correlation
+  triple:
+    triple_subject: 
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:OrganismTaxon
+        substrings_to_remove:
+          - .*;
+    triple_object:
+      encoding_method: column_of_values
+      value_for_encoding: H
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+        substrings_to_remove:
+          - _.*
+        regular_expressions:
+          - pattern : 'CD'
+            replacement : "Crohns disease"
+          - pattern : 'UC'
+            replacement : Ulcerative colitis
+          - pattern : SCZ
+            replacement : Schizophrenia
+          - pattern : MS 
+            replacement : Multiple sclerosis
+          - pattern : AD 
+            replacement : Alzheimers disease
+          - pattern : LBD 
+            replacement : Lewy body dementia
+          - pattern : PD
+            replacement : Parkinsons disease        
+    triple_predicate: biolink:correlated_with
+
+sections:
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Supplementary_Data_2
+    attributes:
+      notes: We performed 1628 pair-wise correlations across 2553 significantly expressed genes in at least one cell type, which resulted in 366 significant correlations (FDR < 0.01)
+    triple:
+      triple_subject:
+        encoding_method: column_of_values
+        value_for_encoding: A
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Supplementary_Data_5
+    attributes:
+      notes: We performed a total of 1863 bivariate tests between diseases and protein levels. We considered a significant regional correlation if FDR < 0.01. We observed significant correlations between protein levels and all diseases, except FTD. PD had a higher number of significant correlations, compared to other tested diseases
+    triple:
+      triple_subject:
+        encoding_method: column_of_values
+        value_for_encoding: B

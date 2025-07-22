@@ -58,6 +58,9 @@ sections:
   - triple:
       triple_object:
         value_for_encoding: Apolipoprotein B
+        mapping_hyperparameters:
+          classes_to_avoid:
+            - biolink:Gene
     attributes:
       p_value:
         encoding_method: column_of_values

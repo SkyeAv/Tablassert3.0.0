@@ -1,0 +1,72 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/10622416/bin/41467_2023_42626_MOESM4_ESM.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      start_at_line_number: 2
+  provenance:
+    publication: PMC:PMC10622416
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 408
+    p_value:
+      encoding_method: column_of_values
+      value_for_encoding: L
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Benjamini Hochberg
+    relationship_strength:
+      encoding_method: column_of_values
+      value_for_encoding: J
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Differential expression analysis using linear regression adjusting for covariates
+  triple:
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Gene
+        prefix: "ENSEMBL:"
+    triple_object:
+      value_for_encoding: Progressive supranuclear palsy
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+    triple_predicate: biolink:associated_with
+
+sections:
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: PSPvsCtrl
+    attributes:
+      notes: PSP vs Control DEG, control is the reference group
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: CB
+    attributes:
+      notes: Gene expression association with coiled body (CB) among PSP cases
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: TA
+    attributes:
+      notes: Gene expression association with tufted astrocytes (TA) among PSP cases
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: NFT
+    attributes:
+      notes: Gene expression association with cneurofibrillary tangles (NFT) among PSP cases
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: TauTh
+    attributes:
+      notes: Gene expression association with Tau threads (TauTh) among PSP cases
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Overall
+    attributes:
+      notes: Gene expression association with overall pathology among PSP cases

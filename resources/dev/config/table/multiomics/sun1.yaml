@@ -1,0 +1,493 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/10567551/bin/41586_2023_6592_MOESM3_ESM.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      which_excel_sheet_to_use: ST7
+      start_at_line_number: 6
+  provenance:
+    publication: PMC:PMC10567551
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 54219
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Linear regression
+    notes: Proteomic associations with smoking, medication use, liver function, renal function and top 20 most prevalant diseases
+  triple:
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Protein
+        substrings_to_remove:
+          - '^.*?:'
+          - (:[^:]*:[^:]*)$
+        prefix: "UniProtKB:"
+    triple_object:
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+    triple_predicate: biolink:associated_with
+
+sections:
+  - triple:
+      triple_object:
+        value_for_encoding: Smoking
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: E
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: C
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Hepatic necrosis
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: I
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: K
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: MONDO:0002050
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: L
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: 'N'
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: MONDO:0001134
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: O
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: Q
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: MONDO:0005010
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: R
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: T
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Vincent's Disease
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: U
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: W
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Vasomotor and allergic rhinitis
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: X
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: Z
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Chronic rhinitis
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AA
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AC
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: MONDO:0004979
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AD
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AF
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: MONDO:0007186
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AG
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AI
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: MONDO:0004628
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AJ
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AL
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: MONDO:0005711
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AM
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AO
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Irritable bowel syndrome
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AP
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AR
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Other diseases of intestine
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AS
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AU
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Psoriasis
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AV
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: AX
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Hypertensive heart and renal disease
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: AY
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BA
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Acquired deformities of fingers and toes
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BB
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BD
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Other and unspecified disorders of joint
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BE
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BG
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: HP:0003418
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BH
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BJ
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Other and unspecified disorders of soft tissue
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BK
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BM
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Other disease of urinary system
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BN
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BP
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Alanine aminotransferase measurement
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BQ
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BS
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Aspartate aminotransferase measurement
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BT
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BV
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10
+  - triple:
+      triple_object:
+        value_for_encoding: Glomerular Filtration Rate 
+    attributes:
+      relationship_strength:
+        encoding_method: column_of_values
+        value_for_encoding: BW
+      p_value:
+        encoding_method: column_of_values
+        value_for_encoding: BY
+        math_module_transformations:
+          - attribute: copysign
+            arguments:
+              - -1
+              - ~
+          - attribute: pow
+            arguments:
+              - ~
+              - 10

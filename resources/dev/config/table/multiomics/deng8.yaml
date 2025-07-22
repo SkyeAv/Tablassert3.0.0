@@ -1,0 +1,39 @@
+template:
+  location:
+    where_to_download_data_from: https://www.cell.com/cms/10.1016/j.cell.2024.10.045/attachment/765b3106-d659-4412-a27b-b7e76d7895e9/mmc7.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      which_excel_sheet_to_use: Table S7
+      start_at_line_number: 3
+  provenance:
+    publication: PMID:39579765
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 53026 
+    p_value:
+      encoding_method: column_of_values
+      value_for_encoding: E
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Bonferroni
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Pathway score
+    notes: Associations between proteins and cluster's multimorbidity levels. Proteomic classification of 660 diseases into 40 clusters. The heatmap shows the enrichment of GO BP gene sets in disease clusters detected by gene set enrichment analysis. Color of heatmap indicates the mean value of pathway scores for diseases in this cluster. Asterisk∗ depicts pathways differently regulated between one cluster and others (FDR < 0.01).
+  triple:
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: B
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Gene
+        in_this_organism: NCBITaxon:9606
+    triple_object:
+      value_for_encoding: multimorbidity
+    triple_predicate: biolink:associated_with
+
+sections:
+  - ~

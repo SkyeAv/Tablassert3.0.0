@@ -191,7 +191,7 @@ class Provenance(BaseModel):
     @field_validator("publication", mode="after")
     @classmethod
     def is_publication(cls, publication: str) -> str:
-        accepted_domains = {"PMC:", "PMID:", "doi:"}
+        accepted_domains = ["PMC:", "PMID:", "doi:"]
         if all(domain not in publication for domain in accepted_domains):
             if "PMC" in publication:
                 return "PMC:" + publication
