@@ -1,0 +1,42 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/10371870/bin/41586_2023_6311_MOESM4_ESM.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      which_excel_sheet_to_use: CCS_cell_DEtest
+      start_at_line_number: 2
+  provenance:
+    publication: PMC:PMC10371870
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    p_value:
+      encoding_method: column_of_values
+      value_for_encoding: F
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Benjamini Hochberg
+    relationship_strength:
+      encoding_method: column_of_values
+      value_for_encoding: D
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Log fold change
+    notes: "Differential ion channel expression profiles (relative to non-CCS aCMs) highlighted the electrophysiological specialization of the CCS cell states: SAN and AVN P cells, AV bundle cells and Purkinje cells"
+  triple:
+    triple_subject: 
+      value_for_encoding: cardiac conduction system
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+    triple_object:
+      encoding_method: column_of_values
+      value_for_encoding: B
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Gene
+        in_this_organism: NCBITaxon:9606
+    triple_predicate: biolink:associated_with
+
+sections:
+  - ~
