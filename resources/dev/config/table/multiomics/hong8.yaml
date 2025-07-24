@@ -1,0 +1,58 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/8657403/bin/Table8.XLSX
+    download_hyperparameters:
+      file_extension: xlsx
+      start_at_line_number: 2
+  provenance:
+    publication: PMC:PMC8657403
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 412
+    p_value:
+      encoding_method: column_of_values
+      value_for_encoding: F
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Benjamini Hochberg
+    relationship_strength:
+      encoding_method: column_of_values
+      value_for_encoding: B
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Univariate and Multivariate Cox regression
+    notes: Data of hypoxia-related genes were downloaded from the molecular signatures database (MSigDB), and screened by univariate and multivariate Cox regression analysis to construct a prognosis-predictive model. The robustness of the model was evaluated in two melanoma cohorts. Furthermore, an external validation cohort, the bladder cancer cohort, from the Cancer Genome Atlas (TCGA) database, was t used to explore the mechanism of gene mutation, immune cell infiltration, signaling pathway enrichment, and drug sensitivity.
+  triple:
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Gene
+        in_this_organism: NCBITaxon:9606
+    triple_object:
+      value_for_encoding: Urothelial Carcinoma
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+    triple_predicate: biolink:associated_with
+
+sections:
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: training set
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: test set
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: TCGA BLCA
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: GSE15863 CACO2
+  - location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: GSE158632-HT29

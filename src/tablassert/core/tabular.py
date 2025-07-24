@@ -299,16 +299,16 @@ def leveltwo(leveloneoutput: str) -> str:
     sorted_cleaned_unique_tokens: list[str] = sorted(
         list(dict.fromkeys(cleaned_tokens))
     )
-    leveltwooutput: str = " ".join(sorted_cleaned_unique_tokens)
-    return leveltwooutput
+    legacy_leveltwooutput: str = " ".join(sorted_cleaned_unique_tokens)
+    return legacy_leveltwooutput
 
 
 NONWORD_REGEX: Any = re.compile(r"\W+")
 
 
-def levelthree(leveltwooutput: str) -> str:
+def levelthree(legacy_leveltwooutput: str) -> str:
     regex: Any = NONWORD_REGEX
-    levelthreeoutput: str = re.sub(regex, "", leveltwooutput)
+    levelthreeoutput: str = re.sub(regex, "", legacy_leveltwooutput)
     return levelthreeoutput
 
 
@@ -326,7 +326,7 @@ def babelsql(
 
     babel_levelcondtion: str = {
         "L1": "SYNONYMS.L1 = :input",
-        "L2": "SYNONYMS.L2 = :input",
+        # L2 is depricated
         "L3": "SYNONYMS.L3 = :input",
     }.get(level, "")
 
@@ -371,11 +371,12 @@ def babelsql(
     return f"""
     SELECT
         NAMES.CURIE,
-        NAMES.CATEGORY,
+        CATEGORIES.NAME,
         NAMES.NAME,
         NAMES.TAXON
-        FROM SYNONYMS
-        INNER JOIN NAMES ON SYNONYMS.CURIE = NAMES.CURIE
+    FROM NAMES
+    INNER JOIN SYNONYMS ON NAMES.ID = SYNONYMS.ID
+    INNER JOIN CATEGORIES ON NAMES.CATEGORY = CATEGORIES.CATEGORY
     WHERE
         {babel_levelcondtion}
         {babel_taxoncondition}
@@ -629,23 +630,10 @@ def fullmap3(
     if result:
         return result
 
-    level = "L2"
-    leveltwooutput: str = leveltwo(leveloneoutput)
-    sql_params["input"] = leveltwooutput
-
-    """
-    start = time.time()
-    sql = babelsql(
-        prioritize_placeholders, avoid_placeholders, taxon, most_common, level
-    )
-    rows = safe_query("babel", sql, sql_params)
-    result = collectresults(name, rows, level, "babel", sql_params)
-    if result:
-        return result
-    """
+    legacy_leveltwooutput: str = leveltwo(leveloneoutput)  # level two is depricated
 
     level = "L3"
-    levelthreeoutput: str = levelthree(leveltwooutput)
+    levelthreeoutput: str = levelthree(legacy_leveltwooutput)
     sql_params["input"] = levelthreeoutput
 
     start = time.time()
@@ -784,7 +772,8 @@ def pubmed_metadata(publication: str) -> dict[str, Any]:
     FROM ids
     INNER JOIN mesh ON ids.pmid = mesh.pmid
     INNER JOIN info ON ids.pmid = info.pmid
-    WHERE ids.alt = :curie
+    WHERE ids.alt = :curie OR ids.pmid = :curie
+    LIMIT 1
     """
 
     global start

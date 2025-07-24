@@ -1,0 +1,80 @@
+template:
+  location:
+    where_to_download_data_from: https://pmc.ncbi.nlm.nih.gov/articles/instance/10338795/bin/MCO2-4-e317-s002.xlsx
+    download_hyperparameters:
+      file_extension: xlsx
+      start_at_line_number: 3
+  provenance:
+    publication: PMC:PMC10338795
+    config_curator_name: Skye Lane Goetz
+    config_curator_organization: Institute for Systems Biology
+  attributes:
+    sample_size:
+      encoding_method: value
+      value_for_encoding: 13
+    p_value:
+      encoding_method: column_of_values
+      value_for_encoding: D
+    multiple_testing_correction_method:
+      encoding_method: value
+      value_for_encoding: Benjamini Hochberg
+    relationship_strength:
+      encoding_method: column_of_values
+      value_for_encoding: B
+    assertion_method:
+      encoding_method: value
+      value_for_encoding: Log2 fold change from Fishers Exact test
+  triple:
+    triple_subject: 
+      encoding_method: column_of_values
+      value_for_encoding: A
+      mapping_hyperparameters:
+        in_this_organism: NCBITaxon:9606
+    triple_object:
+      value_for_encoding: osteosarcoma
+      mapping_hyperparameters:
+        classes_to_prioritize:
+          - biolink:Disease
+    triple_predicate: biolink:associated_with
+
+sections:
+  - attributes:
+      notes:  Table S1. Lists of differentially expressed genes (DEGs) between osteosarcoma and normal tissues
+    location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Table S1
+    triple:
+      triple_subject:
+        mapping_hyperparameters:
+          classes_to_prioritize:
+            - biolink:Gene
+  - attributes:
+      notes:  Table S8.  Lists of differentially expressed (DE) proteins between osteosarcoma and normal tissue
+    location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Table S8
+    triple:
+      triple_subject:
+        mapping_hyperparameters:
+          classes_to_prioritize:
+            - biolink:Protein
+  - attributes:
+      notes:  Table S9. Lists of differentially expressed  genes (DEGs) of osteosarcoma before and after NACT
+    location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Table S9
+    triple:
+      triple_subject:
+        mapping_hyperparameters:
+          classes_to_prioritize:
+            - biolink:Gene
+  - attributes:
+      notes:  Table S10. Lists of differentially expressed potential target genes for osteosarcoma after neoadjuvant chemotherapy
+    location:
+      download_hyperparameters:
+        which_excel_sheet_to_use: Table S10
+    triple:
+      triple_subject:
+        mapping_hyperparameters:
+          classes_to_prioritize:
+            - biolink:Gene

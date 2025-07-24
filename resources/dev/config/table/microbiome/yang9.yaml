@@ -38,26 +38,26 @@ sections:
           classes_to_prioritize:
             - biolink:Gene
           in_this_organism: NCBITaxon:9606
-  - attributes:
-      p_value:
-        encoding_method: column_of_values
-        value_for_encoding: J
-    triple:
-      triple_subject: 
-        encoding_method: column_of_values
-        value_for_encoding: G
-        mapping_hyperparameters:
-          classes_to_prioritize:
-            - biolink:OrganismTaxon
-      triple_object:
-        encoding_method: value
-        value_for_encoding: BSH
-        mapping_hyperparameters:
-          classes_to_prioritize:
-            - biolink:Gene
-          classes_to_avoid:
-            - biolink:Disease
-          in_this_organism: NCBITaxon:9606
+  #- attributes:
+      #p_value:
+        #encoding_method: column_of_values
+        #value_for_encoding: J
+    #triple:
+      #triple_subject: 
+        #encoding_method: column_of_values
+        #value_for_encoding: G
+        #mapping_hyperparameters:
+          #classes_to_prioritize:
+            #- biolink:OrganismTaxon
+      #triple_object:
+        #encoding_method: value
+        #value_for_encoding: BSH
+        #mapping_hyperparameters:
+          #classes_to_prioritize:
+            #- biolink:Gene
+          #classes_to_avoid:
+            #- biolink:Disease
+          #in_this_organism: NCBITaxon:9606
   - attributes:
       p_value:
         encoding_method: column_of_values
