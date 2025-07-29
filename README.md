@@ -38,12 +38,11 @@ I'm Still Working on This
 
 ## Required Configuration
 
-[GraphConfigs](./docs/graph_config.md).
+Documentation for [GraphConfigs](./docs/graph_config.md)
 
-[TableConfigs](./docs/table_config.md).
+Documentation for [TableConfigs](./docs/table_config.md)
 
 ## Contact
 
-[Skye Lane Goetz](skye.lane.goetz@gmail.com) - Institute for Systems Biology (ISB)
+[Skye Lane Goetz](skye.lane.goetz@gmail.com), [Gwênlyn Glusman](gglusman@isbscience.org) - Institute for Systems Biology (ISB)
 
-[Gwênlyn Glusman](gglusman@isbscience.org) - Institute for Systems Biology (ISB)
