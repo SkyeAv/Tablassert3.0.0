@@ -122,8 +122,8 @@ sections:
 | where_to_download_data_from | Y | A link specifying where the data was downloaded from, tries to download the data if posix_filepath isn't specified | NA |
 | download_hyperparameters | Y | NA | NA |
 | file_extension | Y | the file extension of the file you're working with, it dictates how Tablassert reads the data and what downstream parameters are required | NA |
-| file_delimiter | Y$^*$ | a delimiter for a delimited file, only required for csv, tsv, and txt files | "," |
-| which_excel_sheet_to_use | Y$^*$ | the excel spreadsheet sheet name of the sheet where the tabular data you're working with lies | "Sheet1" |
+| file_delimiter | Y $^*$ | a delimiter for a delimited file, only required for csv, tsv, and txt files | "," |
+| which_excel_sheet_to_use | Y $^*$ | the excel spreadsheet sheet name of the sheet where the tabular data you're working with lies | "Sheet1" |
 | start_at_line_number | N | if specified, start transforming the tabular data at this line number (1 based indexing) | None |
 | end_at_line_number | N | if specified, stop transforming the tabular data at this line number (1 based indexing) | None |
 | use_row_numbers | N | if specified, only transform the tabular data with these line numbers (1 based indexing) | None |
