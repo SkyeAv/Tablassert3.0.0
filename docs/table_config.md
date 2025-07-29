@@ -161,7 +161,7 @@ sections:
 | pattern | Y | a regular expression pattern to apply | NA |
 | replacement | Y | a regular expression replacement to apply | NA |
 | explode_by_delimiter | N | a delimiter to split all values by into a list before exploding each of these lists into thier own separate values for further transformation | None |
-| **reindexing** | N | test | NA |
+| **reindexing** | N | NA | NA |
 | when | Y | before (before column names are renamed, they still follow excel style conventions) (these transformations are applied before all other transformations are applied) or after (after column names are renames, they follow final KG naming conventions) (these transformations are applied after all other transformations are applied) | "after" |
 | column | Y | the name of the column you wish to reindex values by | NA |
 | comparison | Y | ge (greater than or equal to), gt (greater than), le (less than or equal to), lt (less than), ne (does not equal, can be a string), eq (does not equal, can be a string) | NA |
