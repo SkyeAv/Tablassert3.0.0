@@ -6,7 +6,7 @@
 
 Configuration files used to specifiy a new knowledge graph, which table configs it uses, and general graph wide parameters. You must specifiy one GraphConfig to create a knowledge graph with Tablassert.
 
-## Base Schema
+## Base Schem
 
 ```yaml
 metadata:

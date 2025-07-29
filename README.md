@@ -16,13 +16,13 @@ Tablassert is a versatile tool that creates knowledge assertions from tabular da
 python3 -m pip install poetry
 ```
 
-**Next,** Install Tablassert CLI and dependencies with Poetry
+**Next,** Install Tablassert and dependencies with Poetry
 
 ```bash
 poetry install
 ```
 
-**Finally,** Run the Tablassert CLI with Poetry
+**Finally,** Run the Tablassert CLI ([documentation here](./docs/tablassert_cli.md)) with Poetry
 
 ```bash
 poetry run cli --help
@@ -30,11 +30,11 @@ poetry run cli --help
 
 ### Via Docker
 
-I'm Still Working on This
+**WIP:** I'm Still Working on This
 
 ### Via Kubernetes Deployment
 
-I'm Still Working on This
+**WIP:** I'm Still Working on This
 
 ## Required Configuration
 
