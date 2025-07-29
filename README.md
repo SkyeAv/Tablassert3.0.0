@@ -45,4 +45,3 @@ Documentation for [TableConfigs](./docs/table_config.md)
 ## Contact
 
 [Skye Lane Goetz](skye.lane.goetz@gmail.com), [Gwênlyn Glusman](gglusman@isbscience.org) - Institute for Systems Biology (ISB)
-

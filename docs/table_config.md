@@ -155,8 +155,8 @@ sections:
 | classes_to_avoid | N | a list of valid biolink:categories that you want to exclude when mapping raw strings to CURIES | None |
 | prefix | N | a prefix to add to all values | None |
 | suffix | N | a suffix to add to all values | None |
-| how_to_fill_column | a valid polars fill_null method to fill nulls | test | None |
-| substrings_to_remove | a list of substrings to remove from all values | test | None |
+| how_to_fill_column | N | a valid polars fill_null method to fill nulls | None |
+| substrings_to_remove | N | a list of substrings to remove from all values | None |
 | regular_expressions | N | a list of regular expression substitutions to apply to all values, they are computed with polars.Expr.str.replace | None |
 | pattern | Y | a regular expression pattern to apply | NA |
 | replacement | Y | a regular expression replacement to apply | NA |
