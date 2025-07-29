@@ -1,0 +1,3 @@
+[submodule "resources/dev/config"]
+	path = resources/dev/config
+	url = https://github.com/SkyeAv/Tablassert.git
