@@ -1,5 +1,9 @@
 # TableConfigs
 
+## Version 2.0.0
+
+### By Skye Lane Goetz
+
 Configuration files used to specify how Tablassert should encode the knowledge in a unit of Tabular content. These are highly flexible and are the backbone of a Tablassert KG.
 
 ## Base Schema

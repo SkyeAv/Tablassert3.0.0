@@ -36,6 +36,12 @@ I'm Still Working on This
 
 I'm Still Working on This
 
+## Required Configuration
+
+[GraphConfigs](./docs/graph_config.md).
+
+[TableConfigs](./docs/table_config.md).
+
 ## Contact
 
 [Skye Lane Goetz](skye.lane.goetz@gmail.com) - Institute for Systems Biology (ISB)
