@@ -22,7 +22,7 @@ python3 -m pip install poetry
 poetry install
 ```
 
-**Finally,** Run the Tablassert CLI ([documentation here](./docs/tablassert_cli.md)) with Poetry
+**Finally,** Run the Tablassert CLI ([documentation](./docs/tablassert_cli.md)) with Poetry
 
 ```bash
 poetry run cli --help
@@ -44,4 +44,4 @@ Documentation for [TableConfigs](./docs/table_config.md)
 
 ## Contact
 
-[Skye Lane Goetz](skye.lane.goetz@gmail.com), [Gwênlyn Glusman](gglusman@isbscience.org) - Institute for Systems Biology (ISB)
+[Skye Lane Goetz](mailto:skye.lane.goetz@gmail.com), [Gwênlyn Glusman](mailto:gglusman@isbscience.org) - Institute for Systems Biology (ISB)
