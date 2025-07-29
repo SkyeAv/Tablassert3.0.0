@@ -13,3 +13,4 @@ RUN pip install "poetry==$POETRY_VERSION"
 RUN poetry install
 
 ENTRYPOINT ["poetry", "run", "cli"]
+CMD ["--help"]

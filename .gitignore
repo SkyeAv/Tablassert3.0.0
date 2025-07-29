@@ -20,3 +20,5 @@ QC.json
 *.json
 MANUALDOWNLOADS/
 *.pt
+*.sh
+*.sql

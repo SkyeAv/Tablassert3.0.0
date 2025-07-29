@@ -8,24 +8,35 @@ Tablassert is a versatile tool that creates knowledge assertions from tabular da
 
 ## Usage
 
-1. Install Poetry
+### Via Poetry
+
+**First,** Install Poetry
 
 ```bash
 python3 -m pip install poetry
 ```
 
-2. Install Tablassert CLI and dependencies with Poetry
+**Next,** Install Tablassert CLI and dependencies with Poetry
 
 ```bash
 poetry install
 ```
 
-3. Run the Tablassert CLI with Poetry
+**Finally,** Run the Tablassert CLI with Poetry
 
 ```bash
 poetry run cli --help
 ```
 
-The CLI still needs to be fleshed out and can only build a KG from a GraphConfig at the moment, hence the lack of a command after the CLI entrypoint.
+### Via Docker
+
+I'm Still Working on This
+
+### Via Kubernetes Deployment
+
+I'm Still Working on This
 
 ## Contact
+
+[Skye Lane Goetz](skye.lane.goetz@gmail.com) - Institute for Systems Biology (ISB)
+[Gwênlyn Glusman](gglusman@isbscience.org) - Institute for Systems Biology (ISB)
