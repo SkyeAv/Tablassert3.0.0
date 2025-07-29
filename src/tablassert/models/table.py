@@ -410,5 +410,5 @@ class Section(BaseModel):
 
 
 class TableConfig(BaseModel):
-    sections: list[Section] = Field(...)
+    sections: list[Optional[Any]] = Field(default=[None])
     template: Optional[Any] = Field(default=None)

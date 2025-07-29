@@ -1,5 +1,5 @@
 from pydantic import ValidationError, BaseModel, DirectoryPath
-from src.tablassert.models.table import Section
+from src.tablassert.models.table import TableConfig, Section 
 from ruamel.yaml.error import YAMLError
 from typing import Any, Type, TypeVar
 from deepmerge.merger import Merger
@@ -71,8 +71,10 @@ def build_sections(
         for path in Path(str(d)).rglob("*"):
             if path.suffix.lower() == TABLE_CONFIG_EXTENSION:
                 table_yaml: Any = load_yaml(path)
-                template = table_yaml.get("template", {})
-                subsections = table_yaml.get("sections", [])
+                Table: TableConfig = load_model(table_yaml, TableConfig)
+                table = Table.model_dump()
+                template = table.get("template", {})
+                subsections = table.get("sections", [])
                 if subsections != []:
                     for idx, section in enumerate(subsections, start=1):
                         merged_section = merger.merge(
