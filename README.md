@@ -22,7 +22,7 @@ python3 -m pip install poetry
 poetry install
 ```
 
-**Finally,** Run the Tablassert CLI ([documentation here](./docs/tablassert_cli.md)) with Poetry
+**Finally,** Run the Tablassert CLI ([documentation](./docs/tablassert_cli.md)) with Poetry
 
 ```bash
 poetry run cli --help
