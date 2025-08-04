@@ -26,6 +26,8 @@ def subgraph(SubSection: Section, graphmodel: dict[str, Any], idx: int) -> None:
 
 def buildgraph(graphconfig: str) -> None:
     graphconfigpath: Path = Path(graphconfig)
+    if not graphconfigpath.exists():
+        raise RuntimeError(f"CODE:301A | {graphconfig} does not exist")
     graph_yaml: Any = load_yaml(graphconfigpath)
     Graph: GraphConfig = load_model(graph_yaml, GraphConfig)
     graphmodel: dict[str, Any] = Graph.model_dump()
