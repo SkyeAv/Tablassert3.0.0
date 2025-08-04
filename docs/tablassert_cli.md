@@ -13,3 +13,4 @@ The Tablassert CLI is the command line interface for Tablassert and it's methods
 | `--help` | NA | the help screen for Tablassert's typer CLI |
 | `train` |  `trainingdata:str`-path to a ndjson (jsonlines) file with the schema defined in `--help` `saveto:str`-path to the file you want to save weights to `epochs:str`-the number of epochs to train model | produces PyTorch weights for the edge scoring model associated with a build |
 | `build` | `graphconfig:str`-path to a valid graph config | NA |
+| `verify` | `config:str`-path to the config you want to verify `graphconfig:bool`-a flag to indicate that the config you're verifying is a GraphConfig `tableconfig:bool`-a flag to indicate that the config you're verifying is a TableConfig | Preemptively Downloads Files to DataLake |
