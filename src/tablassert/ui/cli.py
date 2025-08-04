@@ -17,7 +17,7 @@ def build(
     )
 ) -> None:
     # typer uses docstrings for command descriptions
-    """Build a Knowledge Graph with a GraphConfig"""
+    """Builds a Knowledge Graph with a GraphConfig"""
     buildgraph(graphconfig)
     return None
 
