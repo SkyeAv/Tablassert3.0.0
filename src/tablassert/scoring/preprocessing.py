@@ -125,8 +125,8 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
     umapdrpath.parent.mkdir(parents=True, exist_ok=True)
 
     if mode == "training":
-        umap_dr = UMAP(n_neighbors=32, n_components=32, random_state=SEED).fit(X)
-        X = umap_dr.transform(X)  # shape: (32,)
+        umap_dr = UMAP(n_neighbors=32, n_components=32, random_state=SEED, backend="torch", device=DEVICE).fit(X)
+        X = umap_dr.fit_transform(X)  # shape: (32,)
         joblib.dump(umap_dr, umapdrpath)
         y = df.select(pl.col("score")).to_numpy().reshape(-1, 1).astype(float)
         return EdgeScoringData(X, y)
@@ -136,7 +136,7 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
         )
     elif mode == "production":
         umap_dr = joblib.load(umapdrpath)
-        X = umap_dr.transform(X)  # shape: (32,)
+        X = umap_dr.fit_transform(X)  # shape: (32,)  # fit transform is okay because the parameters in the initializaion are fixed
         return TensorDataset(X)
     else:
         raise RuntimeError(f"CODE:205C | Invalid mode: {mode}")
