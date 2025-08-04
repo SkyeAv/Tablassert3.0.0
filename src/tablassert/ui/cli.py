@@ -6,44 +6,36 @@ app = typer.Typer()
 
 
 @app.command()
-def build(graphconfig: str) -> None:
+def build(
+    graphconfig: str = typer.Option(
+        ..., "-g", "--graph-config", help="path to the GraphConfig for your build"
+    )
+) -> None:
     # typer uses docstrings for command descriptions
-    """
-    Build a Knowledge Graph with a GraphConfig
-    ---
-    graphconfig: path to graphconfig
-    """
+    """Build a Knowledge Graph with a GraphConfig"""
     buildgraph(graphconfig)
     return None
 
 
 @app.command()
 def train(
-    trainingdata: str,
-    saveto: str,
-    epochs: int,
+    trainingdata: str = typer.Option(
+        ...,
+        "-t",
+        "--training-data",
+        help="a jsonlines file containing edge scoring neural net training data",
+    ),
+    saveto: str = typer.Option(
+        "resources/chroma_db",
+        "-s",
+        "--save-to",
+        help="a path to the file you want to save weights to",
+    ),
+    epochs: int = typer.Option(
+        ..., "-e", "--epochs", help="the number of epochs to train model"
+    ),
 ) -> None:
-    """
-    Trains the Neural Network for Edge Scoring with Specified JSONLINES
-    ---
-    trainingdata: a jsonlines file with the following schema
-    {
-        "significant":
-        "sample_size":
-        "multiple_testing_correction_method":
-        "relationship_strength":
-        "assertion_method":
-        "notes":
-        "supplementary_file_caption":
-        "subject_mapped_with_database":
-        "subject_mapped_with_level":
-        "object_mapped_with_database":
-        "object_mapped_with_level":
-        "score":
-    }
-    saveto: a path to the file you want to save weights to
-    epochs: the number of epochs to train model
-    """
+    """Trains the Neural Network for Edge Scoring with Specified JSONLINES"""
     trainscoringmodel(trainingdata, saveto, epochs)
     return None
 

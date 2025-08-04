@@ -153,7 +153,7 @@ def initate(
             return load_csv(posix_filepath, download_hyperparameters)
         case _:
             raise RuntimeError(
-                f"CODE:120 | Tablassert doesn't support {extension}... yet"
+                f"CODE:120 | Tablassert doesn't support {file_extension}... yet"
             )
 
 
@@ -169,7 +169,7 @@ def new_column(
     df: pl.DataFrame,
     column: str,
     encoding_method: str,
-    value_for_encoding: Optional[str],
+    value_for_encoding: Optional[Any],
 ) -> pl.DataFrame:
     if not value_for_encoding:
         value_for_encoding = "NA"
@@ -921,7 +921,9 @@ def dataframing(
     df = new_column(df, "section_number", "value", idx)
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
     maxtime: float = graphmodel["hyperparameters"]["sql_progress_handler_timeout"]
-    df = new_column(df, "file_extension", "value", download_hyperparameters["file_extension"])
+    df = new_column(
+        df, "file_extension", "value", download_hyperparameters["file_extension"]
+    )
     df = new_column(
         df,
         "sheet_name",
@@ -989,4 +991,8 @@ def dataframing(
     df = new_column(df, "score", "value", "NA")
     df = df.select(FINAL_COLUMNS)
     df = df.drop_nulls()
-    return score_edges(df, graphmodel["location"]["edge_scoring_model_weights"]) if df.height != 0 else df
+    return (
+        score_edges(df, graphmodel["location"]["edge_scoring_model_weights"])
+        if df.height != 0
+        else df
+    )

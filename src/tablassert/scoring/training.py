@@ -61,7 +61,7 @@ def load_training_data(dataset: Dataset) -> tuple[DataLoader, DataLoader]:  # ty
 
 
 MODEL = ScoringRegression().to(DEVICE)
-LOSS_FN = nn.SmoothL1Loss(beta=1.0)  # Huber Loss
+LOSS_FN = nn.SmoothL1Loss(beta=1.0)  # Huber Loss (sigma=1.0)
 OPTIMIZER = torch.optim.Adam(
     MODEL.parameters(),
     lr=1e-3,
@@ -83,6 +83,7 @@ def training_loop(train_dataloader: DataLoader, test_dataloader: DataLoader, epo
             preds = MODEL(xb)
             loss = LOSS_FN(preds, yb)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(MODEL.parameters(), max_norm=1.0)
             OPTIMIZER.step()
             training_loss += loss.item() * xb.size(0)
         average_training_loss: float = training_loss / len(train_dataloader.dataset)  # type: ignore

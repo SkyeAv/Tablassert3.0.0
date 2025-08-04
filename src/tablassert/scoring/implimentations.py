@@ -28,8 +28,7 @@ def score_edges(df: pl.DataFrame, weightspath: Path) -> pl.DataFrame:
 
             if isinstance(batch, list):
                 batch = torch.cat(batch, dim=0)  # for that one list error
-                print(f"[DEBUG] batch type: {type(batch)}")
-            
+
             outputs = MODEL(batch)
             batch_scores = outputs.squeeze()
 

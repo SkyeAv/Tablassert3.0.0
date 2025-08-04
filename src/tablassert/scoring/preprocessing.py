@@ -1,11 +1,11 @@
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from src.tablassert.scoring.config import SEED, DEVICE
 from transformers import AutoTokenizer, AutoModel
-from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OrdinalEncoder
 from functools import lru_cache
 from typing import Self, Any
 from pathlib import Path
+from torchdr import UMAP
 from torch import nn
 import polars as pl
 import numpy as np
@@ -27,7 +27,9 @@ BIOBERT_MODEL.eval()  # disables dropout for embeddings
 
 @lru_cache(maxsize=32)
 def biobert_embedding(x: str) -> torch.Tensor:
-    inputs = TOKENIZER(x, return_tensors="pt", truncation=True, max_length=512).to(DEVICE)
+    inputs = TOKENIZER(x, return_tensors="pt", truncation=True, max_length=512).to(
+        DEVICE
+    )
     with torch.no_grad():
         outputs = BIOBERT_MODEL(**inputs)
         # I only need the pooler_output for embeddings
@@ -43,12 +45,16 @@ CACHE: Path = Path("TABLASSERT/CACHE").resolve()
 CACHE.mkdir(parents=True, exist_ok=True)
 
 
-def label_encoder(df: pl.DataFrame, column: str, savepath: Path, mode: str) -> np.ndarray:
+def label_encoder(
+    df: pl.DataFrame, column: str, savepath: Path, mode: str
+) -> np.ndarray:
     x: np.ndarray = df.select(pl.col(column)).to_numpy()
     encoderpath: Path = CACHE / "ENCODER" / savepath.stem / f"{column}.pkl"
     encoderpath.parent.mkdir(parents=True, exist_ok=True)
     if mode == "training":
-        encoder: OrdinalEncoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+        encoder: OrdinalEncoder = OrdinalEncoder(
+            handle_unknown="use_encoded_value", unknown_value=-1
+        )
         encoded_values: np.ndarray = encoder.fit_transform(x).ravel().astype(float)
         joblib.dump(encoder, encoderpath)
         return encoded_values
@@ -61,30 +67,6 @@ def label_encoder(df: pl.DataFrame, column: str, savepath: Path, mode: str) -> n
         return encoder.transform(x).ravel().astype(float)  # type: ignore
     else:
         raise RuntimeError(f"CODE:205A | Invalid mode: {mode}")
-
-
-def cast_to_std_normal(
-    df: pl.DataFrame, column: str, savepath: Path, mode: str
-) -> np.ndarray:
-    x: np.ndarray = df.select(
-        pl.col(column).cast(pl.Float64, strict=False).fill_null(0)
-    ).to_numpy()
-    scalerpath: Path = CACHE / "SCALER" / savepath.stem / f"{column}.pkl"
-    scalerpath.parent.mkdir(parents=True, exist_ok=True)
-    if mode == "training":
-        scaler: StandardScaler = StandardScaler()
-        scaled_values: np.ndarray = scaler.fit_transform(x).ravel().astype(float)
-        joblib.dump(scaler, scalerpath)
-        return scaled_values
-    elif mode == "production" and not scalerpath.exists():
-        raise RuntimeError(
-            f"CODE:204 | StandardScaler {scalerpath.as_posix()} is missing"
-        )
-    elif mode == "production":
-        scaler = joblib.load(scalerpath)
-        return scaler.transform(x).ravel().astype(float)  # type: ignore
-    else:
-        raise RuntimeError(f"CODE:205B | Invalid mode: {mode}")
 
 
 class EdgeScoringData(Dataset):  # type: ignore
@@ -118,7 +100,12 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
 
     structured_encodings: list[torch.Tensor] = []
     for column in numeric:
-        column_array: np.ndarray = cast_to_std_normal(df, column, savepath, mode)
+        column_array: np.ndarray = (
+            df.select(pl.col(column).cast(pl.Float64, strict=False).fill_null(0))
+            .to_numpy()
+            .ravel()
+            .astype(float)
+        )
         column_tensor: torch.Tensor = torch.tensor(column_array, dtype=torch.float32)
         structured_encodings.append(column_tensor)
     for column in categorical:
@@ -133,12 +120,23 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
         freetext_embeddings.append(embedded_row)
     freetext_tensor: torch.Tensor = torch.stack(freetext_embeddings)
     X = torch.cat([structured_tensor, freetext_tensor], dim=1)  # shape: (2312,)
+
+    umapdrpath: Path = CACHE / "UMAP_DR" / f"{savepath.stem}.pkl"
+    umapdrpath.parent.mkdir(parents=True, exist_ok=True)
+
     if mode == "training":
-        print(f"[DEBUG] X type: {type(X)}, X shape: {getattr(X, 'shape', None)}")
+        umap_dr = UMAP(n_neighbors=32, n_components=32, random_state=SEED).fit(X)
+        X = umap_dr.transform(X)  # shape: (32,)
+        joblib.dump(umap_dr, umapdrpath)
         y = df.select(pl.col("score")).to_numpy().reshape(-1, 1).astype(float)
         return EdgeScoringData(X, y)
+    elif mode == "production" and not umapdrpath.exists():
+        RuntimeError(
+            f"CODE:206 | UMAP dimensionality reduction {umapdrpath.as_posix()} is missing"
+        )
     elif mode == "production":
-        print(f"[DEBUG] X type: {type(X)}, X shape: {getattr(X, 'shape', None)}")
+        umap_dr = joblib.load(umapdrpath)
+        X = umap_dr.transform(X)  # shape: (32,)
         return TensorDataset(X)
     else:
         raise RuntimeError(f"CODE:205C | Invalid mode: {mode}")
@@ -149,20 +147,44 @@ def load_data(dataset: Dataset, batch_size: int = 32, shuffle: bool = True) -> D
 
 
 class ScoringRegression(nn.Module):
-    def __init__(self: Self) -> None:
+    def __init__(
+        self: Self,
+        in_dim: int = 32,
+        hidden1: int = 16,
+        hidden2: int = 8,
+        out_dim: int = 1,
+        dropout: float = 0.2,
+    ) -> None:
         super().__init__()
-        self.model = nn.Sequential(
+        self.bn0 = nn.BatchNorm1d(in_dim)  # for 32 dimensions, replaces std-scaler
+        self.shortcut = nn.Linear(in_dim, hidden2, bias=False)
+        self.block = nn.Sequential(
             # this preforms better with the extra layer
-            nn.Linear(2312, 32),  # 2312 is the shape of the input
+            nn.Linear(in_dim, hidden1),  # 32 is the shape of the UMAP-ed input
             nn.LeakyReLU(),  # alpha = 0.1 by default
             # this was overfitting before
-            nn.Dropout(0.2),  # put between densest layers
-            nn.Linear(32, 16),
+            nn.Dropout(dropout),  # put between densest layers
+            nn.Linear(hidden1, hidden2),
             nn.LeakyReLU(),
-            nn.Linear(16, 1),
+        )
+        self.head = nn.Sequential(
+            nn.Linear(hidden2, out_dim),
             nn.Softplus(),  # for non-negative values
         )
+        self._init_weights()
+        return None
+
+    def _init_weights(self: Self) -> None:  # zeros biases
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_uniform_(m.weight, nonlinearity="leaky_relu")
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
         return None
 
     def forward(self: Self, x: torch.Tensor) -> Any:
-        return self.model(x)
+        x = self.bn0(x)
+        h = self.block(x)
+        skip = self.shortcut(x)
+        raw_out = self.head(h + skip)
+        return torch.clamp(raw_out, 0.0, 100.0)

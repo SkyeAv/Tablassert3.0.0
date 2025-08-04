@@ -1,5 +1,5 @@
 from pydantic import ValidationError, BaseModel, DirectoryPath
-from src.tablassert.models.table import TableConfig, Section 
+from src.tablassert.models.table import TableConfig, Section
 from ruamel.yaml.error import YAMLError
 from typing import Any, Type, TypeVar
 from deepmerge.merger import Merger

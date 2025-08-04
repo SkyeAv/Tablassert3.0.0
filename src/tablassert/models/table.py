@@ -17,6 +17,7 @@ import asyncio
 import tarfile
 import shutil
 import math
+import bmt
 
 
 class Reindexing(BaseModel):
@@ -53,9 +54,20 @@ class RegularExpression(BaseModel):
         return str(x)
 
 
-def biolink_fallback(x: str) -> str:
+tk = bmt.Toolkit()
+
+
+def biolink_fallback(x: str, mode: str) -> str:
     if "biolink:" not in x:
-        return "biolink:" + x
+        x = "biolink:" + x
+    if mode.lower() == "category" and not tk.is_category(x[8:]):
+        raise RuntimeError(f"CODE:106 | {x} is not a valid biolink:Category")
+    elif mode.lower() == "predicate" and not tk.is_predicate(x[8:]):
+        raise RuntimeError(f"CODE:107 | {x} is not a valid biolink:predicate")
+    else:
+        raise RuntimeError(
+            f"CODE:104 | biolink:{mode} is not a valid part of the biolink ontology"
+        )
     return x
 
 
@@ -76,7 +88,7 @@ class MappingHyperparameters(BaseModel):
     @classmethod
     def biolink_priorities_and_avoid(cls, biolink_list: list[str]) -> list[str]:
         if biolink_list:
-            return [biolink_fallback(thing) for thing in biolink_list]
+            return [biolink_fallback(thing, "category") for thing in biolink_list]
         return biolink_list
 
     @field_validator("in_this_organism", mode="after")
@@ -111,7 +123,7 @@ class Triple(BaseModel):
     @field_validator("triple_predicate", mode="after")
     @classmethod
     def biolink_predicate(cls, predicate: str) -> str:
-        return biolink_fallback(predicate)
+        return biolink_fallback(predicate, "predicate")
 
 
 def column_name_fallback(column_name: str) -> str:
@@ -292,7 +304,7 @@ def check_local_tarfiles(
     if not tarpath.exists():
         return None
 
-    with tarfile.open(tarpath, "r|gz") as tar:  # type: ignore
+    with tarfile.open(tarpath, "r|gz") as tar:
         for zippedfile in tar:
             if zippedfile.name == savepath.name:
                 extracted = tar.extractfile(zippedfile)
