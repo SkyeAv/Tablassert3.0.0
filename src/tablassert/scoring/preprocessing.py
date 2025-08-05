@@ -2,8 +2,8 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from src.tablassert.scoring.config import SEED, DEVICE
 from transformers import AutoTokenizer, AutoModel
 from sklearn.preprocessing import OrdinalEncoder
+from typing import Self, Any, Optional
 from functools import lru_cache
-from typing import Self, Any
 from pathlib import Path
 from torchdr import UMAP
 from torch import nn
@@ -70,16 +70,23 @@ def label_encoder(
 
 
 class EdgeScoringData(Dataset):  # type: ignore
-    def __init__(self: Self, X: torch.Tensor, y: np.ndarray) -> None:
+    def __init__(
+        self: Self, X: torch.Tensor, y: np.ndarray, w: Optional[np.ndarray] = None
+    ) -> None:
         self.X = X.detach().clone().float()
         self.y = torch.tensor(y, dtype=torch.float32)
+        self.w = torch.tensor(
+            np.ones_like(y, dtype=np.float32) if w is None else w, dtype=torch.float32
+        )
         return None
 
     def __len__(self: Self) -> int:
         return len(self.X)
 
-    def __getitem__(self: Self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
-        return self.X[index], self.y[index]
+    def __getitem__(
+        self: Self, index: int
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self.X[index], self.y[index], self.w[index]
 
 
 def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type: ignore
@@ -135,7 +142,8 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
         X = umap_dr.fit_transform(X)  # shape: (32,)
         joblib.dump(umap_dr, umapdrpath)
         y = df.select(pl.col("score")).to_numpy().reshape(-1, 1).astype(float)
-        return EdgeScoringData(X, y)
+        w = df.select(pl.col("label_source")).to_numpy().reshape(-1, 1).astype(float)
+        return EdgeScoringData(X, y, w)
     elif mode == "production" and not umapdrpath.exists():
         RuntimeError(
             f"CODE:206 | UMAP dimensionality reduction {umapdrpath.as_posix()} is missing"
@@ -157,18 +165,18 @@ def load_data(dataset: Dataset, batch_size: int = 32, shuffle: bool = True) -> D
 class ScoringRegression(nn.Module):
     def __init__(
         self: Self,
-        in_dim: int = 32,
-        hidden1: int = 16,
-        hidden2: int = 8,
+        in_dim: int = 32,  # 32 is the shape of the UMAP-ed input
+        hidden1: int = 64,
+        hidden2: int = 32,
         out_dim: int = 1,
-        dropout: float = 0.2,
+        dropout: float = 0.3,
     ) -> None:
         super().__init__()
         self.bn0 = nn.BatchNorm1d(in_dim)  # for 32 dimensions, replaces std-scaler
         self.shortcut = nn.Linear(in_dim, hidden2, bias=False)
         self.block = nn.Sequential(
             # this preforms better with the extra layer
-            nn.Linear(in_dim, hidden1),  # 32 is the shape of the UMAP-ed input
+            nn.Linear(in_dim, hidden1),
             nn.LeakyReLU(),  # alpha = 0.1 by default
             # this was overfitting before
             nn.Dropout(dropout),  # put between densest layers

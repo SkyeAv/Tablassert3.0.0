@@ -55,14 +55,20 @@ def verify(
 
 @app.command()
 def train(
-    trainingdata: str = typer.Option(
+    gold_training_data: str = typer.Option(
         ...,
-        "-t",
-        "--training-data",
-        help="a jsonlines file containing edge scoring neural net training data",
+        "-g",
+        "--gold-training-data",
+        help="a jsonlines file containing hand scored edge scoring neural net training data",
+    ),
+    pseudo_labeled_training_data: str = typer.Option(
+        ...,
+        "-p",
+        "--pseudo-labeled-training-data",
+        help="a jsonlines file containing pseudo labeled edge scoring neural net training data (weak supervision)",
     ),
     saveto: str = typer.Option(
-        "resources/chroma_db",
+        "resources/weights",
         "-s",
         "--save-to",
         help="a path to the file you want to save weights to",
@@ -72,7 +78,7 @@ def train(
     ),
 ) -> None:
     """Trains the Neural Network for Edge Scoring with Specified JSONLINES"""
-    trainscoringmodel(trainingdata, saveto, epochs)
+    trainscoringmodel(gold_training_data, pseudo_labeled_training_data, saveto, epochs)
     return None
 
 

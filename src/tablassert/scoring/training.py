@@ -76,13 +76,14 @@ def training_loop(train_dataloader: DataLoader, test_dataloader: DataLoader, epo
 
         MODEL.train()
         training_loss: float = 0.0
-        for xb, yb in train_dataloader:
-            xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+        for xb, yb, w in train_dataloader:
+            xb, yb, w = xb.to(DEVICE), yb.to(DEVICE), w.to(DEVICE)
 
             OPTIMIZER.zero_grad()
             preds = MODEL(xb)
             loss = LOSS_FN(preds, yb)
-            loss.backward()
+            weighted_loss = (loss * w.squeeze(-1)).mean()
+            weighted_loss.backward()
             torch.nn.utils.clip_grad_norm_(MODEL.parameters(), max_norm=1.0)
             OPTIMIZER.step()
             training_loss += loss.item() * xb.size(0)
@@ -94,8 +95,8 @@ def training_loop(train_dataloader: DataLoader, test_dataloader: DataLoader, epo
             for xb, yb in test_dataloader:
                 xb, yb = xb.to(DEVICE), yb.to(DEVICE)
 
-                preds = MODEL(xb)
-                loss = LOSS_FN(preds, yb)
+                preds = MODEL(xb).squeeze(-1)
+                loss = LOSS_FN(preds, yb.squeeze(-1))
                 validation_loss += loss.item() * xb.size(0)
         average_validation_loss: float = validation_loss / len(test_dataloader.dataset)  # type: ignore
         logger.info(
@@ -104,11 +105,18 @@ def training_loop(train_dataloader: DataLoader, test_dataloader: DataLoader, epo
     return MODEL.state_dict()  # type: ignore
 
 
-def trainscoringmodel(trainingdata: str, saveto: str, epochs: int) -> None:
-    trainingdatapath: Path = Path(trainingdata)
+def trainscoringmodel(
+    gold_training_data: str, pseudo_labeled_training_data: str, saveto: str, epochs: int
+) -> None:
+    goldtrainingdatapath: Path = Path(gold_training_data)
+    pseudolabeledtrainingdatapath: Path = Path(pseudo_labeled_training_data)
     savepath: Path = Path(saveto)
     savepath.parent.mkdir(parents=True, exist_ok=True)
-    df: pl.DataFrame = read_jsonl(trainingdatapath)
+    gold: pl.DataFrame = read_jsonl(goldtrainingdatapath)
+    gold = gold.with_columns(pl.lit("gold").alias("label_source"))
+    pseudo: pl.DataFrame = read_jsonl(pseudolabeledtrainingdatapath)
+    pseudo = pseudo.with_columns(pl.lit("pseudo").alias("label_source"))
+    df: pl.DataFrame = pl.concat([gold, pseudo]).sample(fraction=1.0, shuffle=True, seed=SEED)
     dataset: Dataset = encode_data(df, savepath, "training")  # type: ignore
     train_dataloader, test_dataloader = load_training_data(dataset)
     weights: OrderedDict[str, torch.Tensor] = training_loop(
