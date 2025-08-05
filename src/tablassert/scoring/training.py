@@ -116,7 +116,9 @@ def trainscoringmodel(
     gold = gold.with_columns(pl.lit("gold").alias("label_source"))
     pseudo: pl.DataFrame = read_jsonl(pseudolabeledtrainingdatapath)
     pseudo = pseudo.with_columns(pl.lit("pseudo").alias("label_source"))
-    df: pl.DataFrame = pl.concat([gold, pseudo]).sample(fraction=1.0, shuffle=True, seed=SEED)
+    df: pl.DataFrame = pl.concat([gold, pseudo]).sample(
+        fraction=1.0, shuffle=True, seed=SEED
+    )
     dataset: Dataset = encode_data(df, savepath, "training")  # type: ignore
     train_dataloader, test_dataloader = load_training_data(dataset)
     weights: OrderedDict[str, torch.Tensor] = training_loop(

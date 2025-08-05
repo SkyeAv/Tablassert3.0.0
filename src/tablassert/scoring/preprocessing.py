@@ -142,7 +142,14 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
         X = umap_dr.fit_transform(X)  # shape: (32,)
         joblib.dump(umap_dr, umapdrpath)
         y = df.select(pl.col("score")).to_numpy().reshape(-1, 1).astype(float)
-        w = df.select(pl.col("label_source")).to_numpy().reshape(-1, 1).astype(float)
+        w = (
+            df.select(
+                pl.when(pl.col("label_source") == "pseudo").then(0.2).otherwise(1.0)
+            )
+            .to_numpy()
+            .reshape(-1, 1)
+            .astype(float)
+        )
         return EdgeScoringData(X, y, w)
     elif mode == "production" and not umapdrpath.exists():
         RuntimeError(
