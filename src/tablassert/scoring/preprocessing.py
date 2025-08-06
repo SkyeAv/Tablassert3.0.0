@@ -134,7 +134,7 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
     if mode == "training":
         umap_dr = UMAP(
             n_neighbors=32,
-            n_components=32,
+            n_components=64,
             random_state=SEED,
             backend="torch",
             device=DEVICE,
@@ -172,7 +172,7 @@ def load_data(dataset: Dataset, batch_size: int = 32, shuffle: bool = True) -> D
 class ScoringRegression(nn.Module):
     def __init__(
         self: Self,
-        in_dim: int = 32,  # 32 is the shape of the UMAP-ed input
+        in_dim: int = 64,  # 64 is the shape of the UMAP-ed input
         hidden1: int = 64,
         hidden2: int = 32,
         out_dim: int = 1,

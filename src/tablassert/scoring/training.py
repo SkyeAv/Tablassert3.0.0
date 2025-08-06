@@ -92,8 +92,8 @@ def training_loop(train_dataloader: DataLoader, test_dataloader: DataLoader, epo
         MODEL.eval()
         validation_loss: float = 0.0
         with torch.no_grad():
-            for xb, yb in test_dataloader:
-                xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+            for xb, yb, w in test_dataloader:
+                xb, yb, w = xb.to(DEVICE), yb.to(DEVICE), w.to(DEVICE)
 
                 preds = MODEL(xb).squeeze(-1)
                 loss = LOSS_FN(preds, yb.squeeze(-1))
