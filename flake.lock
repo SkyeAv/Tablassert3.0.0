@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1748026580,
+        "narHash": "sha256-rWtXrcIzU5wm/C8F9LWvUfBGu5U5E7cFzPYT1pHIJaQ=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "11cb3517b3af6af300dd6c055aeda73c9bf52c48",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "25.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "tablassert": "tablassert"
+      }
+    },
+    "tablassert": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1755038493,
+        "narHash": "sha256-gM6ODDW3RKlaJIsgySaWYTflv7Ykpd6vBDWo3IyunN8=",
+        "owner": "SkyeAv",
+        "repo": "Tablassert",
+        "rev": "c861c5363391fcf2390a865f808b35e513272801",
+        "type": "github"
+      },
+      "original": {
+        "owner": "SkyeAv",
+        "ref": "4.3.0",
+        "repo": "Tablassert",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

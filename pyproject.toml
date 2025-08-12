@@ -1,80 +1,21 @@
+[build-system]
+requires = [
+    "setuptools>=61.0",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "tablassert"
 version = "4.4.0"
-description = "Tablassert is a versatile tool that creates knowledge assertions from tabular data, enhances knowledge with configurable options, and exports KGX-compliant TSVs."
+description = "Agent for building Basic Tablassert TableConfigs"
+readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
-    {name = "Skye Lane Goetz",email = "skye.lane.goetz@gmail.com"}
-]
-license = {text = "Apache-2.0"}
-readme = "README.md"
-requires-python = "<3.14.0,>=3.13"
-dependencies = [
-    "pydantic (>=2.11.7,<3.0.0)",
-    "ruamel-yaml (>=0.18.14,<0.19.0)",
-    "sqlite-utils (>=3.38,<4.0)",
-    "diskcache (>=5.6.3,<6.0.0)",
-    "loguru (>=0.7.3,<0.8.0)",
-    "spacy (>=3.8.7,<4.0.0)",
-    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
-    "polars-lts-cpu (>=1.31.0,<2.0.0)",
-    "xlsx2csv (>=0.8.4,<0.9.0)",
-    "typer[all] (>=0.16.0,<0.17.0)",
-    "deepmerge (>=2.0,<3.0)",
-    "pyarrow (>=20.0.0,<21.0.0)",
-    "requests (>=2.32.4,<3.0.0)",
-    "openpyxl (>=3.1.5,<4.0.0)",
-    "xlrd (>=2.0.2,<3.0.0)",
-    "pandas (>=2.3.1,<3.0.0)",
-    "torch (>=2.7.1,<3.0.0)",
-    "transformers (>=4.53.2,<5.0.0)",
-    "scikit-learn (>=1.7.0,<2.0.0)",
-    "numpy (>=2.3.1,<3.0.0)",
-    "joblib (>=1.5.1,<2.0.0)",
-    "torchdr (>=0.3,<0.4)",
-    "bmt (>=1.4.5,<2.0.0)",
-    "matplotlib (>=3.10.5,<4.0.0)",
-    "playwright (>=1.54.0,<2.0.0)",
+    { name = "Skye Lane Goetz", email = "skye.lane.goetz@gmail.com" },
 ]
 
+[tool.setuptools.packages]
+find = { where = ["."] }
 
-[tool.poetry.scripts]
+[project.scripts]
 cli = "src.tablassert.ui.cli:cli"
-
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-
-[tool.poetry]
-package-mode = true  # make true before publishing
-
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.4.1"
-black = {extras = ["jupyter"], version = "^25.1.0"}
-flake8 = "^7.2.0"
-flake8-pyproject = "^1.2.3"
-mypy = "^1.16.1"
-types-requests = "^2.32.4.20250611"
-
-
-[tool.flake8]
-max-line-length = 88
-ignore = ["E203", "E501", "W503", "F722"]
-exclude = [".git", "__pycache__", "*.pyc", "resources/dev/trainingdata"]
-
-
-[tool.black]
-line-length = 88
-target-version = ["py313"]
-
-
-[tool.mypy]
-python_version = "3.13"
-strict = true
-disallow_untyped_defs = true
-warn_unused_ignores = true
-ignore_missing_imports = true
-exclude = [".*venv/.*", ".*resources/.*"]
-
