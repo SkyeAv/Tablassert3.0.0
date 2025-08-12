@@ -1,6 +1,5 @@
 {
   description = "TABLASSERT";
-  version = "4.4.0";
   inputs = {
     nixpkgs = {
       url = "github:nixos/nixpkgs/25.05";
