@@ -22,10 +22,10 @@
   outputs = {self, nixpkgs, tablassert, poetry2nix}:
   let 
     systems = [
-      "x86_64-linux"
-      "aarch64-linux"
-      "x86_64-darwin"
-      "aarch64-darwin"
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
       ];
     forAllSystems = f:
       nixpkgs.lib.genAttrs systems (system:
@@ -34,10 +34,10 @@
           pkgs = import nixpkgs {
             inherit system;
             overlays = [
-              poetry2nix.overlay
+                poetry2nix.overlay
               ];
           };
-          lib  = nixpkgs.lib;
+          lib = nixpkgs.lib;
         });
   in {
     packages = forAllSystems ({pkgs, lib, system}:
