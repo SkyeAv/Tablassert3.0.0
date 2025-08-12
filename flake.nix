@@ -1,5 +1,12 @@
 {
+  packageName = "tablassert";
+  authors = [
+    "Skye Lane Goetz"
+    "Gwenlyn Glusman"
+  ];
   description = "Tablassert is a versatile tool that creates knowledge assertions from tabular data, enhances knowledge with configurable options, and exports KGX-compliant TSVs";
+  homepage = "https://github.com/SkyeAv/Tablassert";
+  version = "4.4.0";
   inputs = {
     nixpkgs = {
       url = "github:nixos/nixpkgs/25.05";
