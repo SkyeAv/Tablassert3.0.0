@@ -1,6 +1,6 @@
 [project]
 name = "tablassert"
-version = "4.3.0"
+version = "4.4.0"
 description = "Tablassert is a versatile tool that creates knowledge assertions from tabular data, enhances knowledge with configurable options, and exports KGX-compliant TSVs."
 authors = [
     {name = "Skye Lane Goetz",email = "skye.lane.goetz@gmail.com"}
