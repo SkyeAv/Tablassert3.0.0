@@ -54,6 +54,7 @@
           self.packages.${system}.python-env
           pkgs.git
           pkgs.pkg-config
+          pkgs.playwright-core
         ];
         shellHook = ''
           echo "Dev shell for ${system}"
@@ -64,7 +65,7 @@
     apps = forAllSystems ({pkgs, system, ...}: {
       default = {
         type = "app";
-        program = "${self.packages.${system}.myapp} cli";
+        program = "${self.packages.${system}.myapp}/bin/cli";
       };
     });
   }
