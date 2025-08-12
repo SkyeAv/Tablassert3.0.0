@@ -1,11 +1,12 @@
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from src.tablassert.scoring.config import SEED, DEVICE
+from torchdr.affinity import NormalizedGaussianAffinity
 from transformers import AutoTokenizer, AutoModel
 from sklearn.preprocessing import OrdinalEncoder
 from typing import Self, Any, Optional
 from functools import lru_cache
+from torchdr import KernelPCA
 from pathlib import Path
-from torchdr import UMAP
 from torch import nn
 import polars as pl
 import numpy as np
@@ -128,19 +129,29 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
     freetext_tensor: torch.Tensor = torch.stack(freetext_embeddings)
     X = torch.cat([structured_tensor, freetext_tensor], dim=1)  # shape: (2312,)
 
-    umapdrpath: Path = CACHE / "UMAP_DR" / f"{savepath.stem}.pkl"
-    umapdrpath.parent.mkdir(parents=True, exist_ok=True)
+    pcadrpath: Path = CACHE / "PCA" / f"{savepath.stem}.pkl"
+    pcadrpath.parent.mkdir(parents=True, exist_ok=True)
 
     if mode == "training":
-        umap_dr = UMAP(
-            n_neighbors=32,
+        with torch.no_grad():
+            D: torch.Tensor = torch.cdist(X, X)
+            sigma: torch.Tensor = torch.median(D[D > 0])
+        aff = NormalizedGaussianAffinity(
+            sigma=sigma,
+            zero_diag=False,
+            backend="torch",
+            device=DEVICE,
+            _pre_processed=True,
+        )
+        kpca = KernelPCA(
+            affinity=aff,
             n_components=64,
             random_state=SEED,
             backend="torch",
             device=DEVICE,
-        ).fit(X)
-        X = umap_dr.fit_transform(X)  # shape: (32,)
-        joblib.dump(umap_dr, umapdrpath)
+        )
+        X = kpca.fit_transform(X)  # shape: (64,)
+        joblib.dump(kpca, pcadrpath)
         y = df.select(pl.col("score")).to_numpy().reshape(-1, 1).astype(float)
         w = (
             df.select(
@@ -151,15 +162,13 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
             .astype(float)
         )
         return EdgeScoringData(X, y, w)
-    elif mode == "production" and not umapdrpath.exists():
+    elif mode == "production" and not pcadrpath.exists():
         RuntimeError(
-            f"CODE:206 | UMAP dimensionality reduction {umapdrpath.as_posix()} is missing"
+            f"CODE:206 | KernelPCA dimensionality reduction {pcadrpath.as_posix()} is missing"
         )
     elif mode == "production":
-        umap_dr = joblib.load(umapdrpath)
-        X = umap_dr.fit_transform(
-            X
-        )  # shape: (32,)  # fit transform is okay because the parameters in the initializaion are fixed
+        kpca = joblib.load(pcadrpath)
+        X = kpca.transform(X)  # shape: (64,)
         return TensorDataset(X)
     else:
         raise RuntimeError(f"CODE:205C | Invalid mode: {mode}")
