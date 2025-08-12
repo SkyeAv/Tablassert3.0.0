@@ -1,6 +1,5 @@
 .vscode
 *.mypy_cache/
-poetry.lock
 TABLASSERT/
 *tests/
 MULTIOMICS_KG*

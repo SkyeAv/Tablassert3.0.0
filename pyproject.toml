@@ -11,7 +11,6 @@ requires-python = "<3.14.0,>=3.13"
 dependencies = [
     "pydantic (>=2.11.7,<3.0.0)",
     "ruamel-yaml (>=0.18.14,<0.19.0)",
-    "playwright (>=1.52.0,<2.0.0)",
     "sqlite-utils (>=3.38,<4.0)",
     "diskcache (>=5.6.3,<6.0.0)",
     "loguru (>=0.7.3,<0.8.0)",
@@ -33,6 +32,8 @@ dependencies = [
     "joblib (>=1.5.1,<2.0.0)",
     "torchdr (>=0.3,<0.4)",
     "bmt (>=1.4.5,<2.0.0)",
+    "matplotlib (>=3.10.5,<4.0.0)",
+    "playwright (>=1.54.0,<2.0.0)",
 ]
 
 

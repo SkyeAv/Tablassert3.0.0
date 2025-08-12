@@ -8,7 +8,7 @@ warnings.filterwarnings(
     "ignore", category=SyntaxWarning
 )  # for 3rd party libraries... linting with flake8 catches the rest
 warnings.filterwarnings("ignore", category=FutureWarning)
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 @app.command()
