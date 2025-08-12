@@ -44,6 +44,9 @@
           url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-${version}/en_core_web_sm-${version}-py3-none-any.whl";
           sha256 = "sha256-GTJCnbcn1L/z3u1rNM/AXfF3lPSlLusmz4ko98Gg+4U=";
         };
+        propagatedBuildInputs = [
+          py.spacy
+        ];
         doCheck = false;
       };
       torchDr = py.buildPythonPackage rec {
