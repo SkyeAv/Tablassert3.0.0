@@ -5,7 +5,7 @@
       url = "github:nixos/nixpkgs/25.05";
     };
     tablassert = {
-      url = "github:SkyeAv/Tablassert/4.3.0";
+      url = "github:SkyeAv/Tablassert/4.4.0";
       flake = false;
     };
   };
@@ -35,7 +35,7 @@
       lib,
       system,
     }: let
-      py = pkgs.python313Packages;
+      py = pkgs.python312Packages;
       enCoreWebSm = py.buildPythonPackage rec {
         pname = "en-core-web-sm";
         version = "3.8.0";
@@ -70,7 +70,7 @@
     in {
       myapp = py.buildPythonApplication {
         pname = "tablassert";
-        version = "4.3.0";
+        version = "4.4.0";
         src = tablassert;
         pyproject = true;
         build-system = with py; [
@@ -84,7 +84,7 @@
           diskcache
           loguru
           spacy
-          polars-lts-cpu
+          polars
           xlsx2csv
           typer
           deepmerge
