@@ -263,6 +263,26 @@
         ];
         doCheck = false;
       };
+      chromium1181 = pkgs.fetchzip {
+        url = "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1181/chromium-linux.zip";
+        sha256 = "062lgjsf3s8jc0jvynnm4im6dk9br0bwlb0xniq09ajlb84wrfa7";
+        stripRoot = false;
+      };
+      playwrightBrowsers = pkgs.runCommand "playwright-browsers-1181" {} ''
+        set -eu
+        mkdir -p $out/chromium-1181
+
+        if [ -d "${chromium1181}/chrome-linux" ]; then
+          cp -r "${chromium1181}/chrome-linux" "$out/chromium-1181/"
+        else
+          mkdir -p "$out/chromium-1181/chrome-linux"
+          cp -r ${chromium1181}/* "$out/chromium-1181/chrome-linux/"
+        fi
+
+        if [ -f "$out/chromium-1181/chrome-linux/chrome" ]; then
+          chmod +x "$out/chromium-1181/chrome-linux/chrome"
+        fi
+      '';
     in {
       myapp = py.buildPythonApplication {
         pname = "tablassert";
@@ -300,6 +320,18 @@
           playwright
           enCoreWebSm
         ];
+        nativeBuildInputs = [
+          pkgs.makeWrapper
+        ];
+        postInstall = ''
+          for bin in "$out/bin/"*; do
+            if [ -f "$bin" ] && [ -x "$bin" ]; then
+              wrapProgram "$bin" \
+                --set PLAYWRIGHT_BROWSERS_PATH ${playwrightBrowsers} \
+                --set PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS 1
+            fi
+          done
+        '';
       };
       default = self.packages.${system}.myapp;
     });
@@ -313,8 +345,9 @@
           self.packages.${system}.myapp-env
           pkgs.git
           pkgs.pkg-config
-          pkgs.playwright-core
         ];
+        PLAYWRIGHT_BROWSERS_PATH = self.packages.${system}.myapp;
+        PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "1";
         shellHook = ''
           echo "Dev shell for ${system}"
           python3 --version
