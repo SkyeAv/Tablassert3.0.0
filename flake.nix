@@ -61,6 +61,7 @@
       bmt = py.buildPythonPackage rec {
         pname = "bmt";
         version = "1.4.5";
+        pyproject = true;
         src = pkgs.fetchPypi {
           inherit pname version;
           sha256 = "sha256-hHOG6DssXU5iBQrUozbcXAQzMFk7jQchbFsY/rp2PiM=";
