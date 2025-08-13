@@ -313,11 +313,10 @@
           self.packages.${system}.myapp-env
           pkgs.git
           pkgs.pkg-config
-        ];
-        buildInputs = [
-          pkgs.python3Packages.playwright
-        ];
+          pkgs.chromium
+        ];          
         shellHook = ''
+          export PLAYWRIGHT_BROWSERS_PATH=0
           echo "Dev shell for ${system}"
           python3 --version
         '';
