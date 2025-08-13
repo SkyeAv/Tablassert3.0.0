@@ -25,16 +25,16 @@
     "tablassert": {
       "flake": false,
       "locked": {
-        "lastModified": 1755038493,
-        "narHash": "sha256-gM6ODDW3RKlaJIsgySaWYTflv7Ykpd6vBDWo3IyunN8=",
+        "lastModified": 1755043105,
+        "narHash": "sha256-lav9mP8eFe8R2a6Yn7/vfFT1lMTviX/PIlMFzH13Ll0=",
         "owner": "SkyeAv",
         "repo": "Tablassert",
-        "rev": "c861c5363391fcf2390a865f808b35e513272801",
+        "rev": "cc83cad53fe14f2fa206b2d55ffe7b5702917e44",
         "type": "github"
       },
       "original": {
         "owner": "SkyeAv",
-        "ref": "4.3.0",
+        "ref": "4.4.0",
         "repo": "Tablassert",
         "type": "github"
       }

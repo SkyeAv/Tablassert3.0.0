@@ -54,7 +54,7 @@
         version = "0.3";
         src = pkgs.fetchPypi {
           inherit pname version;
-          sha256 = "sha256-AAA"; # let fail and copy hash later
+          sha256 = "sha256-623xLK2bf7Vr8BpzemcMSk5n0yD2VjBZ4vjsy6OQTX0=";
         };
         doCheck = false;
       };
@@ -63,7 +63,7 @@
         version = "1.4.5";
         src = pkgs.fetchPypi {
           inherit pname version;
-          sha256 = "sha256-AAA"; # let fail and copy hash later
+          sha256 = "sha256-hHOG6DssXU5iBQrUozbcXAQzMFk7jQchbFsY/rp2PiM=";
         };
         doCheck = false;
       };
