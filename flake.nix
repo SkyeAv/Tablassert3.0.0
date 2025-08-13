@@ -313,11 +313,12 @@
           self.packages.${system}.myapp-env
           pkgs.git
           pkgs.pkg-config
-          pkgs.chromium
+          pkgs.chromiu
         ];          
         shellHook = ''
-          export PLAYWRIGHT_BROWSERS_PATH=0
           echo "Dev shell for ${system}"
+          export CHROMIUM_PATH="${pkgs.chromium}/bin/chromium"
+          export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
           python3 --version
         '';
       };
