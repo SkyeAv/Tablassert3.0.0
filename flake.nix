@@ -52,10 +52,195 @@
       torchDr = py.buildPythonPackage rec {
         pname = "torchdr";
         version = "0.3";
+        pyproject = true;
         src = pkgs.fetchPypi {
           inherit pname version;
           sha256 = "sha256-623xLK2bf7Vr8BpzemcMSk5n0yD2VjBZ4vjsy6OQTX0=";
         };
+        build-system = with py; [
+          setuptools
+          setuptools-scm
+          wheel
+        ];
+        propagatedBuildInputs = with py; [
+          torch
+          numpy
+          scikit-learn
+        ];
+        doCheck = false;
+      };
+      hBreader = py.buildPythonPackage rec {
+        pname = "hbreader";
+        version = "0.9.1";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-0sEy+LpidteUxmIkwyl87CXIB50KTPAZwGFhHgo7lPo=";
+        };
+        build-system = with py; [
+          setuptools
+          wheel
+        ];
+        propagatedBuildInputs = with py; [
+          pbr
+        ];
+        doCheck = false;
+      };
+      jsonFlattener = py.buildPythonPackage rec {
+        pname = "json_flattener";
+        version = "0.1.9";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-hM+FIwRf+xJDAaYCYCIBZl/LADoXHs6H5vRu0C9/DBU=";
+        };
+        build-system = with py; [
+          setuptools
+          wheel
+        ];
+        propagatedBuildInputs = with py; [
+          click
+          pyyaml
+        ];
+        doCheck = false;
+      };
+      jsonAsObj2 = py.buildPythonPackage rec {
+        pname = "jsonasobj2";
+        version = "1.0.4";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-9QsWaO9HgASqSHstLQlMME5ctreTN4CfSh8pdcx/u04=";
+        };
+        build-system = with py; [
+          setuptools
+          wheel
+        ];
+        propagatedBuildInputs = [
+          py.pbr
+          hBreader
+        ];
+        doCheck = false;
+      };
+      pytestLogging = py.buildPythonPackage rec {
+        pname = "pytest-logging";
+        version = "2015.11.4";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-zsXIXs8Yqrey6tVJijG591hoDvWpArkFSrPyvbt3yJY=";
+        };
+        build-system = with py; [
+          setuptools
+          wheel
+        ];
+        propagatedBuildInputs = with py; [
+          pytest
+        ];
+        doCheck = false;
+      };
+      prefixCommons = py.buildPythonPackage rec {
+        pname = "prefixcommons";
+        version = "0.1.12";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-IsTi03tjSHs6tI8ElbcPFFZMs0ahUiDyORnrDBhR9p8=";
+        };
+        build-system = with py; [
+          poetry-core
+          poetry-dynamic-versioning
+          wheel
+        ];
+        propagatedBuildInputs = [
+          py.pyyaml
+          py.click
+          py.requests
+          pytestLogging
+        ];
+        doCheck = false;
+      };
+      pyTrie = py.buildPythonPackage rec {
+        pname = "PyTrie";
+        version = "0.4.0";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-j0SI9ALTRlmT+2tu+gmGaEntjNp5A7UGR7fQNCuAU3k=";
+        };
+        build-system = with py; [
+          setuptools
+          wheel
+        ];
+        propagatedBuildInputs = with py; [
+          sortedcontainers
+        ];
+        doCheck = false;
+      };
+      curies = py.buildPythonPackage rec {
+        pname = "curies";
+        version = "0.10.19";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-rq5efLt67mxRRDdvy2nhWg08BVehL57f+Am9DOUATqI=";
+        };
+        build-system = with py; [
+          hatchling
+          wheel
+        ];
+        propagatedBuildInputs = [
+          py.pydantic
+          pyTrie
+          py.typing-extensions
+        ];
+        doCheck = false;
+      };
+      prefixMaps = py.buildPythonPackage rec {
+        pname = "prefixmaps";
+        version = "0.2.6";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-dCHhJE7qYQIX+hupbJrr1k6BYqkw3AYmIHzYv2Ls9Lk=";
+        };
+        build-system = with py; [
+          poetry-core
+          poetry-dynamic-versioning
+          wheel
+        ];
+        propagatedBuildInputs = [
+          curies
+          py.pyyaml
+        ];
+        doCheck = false;
+      };
+      linkmlRuntime = py.buildPythonPackage rec {
+        pname = "linkml_runtime";
+        version = "1.9.4";
+        pyproject = true;
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-rI8Bqk+S6zLKN3vxXOQtrWP8LSIB4I4rlViW40AWB1s=";
+        };
+        build-system = with py; [
+          poetry-core
+          poetry-dynamic-versioning
+          wheel
+        ];
+        propagatedBuildInputs = [
+          py.deprecated
+          py.jsonschema
+          py.pydantic
+          py.pyyaml
+          py.rdflib
+          py.requests
+          hBreader
+          jsonFlattener
+          jsonAsObj2
+          prefixCommons
+          prefixMaps
+        ];
         doCheck = false;
       };
       bmt = py.buildPythonPackage rec {
@@ -66,9 +251,15 @@
           inherit pname version;
           sha256 = "sha256-hHOG6DssXU5iBQrUozbcXAQzMFk7jQchbFsY/rp2PiM=";
         };
-        build-system = with pythonPackages; [
+        build-system = with py; [
           poetry-core
           poetry-dynamic-versioning
+          wheel
+        ];
+        propagatedBuildInputs = [
+          py.deprecation
+          linkmlRuntime
+          py.stringcase
         ];
         doCheck = false;
       };
