@@ -66,6 +66,10 @@
           inherit pname version;
           sha256 = "sha256-hHOG6DssXU5iBQrUozbcXAQzMFk7jQchbFsY/rp2PiM=";
         };
+        build-system = with pythonPackages; [
+          poetry-core
+          poetry-dynamic-versioning
+        ];
         doCheck = false;
       };
     in {
