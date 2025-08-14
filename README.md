@@ -1,6 +1,6 @@
 # Tablassert
 
-## Version 4.4.0 [[ UNSTABLE ]]
+## Version 4.4.0 [[ STABLE, I STILL NEED TO DOCUMENT HOW TOP RUN WITH NIX... SHOULD BE SELF EXPLANATORY THOUGH ]]
 
 ### By Skye Goetz and Gwênlyn Glusman
 
