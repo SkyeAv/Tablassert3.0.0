@@ -273,55 +273,38 @@
           setuptools
           wheel
         ];
-        propagatedBuildInputs = with py; [
-          pydantic
-          ruamel-yaml
-          sqlite-utils
-          diskcache
-          loguru
-          spacy
-          polars
-          xlsx2csv
-          typer
-          deepmerge
-          pyarrow
-          requests
-          openpyxl
-          xlrd
-          pandas
-          torch
-          transformers
-          scikit-learn
-          numpy
-          joblib
+        propagatedBuildInputs = [
+          pkgs.chromium
+          py.pydantic
+          py.ruamel-yaml
+          py.sqlite-utils
+          py.diskcache
+          py.loguru
+          py.spacy
+          py.polars
+          py.xlsx2csv
+          py.typer
+          py.deepmerge
+          py.pyarrow
+          py.requests
+          py.openpyxl
+          py.xlrd
+          py.pandas
+          py.torch
+          py.transformers
+          spy.cikit-learn
+          py.numpy
+          py.joblib
           torchDr
           bmt
-          matplotlib
-          playwright
+          py.matplotlib
+          py.playwright
           enCoreWebSm
         ];
+        CHROMIUM_PATH = "${pkgs.chromium}/bin/chromium";
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
       };
       default = self.packages.${system}.myapp;
-    });
-    devShells = forAllSystems ({
-      pkgs,
-      system,
-      ...
-    }: {
-      default = pkgs.mkShell {
-        packages = [
-          self.packages.${system}.myapp-env
-          pkgs.git
-          pkgs.pkg-config
-          pkgs.chromiu
-        ];          
-        shellHook = ''
-          echo "Dev shell for ${system}"
-          export CHROMIUM_PATH="${pkgs.chromium}/bin/chromium"
-          export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-          python3 --version
-        '';
-      };
     });
     apps = forAllSystems ({
       pkgs,
