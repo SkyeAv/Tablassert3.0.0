@@ -286,7 +286,7 @@ def _get_db(name: str) -> Database:
     db: Optional[Database] = getattr(_thread_dbs, name, None)
     if not db:
         path: str = _DB_PATHS[name]
-        db = _create_db(path, _DB_MAXTIME)
+        db = connect(path, _DB_MAXTIME)
         setattr(_thread_dbs, name, db)
     return db
 
