@@ -292,7 +292,7 @@
           py.pandas
           py.torch
           py.transformers
-          spy.cikit-learn
+          py.scikit-learn
           py.numpy
           py.joblib
           torchDr
@@ -301,8 +301,13 @@
           py.playwright
           enCoreWebSm
         ];
-        CHROMIUM_PATH = "${pkgs.chromium}/bin/chromium";
-        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+        nativeBuildInputs = [
+          pkgs.makeWrapper
+        ];
+        makeWrapperArgs = [
+          "--set CHROMIUM_PATH ${pkgs.chromium}/bin/chromium"
+          "--set PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD 1"
+        ];
       };
       default = self.packages.${system}.myapp;
     });
