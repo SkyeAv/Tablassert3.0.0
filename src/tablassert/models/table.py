@@ -60,14 +60,14 @@ tk = bmt.Toolkit()
 def biolink_fallback(x: str, mode: str) -> str:
     if "biolink:" not in x:
         x = "biolink:" + x
-    
+
     if mode.lower() == "category":
         if not tk.is_category(x[8:]):
             raise RuntimeError(f"CODE:106 | {x[8:]} is not a valid biolink:Category")
     elif mode.lower() == "predicate":
         if not tk.is_predicate(x[8:]):
             raise RuntimeError(f"CODE:107 | {x[8:]} is not a valid biolink:predicate")
-    
+
     return x
 
 

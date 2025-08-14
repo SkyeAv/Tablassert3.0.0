@@ -12,13 +12,13 @@ from loguru import logger
 from pathlib import Path
 import polars as pl
 import pandas as pd
+import threading
 import zipfile
 import sqlite3
 import spacy
 import math
 import time
 import re
-
 
 # I have to do this because of Pool
 def initialize_logger() -> None:
@@ -261,10 +261,12 @@ def process_attribute(
 
 
 # diskcache setup (sqlite caches)
-fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=1e8)
+fullmap3cache: Cache = Cache("TABLASSERT/CACHE/FULLMAP3", max_size=5e8)
 
 start: float = 0.0  # default for typechecking
-
+_DB_PATHS: dict[str, str] = {}
+_DB_MAXTIME: float = 1.0
+_thread_dbs = threading.local()
 
 def progress_handler(maxtime: float) -> int:
     if (time.time() - start) >= maxtime:
@@ -279,6 +281,14 @@ def connect(sqlitepath: str, maxtime: float) -> Database:
     conn.set_progress_handler(lambda: progress_handler(maxtime), 1)
     return db
 
+
+def _get_db(name: str) -> Database:
+    db: Optional[Database] = getattr(_thread_dbs, name, None)
+    if not db:
+        path: str = _DB_PATHS[name]
+        db = _create_db(path, _DB_MAXTIME)
+        setattr(_thread_dbs, name, db)
+    return db
 
 def levelone(x: Any) -> str:
     return str(x).lower().strip()
@@ -578,10 +588,8 @@ def collectresults(
 # generator function because multiprocessing doesn't correctly catch the error in a normal try, except
 def safe_query(db: str, sql: str, sql_params: dict[str, str]) -> Iterator[Any]:
     try:
-        if db == "babel":
-            yield from babel.query(sql, sql_params)  # type: ignore
-        elif db == "kg2":
-            yield from kg2.query(sql, sql_params)  # type: ignore
+        if db in ["babel", "kg2"]:
+            yield from _get_db(db).query(sql, sql_params)  # type: ignore
         else:
             raise RuntimeError(f"CODE:126 | A method for querying {db} does not exist")
     except sqlite3.OperationalError as e:
@@ -778,7 +786,7 @@ def pubmed_metadata(publication: str) -> dict[str, Any]:
 
     global start
     start = time.time()
-    rows = list(pubmed.query(pubmedsql, {"curie": publication[4:]}))  # type: ignore
+    rows = list(_get_db("pubmed").query(pubmedsql, {"curie": publication[4:]}))  # type: ignore
     mesh: list[Optional[str]] = [row["mesh"] for row in rows if row]
     mesh_major: list[Optional[str]] = [row["mesh_major"] for row in rows if row]
     mesh_zip: Any = list(
@@ -827,7 +835,7 @@ def pmc_captions(publication: str, filename: str) -> Optional[str]:
 
     global start
     start = time.time()
-    rows = pmc.query(  # type: ignore
+    rows = _get_db("pmc").query(  # type: ignore
         pmcsql, {"curie": publication[7:], "filename": basename(filename)}
     )
     row: dict[str, Any] = next(rows, {})
@@ -896,6 +904,7 @@ FINAL_COLUMNS: list[str] = [
 def dataframing(
     subsectionmodel: dict[str, Any], graphmodel: dict[str, dict[str, Any]], idx: int
 ) -> pl.DataFrame:
+
     posix_filepath: str = subsectionmodel["posix_filepath"]
     download_hyperparameters: dict[str, Any] = subsectionmodel["location"][
         "download_hyperparameters"
@@ -921,6 +930,14 @@ def dataframing(
     df = new_column(df, "section_number", "value", idx)
     sqlites: dict[str, str] = graphmodel["location"]["sqlite_databases"]
     maxtime: float = graphmodel["hyperparameters"]["sql_progress_handler_timeout"]
+    global _DB_PATHS, _DB_MAXTIME
+    _DB_PATHS = {
+        "pmc": sqlites["pmc"],
+        "pubmed":sqlites["pubmed"],
+        "babel": sqlites["babel"],
+        "kg2": sqlites["kg2"],
+    }
+    _DB_MAXTIME = maxtime
     df = new_column(
         df, "file_extension", "value", download_hyperparameters["file_extension"]
     )
@@ -943,16 +960,12 @@ def dataframing(
         "value",
         provenance["config_curator_organization"],
     )
-    global pmc  # databases are global to enable caching because they're unhashable types
-    pmc = connect(sqlites["pmc"], maxtime)  # type: ignore
     df = new_column(
         df,
         "supplementary_file_caption",
         "value",
         pmc_captions(publication, posix_filepath),  # type: ignore
     )
-    global pubmed
-    pubmed = connect(sqlites["pubmed"], maxtime)  # type: ignore
     df = df.with_columns(
         pl.col("publication")
         .map_elements(
@@ -969,10 +982,6 @@ def dataframing(
     for name, attribute in attributes.items():
         df = process_attribute(df, name, attribute)
     triple: dict[str, Any] = subsectionmodel["triple"]
-    global babel
-    babel = connect(sqlites["babel"], maxtime)  # type: ignore
-    global kg2
-    kg2 = connect(sqlites["kg2"], maxtime)  # type: ignore
     for name, spoconfig in triple.items():
         df = spocolumn(df, name, spoconfig)
     if reindexing:
