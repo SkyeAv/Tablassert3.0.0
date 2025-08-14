@@ -381,8 +381,8 @@ def babelsql(
     return f"""
     SELECT
         NAMES.CURIE,
-        CATEGORIES.NAME,
-        NAMES.NAME,
+        CATEGORIES.NAME as category_names,
+        NAMES.NAME as preferred_names,
         NAMES.TAXON
     FROM NAMES
     INNER JOIN SYNONYMS ON NAMES.ID = SYNONYMS.ID
