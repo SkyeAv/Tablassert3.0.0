@@ -25,11 +25,11 @@
     "tablassert": {
       "flake": false,
       "locked": {
-        "lastModified": 1755043105,
-        "narHash": "sha256-lav9mP8eFe8R2a6Yn7/vfFT1lMTviX/PIlMFzH13Ll0=",
+        "lastModified": 1755128976,
+        "narHash": "sha256-+8Nc0HHnZaF9lTzrNp4Am/xaVc0wNYit/T5asdEXlos=",
         "owner": "SkyeAv",
         "repo": "Tablassert",
-        "rev": "cc83cad53fe14f2fa206b2d55ffe7b5702917e44",
+        "rev": "f6f797a52bc8c9b204b49b9f66209f7ea6a01cbd",
         "type": "github"
       },
       "original": {

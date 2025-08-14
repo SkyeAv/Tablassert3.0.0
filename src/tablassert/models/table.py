@@ -318,12 +318,12 @@ def check_local_tarfiles(
 
 
 CHROMIUM_PATH: str = shutil.which("chromium")
-print(CHROMIUM_PATH)
 
 async def playwright_download(
     link: str, savepath: Path, repeats: int = 1
 ) -> Optional[Path]:
     async with async_playwright() as p:
+        print(CHROMIUM_PATH)
         browser = await p.chromium.launch(
             headless=True,
             executable_path=CHROMIUM_PATH,
