@@ -341,10 +341,10 @@ def babelsql(
     }.get(level, "")
 
     babel_taxoncondition: str = (
-        "AND (NAMES.CATEGORY != 'Gene' OR NAMES.TAXON = :taxon)" if taxon else ""
+        "AND (CATEGORIES.NAME != 'Gene' OR NAMES.TAXON = :taxon)" if taxon else ""
     )
     babel_avoidcondition: str = (
-        f"AND NAMES.CATEGORY NOT IN ({avoid_placeholders})"
+        f"AND CATEGORIES.NAME NOT IN ({avoid_placeholders})"
         if avoid_placeholders
         else ""
     )
@@ -353,9 +353,9 @@ def babelsql(
         babel_orderbyclause: str = f"""
         ORDER BY
             CASE
-                WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) AND NAMES.CATEGORY = :most_common THEN 0
-                WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 1
-                WHEN NAMES.CATEGORY = :most_common THEN 2
+                WHEN CATEGORIES.NAME IN ({prioritize_placeholders}) AND CATEGORIES.NAME = :most_common THEN 0
+                WHEN CATEGORIES.NAME IN ({prioritize_placeholders}) THEN 1
+                WHEN CATEGORIES.NAME = :most_common THEN 2
                 ELSE 3
             END
         """
@@ -363,7 +363,7 @@ def babelsql(
         babel_orderbyclause = f"""
         ORDER BY
             CASE
-                WHEN NAMES.CATEGORY IN ({prioritize_placeholders}) THEN 0
+                WHEN CATEGORIES.NAME IN ({prioritize_placeholders}) THEN 0
                 ELSE 1
             END
         """
@@ -371,7 +371,7 @@ def babelsql(
         babel_orderbyclause = """
         ORDER BY
             CASE
-                WHEN NAMES.CATEGORY = :most_common THEN 0
+                WHEN CATEGORIES.NAME = :most_common THEN 0
                 ELSE 1
             END
         """
