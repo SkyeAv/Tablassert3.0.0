@@ -381,8 +381,8 @@ def babelsql(
     return f"""
     SELECT
         NAMES.CURIE,
-        CATEGORIES.NAME as category_names,
-        NAMES.NAME as preferred_names,
+        CATEGORIES.NAME as category_name,
+        NAMES.NAME as preferred_name,
         NAMES.TAXON
     FROM NAMES
     INNER JOIN SYNONYMS ON NAMES.ID = SYNONYMS.ID
@@ -547,8 +547,8 @@ def babelresult(name: str, rows: Any, level: str, db: str = "babel") -> dict[str
     return fullmap_struct(
         name,
         row.get("CURIE"),
-        row.get("NAME"),
-        row.get("CATEGORY"),
+        row.get("preferred_name"),
+        row.get("category_name"),
         row.get("TAXON"),
         level,
         db,
