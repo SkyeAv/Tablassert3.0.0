@@ -321,7 +321,6 @@ async def playwright_download(
     link: str, savepath: Path, repeats: int = 1
 ) -> Optional[Path]:
     async with async_playwright() as p:
-        print(environ["CHROMIUM_PATH"])
         browser = await p.chromium.launch(
             headless=True,
             executable_path=environ["CHROMIUM_PATH"],
