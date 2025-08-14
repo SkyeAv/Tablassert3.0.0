@@ -1,8 +1,8 @@
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from src.tablassert.scoring.config import SEED, DEVICE
-from torchdr.affinity import NormalizedGaussianAffinity
 from transformers import AutoTokenizer, AutoModel
 from sklearn.preprocessing import OrdinalEncoder
+from torchdr.affinity import GaussianAffinity
 from typing import Self, Any, Optional
 from functools import lru_cache
 from torchdr import KernelPCA
@@ -94,13 +94,13 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
     numeric: list[str] = ["sample_size", "relationship_strength"]
     categorical: list[str] = [
         "significant",
-        "multiple_testing_correction_method",
         "subject_mapped_with_database",
         "subject_mapped_with_level",
         "object_mapped_with_database",
         "object_mapped_with_level",
     ]
     freetext: list[str] = [
+        "multiple_testing_correction_method",
         "assertion_method",
         "notes",
         "supplementary_file_caption",
@@ -136,7 +136,7 @@ def encode_data(df: pl.DataFrame, savepath: Path, mode: str) -> Dataset:  # type
         with torch.no_grad():
             D: torch.Tensor = torch.cdist(X, X)
             sigma: torch.Tensor = torch.median(D[D > 0])
-        aff = NormalizedGaussianAffinity(
+        aff = GaussianAffinity(
             sigma=sigma,
             zero_diag=False,
             backend="torch",
