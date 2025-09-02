@@ -1,6 +1,6 @@
 # Tablassert
 
-## Version 4.4.0 [[ STABLE, I STILL NEED TO DOCUMENT HOW TOP RUN WITH NIX... SHOULD BE SELF EXPLANATORY THOUGH ]]
+## Version 4.4.0
 
 ### By Skye Goetz and Gwênlyn Glusman
 
@@ -8,24 +8,11 @@ Tablassert is a versatile tool that creates knowledge assertions from tabular da
 
 ## Usage
 
-### Via Poetry
-
-**First,** Install Poetry
+### Via Nix
 
 ```bash
-python3 -m pip install poetry
-```
-
-**Next,** Install Tablassert and dependencies with Poetry
-
-```bash
-poetry install
-```
-
-**Finally,** Run the Tablassert CLI ([documentation](./docs/tablassert_cli.md)) with Poetry
-
-```bash
-poetry run cli --help
+nix build .
+nix run -n . <CLI args>
 ```
 
 ### Via Docker

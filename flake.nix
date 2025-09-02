@@ -4,15 +4,10 @@
     nixpkgs = {
       url = "github:nixos/nixpkgs/25.05";
     };
-    tablassert = {
-      url = "github:SkyeAv/Tablassert/4.4.0";
-      flake = false;
-    };
   };
   outputs = {
     self,
-    nixpkgs,
-    tablassert,
+    nixpkgs
   }: let
     systems = [
       "x86_64-linux"
@@ -267,7 +262,7 @@
       myapp = py.buildPythonApplication {
         pname = "tablassert";
         version = "4.4.0";
-        src = tablassert;
+        src = ./.;
         pyproject = true;
         build-system = with py; [
           setuptools
