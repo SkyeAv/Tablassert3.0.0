@@ -23,6 +23,10 @@ nix run -n . <CLI args>
 
 **WIP:** I'm Still Working on This
 
+## CLI Documentation
+
+Documenation for [CLI](./docs/tablassert_cli.md)
+
 ## Required Configuration
 
 Documentation for [GraphConfigs](./docs/graph_config.md)
