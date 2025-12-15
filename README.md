@@ -12,7 +12,7 @@ Tablassert is a versatile tool that creates knowledge assertions from tabular da
 
 ```bash
 nix build .
-nix run -n . <CLI args>
+nix run . -- --help
 ```
 
 ### Via Docker
