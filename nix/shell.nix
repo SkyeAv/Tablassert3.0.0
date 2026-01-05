@@ -19,6 +19,7 @@ let
       pydantic
       optimum
       pyexcel
+      mkdocs
       pyyaml
       duckdb
       orjson

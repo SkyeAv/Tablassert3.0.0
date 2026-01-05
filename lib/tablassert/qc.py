@@ -9,7 +9,7 @@ from operator import ge
 from operator import eq
 import polars as pl
 
-SESSION_OPTS = ort.SessionOptions()
+SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 # TODO: Explore Best Model For QC

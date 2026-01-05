@@ -1,0 +1,10 @@
+site_name: tablassert 
+theme:
+  name: readthedocs
+nav:
+  - Home:
+    - INDEX.md
+  - User Guide:
+    - INSTALLATION.md
+  - About:
+    - ABOUT.md
