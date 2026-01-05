@@ -115,3 +115,5 @@ class Graph(TablaBase):
   version: str = Field(...)
   tables: list[Path] = Field(...)
   dbssert: Path = Field(...)
+  pubmed: Path = Field(...)
+  pmc: Path = Field(...)

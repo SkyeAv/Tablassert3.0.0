@@ -216,7 +216,7 @@ class Tcode(Section):
       (zero, (col)),
       (one, (col)),
       (to_temp, ()),
-      (version4, (col, dbssert, x.taxon, x.prioritize, x.avoid))
+      (version4, (col, dbssert, x.taxon, x.prioritize, x.avoid)),
       (fullmap_audit, (col))
     ]
     return add(encoding, node)
