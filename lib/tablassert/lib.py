@@ -328,5 +328,4 @@ def main(
     instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = pool.map(lambda x: x.collect(g.dbssert), tcode)
 
   subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
-  n, e = compile_graph(subgraphs, g.name, g.version)
-  label_edges(e)
+  compile_graph(subgraphs, g.name, g.version)
