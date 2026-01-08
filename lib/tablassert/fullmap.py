@@ -58,3 +58,4 @@ ORDER BY PR;
       return conn.execute(query).pl()
   finally:
     conn.close()
+    p.unlink()

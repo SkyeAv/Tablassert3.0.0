@@ -329,4 +329,5 @@ def main(
 
   subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
   n, e = compile_graph(subgraphs, g.name, g.version)
+  label_edges(e)
 
