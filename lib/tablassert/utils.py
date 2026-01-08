@@ -33,7 +33,6 @@ def basespace(domain: str) -> UUID:
 def namespace_uuid(domain: Any, *values: list[Any]) -> str:
   domain = str(domain)
   values = [str(x) for x in values if x]
-
   domainspace: UUID = basespace(domain)
   joined: str = "\t".join(values)
   return str(uuid3(domainspace, joined))

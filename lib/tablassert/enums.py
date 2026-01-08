@@ -47,7 +47,7 @@ class Syntaxes(str, Enum):
   TC3 = "TC3"
   GC2 = "GC2"
 
-class Syntaxes(str, Enum):
+class Statuses(str, Enum):
   ALPHA = "alpha"
   BETA = "beta"
   PRIMETIME = "primetime"
