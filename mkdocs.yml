@@ -1,10 +1,6 @@
-site_name: tablassert 
-theme:
-  name: readthedocs
+site_name: tablassert
+theme: readthedocs
 nav:
-  - Home:
-    - INDEX.md
+  - Home: INDEX.md
   - User Guide:
     - INSTALLATION.md
-  - About:
-    - ABOUT.md
