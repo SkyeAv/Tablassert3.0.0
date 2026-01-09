@@ -15,6 +15,7 @@ def version4(
   avoid: Optional[list[Categories]],
   tag: str = "_one"
 ) -> pl.DataFrame:
+  # ? Case Dependant, Provenance Rich Name Entitiy Recognition
   try:
     with duckdb.connect(dbssert) as conn:
       l0: str = col
