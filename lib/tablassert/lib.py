@@ -202,7 +202,7 @@ SELECT
   info.title,
   info.year
 FROM ids
-INNER JOIN mesh ON ids.pmid = mesh.pmid
+INNER JOIN mesh ON ids.pmid = mesh.pmidc
 INNER JOIN info ON ids.pmid = info.pmid
 WHERE ids.alt = :curie OR ids.pmid = :curie
 LIMIT 1
