@@ -21,6 +21,7 @@ from pydantic import PositiveInt
 from multiprocessing import Pool
 from tempfile import gettempdir
 from functools import reduce
+from os.path import basename
 from itertools import chain
 from typing import Callable
 from typing import Optional
@@ -192,6 +193,7 @@ def to_store(df: pl.DataFrame, p: Path) -> Path:
   return p
 
 def with_mesh(df: pl.DataFrame, pubmed_db: Path, curie: str) -> pl.DataFrame:
+  # ? Adds PubMedDB Related MeSH Annotations To DF
   db: object = Database(pubmed_db)
   query: str = """
 SELECT
@@ -207,7 +209,7 @@ INNER JOIN info ON ids.pmid = info.pmid
 WHERE ids.alt = :curie OR ids.pmid = :curie
 LIMIT 1
 """
-  rows: list[dict[str, str]] = list(db.query(query, {":curie": curie})) or []
+  rows: list[dict[str, str]] = list(db.query(query, {"curie": curie})) or []
   all_ids: list[str] = [x["mesh"] for x in rows if x]
   is_major: list[bool] = [eq(x["mesh_major"], "Y") for x in rows]
   domain: list[str] = [x for x, y in zip(all_ids, is_major) if y]
@@ -218,6 +220,40 @@ LIMIT 1
   journal: str = row.get("journal")
   title: str = row.get("title")
   year: str = row.get("year")
+
+  if domain:
+    df = df.with_columns(pl.lit(",".join(domain)).alias("domain"))
+  if mesh:
+    df = df.with_columns(pl.lit(",".join(mesh)).alias("mesh"))
+  if first_author:
+    df = df.with_columns(pl.lit(first_author).alias("first author"))
+  if journal:
+    df = df.with_columns(pl.lit(journal).alias("journal"))
+  if title:
+    df = df.with_columns(pl.lit(title).alias("title"))
+  if year:
+    df = df.with_columns(pl.lit(year).alias("year published"))
+
+  return df
+
+def with_captions(df: pl.DataFrame, pmc_db: Path, curie: str, url: str) -> pl.DataFrame:
+  # ? Adds PMC Caption Annotations To DF With Filename Heuristic
+  db: object = Database(pmc_db)
+  filename: str = basename(url)
+  query: str = """
+SELECT caption
+FROM captions
+WHERE pmc = :curie AND file = :filename
+LIMIT 1
+"""
+  rows: list[dict[str, str]] = list(db.query(query, {"curie": curie, "filename": filename})) or []
+  row: dict[str, str] = rows[0] or {}
+
+  caption: str = row.get("caption")
+  if caption:
+    df = df.with_columns(pl.lit(caption).alias("file caption"))
+
+  return df
 
 class Tcode(Section):
   # ? Extends Section To Compile A KG
@@ -255,7 +291,7 @@ class Tcode(Section):
     # ? Cleans Tcode So It Can Be Used With reduce From functools
     return [op for x in tcode if x for op in (x if isinstance(x, list) else list(x))]
 
-  def collect(self: Self, dbssert: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+  def collect(self: Self, dbssert: Path, pubmed_db: Path, pmc_db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
     # ? Code That Tells Tablassert What Actions To While Transforming Data
 
     if self.store.is_file():
@@ -285,6 +321,8 @@ class Tcode(Section):
         (value, ("contributors", [{k: v} for x in self.contributors for k, v in x.values() if v])),
         (value, ("url", self.source.url)),
         (value, ("section md5", self.store.stem)),
+        (with_mesh, (pubmed_db, self.provenance.publication))
+        (with_captions, (pmc_db, self.provenance.publication, self.source.url))
         (to_temp, ()),
         (sig, ()),
         (trim, ()),
@@ -346,8 +384,6 @@ CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 def main(
   ingest: Path = typer.Option(..., "-i", "-ingest", help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
-  # TODO: Make Docs And Update Options With Link
-  # TODO: Add Queries For MeSH and PMC
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   r: object = from_yaml(ingest)
   g: Graph = Graph.model_validate(r)
@@ -357,7 +393,7 @@ def main(
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
 
     tcode: list[Tcode] = pool.map(lambda idx, s: Tcode.model_validate(s.update({"number": idx, "store": (STORE / f"{mkhash(s)}.parquet")})), enumerate(sections, start=1))
-    instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = pool.map(lambda x: x.collect(g.dbssert), tcode)
+    instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = pool.map(lambda x: x.collect(g.dbssert, g.pubmed_db, g.pmc_db), tcode)
 
   subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
   compile_graph(subgraphs, g.name, g.version)
