@@ -93,7 +93,7 @@ class Contributor(TablaBase):
 
 class Provenance(TablaBase):
   repo: Repositories = Field(Repositories.PUBMED_CENTRAL)
-  publication: PositiveInt = Field(...)
+  publication: str = Field(...)
   contributors: list[Contributor] = Field(...)
 
 class Annotation(Encoding):
@@ -115,5 +115,5 @@ class Graph(TablaBase):
   version: str = Field(...)
   tables: list[Path] = Field(...)
   dbssert: Path = Field(...)
-  pubmed: Path = Field(...)
-  pmc: Path = Field(...)
+  pubmed_db: Path = Field(...)
+  pmc_db: Path = Field(...)

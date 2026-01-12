@@ -13,6 +13,7 @@ let
     propagatedBuildInputs = (with py; [
       sentence-transformers
       scikit-learn
+      sqlite-utils
       onnxruntime
       playwright
       rapidfuzz

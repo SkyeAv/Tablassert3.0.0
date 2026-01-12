@@ -2,6 +2,7 @@ from __future__ import annotations
 from tablassert.enums import EncodingMethods
 from tablassert.utils import namespace_uuid
 from tablassert.models import NodeEncoding
+from tablassert.downloader import from_url
 from tablassert.utils import to_sections
 from tablassert.qc import fullmap_audit
 from tablassert.fullmap import version4
@@ -15,6 +16,7 @@ from pydantic import NonNegativeInt
 from tablassert.models import Graph
 from tablassert.enums import Files
 from tablassert.utils import STORE
+from sqlite_utils import Database
 from pydantic import PositiveInt
 from multiprocessing import Pool
 from tempfile import gettempdir
@@ -67,7 +69,7 @@ def one(
   df: pl.DataFrame,
   col: str,
   regex: str = r"\W+",
-  tag: str = "_one"
+  tag: str = " one"
 ) -> pl.DataFrame:
   # ? Level One Text Processing
   expr: pl.Expr = pl.col(col).str.replace_all(regex)
@@ -189,6 +191,34 @@ def to_store(df: pl.DataFrame, p: Path) -> Path:
   df.write_parquet(p)
   return p
 
+def with_mesh(df: pl.DataFrame, pubmed_db: Path, curie: str) -> pl.DataFrame:
+  db: object = Database(pubmed_db)
+  query: str = """
+SELECT
+  mesh.mesh_major,
+  mesh.mesh,
+  info.firstauthor,
+  info.journal,
+  info.title,
+  info.year
+FROM ids
+INNER JOIN mesh ON ids.pmid = mesh.pmid
+INNER JOIN info ON ids.pmid = info.pmid
+WHERE ids.alt = :curie OR ids.pmid = :curie
+LIMIT 1
+"""
+  rows: list[dict[str, str]] = list(db.query(query, {":curie": curie})) or []
+  all_ids: list[str] = [x["mesh"] for x in rows if x]
+  is_major: list[bool] = [eq(x["mesh_major"], "Y") for x in rows]
+  domain: list[str] = [x for x, y in zip(all_ids, is_major) if y]
+  mesh: list[str] = [x for x in all_ids if x not in domain]
+
+  row: dict[str, str] = rows[0] or {}
+  first_author: str = row.get("firstauthor")
+  journal: str = row.get("journal")
+  title: str = row.get("title")
+  year: str = row.get("year")
+
 class Tcode(Section):
   # ? Extends Section To Compile A KG
   number: PositiveInt = Field(...)
@@ -212,7 +242,7 @@ class Tcode(Section):
     # ? Collect Helper For NodeEncoding Classes
     encoding: list[Any] = self.encoding(x, col)
     node: list[Any] = [
-      (column, add("original_", col), col)
+      (column, add("original ", col), col)
       (zero, (col)),
       (one, (col)),
       (to_temp, ()),
@@ -235,6 +265,7 @@ class Tcode(Section):
     else:
       # * Returns A List Of: (Function, (Arguments))
       tcode: Optional[list[Any]] = [
+        (from_url, (self.source.url, self.source.local))
         (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,
         (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,
         (idx, ()),
@@ -267,7 +298,7 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]]) -> Path:
 
 def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]) -> pl.DataFrame:
   # ? Converts Disparate Columns Containing Nodes Into A Unified Column
-  cols: list[str] = [col, add(col, "_name"), add(col, "_category"), add(col, "_taxon"), add(col, "_source"), add(col, "_source_version")]
+  cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
   edges = edges.select(cols).unique()
   return edges.rename({k: v for k, v in zip(names, cols)})
 
@@ -294,7 +325,7 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> tuple[Path]
     edges: pl.DataFrame = pl.read_parquet(s)
     edges.write_ndjson(e, append=True)
 
-    node_cols: list[str] = [col.replace("original_", "") for col in edges.columns if "original_" in col]
+    node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
     nodes: pl.DataFrame = pl.concat([normalize_node(edges, col) for col in node_cols], how="vertical")
     nodes = nodes.unique()
 
@@ -309,13 +340,14 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> tuple[Path]
 
   label_edges(e)
 
-app: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
+CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 
-@app.command()
+@CLI.command()
 def main(
   ingest: Path = typer.Option(..., "-i", "-ingest", help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
   # TODO: Make Docs And Update Options With Link
+  # TODO: Add Queries For MeSH and PMC
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   r: object = from_yaml(ingest)
   g: Graph = Graph.model_validate(r)

@@ -4,6 +4,7 @@ from typing import Optional
 from pathlib import Path
 from operator import add
 import polars as pl
+import sqlite3
 import duckdb
 
 def version4(
@@ -13,23 +14,23 @@ def version4(
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
-  tag: str = "_one"
+  tag: str = " one"
 ) -> pl.DataFrame:
   # ? Case Dependant, Provenance Rich Name Entitiy Recognition
   try:
     with duckdb.connect(dbssert) as conn:
       l0: str = col
       l1: str = add(l0, tag)
-      query: str = f"""\
+      query: str = f"""
 SELECT DISTINCT ON (SY.SYNONYM)
   CU.CURIE AS {col},
-  CU.PREFERRED_NAME AS {add(col, "_name")},
-  'biolink:' || CA.CATEGORY_NAME AS {add(col, "_category")},
-  'NCBITaxon:' || CU.TAXON_ID AS {add(col, "_taxon")},
-  SO.SOURCE_NAME AS {add(col, "_source")},
-  SO.SOURCE_VERSION AS {add(col, "_source_version")},
-  SO.NLP_LEVEL AS {add(col, "_nlp_level")},
-  SY.SYNONYM AS {add(col, "_synonym")},
+  CU.PREFERRED_NAME AS {add(col, " name")},
+  'biolink:' || CA.CATEGORY_NAME AS {add(col, " category")},
+  'NCBITaxon:' || CU.TAXON_ID AS {add(col, " taxon")},
+  SO.SOURCE_NAME AS {add(col, " source")},
+  SO.SOURCE_VERSION AS {add(col, " source version")},
+  SO.NLP_LEVEL AS {add(col, " nlp level")},
+  SY.SYNONYM AS {add(col, " synonym")},
   PA.* EXCLUDE ({l0}, {l1})
 FROM (
   SELECT
@@ -58,5 +59,4 @@ ORDER BY PR;
 """
       return conn.execute(query).pl()
   finally:
-    conn.close()
     p.unlink()

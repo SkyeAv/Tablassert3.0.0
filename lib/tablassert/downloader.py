@@ -11,8 +11,10 @@ def modernize_xls(p: Path) -> Path:
   pyexcel.save_book_as(file_name=str(p), dest_file_name=str(xlsx))
   return xlsx
 
-def from_url(website: str, p: Path, timeout: int = 10_000) -> None:
+def from_url(website: str, p: Path, timeout: int = 10_000) -> Path:
   try:
+    p.parent.mkdir(parents=True, exist_ok=True)
+
     with sync_playwright() as p:
       browser = p.chromium.launch(
         headless=True,
@@ -21,11 +23,12 @@ def from_url(website: str, p: Path, timeout: int = 10_000) -> None:
       )
 
       page = browser.new_page()
-
       page.goto(website, wait_until="networkidle")
       with page.expect_download(timeout=timeout) as info:
         download = info.value
         download.save_as(p)
+
+    return p
 
   finally:
     browser.close()
