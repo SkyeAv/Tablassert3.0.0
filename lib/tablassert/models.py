@@ -1,4 +1,3 @@
-from __future__ import annotations
 from tablassert.enums import EncodingMethods
 from tablassert.enums import Contributions
 from tablassert.enums import Repositories
@@ -19,6 +18,7 @@ from pydantic import BaseModel
 from pydantic import HttpUrl
 from typing import Optional
 from pydantic import Field
+from typing import Literal
 from typing import Union
 from pathlib import Path
 
@@ -40,15 +40,15 @@ class BaseSource(TablaBase):
   local: Path = Field(...)
   url: HttpUrl = Field(...)
   rows: Optional[list[NonNegativeInt]] = Field(None)
-  row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]] = Field(None)
+  row_slice: Optional[list[Union[NonNegativeInt, Literal[Tokens.AUTO]]]] = Field(None)
   reindex: Optional[list[Reindex]] = Field(None)
 
 class Excel(BaseSource):
-  kind: Files.EXCEL = Field(Files.EXCEL)
+  kind: Literal[Files.EXCEL] = Field(Files.EXCEL)
   sheet: Optional[str] = Field("Sheet1")
 
 class Text(BaseSource):
-  kind: Files.TEXT = Field(Files.TEXT)
+  kind: Literal[Files.TEXT] = Field(Files.TEXT)
   delimiter: Optional[str] = Field(",")
 
 class Regex(TablaBase):
@@ -57,11 +57,11 @@ class Regex(TablaBase):
 
 class Math(TablaBase):
   function: Functions = Field(...)
-  arguments: list[Union[Tokens.VALUES, float, int]] = Field(...)
+  arguments: list[Union[Literal[Tokens.VALUES], float, int]] = Field(...)
 
 class Encoding(TablaBase):
   method: EncodingMethods = Field(EncodingMethods.VALUE)
-  encoding: str = Field(...)
+  encoding: Union[str, int, float] = Field(...)
   regex: Optional[list[Regex]] = Field(None)
   fill: Optional[FillMethods] = Field(None)
   remove: Optional[list[str]] = Field(None)
@@ -82,7 +82,7 @@ class Statement(TablaBase):
   subject: NodeEncoding = Field(...)
   object: NodeEncoding = Field(...)
   predicate: Predicates = Field(Predicates.RELATED_TO)
-  qualifiers: Optional[list[Qualifier]]
+  qualifiers: Optional[list[Qualifier]] = Field(None)
 
 class Contributor(TablaBase):
   kind: Contributions = Field(Contributions.CURATION)
@@ -104,7 +104,7 @@ class Section(TablaBase):
   syntax: Syntaxes = Field(Syntaxes.TC3)
   status: Statuses = Field(Statuses.ALPHA)
   source: Union[Excel, Text] = Field(...)
-  statement: Provenance = Field(...)
+  statement: Statement = Field(...)
   provenance: Provenance = Field(...)
   annotations: Optional[list[Annotation]] = Field(None)
 

@@ -1,9 +1,8 @@
-from __future__ import annotations
 from enum import Enum
 
 class Tokens(str, Enum):
-  AUTO = "AUTO"
-  VALUES = "VALUES"
+  AUTO = "auto"
+  VALUES = "values"
 
 class Repositories(str, Enum):
   PUBMED_CENTRAL = "PMC"

@@ -1,10 +1,8 @@
-from __future__ import annotations
 from tablassert.enums import Categories
 from typing import Optional
 from pathlib import Path
 from operator import add
 import polars as pl
-import sqlite3
 import duckdb
 
 def version4(

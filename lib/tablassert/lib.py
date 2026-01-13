@@ -1,4 +1,3 @@
-from __future__ import annotations
 from tablassert.enums import EncodingMethods
 from tablassert.utils import namespace_uuid
 from tablassert.models import NodeEncoding
@@ -25,6 +24,7 @@ from os.path import basename
 from itertools import chain
 from typing import Callable
 from typing import Optional
+from typing import Literal
 from pydantic import Field
 from pathlib import Path
 from typing import Union
@@ -146,8 +146,8 @@ def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.DataFrame:
 def crop(df: pl.DataFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.DataFrame:
   # ? Takes A Slice From A DataFrame
   n: int = df.height
-  start: Union[int, Tokens.AUTO] = row_slice[0]
-  stop: Union[int, Tokens.AUTO] = row_slice[1]
+  start: Union[int, Literal[Tokens.AUTO]] = row_slice[0]
+  stop: Union[int, Literal[Tokens.AUTO]] = row_slice[1]
   offset: int = 0 if eq(start, Tokens.AUTO) else start
   length: int = n if eq(stop, Tokens.AUTO) else (stop - offset)
   return df.slice(offset=offset, length=length)
@@ -278,7 +278,7 @@ class Tcode(Section):
     # ? Collect Helper For NodeEncoding Classes
     encoding: list[Any] = self.encoding(x, col)
     node: list[Any] = [
-      (column, add("original ", col), col)
+      (column, add("original ", col), col),
       (zero, (col)),
       (one, (col)),
       (to_temp, ()),
@@ -311,14 +311,14 @@ class Tcode(Section):
         [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
         self.node(self.statement.subject, "subject", dbssert),
         self.node(self.statement.object, "object", dbssert),
-        (value, ("predicate", self.predicate)),
+        (value, ("predicate", self.statement.predicate)),
         [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, dbssert)] if self.statement.qualifiers else None,
         (value, ("syntax", self.syntax)),
         (value, ("section number", self.number)),
         (value, ("status", self.status)),
         (value, ("repository", self.provenance.repo)),
         (value, ("publication", self.provenance.publication)),
-        (value, ("contributors", [{k: v} for x in self.contributors for k, v in x.values() if v])),
+        (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.values() if v])),
         (value, ("url", self.source.url)),
         (value, ("section md5", self.store.stem)),
         (with_mesh, (pubmed_db, self.provenance.publication))
@@ -391,9 +391,11 @@ def main(
     raw: list[object] = pool.map(from_yaml, g.tables)
     temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw)
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
+    print(sections)
 
-    tcode: list[Tcode] = pool.map(lambda idx, s: Tcode.model_validate(s.update({"number": idx, "store": (STORE / f"{mkhash(s)}.parquet")})), enumerate(sections, start=1))
-    instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = pool.map(lambda x: x.collect(g.dbssert, g.pubmed_db, g.pmc_db), tcode)
+    tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in enumerate(sections, start=1)]
+    instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = [x.collect(g.dbssert, g.pubmed_db, g.pmc_db) for x in tcode]
+    print(instructions)
 
   subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
   compile_graph(subgraphs, g.name, g.version)

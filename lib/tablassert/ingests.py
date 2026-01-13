@@ -1,5 +1,3 @@
-from __future__ import annotations
-from multiprocessing import Pool
 from yaml import CLoader
 from pathlib import Path
 from typing import Union
@@ -39,7 +37,5 @@ def from_yaml(p: Path) -> object:
 def to_sections(instructions: dict[str, Any]) -> list[list[dict[str, Any]]]:
   # ? Converts Dict To Sections
   template: dict[str, Any] = instructions.get("template", {})
-  sections: list[dict[str, Any]] = instructions.get("sections" , [])
-
-  with Pool() as pool:
-    return pool.map(lambda x: fastmerge(template, x), sections)
+  sections: list[dict[str, Any]] = instructions.get("sections" , [{}])
+  return [fastmerge(template, x) for x in sections]

@@ -13,4 +13,4 @@ version = "6.0.0"
 where = ["lib"]
 
 [project.scripts]
-tablassert-cli = "tablassert.lib:app"
+tablassert-cli = "tablassert.lib:CLI"

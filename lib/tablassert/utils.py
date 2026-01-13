@@ -1,4 +1,3 @@
-from __future__ import annotations
 from diskcache import Cache
 from functools import cache
 from pathlib import Path
