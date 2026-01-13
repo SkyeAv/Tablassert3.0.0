@@ -173,7 +173,6 @@ def idxname(col: str) -> str:
   for char in col:
     idx = idx * 26 + (ord(char) - 65 + 1)
 
-  idx = idx - 1
   return f"column_{idx}"
 
 def trim(df: pl.DataFrame, regex: str = r"^column_\d+$") -> pl.DataFrame:
