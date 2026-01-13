@@ -263,33 +263,41 @@ class Tcode(Section):
   def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
     # ? Collect Helper For Encoding Classes
     return [
-      (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
-      (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
-      (fill, (col, x.fill)) if x.fill else None,
-      (explode, (col, x.explode_by)) if x.explode_by else None,
-      [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
-      [(regex, (col, r)) for r in x.remove] if x.remove else None,
-      (prefix, (col, x.prefix)) if x.prefix else None,
-      (suffix, (col, x.suffix)) if x.suffix else None,
-      [(math_op, (col, col, t.function, t.arguments)) for t in x.transformations] if x.transformations else None
+      (value, (col, x.encoding,)) if eq(x.method, EncodingMethods.VALUE) else None,
+      (column, (col, idxname(x.encoding),)) if eq(x.method, EncodingMethods.COLUMN) else None,
+      (fill, (col, x.fill,)) if x.fill else None,
+      (explode, (col, x.explode_by,)) if x.explode_by else None,
+      [(regex, (col, r.pattern, r.replacement,)) for r in x.regex] if x.regex else None,
+      [(regex, (col, r,)) for r in x.remove] if x.remove else None,
+      (prefix, (col, x.prefix,)) if x.prefix else None,
+      (suffix, (col, x.suffix,)) if x.suffix else None,
+      [(math_op, (col, col, t.function, t.arguments,)) for t in x.transformations] if x.transformations else None
     ]
 
   def node(self: Self, x: NodeEncoding, col: str, dbssert: Path) -> list[Any]:
     # ? Collect Helper For NodeEncoding Classes
     encoding: list[Any] = self.encoding(x, col)
     node: list[Any] = [
-      (column, add("original ", col), col),
-      (zero, (col)),
-      (one, (col)),
+      (column, (add("original ", col), col,)),
+      (zero, (col,)),
+      (one, (col,)),
       (to_temp, ()),
-      (version4, (col, dbssert, x.taxon, x.prioritize, x.avoid)),
-      (fullmap_audit, (col))
+      (version4, (col, dbssert, x.taxon, x.prioritize, x.avoid,)),
+      (fullmap_audit, (col,))
     ]
     return add(encoding, node)
 
   def clean(self: Self, tcode: list[tuple[Callable, Any]]) -> list[tuple[Callable, tuple[Any]]]:
     # ? Cleans Tcode So It Can Be Used With reduce From functools
-    return [op for x in tcode if x for op in (x if isinstance(x, list) else [x])]
+    result: list[tuple[Callable, tuple[Any]]] = []
+    for x in tcode:
+      if not x:
+        continue
+      elif isinstance(x, list):
+        result.extend(self.clean(x))
+      else:
+        result.append(x)
+    return result
 
   def collect(self: Self, dbssert: Path, pubmed_db: Path, pmc_db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
     # ? Code That Tells Tablassert What Actions To While Transforming Data
@@ -301,38 +309,38 @@ class Tcode(Section):
     else:
       # * Returns A List Of: (Function, (Arguments))
       tcode: Optional[list[Any]] = [
-        (from_url, (self.source.url, self.source.local)),
-        (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,
-        (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,
+        (from_url, (str(self.source.url), self.source.local,)),
+        (csv, (self.source.delimiter,)) if eq(self.source.kind, Files.TEXT) else None,
+        (excel, (self.source.sheet,)) if eq(self.source.kind, Files.EXCEL) else None,
         (idx, ()),
-        (crop, (self.source.row_slice)) if self.source.row_slice else None,
-        (pick, (self.source.rows)) if self.source.rows else None,
-        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator)) for x in self.source.reindex] if self.source.reindex else None,
+        (crop, (self.source.row_slice,)) if self.source.row_slice else None,
+        (pick, (self.source.rows,)) if self.source.rows else None,
+        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator,)) for x in self.source.reindex] if self.source.reindex else None,
         [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
         self.node(self.statement.subject, "subject", dbssert),
         self.node(self.statement.object, "object", dbssert),
-        (value, ("predicate", self.statement.predicate)),
+        (value, ("predicate", self.statement.predicate,)),
         [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, dbssert)] if self.statement.qualifiers else None,
-        (value, ("syntax", self.syntax)),
-        (value, ("section number", self.number)),
-        (value, ("status", self.status)),
-        (value, ("repository", self.provenance.repo)),
-        (value, ("publication", self.provenance.publication)),
-        (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.model_dump().items() if v])),
-        (value, ("url", self.source.url)),
-        (value, ("section md5", self.store.stem)),
-        (with_mesh, (pubmed_db, self.provenance.publication)),
-        (with_captions, (pmc_db, self.provenance.publication, self.source.url)),
+        (value, ("syntax", self.syntax,)),
+        (value, ("section number", self.number,)),
+        (value, ("status", self.status,)),
+        (value, ("repository", self.provenance.repo,)),
+        (value, ("publication", self.provenance.publication,)),
+        (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.model_dump().items() if v],)),
+        (value, ("url", self.source.url,)),
+        (value, ("section md5", self.store.stem,)),
+        (with_mesh, (pubmed_db, self.provenance.publication,)),
+        (with_captions, (pmc_db, self.provenance.publication, self.source.url,)),
         (to_temp, ()),
         (sig, ()),
         (trim, ()),
-        (to_store, (self.store))
+        (to_store, (self.store,))
       ]
       return self.clean(tcode)
 
 def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]]) -> Path:
   # ? Executes Tcode To Build Subgraphs As Parquets
-  return reduce(lambda acc, op: op[0](acc, *op[1]) if acc else op[0](*op[1]), tcode, None)
+  return reduce(lambda acc, op: op[0](acc, *op[1]) if acc is not None else op[0](*op[1]), tcode, None)
 
 def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]) -> pl.DataFrame:
   # ? Converts Disparate Columns Containing Nodes Into A Unified Column

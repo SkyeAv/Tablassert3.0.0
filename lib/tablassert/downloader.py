@@ -10,8 +10,10 @@ def modernize_xls(p: Path) -> Path:
   pyexcel.save_book_as(file_name=str(p), dest_file_name=str(xlsx))
   return xlsx
 
-def from_url(website: str, p: Path, timeout: int = 10_000) -> Path:
+def from_url(website: str, p: Path, timeout: int = 100_000) -> Path:
   p.parent.mkdir(parents=True, exist_ok=True)
+  if p.is_file():
+    return p
 
   with sync_playwright() as pw:
     browser = pw.chromium.launch(

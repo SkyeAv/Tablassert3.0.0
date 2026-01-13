@@ -49,6 +49,7 @@ let
       playwright
       rapidfuzz
       diskcache
+      fastexcel
       pydantic
       pyexcel
       mkdocs

@@ -1,4 +1,7 @@
 *.egg-info
+*cachessert/
+*storessert/
+*DATALAKE/
 *venv/
 *.log
 *.duckdb
