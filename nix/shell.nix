@@ -1,6 +1,36 @@
 {pkgs, lib, config, ...}:
 let
-  py = pkgs.python313Packages;
+  py = pkgs.python313Packages.override {
+    overrides = self: super: {
+      optimum-onnx = self.buildPythonPackage rec {
+        pname = "optimum-onnx";
+        version = "0.1.0";
+        format = "pyproject";
+        src = pkgs.fetchFromGitHub {
+          owner = "huggingface";
+          repo = "optimum-onnx";
+          rev = "v0.1.0-release";
+          sha256 = "sha256-Thx3QPLgi8w8znvMGSuCyRu/tUynCkQFywtKKv7UhuA=";
+        };
+        build-system = (with self; [
+          setuptools
+          wheel
+        ]);
+        propagatedBuildInputs = (with self; [
+          transformers
+          scikit-learn
+          onnxruntime
+          optimum
+          scipy
+          onnx
+        ]);
+        passthru.optional-dependencies.onnxruntime = [self.onnxruntime];
+        pythonRelaxDeps = ["optimum"];
+        doCheck = false;
+      };
+    };
+  };
+  
   tablassert = py.buildPythonApplication rec {
     pname = "tablassert";
     version = "6.0.0";
@@ -12,13 +42,14 @@ let
     ]);
     propagatedBuildInputs = (with py; [
       sentence-transformers
+      optimum-onnx
       scikit-learn
       sqlite-utils
       onnxruntime
       playwright
       rapidfuzz
+      diskcache
       pydantic
-      optimum
       pyexcel
       mkdocs
       pyyaml

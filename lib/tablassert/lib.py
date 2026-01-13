@@ -3,10 +3,10 @@ from tablassert.enums import EncodingMethods
 from tablassert.utils import namespace_uuid
 from tablassert.models import NodeEncoding
 from tablassert.downloader import from_url
-from tablassert.utils import to_sections
+from tablassert.ingests import to_sections
+from tablassert.ingests import from_yaml
 from tablassert.qc import fullmap_audit
 from tablassert.fullmap import version4
-from tablassert.utils import from_yaml
 from tablassert.models import Encoding
 from tablassert.models import Section
 from tablassert.utils import samphash
