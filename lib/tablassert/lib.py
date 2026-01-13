@@ -287,9 +287,9 @@ class Tcode(Section):
     ]
     return add(encoding, node)
 
-  def clean(tcode: list[tuple[Callable, Any]]) -> list[tuple[Callable, tuple[Any]]]:
+  def clean(self: Self, tcode: list[tuple[Callable, Any]]) -> list[tuple[Callable, tuple[Any]]]:
     # ? Cleans Tcode So It Can Be Used With reduce From functools
-    return [op for x in tcode if x for op in (x if isinstance(x, list) else list(x))]
+    return [op for x in tcode if x for op in (x if isinstance(x, list) else [x])]
 
   def collect(self: Self, dbssert: Path, pubmed_db: Path, pmc_db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
     # ? Code That Tells Tablassert What Actions To While Transforming Data
@@ -301,13 +301,13 @@ class Tcode(Section):
     else:
       # * Returns A List Of: (Function, (Arguments))
       tcode: Optional[list[Any]] = [
-        (from_url, (self.source.url, self.source.local))
+        (from_url, (self.source.url, self.source.local)),
         (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,
         (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,
         (idx, ()),
         (crop, (self.source.row_slice)) if self.source.row_slice else None,
         (pick, (self.source.rows)) if self.source.rows else None,
-        [(reindex, (idxname(x.column)), getattr(operator, x.comparison), x.comparator) for x in self.source.reindex] if self.source.reindex else None,
+        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator)) for x in self.source.reindex] if self.source.reindex else None,
         [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
         self.node(self.statement.subject, "subject", dbssert),
         self.node(self.statement.object, "object", dbssert),
@@ -318,11 +318,11 @@ class Tcode(Section):
         (value, ("status", self.status)),
         (value, ("repository", self.provenance.repo)),
         (value, ("publication", self.provenance.publication)),
-        (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.values() if v])),
+        (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.model_dump().items() if v])),
         (value, ("url", self.source.url)),
         (value, ("section md5", self.store.stem)),
-        (with_mesh, (pubmed_db, self.provenance.publication))
-        (with_captions, (pmc_db, self.provenance.publication, self.source.url))
+        (with_mesh, (pubmed_db, self.provenance.publication)),
+        (with_captions, (pmc_db, self.provenance.publication, self.source.url)),
         (to_temp, ()),
         (sig, ()),
         (trim, ()),

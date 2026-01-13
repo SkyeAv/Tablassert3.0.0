@@ -11,23 +11,19 @@ def modernize_xls(p: Path) -> Path:
   return xlsx
 
 def from_url(website: str, p: Path, timeout: int = 10_000) -> Path:
-  try:
-    p.parent.mkdir(parents=True, exist_ok=True)
+  p.parent.mkdir(parents=True, exist_ok=True)
 
-    with sync_playwright() as pw:
-      browser = pw.chromium.launch(
-        headless=True,
-        executable_path=CHROMIUM,
-        args=["--no-sandbox"]
-      )
+  with sync_playwright() as pw:
+    browser = pw.chromium.launch(
+      headless=True,
+      executable_path=CHROMIUM,
+      args=["--no-sandbox"]
+    )
 
-      page: object = browser.new_page()
-      page.goto(website, wait_until="networkidle")
-      with page.expect_download(timeout=timeout) as info:
-        download = info.value
-        download.save_as(p)
+    page: object = browser.new_page()
+    page.goto(website, wait_until="networkidle")
+    with page.expect_download(timeout=timeout) as info:
+      download = info.value
+      download.save_as(p)
 
-    return p
-
-  finally:
-    browser.close()
+  return p
