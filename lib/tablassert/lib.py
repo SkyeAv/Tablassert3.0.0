@@ -350,7 +350,7 @@ def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "nam
   return edges.rename({k: v for k, v in zip(cols, names)})
 
 def publication_node(edges: pl.DataFrame, names: list[str] = ["id", "name",  "first author", "journal", "year published"]) -> pl.DataFrame:
-  cols: list[str] = ["publication", "article", "first author", "journal", "year published"]
+  cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
   edges = edges.select(cols).unique()
   edges = edges.rename({k: v for k, v in zip(cols, names)})
   return edges.with_columns(pl.lit("biolink:Publication").alias("category"))
