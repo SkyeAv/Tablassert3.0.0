@@ -67,7 +67,7 @@ def fullmap_audit(df: pl.DataFrame, col: str, out: str = "passed") -> pl.DataFra
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
-  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[1:]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
+  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[:-1]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, BERT_fuzz))
   print(pairs[out])
 

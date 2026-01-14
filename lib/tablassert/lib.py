@@ -19,6 +19,7 @@ from sqlite_utils import Database
 from pydantic import PositiveInt
 from multiprocessing import Pool
 from tempfile import gettempdir
+import polars.selectors as cs
 from functools import reduce
 from os.path import basename
 from itertools import chain
@@ -350,7 +351,7 @@ def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "nam
 
 def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
   # ? Gives Each Edge In MOKG A UUID
-  e_out = e_in.with_suffix(".edges.ndjson")
+  e_out = e_in.with_suffix("")
   with e_in.open("rb") as f_in, e_out.open("wb") as f_out:
     for line in f_in:
       r: object = orjson.loads(line)
@@ -361,7 +362,7 @@ def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
 
   e_in.unlink()
 
-def compile_graph(subgraphs: list[Path], name: str, version: str) -> tuple[Path]:
+def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed") -> tuple[Path]:
   # ? Aggregates Parquets For NDJSON KGX Export
   p: Path = Path(f"./{name}_{version}")
   e: Path = p.with_suffix(".edges.ndjson.temp") # ! For Labeling
@@ -371,14 +372,16 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> tuple[Path]
     edges: pl.DataFrame = pl.read_parquet(s)
 
     with e.open("a") as f:
-      edges.write_ndjson(f)
+      with pl.Config(set_fmt_float=fmt):
+        edges.write_ndjson(f)
 
     node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
     nodes: pl.DataFrame = pl.concat([normalize_node(edges, col) for col in node_cols], how="vertical")
     nodes = nodes.unique()
 
     with n.open("a") as f:
-      nodes.write_ndjson(f)
+      with pl.Config(set_fmt_float=fmt):
+        nodes.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
   jq: Path = environ.get("JQ_PATH")
@@ -397,6 +400,9 @@ def main(
   ingest: Path = typer.Option(..., "-i", "-ingest", help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
+  # TODO: Add Scientific Notation
+  # TODO: Make Publication A Node
+  # TODO: Make MeSH A Node
   r: object = from_yaml(ingest)
   g: Graph = Graph.model_validate(r)
   with Pool() as pool:
