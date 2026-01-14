@@ -73,7 +73,7 @@ def one(
   tag: str = " one"
 ) -> pl.DataFrame:
   # ? Level One Text Processing
-  expr: pl.Expr = pl.col(col).str.replace_all(regex)
+  expr: pl.Expr = pl.col(col).str.replace_all(regex, "")
   col: str = add(col, tag)
   return df.with_columns(expr.alias(col))
 
@@ -110,10 +110,12 @@ def sig(
   out: str = "significant",
 ) -> pl.DataFrame:
   # ? Creates The "significant" Column
+  print("PreSig", df.shape)
+
   if col in df.columns:
     expr: pl.Expr = pl.col(col).cast(pl.Float64)
     cond: pl.Expr = le(expr, cutoff)
-    cutoff: pl.Expr = pl.when(expr.is_null()).then("UNSURE").when(cond).then("YES").otherwise("NO")
+    cutoff: pl.Expr = pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
     return df.with_columns(cutoff.alias(out))
 
   else:
@@ -203,7 +205,7 @@ SELECT
   info.title,
   info.year
 FROM ids
-INNER JOIN mesh ON ids.pmid = mesh.pmidc
+INNER JOIN mesh ON ids.pmid = mesh.pmid
 INNER JOIN info ON ids.pmid = info.pmid
 WHERE ids.alt = :curie OR ids.pmid = :curie
 LIMIT 1
@@ -214,7 +216,7 @@ LIMIT 1
   domain: list[str] = [x for x, y in zip(all_ids, is_major) if y]
   mesh: list[str] = [x for x in all_ids if x not in domain]
 
-  row: dict[str, str] = rows[0] or {}
+  row: dict[str, str] = rows[0] if rows else {}
   first_author: str = row.get("firstauthor")
   journal: str = row.get("journal")
   title: str = row.get("title")
@@ -246,7 +248,7 @@ WHERE pmc = :curie AND file = :filename
 LIMIT 1
 """
   rows: list[dict[str, str]] = list(db.query(query, {"curie": curie, "filename": filename})) or []
-  row: dict[str, str] = rows[0] or {}
+  row: dict[str, str] = rows[0] if rows else {}
 
   caption: str = row.get("caption")
   if caption:
@@ -326,11 +328,10 @@ class Tcode(Section):
         (value, ("repository", self.provenance.repo,)),
         (value, ("publication", self.provenance.publication,)),
         (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.model_dump().items() if v],)),
-        (value, ("url", self.source.url,)),
+        (value, ("url", str(self.source.url),)),
         (value, ("section md5", self.store.stem,)),
         (with_mesh, (pubmed_db, self.provenance.publication,)),
-        (with_captions, (pmc_db, self.provenance.publication, self.source.url,)),
-        (to_temp, ()),
+        (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)),
         (sig, ()),
         (trim, ()),
         (to_store, (self.store,))
@@ -345,7 +346,7 @@ def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "nam
   # ? Converts Disparate Columns Containing Nodes Into A Unified Column
   cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
   edges = edges.select(cols).unique()
-  return edges.rename({k: v for k, v in zip(names, cols)})
+  return edges.rename({k: v for k, v in zip(cols, names)})
 
 def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
   # ? Gives Each Edge In MOKG A UUID
@@ -368,20 +369,24 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> tuple[Path]
 
   for s in subgraphs:
     edges: pl.DataFrame = pl.read_parquet(s)
-    edges.write_ndjson(e, append=True)
+
+    with e.open("a") as f:
+      edges.write_ndjson(f)
 
     node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
     nodes: pl.DataFrame = pl.concat([normalize_node(edges, col) for col in node_cols], how="vertical")
     nodes = nodes.unique()
 
-    nodes.write_ndjson(n, append=True)
+    with n.open("a") as f:
+      nodes.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
   jq: Path = environ.get("JQ_PATH")
 
   for x in [e, n]:
-    command: list[str] = [jq, "-c", 'walk(if type == "object" then with_entries(select(.value != null)) else . end)', x, "|", awk, "!seen[$0]++", ">", x]
-    subprocess.run(command, check=True)
+    temp: Path = x.with_suffix(add(x.suffix, ".tmp"))
+    command = f"{jq} -c 'walk(if type == \"object\" then with_entries(select(.value != null)) else . end)' {x} | {awk} '!seen[$0]++' > {temp} && mv {temp} {x}"
+    subprocess.run(command, shell=True, check=True)
 
   label_edges(e)
 

@@ -1,6 +1,7 @@
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from tablassert.utils import DISKCACHE
+from functools import partial
 from rapidfuzz import fuzz
 import onnxruntime as ort
 from operator import add
@@ -22,29 +23,37 @@ BIOBERT: object = SentenceTransformer(
 )
 
 @DISKCACHE.memoize()
-def fuzz_audit(x: object, min_fuzz: float = 30) -> bool:
+def fuzz_audit(x: object, original: str, preferred: str, curie: str, min_fuzz: float = 20) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On Fuzzy Matching
-  o: str = x[0]
-  p: str = x[1]
+  print(x)
+  o: str = x[original]
+  p: str = x[preferred]
+  c: str = x[curie]
 
-  return (ge(fuzz.ratio(o, p), min_fuzz) or ge(fuzz.partial_token_sort_ratio(o, p), min_fuzz))
+  return bool(
+    ge(fuzz.ratio(o, p), min_fuzz)
+    or ge(fuzz.ratio(o, c), min_fuzz)
+    or ge(fuzz.partial_token_sort_ratio(o, p), min_fuzz)
+    or ge(fuzz.partial_token_sort_ratio(o, c), min_fuzz)
+  )
 
 @DISKCACHE.memoize()
-def BERT_audit(x: object, min_cos: float = 0.3) -> bool:
+def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On BERT EMBEDDINGS
-  o: str = x[0]
-  p: str = x[1]
+  o: str = x[original]
+  p: str = x[preferred]
 
   embeddings: object = BIOBERT.encode([o, p])
   similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
-  return ge(similarity, min_cos)
+  return bool(ge(similarity, min_cos))
 
 def fullmap_audit(df: pl.DataFrame, col: str, out: str = "passed") -> pl.DataFrame:
   # ? Ensures Fullmap Correct Processes Strings To CURIES
   # * Deletes Suspected Errors
-  original: str = add("original_", col)
-  preferred: str = add(col, "_name")
-  cols: list[str] = [original, preferred]
+  original: str = add("original ", col)
+  preferred: str = add(col, " name")
+  curie: str = col
+  cols: list[str] = [original, preferred, curie]
 
   pairs: pl.DataFrame = df.select(cols).unique()
   pairs = pairs.with_columns(eq(pl.col(cols[0]), pl.col(cols[1])).alias(out))
@@ -52,13 +61,18 @@ def fullmap_audit(df: pl.DataFrame, col: str, out: str = "passed") -> pl.DataFra
   passed: pl.DataFrame = pairs.filter(pl.col(out))
   pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-  masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(fuzz_audit, return_dtype=pl.Boolean).alias(out))
+  masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: fuzz_audit(x, original, preferred, curie), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, masked_fuzz))
 
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
-  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(BERT_audit, return_dtype=pl.Boolean).alias(out))
+  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[1:]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, BERT_fuzz))
+  print(pairs[out])
 
-  return df.join(pairs, on=cols, how="left").filter(pl.col(out)).drop(out)
+  passed = pairs.filter(pl.col(out))
+  df = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
+  print("PostQC", col, df.shape)
+  return df
+

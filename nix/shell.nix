@@ -52,6 +52,7 @@ let
       fastexcel
       pydantic
       pyexcel
+      pyarrow
       mkdocs
       pyyaml
       duckdb
@@ -81,6 +82,9 @@ in {
       flake8
     ]) ++ ([
       tablassert
+    ]) ++ (with pkgs; [
+      datafusion-cli
+      duckdb
     ]);
   };
 }

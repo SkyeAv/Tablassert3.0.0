@@ -24,7 +24,7 @@ from pathlib import Path
 
 class TablaBase(BaseModel):
   model_config: ConfigDict = ConfigDict(
-    str_strip_whitespace=True,
+    str_strip_whitespace=False,
     validate_assignment=True,
     use_enum_values=True,
     extra="forbid",
