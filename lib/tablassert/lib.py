@@ -327,7 +327,7 @@ class Tcode(Section):
         (value, ("section number", self.number,)),
         (value, ("status", self.status,)),
         (value, ("repository", self.provenance.repo,)),
-        (value, ("publication", self.provenance.publication,)),
+        (value, ("publication", (self.provenance.repo + ":" + self.provenance.publication),)),
         (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.model_dump().items() if v],)),
         (value, ("url", str(self.source.url),)),
         (value, ("section md5", self.store.stem,)),
@@ -348,6 +348,12 @@ def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "nam
   cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
   edges = edges.select(cols).unique()
   return edges.rename({k: v for k, v in zip(cols, names)})
+
+def publication_node(edges: pl.DataFrame, names: list[str] = ["id", "name",  "first author", "journal", "year published"]) -> pl.DataFrame:
+  cols: list[str] = ["publication", "article", "first author", "journal", "year published"]
+  edges = edges.select(cols).unique()
+  edges = edges.rename({k: v for k, v in zip(cols, names)})
+  return edges.with_columns(pl.lit("biolink:Publication").alias("category"))
 
 def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
   # ? Gives Each Edge In MOKG A UUID
@@ -376,7 +382,9 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
         edges.write_ndjson(f)
 
     node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
-    nodes: pl.DataFrame = pl.concat([normalize_node(edges, col) for col in node_cols], how="vertical")
+    subnodes: list[pl.DataFrame] = [normalize_node(edges, col) for col in node_cols]
+    subnodes += [publication_node(edges)]
+    nodes: pl.DataFrame = pl.concat(subnodes, how="vertical")
     nodes = nodes.unique()
 
     with n.open("a") as f:
@@ -400,7 +408,6 @@ def main(
   ingest: Path = typer.Option(..., "-i", "-ingest", help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
-  # TODO: Add Scientific Notation
   # TODO: Make Publication A Node
   # TODO: Make MeSH A Node
   r: object = from_yaml(ingest)
