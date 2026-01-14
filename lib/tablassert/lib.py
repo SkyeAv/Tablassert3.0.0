@@ -349,7 +349,7 @@ def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "nam
   edges = edges.select(cols).unique()
   return edges.rename({k: v for k, v in zip(cols, names)})
 
-def publication_node(edges: pl.DataFrame, names: list[str] = ["id", "name",  "first author", "journal", "year published"]) -> pl.DataFrame:
+def publication_nodes(edges: pl.DataFrame, names: list[str] = ["id", "name",  "first author", "journal", "year published"]) -> pl.DataFrame:
   cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
   edges = edges.select(cols).unique()
   edges = edges.rename({k: v for k, v in zip(cols, names)})
@@ -382,14 +382,16 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
         edges.write_ndjson(f)
 
     node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
-    subnodes: list[pl.DataFrame] = [normalize_node(edges, col) for col in node_cols]
-    subnodes += [publication_node(edges)]
-    nodes: pl.DataFrame = pl.concat(subnodes, how="vertical")
+    nodes: pl.DataFrame = pl.concat([normalize_node(edges, col) for col in node_cols], how="vertical")
     nodes = nodes.unique()
+
+    publications: pl.DataFrame = publication_nodes(edges)
+    publications = publications.unique()
 
     with n.open("a") as f:
       with pl.Config(set_fmt_float=fmt):
         nodes.write_ndjson(f)
+        publications.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
   jq: Path = environ.get("JQ_PATH")
