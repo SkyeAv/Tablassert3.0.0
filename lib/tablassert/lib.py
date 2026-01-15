@@ -19,7 +19,6 @@ from sqlite_utils import Database
 from pydantic import PositiveInt
 from multiprocessing import Pool
 from tempfile import gettempdir
-import polars.selectors as cs
 from functools import reduce
 from os.path import basename
 from itertools import chain
@@ -212,7 +211,7 @@ WHERE ids.alt = :curie OR ids.pmid = :curie
 LIMIT 1
 """
   rows: list[dict[str, str]] = list(db.query(query, {"curie": curie})) or []
-  all_ids: list[str] = [x["mesh"] for x in rows if x]
+  all_ids: list[str] = [add("MESH:", x["mesh"]) for x in rows if x]
   is_major: list[bool] = [eq(x["mesh_major"], "Y") for x in rows]
   domain: list[str] = [x for x, y in zip(all_ids, is_major) if y]
   mesh: list[str] = [x for x in all_ids if x not in domain]
@@ -224,9 +223,9 @@ LIMIT 1
   year: str = row.get("year")
 
   if domain:
-    df = df.with_columns(pl.lit(",".join(domain)).alias("domain"))
+    df = df.with_columns(pl.lit(domain).alias("domain"))
   if mesh:
-    df = df.with_columns(pl.lit(",".join(mesh)).alias("mesh"))
+    df = df.with_columns(pl.lit(mesh).alias("mesh"))
   if first_author:
     df = df.with_columns(pl.lit(first_author).alias("first author"))
   if journal:
@@ -368,7 +367,7 @@ def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
 
   e_in.unlink()
 
-def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed") -> tuple[Path]:
+def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> tuple[Path]:
   # ? Aggregates Parquets For NDJSON KGX Export
   p: Path = Path(f"./{name}_{version}")
   e: Path = p.with_suffix(".edges.ndjson.temp") # ! For Labeling
@@ -379,7 +378,8 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
 
     with e.open("a") as f:
       with pl.Config(set_fmt_float=fmt):
-        edges.write_ndjson(f)
+        with pl.Config(float_precision=precision):
+          edges.write_ndjson(f)
 
     node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
     nodes: pl.DataFrame = pl.concat([normalize_node(edges, col) for col in node_cols], how="vertical")
@@ -389,9 +389,8 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
     publications = publications.unique()
 
     with n.open("a") as f:
-      with pl.Config(set_fmt_float=fmt):
-        nodes.write_ndjson(f)
-        publications.write_ndjson(f)
+      nodes.write_ndjson(f)
+      publications.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
   jq: Path = environ.get("JQ_PATH")
@@ -410,8 +409,8 @@ def main(
   ingest: Path = typer.Option(..., "-i", "-ingest", help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
-  # TODO: Make Publication A Node
   # TODO: Make MeSH A Node
+  # TODO: Remove Duplicate Columns
   r: object = from_yaml(ingest)
   g: Graph = Graph.model_validate(r)
   with Pool() as pool:
