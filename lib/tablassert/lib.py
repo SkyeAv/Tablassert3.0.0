@@ -342,17 +342,20 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]]) -> Path:
   # ? Executes Tcode To Build Subgraphs As Parquets
   return reduce(lambda acc, op: op[0](acc, *op[1]) if acc is not None else op[0](*op[1]), tcode, None)
 
-def normalize_node(edges: pl.DataFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]) -> pl.DataFrame:
-  # ? Converts Disparate Columns Containing Nodes Into A Unified Column
+def normalize(edges: pl.DataFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]) -> tuple[pl.DataFrame]:
+  # ? Normalized Disparate Node Columns To A Unified Format And Removes Them From Edges
+  # * Returns Partial Nodes And Modified Edges
   cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
-  edges = edges.select(cols).unique()
-  return edges.rename({k: v for k, v in zip(cols, names)})
+  nodes: pl.DataFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
+  edges = edges.drop(cols[1:])
+  return nodes, edges
 
-def publication_nodes(edges: pl.DataFrame, names: list[str] = ["id", "name",  "first author", "journal", "year published"]) -> pl.DataFrame:
+def publications(edges: pl.DataFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]) -> tuple[pl.DataFrame]:
   cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
-  edges = edges.select(cols).unique()
-  edges = edges.rename({k: v for k, v in zip(cols, names)})
-  return edges.with_columns(pl.lit("biolink:Publication").alias("category"))
+  nodes = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
+  nodes = nodes.with_columns(pl.lit("biolink:Publication").alias("category"))
+  edges = edges.drop(cols[1:])
+  return nodes, edges
 
 def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
   # ? Gives Each Edge In MOKG A UUID
@@ -376,21 +379,27 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
   for s in subgraphs:
     edges: pl.DataFrame = pl.read_parquet(s)
 
+    node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
+    combined: list[pl.DataFrame] = []
+    for col in node_cols:
+      print(edges.columns)
+      partial, edges = normalize(edges, col)
+      combined.append(partial)
+
+    nodes: pl.DataFrame = pl.concat(combined, how="vertical")
+    nodes = nodes.unique()
+
+    pubs, edges = publications(edges)
+    pubs = pubs.unique()
+
+    with n.open("a") as f:
+      nodes.write_ndjson(f)
+      pubs.write_ndjson(f)
+
     with e.open("a") as f:
       with pl.Config(set_fmt_float=fmt):
         with pl.Config(float_precision=precision):
           edges.write_ndjson(f)
-
-    node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
-    nodes: pl.DataFrame = pl.concat([normalize_node(edges, col) for col in node_cols], how="vertical")
-    nodes = nodes.unique()
-
-    publications: pl.DataFrame = publication_nodes(edges)
-    publications = publications.unique()
-
-    with n.open("a") as f:
-      nodes.write_ndjson(f)
-      publications.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
   jq: Path = environ.get("JQ_PATH")
@@ -409,8 +418,19 @@ def main(
   ingest: Path = typer.Option(..., "-i", "-ingest", help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
-  # TODO: Make MeSH A Node
-  # TODO: Remove Duplicate Columns
+  # TODO: Make MeSH A Node (Micro Version)
+  # TODO: Replace AWK and JQ For Total Python Project
+  # TODO: Use Polars Lazy Frame API To Help Where Applicable
+  # TODO: Add More DB Acess Patterns For Team
+  # TODO: Add More QC Acess Patterns For Team
+  # TODO: Change DB Architechure And Access
+  # TODO: Add dbssert-cli As A Micro Repo Here
+  # TODO: Add Documentation
+  # TODO: Add GPU Acceleration To Embedding Model
+  # TODO: Convert Perl Download Script To Python And Use Zstd
+  # TODO: Add Loguru Logging
+  # TODO: Finish pyproject.toml
+  # TODO: Add pytests
   r: object = from_yaml(ingest)
   g: Graph = Graph.model_validate(r)
   with Pool() as pool:

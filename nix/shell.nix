@@ -85,6 +85,7 @@ in {
     ]) ++ (with pkgs; [
       datafusion-cli
       duckdb
+      btop
     ]);
   };
 }
