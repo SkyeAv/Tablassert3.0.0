@@ -99,66 +99,90 @@ def version4(
   avoid: Optional[list[Categories]],
   tag: str = " one"
 ) -> pl.DataFrame:
-  # ? Case Dependant, Provenance Rich Name Entitiy Recognition
+  # ? Case Dependant, Provenance Rich Name Entity Recognition
   try:
-    with duckdb.connect(dbssert) as conn:
-      l0: str = col
-      l1: str = add(l0, tag)
-      query: str = f"""
-SELECT DISTINCT ON (RANKED."row number", RANKED.CURIE)
-  RANKED.CURIE AS '{col}',
-  RANKED.PREFERRED_NAME AS '{add(col, " name")}',
-  'biolink:' || RANKED.CATEGORY_NAME AS '{add(col, " category")}',
-  'NCBITaxon:' || RANKED.TAXON_ID AS '{add(col, " taxon")}',
-  RANKED.SOURCE_NAME AS '{add(col, " source")}',
-  RANKED.SOURCE_VERSION AS '{add(col, " source version")}',
-  RANKED.NLP_LEVEL AS '{add(col, " nlp level")}',
-  RANKED.SYNONYM AS '{add(col, " synonym")}',
-  RANKED.* EXCLUDE (
-    SYNONYM,
-    CURIE,
-    PREFERRED_NAME,
-    CATEGORY_NAME,
-    TAXON_ID, 
-    SOURCE_NAME,
-    SOURCE_VERSION,
-    NLP_LEVEL,
-    SOURCE_ID, 
-    SOURCE_ID_1,
-    CURIE_ID,
-    CURIE_ID_1,
-    CATEGORY_ID,
-    CATEGORY_ID_1,
-    PR,
-    '{l0}',
-    '{l1}'
-  )
-FROM (
-  SELECT
-    SY.*,
-    SO.*,
-    CU.*,
-    CA.*,
-    PA.*,
-    CASE
-      {f"WHEN CA.CATEGORY_NAME IN ({", ".join(f"'{x}'" for x in prioritize)}) THEN 1" if prioritize else "WHEN TRUE THEN 50"}
-      ELSE 50
-    END AS PR
-  FROM SYNONYMS SY
-  JOIN SOURCES SO
-    ON SY.SOURCE_ID = SO.SOURCE_ID
-  JOIN CURIES CU
-    ON SY.CURIE_ID = CU.CURIE_ID
-  JOIN CATEGORIES CA
-    ON CU.CATEGORY_ID = CA.CATEGORY_ID
-    {f"AND CA.CATEGORY_NAME NOT IN ({", ".join(f"'{x}'" for x in avoid)})" if avoid else ""}
-  JOIN read_parquet('{p}') PA
-    ON (PA."{l0}" = SY.SYNONYM OR PA."{l1}" = SY.SYNONYM)
-  {f"WHERE CU.TAXON_ID = {taxon}" if taxon else ""}
-) AS RANKED
-ORDER BY (RANKED."row number", RANKED.CURIE, RANKED.PR);
-"""
-      df: pl.DataFrame = conn.execute(query).pl()
-      return df.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
+    l0: str = col
+    l1: str = add(l0, tag)
+
+    # ? Read Input Parquet
+    df: pl.DataFrame = pl.read_parquet(p)
+
+    # ? Extract Distinct Terms
+    terms: pl.DataFrame = distinct(df, l0, l1)
+
+    # ? Query Database For Distinct Terms Only
+    matches: pl.DataFrame = query_distinct(
+      terms,
+      dbssert,
+      l0,
+      l1,
+      taxon,
+      prioritize,
+      avoid
+    )
+
+    # ? Join Matches Back To Original DataFrame
+    # ? First Try l0 (Original Text)
+    result: pl.DataFrame = df.join(
+      matches.filter(pl.col("NLP_LEVEL").eq(0)),
+      left_on=l0,
+      right_on="term",
+      how="left",
+      suffix=" l0"
+    )
+
+    # ? Then Try l1 (Normalized Text) For Rows Without Matches
+    l1_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(1))
+    result = result.join(
+      l1_matches,
+      left_on=l1,
+      right_on="term",
+      how="left",
+      suffix=" l1"
+    )
+
+    # ? Merge Results: Prefer l0, Fallback To l1
+    result = result.with_columns([
+      pl.when(pl.col("CURIE l0").is_not_null())
+        .then(pl.col("CURIE l0"))
+        .otherwise(pl.col("CURIE l1"))
+        .alias(col),
+      pl.when(pl.col("PREFERRED_NAME l0").is_not_null())
+        .then(pl.col("PREFERRED_NAME l0"))
+        .otherwise(pl.col("PREFERRED_NAME l1"))
+        .alias(add(col, " name")),
+      pl.when(pl.col("CATEGORY_NAME l0").is_not_null())
+        .then(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME l0")))
+        .otherwise(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME l1")))
+        .alias(add(col, " category")),
+      pl.when(pl.col("TAXON_ID l0").is_not_null())
+        .then(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID l0").cast(pl.String)))
+        .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID l1").cast(pl.String)))
+        .alias(add(col, " taxon")),
+      pl.when(pl.col("SOURCE_NAME l0").is_not_null())
+        .then(pl.col("SOURCE_NAME l0"))
+        .otherwise(pl.col("SOURCE_NAME l1"))
+        .alias(add(col, " source")),
+      pl.when(pl.col("SOURCE_VERSION l0").is_not_null())
+        .then(pl.col("SOURCE_VERSION l0"))
+        .otherwise(pl.col("SOURCE_VERSION l1"))
+        .alias(add(col, " source version")),
+      pl.when(pl.col("NLP_LEVEL l0").is_not_null())
+        .then(pl.col("NLP_LEVEL l0"))
+        .otherwise(pl.col("NLP_LEVEL l1"))
+        .alias(add(col, " nlp level")),
+      pl.when(pl.col("term l0").is_not_null())
+        .then(pl.col("term l0"))
+        .otherwise(pl.col("term l1"))
+        .alias(add(col, " synonym"))
+    ])
+
+    # ? Clean Up Intermediate Columns
+    result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|term|PR) (l0|l1)$"))
+
+    # ? Replace NCBITaxon:0 With None
+    result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
+
+    return result
   finally:
     p.unlink()
