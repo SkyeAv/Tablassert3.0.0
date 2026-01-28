@@ -8,7 +8,6 @@ from tablassert.qc import fullmap_audit
 from tablassert.fullmap import version4
 from tablassert.models import Encoding
 from tablassert.models import Section
-from tablassert.utils import samphash
 from tablassert.utils import mkhash
 from tablassert.enums import Tokens
 from pydantic import NonNegativeInt
@@ -18,7 +17,6 @@ from tablassert.utils import STORE
 from sqlite_utils import Database
 from pydantic import PositiveInt
 from multiprocessing import Pool
-from tempfile import gettempdir
 from functools import reduce
 from os.path import basename
 from itertools import chain
@@ -179,13 +177,6 @@ def trim(df: pl.DataFrame, regex: str = r"^column_\d+$") -> pl.DataFrame:
   # ? Removes Columns With The Excel Naming Conventions From DataFrame
   return df.select(pl.exclude(regex))
 
-def to_temp(df: pl.DataFrame, tmp: Path = Path(gettempdir())) -> Path:
-  # ? Writes DF To A Tempfile To Be Used In Fullmap
-  p: Path = tmp / samphash(df)
-  p = p.with_suffix(".parquet")
-  df.write_parquet(p)
-  return p
-
 def to_store(df: pl.DataFrame, p: Path) -> Path:
   # ? Writes A DF To Store To Later Be Aggregated
   df.write_parquet(p)
@@ -280,7 +271,6 @@ class Tcode(Section):
       (column, (add("original ", col), col,)),
       (zero, (col,)),
       (one, (col,)),
-      (to_temp, ()),
       (version4, (col, dbssert, x.taxon, x.prioritize, x.avoid,)),
       (fullmap_audit, (col,))
     ]
