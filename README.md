@@ -8,7 +8,7 @@ Tablassert is a highly performant declarative knowledge graph backend designed t
 
 ## Documentation
 
-📚 **[Full Documentation](https://skyeav.github.io/Tablassert/)**
+**[Full Documentation](https://skyeav.github.io/Tablassert/)**
 
 Complete guides covering installation, configuration, tutorials, and API reference.
 
