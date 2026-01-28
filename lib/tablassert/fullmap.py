@@ -16,6 +16,49 @@ def distinct(df: pl.DataFrame, l0: str, l1: str) -> pl.DataFrame:
   terms: pl.DataFrame = pl.concat([t0, t1]).unique(subset=["term"])
   return terms.with_row_index("term id")
 
+def query_builder(
+  p: Path,
+  l0: str,
+  l1: str,
+  prioritize: Optional[list[Categories]],
+  avoid: Optional[list[Categories]],
+  taxon: Optional[str]
+) -> str:
+  # ? Build Query With UNION For Better Index Utilization
+  base: str = """
+  SELECT
+    PA.term,
+    CU.CURIE,
+    CU.PREFERRED_NAME,
+    CA.CATEGORY_NAME,
+    CU.TAXON_ID,
+    SO.SOURCE_NAME,
+    SO.SOURCE_VERSION,
+    PA."nlp level" AS NLP_LEVEL,
+    CASE
+      {priority_case}
+      ELSE 50
+    END AS PR
+  FROM SYNONYMS SY
+  JOIN SOURCES SO ON SY.SOURCE_ID = SO.SOURCE_ID
+  JOIN CURIES CU ON SY.CURIE_ID = CU.CURIE_ID
+  JOIN CATEGORIES CA ON CU.CATEGORY_ID = CA.CATEGORY_ID
+    {avoid_filter}
+  JOIN read_parquet('{parquet}') PA ON PA.term = SY.SYNONYM
+  {taxon_filter}
+"""
+
+  priority_case: str = f"WHEN CA.CATEGORY_NAME IN ({", ".join(f"'{x}'" for x in prioritize)}) THEN 1" if prioritize else "WHEN TRUE THEN 50"
+  avoid_filter: str = f"AND CA.CATEGORY_NAME NOT IN ({", ".join(f"'{x}'" for x in avoid)})" if avoid else ""
+  taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon}" if taxon else ""
+
+  return base.format(
+    priority_case=priority_case,
+    avoid_filter=avoid_filter,
+    taxon_filter=taxon_filter,
+    parquet=p
+  )
+
 def version4(
   p: Path,
   col: str,
