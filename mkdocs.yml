@@ -1,6 +1,15 @@
-site_name: tablassert
+site_name: Tablassert
 theme: readthedocs
 nav:
-  - Home: INDEX.md
-  - User Guide:
-    - INSTALLATION.md
+  - Home: index.md
+  - Installation: installation.md
+  - CLI Reference: cli.md
+  - Tutorial: tutorial.md
+  - Configuration:
+    - Graph Config: configuration/graph.md
+    - Table Config: configuration/table.md
+    - Advanced Example: configuration/advanced-example.md
+  - API Reference:
+    - Entity Resolution: api/fullmap.md
+    - Quality Control: api/qc.md
+    - Utilities: api/utils.md
