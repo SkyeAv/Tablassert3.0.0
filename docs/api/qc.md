@@ -10,9 +10,9 @@ Primary quality control function that filters entity mappings based on confidenc
 
 ```python
 def fullmap_audit(
-    df: pl.DataFrame,
-    col: str,
-    out: str = "passed"
+  df: pl.DataFrame,
+  col: str,
+  out: str = "passed"
 ) -> pl.DataFrame
 ```
 

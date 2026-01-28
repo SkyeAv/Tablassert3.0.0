@@ -4,6 +4,7 @@ from tablassert.utils import DISKCACHE
 from functools import partial
 from rapidfuzz import fuzz
 import onnxruntime as ort
+from pathlib import Path
 from operator import add
 from operator import ge
 from operator import eq
@@ -12,15 +13,28 @@ import polars as pl
 SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
+MODEL: Path = Path("./onnx/")
+MODEL_BACKEND: str = "onnx"
+MODEL_KWARGS: dict[str, object] = {
+  "provider": "CPUExecutionProvider",
+  "session_options": SESSION_OPTS
+}
+
 # TODO: Explore Best Model For QC
-BIOBERT: object = SentenceTransformer(
-  "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb",
-  backend="onnx",
-  model_kwargs={
-      "provider": "CPUExecutionProvider",
-      "session_options": SESSION_OPTS
-    }
-)
+if MODEL.exists():
+    BIOBERT: object = SentenceTransformer(
+      str(MODEL),
+      backend=MODEL_BACKEND,
+      model_kwargs=MODEL_KWARGS
+    )
+else: 
+  BIOBERT = SentenceTransformer(
+    "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb",
+    backend=MODEL_BACKEND,
+    model_kwargs=MODEL_KWARGS
+  )
+  MODEL.mkdir(parents=True, exist_ok=True)
+  BIOBERT.save(MODEL)
 
 @DISKCACHE.memoize()
 def fuzz_audit(x: object, original: str, preferred: str, curie: str, min_fuzz: float = 20) -> bool:
@@ -72,4 +86,3 @@ def fullmap_audit(df: pl.DataFrame, col: str, out: str = "passed") -> pl.DataFra
   passed = pairs.filter(pl.col(out))
   df = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
   return df
-

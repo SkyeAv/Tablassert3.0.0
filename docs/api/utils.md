@@ -98,12 +98,12 @@ Tablassert uses this function to generate edge identifiers:
 
 ```python
 edge_id = namespace_uuid(
-    "edges",
-    subject_curie,
-    predicate,
-    object_curie,
-    *qualifiers,
-    publication_id
+  "edges",
+  subject_curie,
+  predicate,
+  object_curie,
+  *qualifiers,
+  publication_id
 )
 ```
 
@@ -111,11 +111,11 @@ edge_id = namespace_uuid(
 
 ```python
 edge_id = namespace_uuid(
-    "edges",
-    "HGNC:11998",  # TP53
-    "biolink:associated_with",
-    "MONDO:0005148",  # Type 2 diabetes
-    "PMC11708054"  # Publication
+  "edges",
+  "HGNC:11998",  # TP53
+  "biolink:associated_with",
+  "MONDO:0005148",  # Type 2 diabetes
+  "PMC11708054"  # Publication
 )
 # Returns: "uuid:a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 ```
@@ -152,12 +152,12 @@ print(edge_id)  # "uuid:12345678-1234-1234-1234-123456789abc"
 ```python
 # Include anatomical context qualifier
 edge_id = namespace_uuid(
-    "edges",
-    "HGNC:1",
-    "biolink:expressed_in",
-    "UBERON:0002048",  # Lung
-    "anatomical_context",
-    "UBERON:0002048"
+  "edges",
+  "HGNC:1",
+  "biolink:expressed_in",
+  "UBERON:0002048",  # Lung
+  "anatomical_context",
+  "UBERON:0002048"
 )
 ```
 
@@ -183,8 +183,8 @@ Suitable for millions of ID generations per second.
 
 ```python
 def basespace(domain: str) -> UUID:
-    namespace = UUID("00000000-0000-0000-0000-000000000000")
-    return uuid3(namespace, domain)
+  namespace = UUID("00000000-0000-0000-0000-000000000000")
+  return uuid3(namespace, domain)
 ```
 
 Used internally by `namespace_uuid()`.

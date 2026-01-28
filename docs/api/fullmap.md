@@ -10,13 +10,13 @@ Primary entity resolution function using DuckDB queries against the dbssert data
 
 ```python
 def version4(
-    p: Path,
-    col: str,
-    dbssert: Path,
-    taxon: Optional[str],
-    prioritize: Optional[list[Categories]],
-    avoid: Optional[list[Categories]],
-    tag: str = " one"
+  p: Path,
+  col: str,
+  dbssert: Path,
+  taxon: Optional[str],S
+  prioritize: Optional[list[Categories]],
+  avoid: Optional[list[Categories]],
+  tag: str = " one"
 ) -> pl.DataFrame
 ```
 
@@ -108,15 +108,15 @@ from pathlib import Path
 
 # Resolve gene symbols to CURIEs
 result = version4(
-    p=Path("data.parquet"),
-    col="gene_symbol",
-    dbssert=Path("/data/dbssert.duckdb"),
-    taxon="9606",  # Human only
-    prioritize=[Categories.Gene],
-    avoid=[Categories.Protein],
-    tag=" one"
+  p=Path("data.parquet"),
+  col="gene_symbol",
+  dbssert=Path("/data/dbssert.duckdb"),
+  taxon="9606",  # Human only
+  prioritize=[Categories.Gene],
+  avoid=[Categories.Protein],
+  tag=" one"
 )
-
+S
 # Result DataFrame includes:
 # - gene_symbol: "HGNC:11998"
 # - gene_symbol name: "TP53"
