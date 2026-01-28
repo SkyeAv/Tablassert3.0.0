@@ -1,4 +1,6 @@
 from tablassert.enums import Categories
+from tablassert.utils import samphash
+from tempfile import gettempdir
 from typing import Optional
 from pathlib import Path
 from operator import add
@@ -69,9 +71,6 @@ def query_distinct(
   avoid: Optional[list[Categories]]
 ) -> pl.DataFrame:
   # ? Query Database For Distinct Terms Only
-  from tempfile import gettempdir
-  from tablassert.utils import samphash
-
   tmp: Path = Path(gettempdir())
   p: Path = tmp / samphash(terms)
   p = p.with_suffix(".parquet")
@@ -82,11 +81,10 @@ def query_distinct(
       query: str = query_builder(p, l0, l1, prioritize, avoid, taxon)
       results: pl.DataFrame = conn.execute(query).pl()
 
-      # ? Deduplicate By Keeping Best Match Per Term
       results = results.sort(["term", "PR", "NLP_LEVEL"])
       results = results.unique(subset=["term", "CURIE"], keep="first")
-
       return results
+
   finally:
     p.unlink(missing_ok=True)
 
@@ -102,15 +100,11 @@ def version4(
   # ? Case Dependant, Provenance Rich Name Entity Recognition
   try:
     l0: str = col
-    l1: str = add(l0, tag)
+    l1: str = add(l0, tag)\
 
-    # ? Read Input Parquet
     df: pl.DataFrame = pl.read_parquet(p)
-
-    # ? Extract Distinct Terms
     terms: pl.DataFrame = distinct(df, l0, l1)
 
-    # ? Query Database For Distinct Terms Only
     matches: pl.DataFrame = query_distinct(
       terms,
       dbssert,
@@ -121,8 +115,6 @@ def version4(
       avoid
     )
 
-    # ? Join Matches Back To Original DataFrame
-    # ? First Try l0 (Original Text)
     result: pl.DataFrame = df.join(
       matches.filter(pl.col("NLP_LEVEL").eq(0)),
       left_on=l0,
@@ -131,7 +123,6 @@ def version4(
       suffix=" l0"
     )
 
-    # ? Then Try l1 (Normalized Text) For Rows Without Matches
     l1_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(1))
     result = result.join(
       l1_matches,
@@ -141,7 +132,6 @@ def version4(
       suffix=" l1"
     )
 
-    # ? Merge Results: Prefer l0, Fallback To l1
     result = result.with_columns([
       pl.when(pl.col("CURIE l0").is_not_null())
         .then(pl.col("CURIE l0"))
@@ -177,12 +167,9 @@ def version4(
         .alias(add(col, " synonym"))
     ])
 
-    # ? Clean Up Intermediate Columns
     result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|term|PR) (l0|l1)$"))
-
-    # ? Replace NCBITaxon:0 With None
     result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
-
     return result
+
   finally:
     p.unlink()

@@ -116,7 +116,7 @@ result = version4(
   avoid=[Categories.Protein],
   tag=" one"
 )
-S
+
 # Result DataFrame includes:
 # - gene_symbol: "HGNC:11998"
 # - gene_symbol name: "TP53"
