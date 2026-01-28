@@ -419,7 +419,6 @@ def main(
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   # TODO: Make MeSH A Node (Micro Version)
-  # TODO: Replace AWK and JQ For Total Python Project
   # TODO: Use Polars Lazy Frame API To Help Where Applicable
   # TODO: Add More DB Acess Patterns For Team
   # TODO: Add More QC Acess Patterns For Team
@@ -429,7 +428,6 @@ def main(
   # TODO: Add GPU Acceleration To Embedding Model
   # TODO: Convert Perl Download Script To Python And Use Zstd
   # TODO: Add Loguru Logging
-  # TODO: Finish pyproject.toml
   # TODO: Add pytests
   r: object = from_yaml(ingest)
   g: Graph = Graph.model_validate(r)

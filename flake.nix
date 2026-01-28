@@ -9,9 +9,16 @@
     flake-parts.lib.mkFlake {inherit inputs;} {
       systems = import inputs.systems;
       perSystem = {pkgs, lib, config, system, ...}: {
+        _module.args.pkgs = import nixpkgs {
+          inherit system;
+          overlays = [self.overlays.default];
+        };
         imports = [
           ./nix/shell.nix
         ];
+      };
+      flake = {
+        overlays.default = import ./nix/overlay.nix;
       };
     };
 }
