@@ -10,4 +10,4 @@
 *.duckdb
 *.ndjson
 *.wal
-*.sh
+*.shsite/
