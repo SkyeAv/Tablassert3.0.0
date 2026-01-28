@@ -25,7 +25,6 @@ BIOBERT: object = SentenceTransformer(
 @DISKCACHE.memoize()
 def fuzz_audit(x: object, original: str, preferred: str, curie: str, min_fuzz: float = 20) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On Fuzzy Matching
-  print(x)
   o: str = x[original]
   p: str = x[preferred]
   c: str = x[curie]
@@ -69,10 +68,8 @@ def fullmap_audit(df: pl.DataFrame, col: str, out: str = "passed") -> pl.DataFra
 
   BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[:-1]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, BERT_fuzz))
-  print(pairs[out])
 
   passed = pairs.filter(pl.col(out))
   df = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
-  print("PostQC", col, df.shape)
   return df
 

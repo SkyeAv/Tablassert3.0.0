@@ -74,7 +74,6 @@ FROM (
 ORDER BY (RANKED."row number", RANKED.CURIE, RANKED.PR);
 """
       df: pl.DataFrame = conn.execute(query).pl()
-      print("PostFullmap", col, df.shape)
       return df.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
   finally:
     p.unlink()

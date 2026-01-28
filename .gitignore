@@ -1,4 +1,5 @@
 *.egg-info
+*CLAUDE.md
 *cachessert/
 *storessert/
 *DATALAKE/

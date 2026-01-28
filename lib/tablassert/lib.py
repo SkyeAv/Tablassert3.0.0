@@ -110,8 +110,6 @@ def sig(
   out: str = "significant",
 ) -> pl.DataFrame:
   # ? Creates The "significant" Column
-  print("PreSig", df.shape)
-
   if col in df.columns:
     expr: pl.Expr = pl.col(col).cast(pl.Float64)
     cond: pl.Expr = le(expr, cutoff)
@@ -382,7 +380,6 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
     node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
     combined: list[pl.DataFrame] = []
     for col in node_cols:
-      print(edges.columns)
       partial, edges = normalize(edges, col)
       combined.append(partial)
 
@@ -425,7 +422,6 @@ def main(
   # TODO: Change DB Architechure And Access
   # TODO: Add dbssert-cli As A Micro Repo Here
   # TODO: Add Documentation
-  # TODO: Add GPU Acceleration To Embedding Model
   # TODO: Convert Perl Download Script To Python And Use Zstd
   # TODO: Add Loguru Logging
   # TODO: Add pytests
@@ -435,11 +431,9 @@ def main(
     raw: list[object] = pool.map(from_yaml, g.tables)
     temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw)
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
-    print(sections)
 
     tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in enumerate(sections, start=1)]
     instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = [x.collect(g.dbssert, g.pubmed_db, g.pmc_db) for x in tcode]
-    print(instructions)
 
   subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
   compile_graph(subgraphs, g.name, g.version)
