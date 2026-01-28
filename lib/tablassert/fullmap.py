@@ -59,6 +59,37 @@ def query_builder(
     parquet=p
   )
 
+def query_distinct(
+  terms: pl.DataFrame,
+  dbssert: Path,
+  l0: str,
+  l1: str,
+  taxon: Optional[str],
+  prioritize: Optional[list[Categories]],
+  avoid: Optional[list[Categories]]
+) -> pl.DataFrame:
+  # ? Query Database For Distinct Terms Only
+  from tempfile import gettempdir
+  from tablassert.utils import samphash
+
+  tmp: Path = Path(gettempdir())
+  p: Path = tmp / samphash(terms)
+  p = p.with_suffix(".parquet")
+  terms.write_parquet(p)
+
+  try:
+    with duckdb.connect(dbssert) as conn:
+      query: str = query_builder(p, l0, l1, prioritize, avoid, taxon)
+      results: pl.DataFrame = conn.execute(query).pl()
+
+      # ? Deduplicate By Keeping Best Match Per Term
+      results = results.sort(["term", "PR", "NLP_LEVEL"])
+      results = results.unique(subset=["term", "CURIE"], keep="first")
+
+      return results
+  finally:
+    p.unlink(missing_ok=True)
+
 def version4(
   p: Path,
   col: str,
