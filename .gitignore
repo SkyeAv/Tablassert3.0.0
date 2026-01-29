@@ -7,7 +7,6 @@
 *DATALAKE/
 *onnx/
 *venv/
-*site/
 *.log
 *.duckdb
 *.ndjson
