@@ -17,8 +17,6 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
       - name: Build documentation
         run: nix develop -L . -c mkdocs build
-      - name: List built files
-        run: ls -la ./site || echo "site directory missing"
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
