@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Entity Resolution - Tablassert</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Entity Resolution";
+        var mkdocs_page_input_path = "api/fullmap.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Tablassert
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/graph/">Graph Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/table/">Table Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/advanced-example/">Advanced Example</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Entity Resolution</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#version4">version4()</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#function-signature">Function Signature</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#return-value">Return Value</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#duckdb-query">DuckDB Query</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example-usage">Example Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#nlp-processing-levels">NLP Processing Levels</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#case-dependent-behavior">Case-Dependent Behavior</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#provenance-tracking">Provenance Tracking</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#integration-with-qc">Integration with QC</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../qc/">Quality Control</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">Utilities</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Tablassert</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Entity Resolution</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="entity-resolution-fullmap">Entity Resolution (fullmap)</h1>
+<p>The <code>fullmap</code> module provides entity resolution functionality, mapping text strings to standardized biological entities (CURIEs).</p>
+<h2 id="version4">version4()</h2>
+<p>Primary entity resolution function using DuckDB queries against the dbssert database.</p>
+<h3 id="function-signature">Function Signature</h3>
+<pre><code class="language-python">def version4(
+  p: Path,
+  col: str,
+  dbssert: Path,
+  taxon: Optional[str],S
+  prioritize: Optional[list[Categories]],
+  avoid: Optional[list[Categories]],
+  tag: str = &quot; one&quot;
+) -&gt; pl.DataFrame
+</code></pre>
+<h3 id="parameters">Parameters</h3>
+<p><strong><code>p: Path</code></strong></p>
+<p>Path to the input parquet file containing the DataFrame to process.</p>
+<p><strong><code>col: str</code></strong></p>
+<p>Column name containing text strings to resolve.</p>
+<p><strong><code>dbssert: Path</code></strong></p>
+<p>Path to the DuckDB entity resolution database.</p>
+<p>This database contains:
+- Synonym mappings (text → CURIE)
+- Preferred entity names
+- Biolink categories
+- NCBI Taxon IDs
+- Source databases and versions</p>
+<p><strong><code>taxon: Optional[str]</code></strong></p>
+<p>Optional NCBI Taxon ID for filtering results.</p>
+<p>Example: <code>"9606"</code> filters to human-specific entities.</p>
+<p><strong><code>prioritize: Optional[list[Categories]]</code></strong></p>
+<p>Optional list of Biolink categories to prefer when multiple matches exist.</p>
+<p>Example: <code>[Categories.Gene, Categories.Protein]</code> prefers gene/protein mappings.</p>
+<p><strong><code>avoid: Optional[list[Categories]]</code></strong></p>
+<p>Optional list of Biolink categories to exclude from results.</p>
+<p>Example: <code>[Categories.Gene]</code> prevents gene mappings.</p>
+<p><strong><code>tag: str</code> (default: <code>" one"</code>)</strong></p>
+<p>Suffix for NLP processing level column.</p>
+<p>The function looks for both:
+- <code>col</code> (original text, case-preserved)
+- <code>col + tag</code> (normalized text, typically lowercase)</p>
+<p>Default <code>" one"</code> means it uses level-one text processing (lowercase, stripped).</p>
+<h3 id="return-value">Return Value</h3>
+<p>Returns a Polars DataFrame with these columns added:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{col}</code></td>
+<td>CURIE identifier</td>
+<td><code>"HGNC:11998"</code></td>
+</tr>
+<tr>
+<td><code>{col} name</code></td>
+<td>Preferred entity name</td>
+<td><code>"TP53"</code></td>
+</tr>
+<tr>
+<td><code>{col} category</code></td>
+<td>Biolink category</td>
+<td><code>"biolink:Gene"</code></td>
+</tr>
+<tr>
+<td><code>{col} taxon</code></td>
+<td>NCBI Taxon ID</td>
+<td><code>"NCBITaxon:9606"</code></td>
+</tr>
+<tr>
+<td><code>{col} source</code></td>
+<td>Source database</td>
+<td><code>"HGNC"</code></td>
+</tr>
+<tr>
+<td><code>{col} source version</code></td>
+<td>Database version</td>
+<td><code>"2025-01"</code></td>
+</tr>
+<tr>
+<td><code>{col} nlp level</code></td>
+<td>NLP processing level</td>
+<td><code>0</code> or <code>1</code></td>
+</tr>
+<tr>
+<td><code>{col} synonym</code></td>
+<td>Matched synonym</td>
+<td><code>"TP53"</code> or <code>"tumor protein p53"</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="duckdb-query">DuckDB Query</h3>
+<p>The function executes a complex SQL query that:</p>
+<ol>
+<li><strong>Ranks matches</strong> by:</li>
+<li>Category priority (if <code>prioritize</code> specified)</li>
+<li>NLP level (exact case match preferred over normalized)</li>
+<li>
+<p>Source confidence</p>
+</li>
+<li>
+<p><strong>Filters by:</strong></p>
+</li>
+<li>Taxon ID (if specified)</li>
+<li>
+<p>Category avoidance (if specified)</p>
+</li>
+<li>
+<p><strong>Deduplicates</strong> to one CURIE per row per input string</p>
+</li>
+</ol>
+<h3 id="example-usage">Example Usage</h3>
+<pre><code class="language-python">from tablassert.fullmap import version4
+from tablassert.enums import Categories
+from pathlib import Path
+
+# Resolve gene symbols to CURIEs
+result = version4(
+  p=Path(&quot;data.parquet&quot;),
+  col=&quot;gene_symbol&quot;,
+  dbssert=Path(&quot;/data/dbssert.duckdb&quot;),
+  taxon=&quot;9606&quot;,  # Human only
+  prioritize=[Categories.Gene],
+  avoid=[Categories.Protein],
+  tag=&quot; one&quot;
+)
+
+# Result DataFrame includes:
+# - gene_symbol: &quot;HGNC:11998&quot;
+# - gene_symbol name: &quot;TP53&quot;
+# - gene_symbol category: &quot;biolink:Gene&quot;
+# - etc.
+</code></pre>
+<h3 id="nlp-processing-levels">NLP Processing Levels</h3>
+<p><strong>Level 0</strong> (exact case):
+- Column: <code>col</code>
+- Matches preserve case
+- Preferred for acronyms, gene symbols</p>
+<p><strong>Level 1</strong> (normalized):
+- Column: <code>col + " one"</code>
+- Lowercased, whitespace stripped
+- Preferred for disease names, free text</p>
+<p>The function tries level 0 first, then level 1.</p>
+<h3 id="case-dependent-behavior">Case-Dependent Behavior</h3>
+<p>"TP53" vs "tp53":
+- Level 0: Only matches "TP53" synonym
+- Level 1: Matches any case variant</p>
+<p>This preserves specificity for case-sensitive identifiers while allowing fuzzy matching for general terms.</p>
+<h3 id="provenance-tracking">Provenance Tracking</h3>
+<p>Every resolved entity includes:
+- <strong>Source database</strong> (HGNC, MONDO, ChEBI, etc.)
+- <strong>Source version</strong> (database snapshot date)
+- <strong>Matched synonym</strong> (which text triggered the match)</p>
+<p>This enables auditing and quality control.</p>
+<h2 id="integration-with-qc">Integration with QC</h2>
+<p>Entity resolution output is validated by <code>fullmap_audit()</code> from the <code>qc</code> module before being included in the knowledge graph.</p>
+<p>See <a href="../qc/">Quality Control</a> for details.</p>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><strong><a href="../qc/">Quality Control</a></strong> - Multi-stage validation</li>
+<li><strong><a href="../../configuration/table/">Configuration</a></strong> - How to specify prioritize/avoid in YAML</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../../configuration/advanced-example/" class="btn btn-neutral float-left" title="Advanced Example"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../qc/" class="btn btn-neutral float-right" title="Quality Control">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../../configuration/advanced-example/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../qc/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

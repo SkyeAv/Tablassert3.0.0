@@ -1,0 +1,8 @@
+syntax: GC2
+name: TUTORIAL_KG
+version: 1.0.0
+tables:
+  - ./docs/examples/tutorial-table.yaml
+dbssert: /path/to/dbssert.duckdb
+pubmed_db: /path/to/PubMed.db
+pmc_db: /path/to/PMCSuppCaptions.db

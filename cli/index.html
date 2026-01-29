@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>CLI Reference - Tablassert</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "CLI Reference";
+        var mkdocs_page_input_path = "cli.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Tablassert
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">CLI Reference</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#command">Command</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#options">Options</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#-i-ingest-path-required">-i, --ingest PATH (required)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#-help">--help</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#output-files">Output Files</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#output-format">Output Format</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#environment-variables">Environment Variables</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#basic-usage">Basic Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#with-absolute-path">With Absolute Path</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#using-nix-run-no-installation">Using Nix Run (No Installation)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#workflow">Workflow</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/graph/">Graph Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/table/">Table Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/advanced-example/">Advanced Example</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/fullmap/">Entity Resolution</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/qc/">Quality Control</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/utils/">Utilities</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Tablassert</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">CLI Reference</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="cli-reference">CLI Reference</h1>
+<p>Tablassert provides a single command-line interface for building knowledge graphs from declarative configurations.</p>
+<h2 id="command">Command</h2>
+<pre><code class="language-bash">tablassert-cli -i &lt;graph-config.yaml&gt;
+</code></pre>
+<h2 id="options">Options</h2>
+<h3 id="-i-ingest-path-required"><code>-i, --ingest PATH</code> (required)</h3>
+<p>Path to the graph configuration file (YAML format).</p>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">tablassert-cli -i /path/to/MOKGV6.yaml
+</code></pre>
+<p>The graph configuration specifies:
+- Output knowledge graph name and version
+- Paths to table configurations
+- Database locations (dbssert, pubmed_db, pmc_db)</p>
+<p>See <a href="../configuration/graph/">Graph Configuration</a> for details.</p>
+<h3 id="-help"><code>--help</code></h3>
+<p>Display help message and exit.</p>
+<pre><code class="language-bash">tablassert-cli --help
+</code></pre>
+<h2 id="output-files">Output Files</h2>
+<p>Tablassert generates two NDJSON files:</p>
+<ul>
+<li><code>{name}_{version}.nodes.ndjson</code> - Node file (entities)</li>
+<li><code>{name}_{version}.edges.ndjson</code> - Edge file (relationships)</li>
+</ul>
+<p>Where <code>{name}</code> and <code>{version}</code> come from the graph configuration.</p>
+<p><strong>Example:</strong></p>
+<pre><code class="language-yaml"># graph-config.yaml
+name: MULTIOMICS_KG
+version: UNSTABLE
+</code></pre>
+<p>Produces:
+- <code>MULTIOMICS_KG_UNSTABLE.nodes.ndjson</code>
+- <code>MULTIOMICS_KG_UNSTABLE.edges.ndjson</code></p>
+<h2 id="output-format">Output Format</h2>
+<p>Files are KGX-compliant NDJSON (newline-delimited JSON):</p>
+<p><strong>Nodes:</strong></p>
+<pre><code class="language-json">{&quot;id&quot;: &quot;HGNC:1234&quot;, &quot;name&quot;: &quot;GENE1&quot;, &quot;category&quot;: [&quot;biolink:Gene&quot;], &quot;taxon&quot;: &quot;NCBITaxon:9606&quot;}
+{&quot;id&quot;: &quot;MONDO:0005148&quot;, &quot;name&quot;: &quot;diabetes mellitus&quot;, &quot;category&quot;: [&quot;biolink:Disease&quot;]}
+</code></pre>
+<p><strong>Edges:</strong></p>
+<pre><code class="language-json">{&quot;id&quot;: &quot;uuid:...&quot;, &quot;subject&quot;: &quot;HGNC:1234&quot;, &quot;predicate&quot;: &quot;biolink:associated_with&quot;, &quot;object&quot;: &quot;MONDO:0005148&quot;}
+</code></pre>
+<h2 id="environment-variables">Environment Variables</h2>
+<p>When using Nix, these are configured automatically:</p>
+<ul>
+<li><code>CHROMIUM_PATH</code> - Chromium for file downloads</li>
+<li><code>AWK_PATH</code> - GNU AWK for NDJSON processing</li>
+<li><code>JQ_PATH</code> - JQ for JSON cleanup</li>
+</ul>
+<h2 id="examples">Examples</h2>
+<h3 id="basic-usage">Basic Usage</h3>
+<pre><code class="language-bash">tablassert-cli -i my-graph.yaml
+</code></pre>
+<h3 id="with-absolute-path">With Absolute Path</h3>
+<pre><code class="language-bash">tablassert-cli -i /home/user/configs/graph.yaml
+</code></pre>
+<h3 id="using-nix-run-no-installation">Using Nix Run (No Installation)</h3>
+<pre><code class="language-bash">nix run github:SkyeAv/Tablassert#default -- -i ./graph.yaml
+</code></pre>
+<h2 id="workflow">Workflow</h2>
+<ol>
+<li><strong>Create graph configuration</strong> - Define output name, table configs, databases</li>
+<li><strong>Create table configurations</strong> - Define data sources and transformations</li>
+<li><strong>Run CLI</strong> - <code>tablassert-cli -i graph.yaml</code></li>
+<li><strong>Process executes:</strong></li>
+<li>Downloads files from URLs (if needed)</li>
+<li>Applies transformations to each table</li>
+<li>Resolves entities using dbssert</li>
+<li>Validates mappings with QC pipeline</li>
+<li>Aggregates subgraphs into NDJSON</li>
+</ol>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><strong><a href="../tutorial/">Tutorial</a></strong> - Complete example walkthrough</li>
+<li><strong><a href="../configuration/graph/">Configuration Guide</a></strong> - YAML configuration reference</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../installation/" class="btn btn-neutral float-left" title="Installation"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../tutorial/" class="btn btn-neutral float-right" title="Tutorial">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../installation/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../tutorial/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
