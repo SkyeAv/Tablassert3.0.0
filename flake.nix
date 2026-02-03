@@ -1,5 +1,5 @@
 {
-  description = "tablassert (6.0.0)";
+  description = "tablassert (6.1.0)";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";

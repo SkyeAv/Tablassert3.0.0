@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tablassert"
-version = "6.0.0"
+version = "6.1.0"
 requires-python = ">=3.13"
 
 [tool.setuptools.packages.find]
