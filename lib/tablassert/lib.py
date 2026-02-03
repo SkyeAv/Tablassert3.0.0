@@ -150,7 +150,7 @@ def crop(lf: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens
   # ? Takes A Slice From A LazyFrame
   # ! Collection Point: Requires Height Calculation
   df: pl.DataFrame = lf.collect()
-  n: int = df.select(pl.len()).collect().item()
+  n: int = df.select(pl.len()).item()
   start: Union[int, Literal[Tokens.AUTO]] = row_slice[0]
   stop: Union[int, Literal[Tokens.AUTO]] = row_slice[1]
   offset: int = 0 if eq(start, Tokens.AUTO) else start
@@ -162,7 +162,7 @@ def pick(lf: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
   # ? Picks A List Of Rows From A LazyFrame
   # ! Collection Point: take() Requires Eager, Relazy After
   df: pl.DataFrame = lf.collect()
-  df = df.collect().select(pl.all().take(indices=rows))
+  df = df.select(pl.all().take(indices=rows))
   return mklazy(df)
 
 def reindex(
