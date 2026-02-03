@@ -191,8 +191,10 @@ def to_store(df: pl.LazyFrame, p: Path) -> Path:
   df.collect().write_parquet(p)
   return p
 
-def with_mesh(df: pl.DataFrame, pubmed_db: Path, curie: str) -> pl.DataFrame:
-  # ? Adds PubMedDB Related MeSH Annotations To DF
+def with_mesh(df: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
+  # ? Adds PubMedDB Related MeSH Annotations To LazyFrame
+  # ! Collection Point: SQLite query then per-row literal assignment
+  eager_df: pl.DataFrame = df.collect()
   db: object = Database(pubmed_db)
   query: str = """
 SELECT
@@ -221,22 +223,24 @@ LIMIT 1
   year: str = row.get("year")
 
   if domain:
-    df = df.with_columns(pl.lit(domain).alias("domain"))
+    eager_df = eager_df.with_columns(pl.lit(domain).alias("domain"))
   if mesh:
-    df = df.with_columns(pl.lit(mesh).alias("mesh"))
+    eager_df = eager_df.with_columns(pl.lit(mesh).alias("mesh"))
   if first_author:
-    df = df.with_columns(pl.lit(first_author).alias("first author"))
+    eager_df = eager_df.with_columns(pl.lit(first_author).alias("first author"))
   if journal:
-    df = df.with_columns(pl.lit(journal).alias("journal"))
+    eager_df = eager_df.with_columns(pl.lit(journal).alias("journal"))
   if title:
-    df = df.with_columns(pl.lit(title).alias("title"))
+    eager_df = eager_df.with_columns(pl.lit(title).alias("title"))
   if year:
-    df = df.with_columns(pl.lit(year).alias("year published"))
+    eager_df = eager_df.with_columns(pl.lit(year).alias("year published"))
 
-  return df
+  return eager_df.lazy()
 
-def with_captions(df: pl.DataFrame, pmc_db: Path, curie: str, url: str) -> pl.DataFrame:
-  # ? Adds PMC Caption Annotations To DF With Filename Heuristic
+def with_captions(df: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
+  # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
+  # ! Collection Point: SQLite query then literal assignment
+  eager_df: pl.DataFrame = df.collect()
   db: object = Database(pmc_db)
   filename: str = basename(url)
   query: str = """
@@ -250,9 +254,9 @@ LIMIT 1
 
   caption: str = row.get("caption")
   if caption:
-    df = df.with_columns(pl.lit(caption).alias("file caption"))
+    eager_df = eager_df.with_columns(pl.lit(caption).alias("file caption"))
 
-  return df
+  return eager_df.lazy()
 
 class Tcode(Section):
   # ? Extends Section To Compile A KG
