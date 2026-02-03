@@ -154,5 +154,4 @@ def version4(
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
 
-  # * Re-lazy for downstream operations
   return result.lazy()
