@@ -163,13 +163,13 @@ def pick(df: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
   return _relazy(result)
 
 def reindex(
-  df: pl.DataFrame,
+  df: pl.LazyFrame,
   col: str,
   op: operator,
   comp: Union[str, int, float],
   cast: bool = True
-) -> pl.DataFrame:
-  # ? Reindex A DataFrame Based On A Condition
+) -> pl.LazyFrame:
+  # ? Reindex A LazyFrame Based On A Condition
   expr: pl.Expr = pl.col(col).cast(pl.Float64) if cast else pl.col(col)
   return df.filter(op(expr, comp))
 
@@ -181,8 +181,8 @@ def idxname(col: str) -> str:
 
   return f"column_{idx}"
 
-def trim(df: pl.DataFrame, regex: str = r"^column_\d+$") -> pl.DataFrame:
-  # ? Removes Columns With The Excel Naming Conventions From DataFrame
+def trim(df: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
+  # ? Removes Columns With The Excel Naming Conventions From LazyFrame
   return df.select(pl.exclude(regex))
 
 def to_store(df: pl.DataFrame, p: Path) -> Path:
