@@ -427,24 +427,18 @@ def main(
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   # TODO: Make MeSH A Node (Micro Version)
-  # TODO: Add More DB Acess Patterns For Team
-  # TODO: Add More QC Acess Patterns For Team
-  # TODO: Change DB Architechure And Access
-  # TODO: Add dbssert-cli As A Micro Repo Here
-  # TODO: Add Documentation
-  # TODO: Convert Perl Download Script To Python And Use Zstd
   # TODO: Add Loguru Logging
-  # TODO: Add pytests
   r: object = from_yaml(ingest)
   g: Graph = Graph.model_validate(r)
   with Pool() as pool:
     raw: list[object] = pool.map(from_yaml, g.tables)
     temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw)
-    sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
 
-    tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in enumerate(sections, start=1)]
-    with duckdb.connect(g.dbssert, read_only=True) as conn:
-      instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in tcode]
+  sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
 
-  subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
+  tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in enumerate(sections, start=1)]
+  with duckdb.connect(g.dbssert, read_only=True) as conn:
+    instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in tcode]
+    subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
+
   compile_graph(subgraphs, g.name, g.version)
