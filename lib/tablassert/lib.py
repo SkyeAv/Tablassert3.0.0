@@ -39,7 +39,7 @@ import orjson
 import typer
 import math
 
-def _relazy(df: pl.DataFrame) -> pl.LazyFrame:
+def relazy(df: pl.DataFrame) -> pl.LazyFrame:
   # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
   return df.lazy()
 
@@ -160,7 +160,7 @@ def pick(df: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
   # ? Picks A List Of Rows From A LazyFrame
   # ! Collection Point: take() requires eager, re-lazy after
   result: pl.DataFrame = df.collect().select(pl.all().take(indices=rows))
-  return _relazy(result)
+  return relazy(result)
 
 def reindex(
   df: pl.LazyFrame,
@@ -191,10 +191,10 @@ def to_store(df: pl.LazyFrame, p: Path) -> Path:
   df.collect().write_parquet(p)
   return p
 
-def with_mesh(df: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
+def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
   # ? Adds PubMedDB Related MeSH Annotations To LazyFrame
   # ! Collection Point: SQLite query then per-row literal assignment
-  eager_df: pl.DataFrame = df.collect()
+  df: pl.DataFrame = lf.collect()
   db: object = Database(pubmed_db)
   query: str = """
 SELECT
@@ -223,24 +223,24 @@ LIMIT 1
   year: str = row.get("year")
 
   if domain:
-    eager_df = eager_df.with_columns(pl.lit(domain).alias("domain"))
+    df = df.with_columns(pl.lit(domain).alias("domain"))
   if mesh:
-    eager_df = eager_df.with_columns(pl.lit(mesh).alias("mesh"))
+    df = df.with_columns(pl.lit(mesh).alias("mesh"))
   if first_author:
-    eager_df = eager_df.with_columns(pl.lit(first_author).alias("first author"))
+    df = df.with_columns(pl.lit(first_author).alias("first author"))
   if journal:
-    eager_df = eager_df.with_columns(pl.lit(journal).alias("journal"))
+    df = df.with_columns(pl.lit(journal).alias("journal"))
   if title:
-    eager_df = eager_df.with_columns(pl.lit(title).alias("title"))
+    df = df.with_columns(pl.lit(title).alias("title"))
   if year:
-    eager_df = eager_df.with_columns(pl.lit(year).alias("year published"))
+    df = df.with_columns(pl.lit(year).alias("year published"))
 
-  return eager_df.lazy()
+  return df.lazy()
 
-def with_captions(df: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
+def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
   # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
   # ! Collection Point: SQLite query then literal assignment
-  eager_df: pl.DataFrame = df.collect()
+  df: pl.DataFrame = lf.collect()
   db: object = Database(pmc_db)
   filename: str = basename(url)
   query: str = """
@@ -254,9 +254,9 @@ LIMIT 1
 
   caption: str = row.get("caption")
   if caption:
-    eager_df = eager_df.with_columns(pl.lit(caption).alias("file caption"))
+    df = df.with_columns(pl.lit(caption).alias("file caption"))
 
-  return eager_df.lazy()
+  return df.lazy()
 
 class Tcode(Section):
   # ? Extends Section To Compile A KG
@@ -372,34 +372,41 @@ def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
   e_in.unlink()
 
 def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> tuple[Path]:
-  # ? Aggregates Parquets For NDJSON KGX Export
+  # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
   p: Path = Path(f"./{name}_{version}")
   e: Path = p.with_suffix(".edges.ndjson.temp") # ! For Labeling
   n: Path = p.with_suffix(".nodes.ndjson")
 
+  combined_nodes: list[pl.LazyFrame] = []
+  combined_edges: list[pl.LazyFrame] = []
+
   for s in subgraphs:
-    edges: pl.DataFrame = pl.read_parquet(s)
+    # * Lazy scan of parquet subgraphs
+    lf: pl.LazyFrame = pl.scan_parquet(s)
 
-    node_cols: list[str] = [col.replace("original ", "") for col in edges.columns if "original " in col]
-    combined: list[pl.DataFrame] = []
+    # * Get columns from schema instead of .columns
+    node_cols: list[str] = [col.replace("original ", "") for col in lf.collect_schema().columns if "original " in col]
     for col in node_cols:
-      partial, edges = normalize(edges, col)
-      combined.append(partial)
+      partial, lf = normalize(lf, col)
+      combined_nodes.append(partial)
 
-    nodes: pl.DataFrame = pl.concat(combined, how="vertical")
-    nodes = nodes.unique()
+    combined_edges.append(lf)
 
-    pubs, edges = publications(edges)
-    pubs = pubs.unique()
+  # * Final collection for NDJSON write
+  nodes: pl.DataFrame = pl.concat(combined_nodes, how="vertical").unique().collect()
+  edges: pl.DataFrame = pl.concat(combined_edges, how="vertical").collect()
 
-    with n.open("a") as f:
-      nodes.write_ndjson(f)
-      pubs.write_ndjson(f)
+  pubs, edges = publications(edges)
+  pubs = pubs.collect().unique()
 
-    with e.open("a") as f:
-      with pl.Config(set_fmt_float=fmt):
-        with pl.Config(float_precision=precision):
-          edges.write_ndjson(f)
+  with n.open("a") as f:
+    nodes.write_ndjson(f)
+    pubs.write_ndjson(f)
+
+  with e.open("a") as f:
+    with pl.Config(set_fmt_float=fmt):
+      with pl.Config(float_precision=precision):
+        edges.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
   jq: Path = environ.get("JQ_PATH")
