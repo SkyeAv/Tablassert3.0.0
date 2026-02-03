@@ -125,9 +125,9 @@ def idx(df: pl.DataFrame, col: str = "row number") -> pl.DataFrame:
   # ? Creates An Index Column Of Row Numbers
   return df.with_row_index(col)
 
-def csv(p: Path, sep: str) -> pl.DataFrame:
-  # ? Reads Source From CSV And TSV
-  return pl.read_csv(
+def csv(p: Path, sep: str) -> pl.LazyFrame:
+  # ? Reads Source From CSV And TSV As LazyFrame
+  return pl.scan_csv(
     source=p,
     separator=sep,
     has_header=False,
@@ -135,15 +135,16 @@ def csv(p: Path, sep: str) -> pl.DataFrame:
     truncate_ragged_lines=True
   )
 
-def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.DataFrame:
-  # ? Reads Source From Excel
-  return pl.read_excel(
+def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
+  # ? Reads Source From Excel As LazyFrame
+  df: pl.DataFrame = pl.read_excel(
     source=p,
     sheet_name=sheet,
     engine=engine,
     has_header=False,
     infer_schema_length=None
   )
+  return df.lazy()
 
 def crop(df: pl.DataFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.DataFrame:
   # ? Takes A Slice From A DataFrame
