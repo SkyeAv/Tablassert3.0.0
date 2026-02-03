@@ -7,15 +7,15 @@ from operator import add
 import polars as pl
 import duckdb
 
-def distinct(df: pl.DataFrame, l0: str, l1: str) -> pl.DataFrame:
-  # ? Extract Unique Terms From Two Text Normalization Columns
-  t0: pl.DataFrame = df.select(pl.col(l0).alias("term")).unique()
+def distinct(df: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
+  # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
+  t0: pl.LazyFrame = df.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
-  t1: pl.DataFrame = df.select(pl.col(l1).alias("term")).unique()
+  t1: pl.LazyFrame = df.select(pl.col(l1).alias("term")).unique()
   t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
-  terms: pl.DataFrame = pl.concat([t0, t1]).unique(subset=["term"])
+  terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
   return terms.with_row_index("term id")
 
 def to_temp(df: pl.DataFrame, tmp: Path = Path(gettempdir())) -> Path:
