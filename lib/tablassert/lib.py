@@ -145,7 +145,7 @@ def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
     has_header=False,
     infer_schema_length=None
   )
-  return df.lazy()
+  return mklazy(df)
 
 def crop(lf: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.LazyFrame:
   # ? Takes A Slice From A LazyFrame
@@ -239,7 +239,7 @@ LIMIT 1
   if year:
     df = df.with_columns(pl.lit(year).alias("year published"))
 
-  return df.lazy()
+  return mklazy(df)
 
 def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
   # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
@@ -260,7 +260,7 @@ LIMIT 1
   if caption:
     df = df.with_columns(pl.lit(caption).alias("file caption"))
 
-  return df.lazy()
+  return mklazy(df)
 
 class Tcode(Section):
   # ? Extends Section To Compile A KG
