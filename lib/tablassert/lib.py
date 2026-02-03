@@ -397,7 +397,7 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
   edges: pl.DataFrame = pl.concat(combined_edges, how="vertical").collect()
 
   pubs, edges = publications(edges)
-  pubs = pubsunique()
+  pubs = pubs.unique()
 
   with n.open("a") as f:
     nodes.write_ndjson(f)
