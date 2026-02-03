@@ -40,33 +40,36 @@ import orjson
 import typer
 import math
 
-def value(df: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
+def value(lf: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
-  return df.with_columns(pl.lit(x).alias(col))
+  return lf.with_columns(pl.lit(x).alias(col))
 
-def column(df: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
+def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With From An Old Column
-  return df.with_columns(pl.col(x).alias(col))
+  return lf.with_columns(pl.col(x).alias(col))
 
 def math_op(
-  df: pl.LazyFrame,
+  lf: pl.LazyFrame,
   col: str,
   func: str,
   args: list[Union[Tokens.VALUES, float, int]]
 ) -> pl.LazyFrame:
   # ? Transform Values In A Column With The Math Module
+  # ! Collection Point: Required For map_elements
+  df: pl.DataFrame = lf.collect()
   expr: pl.Expr = pl.col(col).cast(pl.Float64)
   attr: Callable[[Any], Any] = getattr(math, func)
   transform: Callable[[float], float] = lambda x: attr(x if eq(a, Tokens.VALUES) else a for a in args)
-  return df.with_columns(expr.map_elements(transform).alias(col))
+  df = df.with_columns(expr.map_elements(transform).alias(col))
+  return mklazy(df)
 
-def zero(df: pl.LazyFrame, col: str) -> pl.LazyFrame:
+def zero(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:
   # ? Level Zero Text Processing
   expr: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars().str.to_lowercase()
-  return df.with_columns(expr.alias(col))
+  return lf.with_columns(expr.alias(col))
 
 def one(
-  df: pl.LazyFrame,
+  lf: pl.LazyFrame,
   col: str,
   regex: str = r"\W+",
   tag: str = " one"
@@ -74,33 +77,33 @@ def one(
   # ? Level One Text Processing
   expr: pl.Expr = pl.col(col).str.replace_all(regex, "")
   col: str = add(col, tag)
-  return df.with_columns(expr.alias(col))
+  return lf.with_columns(expr.alias(col))
 
-def prefix(df: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
+def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
   expr: pl.Expr = add(pl.lit(prefix), pl.col(col).cast(pl.String))
-  return df.with_columns(expr.alias(col))
+  return lf.with_columns(expr.alias(col))
 
-def suffix(df: pl.LazyFrame, col: str, suffix: str) -> pl.LazyFrame:
+def suffix(lf: pl.LazyFrame, col: str, suffix: str) -> pl.LazyFrame:
   expr: pl.Expr = add(pl.col(col).cast(pl.String), pl.lit(suffix))
-  return df.with_columns(expr.alias(col))
+  return lf.with_columns(expr.alias(col))
 
 def regex(
-  df: pl.LazyFrame,
+  lf: pl.LazyFrame,
   col: str,
   pattern: str,
   replacement: str = ""
 ) -> pl.LazyFrame:
   expr: pl.Expr = pl.col(col).cast(pl.String).str.replace_all(pattern, replacement)
-  return df.with_columns(expr.alias(col))
+  return lf.with_columns(expr.alias(col))
 
-def fill(df: pl.LazyFrame, col: str, method: str) -> pl.LazyFrame:
+def fill(lf: pl.LazyFrame, col: str, method: str) -> pl.LazyFrame:
   expr: pl.Expr = pl.col(col).fill_null(strategy=method)
-  return df.with_columns(expr.alias(col))
+  return lf.with_columns(expr.alias(col))
 
-def explode(df: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
+def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   # ? Explodes A Row With Items Into Many Unique Rows By A Delimiter
   expr: pl.Expr = pl.col(col).cast(pl.String).str.split(delimiter)
-  return df.with_columns(expr.explode(col).alias(col))
+  return lf.with_columns(expr.explode(col).alias(col))
 
 def sig(
   lf: pl.LazyFrame,
@@ -143,21 +146,24 @@ def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
   )
   return df.lazy()
 
-def crop(df: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.LazyFrame:
+def crop(lf: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.LazyFrame:
   # ? Takes A Slice From A LazyFrame
-  # ! Collection Point: Requires height calculation
+  # ! Collection Point: Requires Height Calculation
+  df: pl.DataFrame = lf.collect()
   n: int = df.select(pl.len()).collect().item()
   start: Union[int, Literal[Tokens.AUTO]] = row_slice[0]
   stop: Union[int, Literal[Tokens.AUTO]] = row_slice[1]
   offset: int = 0 if eq(start, Tokens.AUTO) else start
   length: int = n if eq(stop, Tokens.AUTO) else (stop - offset)
-  return df.slice(offset=offset, length=length)
+  df = df.slice(offset=offset, length=length)
+  return mklazy(df)
 
-def pick(df: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
+def pick(lf: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
   # ? Picks A List Of Rows From A LazyFrame
-  # ! Collection Point: take() requires eager, re-lazy after
-  result: pl.DataFrame = df.collect().select(pl.all().take(indices=rows))
-  return mklazy(result)
+  # ! Collection Point: take() Requires Eager, Relazy After
+  df: pl.DataFrame = lf.collect()
+  df = df.collect().select(pl.all().take(indices=rows))
+  return mklazy(df)
 
 def reindex(
   df: pl.LazyFrame,
@@ -178,19 +184,19 @@ def idxname(col: str) -> str:
 
   return f"column_{idx}"
 
-def trim(df: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
+def trim(lf: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
   # ? Removes Columns With The Excel Naming Conventions From LazyFrame
-  return df.select(pl.exclude(regex))
+  return lf.select(pl.exclude(regex))
 
-def to_store(df: pl.LazyFrame, p: Path) -> Path:
+def to_store(lf: pl.LazyFrame, p: Path) -> Path:
   # ? Writes A LazyFrame To Store To Later Be Aggregated
-  # ! Terminal Collection Point: parquet write requires eager
-  df.collect().write_parquet(p)
+  # ! Terminal Collection Point: Parquet Write Requires Eager
+  lf.collect().write_parquet(p)
   return p
 
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
   # ? Adds PubMedDB Related MeSH Annotations To LazyFrame
-  # ! Collection Point: SQLite query then per-row literal assignment
+  # ! Collection Point: SQLite Query Then Per-Row Literal Assignment
   df: pl.DataFrame = lf.collect()
   db: object = Database(pubmed_db)
   query: str = """
@@ -236,7 +242,7 @@ LIMIT 1
 
 def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
   # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
-  # ! Collection Point: SQLite query then literal assignment
+  # ! Collection Point: SQLite Query Then Literal Assignment
   df: pl.DataFrame = lf.collect()
   db: object = Database(pmc_db)
   filename: str = basename(url)
@@ -378,10 +384,8 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
   combined_edges: list[pl.LazyFrame] = []
 
   for s in subgraphs:
-    # * Lazy scan of parquet subgraphs
     lf: pl.LazyFrame = pl.scan_parquet(s)
 
-    # * Get columns from schema instead of .columns
     node_cols: list[str] = [col.replace("original ", "") for col in lf.collect_schema().names() if "original " in col]
     for col in node_cols:
       partial, lf = normalize(lf, col)
@@ -389,12 +393,11 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
 
     combined_edges.append(lf)
 
-  # * Final collection for NDJSON write
   nodes: pl.DataFrame = pl.concat(combined_nodes, how="vertical").unique().collect()
   edges: pl.DataFrame = pl.concat(combined_edges, how="vertical").collect()
 
   pubs, edges = publications(edges)
-  pubs = pubs.collect().unique()
+  pubs = pubsunique()
 
   with n.open("a") as f:
     nodes.write_ndjson(f)
@@ -423,7 +426,6 @@ def main(
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   # TODO: Make MeSH A Node (Micro Version)
-  # ~~TODO: Use Polars Lazy Frame API To Help Where Applicable~~  # COMPLETED: 2025-02-02
   # TODO: Add More DB Acess Patterns For Team
   # TODO: Add More QC Acess Patterns For Team
   # TODO: Change DB Architechure And Access

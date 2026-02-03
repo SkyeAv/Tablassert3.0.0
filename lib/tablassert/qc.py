@@ -70,7 +70,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
   curie: str = col
   cols: list[str] = [original, preferred, curie]
 
-  # * Stage 1: Exact string matching (can stay lazy until filter)
+  # * Stage 1: Exact String Matching (Can Stay Lazy Until Filter)
   df: pl.DataFrame = lf.collect()
   pairs: pl.DataFrame = df.select(cols).unique()
   pairs = pairs.with_columns(eq(pl.col(cols[0]), pl.col(cols[1])).alias(out))
@@ -78,19 +78,17 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
   passed: pl.DataFrame = pairs.filter(pl.col(out))
   pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-  # * Stage 2: Fuzzy matching via RapidFuzz (requires eager)
+  # * Stage 2: Fuzzy Matching Via RapidFuzz (Requires Eager)
   masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: fuzz_audit(x, original, preferred, curie), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, masked_fuzz))
 
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
-  # * Stage 3: BioBERT embeddings (requires eager)
+  # * Stage 3: BioBERT Embeddings (Requires Eager)
   BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[:-1]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, BERT_fuzz))
 
   passed = pairs.filter(pl.col(out))
-  result = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
-
-  # * Re-lazy for downstream operations
-  return result.lazy()
+  df = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
+  return mklazy(df)
