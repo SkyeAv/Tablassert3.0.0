@@ -43,64 +43,64 @@ def _relazy(df: pl.DataFrame) -> pl.LazyFrame:
   # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
   return df.lazy()
 
-def value(df: pl.DataFrame, col: Any, x: str) -> pl.DataFrame:
+def value(df: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
   return df.with_columns(pl.lit(x).alias(col))
 
-def column(df: pl.DataFrame, col: str, x: str) -> pl.DataFrame:
+def column(df: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With From An Old Column
   return df.with_columns(pl.col(x).alias(col))
 
 def math_op(
-  df: pl.DataFrame,
+  df: pl.LazyFrame,
   col: str,
   func: str,
   args: list[Union[Tokens.VALUES, float, int]]
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
   # ? Transform Values In A Column With The Math Module
   expr: pl.Expr = pl.col(col).cast(pl.Float64)
   attr: Callable[[Any], Any] = getattr(math, func)
   transform: Callable[[float], float] = lambda x: attr(x if eq(a, Tokens.VALUES) else a for a in args)
   return df.with_columns(expr.map_elements(transform).alias(col))
 
-def zero(df: pl.DataFrame, col: str) -> pl.DataFrame:
+def zero(df: pl.LazyFrame, col: str) -> pl.LazyFrame:
   # ? Level Zero Text Processing
   expr: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars().str.to_lowercase()
   return df.with_columns(expr.alias(col))
 
 def one(
-  df: pl.DataFrame,
+  df: pl.LazyFrame,
   col: str,
   regex: str = r"\W+",
   tag: str = " one"
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
   # ? Level One Text Processing
   expr: pl.Expr = pl.col(col).str.replace_all(regex, "")
   col: str = add(col, tag)
   return df.with_columns(expr.alias(col))
 
-def prefix(df: pl.DataFrame, col: str, prefix: str) -> pl.DataFrame:
+def prefix(df: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
   expr: pl.Expr = add(pl.lit(prefix), pl.col(col).cast(pl.String))
   return df.with_columns(expr.alias(col))
 
-def suffix(df: pl.DataFrame, col: str, suffix: str) -> pl.DataFrame:
+def suffix(df: pl.LazyFrame, col: str, suffix: str) -> pl.LazyFrame:
   expr: pl.Expr = add(pl.col(col).cast(pl.String), pl.lit(suffix))
   return df.with_columns(expr.alias(col))
 
 def regex(
-  df: pl.DataFrame,
+  df: pl.LazyFrame,
   col: str,
   pattern: str,
   replacement: str = ""
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
   expr: pl.Expr = pl.col(col).cast(pl.String).str.replace_all(pattern, replacement)
   return df.with_columns(expr.alias(col))
 
-def fill(df: pl.DataFrame, col: str, method: str) -> pl.DataFrame:
+def fill(df: pl.LazyFrame, col: str, method: str) -> pl.LazyFrame:
   expr: pl.Expr = pl.col(col).fill_null(strategy=method)
   return df.with_columns(expr.alias(col))
 
-def explode(df: pl.DataFrame, col: str, delimiter: str) -> pl.DataFrame:
+def explode(df: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   # ? Explodes A Row With Items Into Many Unique Rows By A Delimiter
   expr: pl.Expr = pl.col(col).cast(pl.String).str.split(delimiter)
   return df.with_columns(expr.explode(col).alias(col))
