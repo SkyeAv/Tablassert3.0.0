@@ -10,6 +10,10 @@ from operator import ge
 from operator import eq
 import polars as pl
 
+def _relazy(df: pl.DataFrame) -> pl.LazyFrame:
+  # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
+  return df.lazy()
+
 SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
@@ -60,29 +64,36 @@ def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -
   similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
   return bool(ge(similarity, min_cos))
 
-def fullmap_audit(df: pl.DataFrame, col: str, out: str = "passed") -> pl.DataFrame:
+def fullmap_audit(df: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFrame:
   # ? Ensures Fullmap Correct Processes Strings To CURIES
   # * Deletes Suspected Errors
+  # ! Collection Points: map_elements with custom functions require eager
   original: str = add("original ", col)
   preferred: str = add(col, " name")
   curie: str = col
   cols: list[str] = [original, preferred, curie]
 
-  pairs: pl.DataFrame = df.select(cols).unique()
+  # * Stage 1: Exact string matching (can stay lazy until filter)
+  eager_df: pl.DataFrame = df.collect()
+  pairs: pl.DataFrame = eager_df.select(cols).unique()
   pairs = pairs.with_columns(eq(pl.col(cols[0]), pl.col(cols[1])).alias(out))
 
   passed: pl.DataFrame = pairs.filter(pl.col(out))
   pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
+  # * Stage 2: Fuzzy matching via RapidFuzz (requires eager)
   masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: fuzz_audit(x, original, preferred, curie), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, masked_fuzz))
 
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
+  # * Stage 3: BioBERT embeddings (requires eager)
   BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[:-1]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, BERT_fuzz))
 
   passed = pairs.filter(pl.col(out))
-  df = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
-  return df
+  result = eager_df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
+
+  # * Re-lazy for downstream operations
+  return result.lazy()
