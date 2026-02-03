@@ -70,28 +70,23 @@ def query_builder(
 
 def query_distinct(
   p: Path,
-  dbssert: Path,
+  conn: object,
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]]
 ) -> pl.DataFrame:
-  # ? Query Database For Distinct Terms Only
-  try:
-    with duckdb.connect(dbssert) as conn:
-      query: str = query_builder(p, prioritize, avoid, taxon)
-      results: pl.DataFrame = conn.execute(query).pl()
-
-      results = results.sort(["term", "PR", "NLP_LEVEL"])
-      results = results.unique(subset=["term", "CURIE"], keep="first")
-      return results
-
-  finally:
-    p.unlink(missing_ok=True)
+  # ? Query Database For Distinct Terms Only Using Persistent Connection
+  query: str = query_builder(p, prioritize, avoid, taxon)
+  results: pl.DataFrame = conn.execute(query).pl()
+  results = results.sort(["term", "PR", "NLP_LEVEL"])
+  results = results.unique(subset=["term", "CURIE"], keep="first")
+  p.unlink(missing_ok=True)
+  return results
 
 def version4(
   lf: pl.LazyFrame,
   col: str,
-  dbssert: Path,
+  conn: object,
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
@@ -103,7 +98,7 @@ def version4(
 
   terms: pl.LazyFrame = distinct(lf, l0, l1)
   p: Path = to_temp(terms)
-  matches: pl.DataFrame = query_distinct(p, dbssert, taxon, prioritize, avoid)
+  matches: pl.DataFrame = query_distinct(p, conn, taxon, prioritize, avoid)
 
   # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
   df: pl.DataFrame = lf.collect()

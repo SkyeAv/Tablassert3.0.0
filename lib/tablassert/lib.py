@@ -36,6 +36,7 @@ from os import environ
 import polars as pl
 import subprocess
 import operator
+import duckdb
 import orjson
 import typer
 import math
@@ -280,14 +281,14 @@ class Tcode(Section):
       [(math_op, (col, col, t.function, t.arguments,)) for t in x.transformations] if x.transformations else None
     ]
 
-  def node(self: Self, x: NodeEncoding, col: str, dbssert: Path) -> list[Any]:
+  def node(self: Self, x: NodeEncoding, col: str, conn: object) -> list[Any]:
     # ? Collect Helper For NodeEncoding Classes
     encoding: list[Any] = self.encoding(x, col)
     node: list[Any] = [
       (column, (add("original ", col), col,)),
       (zero, (col,)),
       (one, (col,)),
-      (version4, (col, dbssert, x.taxon, x.prioritize, x.avoid,)),
+      (version4, (col, conn, x.taxon, x.prioritize, x.avoid,)),
       (fullmap_audit, (col,))
     ]
     return add(encoding, node)
@@ -304,7 +305,7 @@ class Tcode(Section):
         result.append(x)
     return result
 
-  def collect(self: Self, dbssert: Path, pubmed_db: Path, pmc_db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+  def collect(self: Self, conn: object, pubmed_db: Path, pmc_db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
     # ? Code That Tells Tablassert What Actions To While Transforming Data
 
     if self.store.is_file():
@@ -322,10 +323,10 @@ class Tcode(Section):
         (pick, (self.source.rows,)) if self.source.rows else None,
         [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator,)) for x in self.source.reindex] if self.source.reindex else None,
         [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
-        self.node(self.statement.subject, "subject", dbssert),
-        self.node(self.statement.object, "object", dbssert),
+        self.node(self.statement.subject, "subject", conn),
+        self.node(self.statement.object, "object", conn),
         (value, ("predicate", self.statement.predicate,)),
-        [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, dbssert)] if self.statement.qualifiers else None,
+        [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conn)] if self.statement.qualifiers else None,
         (value, ("syntax", self.syntax,)),
         (value, ("section number", self.number,)),
         (value, ("status", self.status,)),
@@ -442,7 +443,8 @@ def main(
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
 
     tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in enumerate(sections, start=1)]
-    instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = [x.collect(g.dbssert, g.pubmed_db, g.pmc_db) for x in tcode]
+    with duckdb.connect(g.dbssert, read_only=True) as conn:
+      instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in tcode]
 
   subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions]
   compile_graph(subgraphs, g.name, g.version)
