@@ -18,11 +18,13 @@ def distinct(df: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
   return terms.with_row_index("term id")
 
-def to_temp(df: pl.DataFrame, tmp: Path = Path(gettempdir())) -> Path:
-  # ? Writes DF To A Tempfile To Be Used In Fullmap
-  p: Path = tmp / samphash(df)
+def to_temp(df: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
+  # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap
+  # ! Collection Point: samphash and write_parquet require eager
+  eager_df: pl.DataFrame = df.collect()
+  p: Path = tmp / samphash(eager_df)
   p = p.with_suffix(".parquet")
-  df.write_parquet(p)
+  eager_df.write_parquet(p)
   return p
 
 def query_builder(
