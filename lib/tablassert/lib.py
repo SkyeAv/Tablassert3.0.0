@@ -8,7 +8,6 @@ from tablassert.qc import fullmap_audit
 from tablassert.fullmap import version4
 from tablassert.models import Encoding
 from tablassert.models import Section
-from tablassert.utils import mklazy
 from tablassert.utils import mkhash
 from tablassert.enums import Tokens
 from pydantic import NonNegativeInt
@@ -62,7 +61,7 @@ def math_op(
   attr: Callable[[Any], Any] = getattr(math, func)
   transform: Callable[[float], float] = lambda x: attr(x if eq(a, Tokens.VALUES) else a for a in args)
   df = df.with_columns(expr.map_elements(transform).alias(col))
-  return mklazy(df)
+  return df.lazy()
 
 def zero(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:
   # ? Level Zero Text Processing
@@ -145,7 +144,7 @@ def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
     has_header=False,
     infer_schema_length=None
   )
-  return mklazy(df)
+  return df.lazy()
 
 def crop(lf: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.LazyFrame:
   # ? Takes A Slice From A LazyFrame
@@ -157,14 +156,14 @@ def crop(lf: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens
   offset: int = 0 if eq(start, Tokens.AUTO) else start
   length: int = n if eq(stop, Tokens.AUTO) else (stop - offset)
   df = df.slice(offset=offset, length=length)
-  return mklazy(df)
+  return df.lazy()
 
 def pick(lf: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
   # ? Picks A List Of Rows From A LazyFrame
   # ! Collection Point: take() Requires Eager, Relazy After
   df: pl.DataFrame = lf.collect()
   df = df.select(pl.all().take(indices=rows))
-  return mklazy(df)
+  return df.lazy()
 
 def reindex(
   df: pl.LazyFrame,
@@ -239,7 +238,7 @@ LIMIT 1
   if year:
     df = df.with_columns(pl.lit(year).alias("year published"))
 
-  return mklazy(df)
+  return df.lazy()
 
 def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
   # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
@@ -260,7 +259,7 @@ LIMIT 1
   if caption:
     df = df.with_columns(pl.lit(caption).alias("file caption"))
 
-  return mklazy(df)
+  return df.lazy()
 
 class Tcode(Section):
   # ? Extends Section To Compile A KG

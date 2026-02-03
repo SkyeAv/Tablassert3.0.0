@@ -37,7 +37,3 @@ def namespace_uuid(domain: Any, *values: list[Any]) -> str:
   domainspace: UUID = basespace(domain)
   joined: str = "\t".join(values)
   return str(uuid3(domainspace, joined))
-
-def mklazy(df: pl.DataFrame) -> pl.LazyFrame:
-  # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
-  return df.lazy()

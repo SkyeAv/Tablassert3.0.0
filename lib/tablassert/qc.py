@@ -1,7 +1,6 @@
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from tablassert.utils import DISKCACHE
-from tablassert.utils import mklazy
 from functools import partial
 from rapidfuzz import fuzz
 import onnxruntime as ort
@@ -91,4 +90,4 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
 
   passed = pairs.filter(pl.col(out))
   df = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
-  return mklazy(df)
+  return df.lazy()
