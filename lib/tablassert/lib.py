@@ -343,20 +343,20 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]]) -> Path:
   # ? Executes Tcode To Build Subgraphs As Parquets
   return reduce(lambda acc, op: op[0](acc, *op[1]) if acc is not None else op[0](*op[1]), tcode, None)
 
-def normalize(edges: pl.DataFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]) -> tuple[pl.DataFrame]:
+def normalize(edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]) -> tuple[pl.LazyFrame, pl.LazyFrame]:
   # ? Normalized Disparate Node Columns To A Unified Format And Removes Them From Edges
-  # * Returns Partial Nodes And Modified Edges
+  # * Returns Partial Nodes And Modified Edges As LazyFrames
   cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
-  nodes: pl.DataFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
-  edges = edges.drop(cols[1:])
-  return nodes, edges
+  nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
+  edges_out: pl.LazyFrame = edges.drop(cols[1:])
+  return nodes, edges_out
 
-def publications(edges: pl.DataFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]) -> tuple[pl.DataFrame]:
+def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]) -> tuple[pl.LazyFrame, pl.LazyFrame]:
   cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
-  nodes = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
+  nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
   nodes = nodes.with_columns(pl.lit("biolink:Publication").alias("category"))
-  edges = edges.drop(cols[1:])
-  return nodes, edges
+  edges_out: pl.LazyFrame = edges.drop(cols[1:])
+  return nodes, edges_out
 
 def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
   # ? Gives Each Edge In MOKG A UUID
