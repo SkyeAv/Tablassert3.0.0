@@ -20,7 +20,7 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
 
 def to_temp(lf: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
   # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap
-  # ! Collection Point: samphash and write_parquet require eager
+  # ! Collection Point: Samphash And write_parquet Require Eager
   df: pl.DataFrame = lf.collect()
   p: Path = tmp / samphash(df)
   p = p.with_suffix(".parquet")
@@ -105,7 +105,7 @@ def version4(
   p: Path = to_temp(terms)
   matches: pl.DataFrame = query_distinct(p, dbssert, taxon, prioritize, avoid)
 
-  # ! Collection Point: join after DuckDB query, then re-lazy
+  # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
   df: pl.DataFrame = lf.collect()
   result: pl.DataFrame = df.join(
     matches.filter(pl.col("NLP_LEVEL").eq(0)),

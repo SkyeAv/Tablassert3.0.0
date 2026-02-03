@@ -103,24 +103,24 @@ def explode(df: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   return df.with_columns(expr.explode(col).alias(col))
 
 def sig(
-  df: pl.LazyFrame,
+  lf: pl.LazyFrame,
   cutoff: float = 0.05,
   col: str = "p value",
   out: str = "significant",
 ) -> pl.LazyFrame:
   # ? Creates The "significant" Column
-  if col in df.collect_schema().columns:
+  if col in lf.collect_schema().names():
     expr: pl.Expr = pl.col(col).cast(pl.Float64)
     cond: pl.Expr = le(expr, cutoff)
     cutoff: pl.Expr = pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
-    return df.with_columns(cutoff.alias(out))
+    return lf.with_columns(cutoff.alias(out))
 
   else:
     return df.with_columns(pl.lit("UNSURE").alias(out))
 
-def idx(df: pl.LazyFrame, col: str = "row number") -> pl.LazyFrame:
+def idx(lf: pl.LazyFrame, col: str = "row number") -> pl.LazyFrame:
   # ? Creates An Index Column Of Row Numbers
-  return df.with_row_index(col)
+  return lf.with_row_index(col)
 
 def csv(p: Path, sep: str) -> pl.LazyFrame:
   # ? Reads Source From CSV And TSV As LazyFrame
@@ -382,7 +382,7 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
     lf: pl.LazyFrame = pl.scan_parquet(s)
 
     # * Get columns from schema instead of .columns
-    node_cols: list[str] = [col.replace("original ", "") for col in lf.collect_schema().columns if "original " in col]
+    node_cols: list[str] = [col.replace("original ", "") for col in lf.collect_schema().names() if "original " in col]
     for col in node_cols:
       partial, lf = normalize(lf, col)
       combined_nodes.append(partial)

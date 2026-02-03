@@ -64,7 +64,7 @@ def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -
 def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFrame:
   # ? Ensures Fullmap Correct Processes Strings To CURIES
   # * Deletes Suspected Errors
-  # ! Collection Points: map_elements with custom functions require eager
+  # ! Collection Points: map_elements With Custom Functions Require Eager
   original: str = add("original ", col)
   preferred: str = add(col, " name")
   curie: str = col
