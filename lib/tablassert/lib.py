@@ -185,9 +185,10 @@ def trim(df: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
   # ? Removes Columns With The Excel Naming Conventions From LazyFrame
   return df.select(pl.exclude(regex))
 
-def to_store(df: pl.DataFrame, p: Path) -> Path:
-  # ? Writes A DF To Store To Later Be Aggregated
-  df.write_parquet(p)
+def to_store(df: pl.LazyFrame, p: Path) -> Path:
+  # ? Writes A LazyFrame To Store To Later Be Aggregated
+  # ! Terminal Collection Point: parquet write requires eager
+  df.collect().write_parquet(p)
   return p
 
 def with_mesh(df: pl.DataFrame, pubmed_db: Path, curie: str) -> pl.DataFrame:
