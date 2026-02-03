@@ -426,7 +426,7 @@ def main(
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   # TODO: Make MeSH A Node (Micro Version)
-  # TODO: Use Polars Lazy Frame API To Help Where Applicable
+  # ~~TODO: Use Polars Lazy Frame API To Help Where Applicable~~  # COMPLETED: 2025-02-02
   # TODO: Add More DB Acess Patterns For Team
   # TODO: Add More QC Acess Patterns For Team
   # TODO: Change DB Architechure And Access
