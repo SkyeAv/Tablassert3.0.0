@@ -21,6 +21,8 @@ def mkhash(x: Any) -> str:
   return hashlib.md5(b).hexdigest()
 
 def samphash(df: pl.DataFrame, n: int = 20) -> str:
+  # ? Hash Of Sampled DataFrame For Tempfile Naming
+  # ! Requires eager DataFrame input - call .collect() before passing LazyFrame
   samp: pl.DataFrame = df.sample(min(n, df.height))
   return mkhash(samp.to_init_repr())
 
