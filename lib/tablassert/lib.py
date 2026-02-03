@@ -106,13 +106,13 @@ def explode(df: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   return df.with_columns(expr.explode(col).alias(col))
 
 def sig(
-  df: pl.DataFrame,
+  df: pl.LazyFrame,
   cutoff: float = 0.05,
   col: str = "p value",
   out: str = "significant",
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
   # ? Creates The "significant" Column
-  if col in df.columns:
+  if col in df.collect_schema().columns:
     expr: pl.Expr = pl.col(col).cast(pl.Float64)
     cond: pl.Expr = le(expr, cutoff)
     cutoff: pl.Expr = pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
@@ -121,7 +121,7 @@ def sig(
   else:
     return df.with_columns(pl.lit("UNSURE").alias(out))
 
-def idx(df: pl.DataFrame, col: str = "row number") -> pl.DataFrame:
+def idx(df: pl.LazyFrame, col: str = "row number") -> pl.LazyFrame:
   # ? Creates An Index Column Of Row Numbers
   return df.with_row_index(col)
 
