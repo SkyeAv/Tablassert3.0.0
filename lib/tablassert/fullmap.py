@@ -89,22 +89,25 @@ def query_distinct(
     p.unlink(missing_ok=True)
 
 def version4(
-  df: pl.DataFrame,
+  df: pl.LazyFrame,
   col: str,
   dbssert: Path,
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
   tag: str = " one"
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
   # ? Case Dependant, Provenance Rich Name Entity Recognition
   l0: str = col
   l1: str = add(l0, tag)
 
-  terms: pl.DataFrame = distinct(df, l0, l1)
+  terms: pl.LazyFrame = distinct(df, l0, l1)
   p: Path = to_temp(terms)
   matches: pl.DataFrame = query_distinct(p, dbssert, taxon, prioritize, avoid)
-  result: pl.DataFrame = df.join(
+
+  # ! Collection Point: join after DuckDB query, then re-lazy
+  eager_df: pl.DataFrame = df.collect()
+  result: pl.DataFrame = eager_df.join(
     matches.filter(pl.col("NLP_LEVEL").eq(0)),
     left_on=l0,
     right_on="term",
@@ -155,4 +158,6 @@ def version4(
   result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR)( l1)?$"))
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
-  return result
+
+  # * Re-lazy for downstream operations
+  return result.lazy()
