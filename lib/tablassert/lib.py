@@ -8,6 +8,7 @@ from tablassert.qc import fullmap_audit
 from tablassert.fullmap import version4
 from tablassert.models import Encoding
 from tablassert.models import Section
+from tablassert.utils import mklazy
 from tablassert.utils import mkhash
 from tablassert.enums import Tokens
 from pydantic import NonNegativeInt
@@ -38,10 +39,6 @@ import operator
 import orjson
 import typer
 import math
-
-def relazy(df: pl.DataFrame) -> pl.LazyFrame:
-  # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
-  return df.lazy()
 
 def value(df: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
@@ -160,7 +157,7 @@ def pick(df: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
   # ? Picks A List Of Rows From A LazyFrame
   # ! Collection Point: take() requires eager, re-lazy after
   result: pl.DataFrame = df.collect().select(pl.all().take(indices=rows))
-  return relazy(result)
+  return mklazy(result)
 
 def reindex(
   df: pl.LazyFrame,

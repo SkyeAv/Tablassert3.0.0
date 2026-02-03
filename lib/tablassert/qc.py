@@ -1,6 +1,7 @@
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from tablassert.utils import DISKCACHE
+from tablassert.utils import mklazy
 from functools import partial
 from rapidfuzz import fuzz
 import onnxruntime as ort
@@ -9,10 +10,6 @@ from operator import add
 from operator import ge
 from operator import eq
 import polars as pl
-
-def relazy(df: pl.DataFrame) -> pl.LazyFrame:
-  # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
-  return df.lazy()
 
 SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
