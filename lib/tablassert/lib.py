@@ -146,9 +146,10 @@ def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
   )
   return df.lazy()
 
-def crop(df: pl.DataFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.DataFrame:
-  # ? Takes A Slice From A DataFrame
-  n: int = df.height
+def crop(df: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens.AUTO]]]) -> pl.LazyFrame:
+  # ? Takes A Slice From A LazyFrame
+  # ! Collection Point: Requires height calculation
+  n: int = df.select(pl.len()).collect().item()
   start: Union[int, Literal[Tokens.AUTO]] = row_slice[0]
   stop: Union[int, Literal[Tokens.AUTO]] = row_slice[1]
   offset: int = 0 if eq(start, Tokens.AUTO) else start
