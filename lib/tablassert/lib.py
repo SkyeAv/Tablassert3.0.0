@@ -156,9 +156,11 @@ def crop(df: pl.LazyFrame, row_slice: Optional[list[Union[NonNegativeInt, Tokens
   length: int = n if eq(stop, Tokens.AUTO) else (stop - offset)
   return df.slice(offset=offset, length=length)
 
-def pick(df: pl.DataFrame, rows: list[int]) -> pl.DataFrame:
-  # ? Picks A List Of Rows From A DataFrame
-  return df.select(pl.all().take(indices=rows))
+def pick(df: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
+  # ? Picks A List Of Rows From A LazyFrame
+  # ! Collection Point: take() requires eager, re-lazy after
+  result: pl.DataFrame = df.collect().select(pl.all().take(indices=rows))
+  return _relazy(result)
 
 def reindex(
   df: pl.DataFrame,
