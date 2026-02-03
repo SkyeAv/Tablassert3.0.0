@@ -39,6 +39,10 @@ import orjson
 import typer
 import math
 
+def _relazy(df: pl.DataFrame) -> pl.LazyFrame:
+  # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
+  return df.lazy()
+
 def value(df: pl.DataFrame, col: Any, x: str) -> pl.DataFrame:
   # ? Creates A New Column With A Literal Value
   return df.with_columns(pl.lit(x).alias(col))
