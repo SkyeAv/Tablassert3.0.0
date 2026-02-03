@@ -7,24 +7,24 @@ from operator import add
 import polars as pl
 import duckdb
 
-def distinct(df: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
+def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-  t0: pl.LazyFrame = df.select(pl.col(l0).alias("term")).unique()
+  t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
-  t1: pl.LazyFrame = df.select(pl.col(l1).alias("term")).unique()
+  t1: pl.LazyFrame = lf.select(pl.col(l1).alias("term")).unique()
   t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
   terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
   return terms.with_row_index("term id")
 
-def to_temp(df: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
+def to_temp(lf: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
   # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap
   # ! Collection Point: samphash and write_parquet require eager
-  eager_df: pl.DataFrame = df.collect()
-  p: Path = tmp / samphash(eager_df)
+  df: pl.DataFrame = lf.collect()
+  p: Path = tmp / samphash(df)
   p = p.with_suffix(".parquet")
-  eager_df.write_parquet(p)
+  df.write_parquet(p)
   return p
 
 def query_builder(
@@ -89,7 +89,7 @@ def query_distinct(
     p.unlink(missing_ok=True)
 
 def version4(
-  df: pl.LazyFrame,
+  lf: pl.LazyFrame,
   col: str,
   dbssert: Path,
   taxon: Optional[str],
@@ -101,13 +101,13 @@ def version4(
   l0: str = col
   l1: str = add(l0, tag)
 
-  terms: pl.LazyFrame = distinct(df, l0, l1)
+  terms: pl.LazyFrame = distinct(lf, l0, l1)
   p: Path = to_temp(terms)
   matches: pl.DataFrame = query_distinct(p, dbssert, taxon, prioritize, avoid)
 
   # ! Collection Point: join after DuckDB query, then re-lazy
-  eager_df: pl.DataFrame = df.collect()
-  result: pl.DataFrame = eager_df.join(
+  df: pl.DataFrame = lf.collect()
+  result: pl.DataFrame = df.join(
     matches.filter(pl.col("NLP_LEVEL").eq(0)),
     left_on=l0,
     right_on="term",

@@ -10,7 +10,7 @@ from operator import ge
 from operator import eq
 import polars as pl
 
-def _relazy(df: pl.DataFrame) -> pl.LazyFrame:
+def relazy(df: pl.DataFrame) -> pl.LazyFrame:
   # ? Converts Eager DataFrame Back To LazyFrame After Required Collection
   return df.lazy()
 
@@ -64,7 +64,7 @@ def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -
   similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
   return bool(ge(similarity, min_cos))
 
-def fullmap_audit(df: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFrame:
+def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFrame:
   # ? Ensures Fullmap Correct Processes Strings To CURIES
   # * Deletes Suspected Errors
   # ! Collection Points: map_elements with custom functions require eager
@@ -74,8 +74,8 @@ def fullmap_audit(df: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
   cols: list[str] = [original, preferred, curie]
 
   # * Stage 1: Exact string matching (can stay lazy until filter)
-  eager_df: pl.DataFrame = df.collect()
-  pairs: pl.DataFrame = eager_df.select(cols).unique()
+  df: pl.DataFrame = lf.collect()
+  pairs: pl.DataFrame = df.select(cols).unique()
   pairs = pairs.with_columns(eq(pl.col(cols[0]), pl.col(cols[1])).alias(out))
 
   passed: pl.DataFrame = pairs.filter(pl.col(out))
@@ -93,7 +93,7 @@ def fullmap_audit(df: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
   pairs = pl.concat((passed, BERT_fuzz))
 
   passed = pairs.filter(pl.col(out))
-  result = eager_df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
+  result = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
 
   # * Re-lazy for downstream operations
   return result.lazy()
