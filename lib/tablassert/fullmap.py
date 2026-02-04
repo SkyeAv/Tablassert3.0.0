@@ -20,7 +20,7 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
 
 def to_temp(lf: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
   # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap
-  # ! Collection Point: Samphash And write_parquet Require Eager
+  # ! Collection Point: samphash And write_parquet Require Eager
   df: pl.DataFrame = lf.collect()
   p: Path = tmp / samphash(df)
   p = p.with_suffix(".parquet")

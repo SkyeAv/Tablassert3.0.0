@@ -10,17 +10,17 @@ Primary quality control function that filters entity mappings based on confidenc
 
 ```python
 def fullmap_audit(
-  df: pl.DataFrame,
+  lf: pl.LazyFrame,
   col: str,
   out: str = "passed"
-) -> pl.DataFrame
+) -> pl.LazyFrame
 ```
 
 ### Parameters
 
-**`df: pl.DataFrame`**
+**`lf: pl.LazyFrame`**
 
-Input DataFrame containing entity resolution results.
+Input LazyFrame containing entity resolution results.
 
 Expected columns:
 - `original {col}` - Original text string
@@ -44,7 +44,7 @@ Rows with `out=True` passed QC, `out=False` failed.
 
 ### Return Value
 
-Returns a Polars DataFrame with only validated rows (where `out=True`).
+Returns a Polars LazyFrame with only validated rows (where `out=True`).
 
 Removes the `out` column before returning.
 
@@ -151,8 +151,8 @@ def BERT_audit(...): ...
 from tablassert.qc import fullmap_audit
 import polars as pl
 
-# DataFrame with entity resolution results
-df = pl.read_parquet("resolved.parquet")
+# LazyFrame with entity resolution results
+lf = pl.scan_parquet("resolved.parquet")
 
 # Expected columns:
 # - original subject
@@ -160,7 +160,7 @@ df = pl.read_parquet("resolved.parquet")
 # - subject name
 
 # Run QC
-validated = fullmap_audit(df, col="subject")
+validated = fullmap_audit(lf, col="subject")
 
 # Only rows that passed QC remain
 # Rows with low-confidence mappings removed

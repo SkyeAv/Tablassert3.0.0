@@ -27,7 +27,7 @@ A graph configuration file specifies:
 
 **`syntax: "GC2"`**
 
-Configuration syntax version. Must be `"GC2"` for version 6.0.0.
+Configuration syntax version. Must be `"GC2"` for version 6.1.0.
 
 **`name: string`**
 
