@@ -129,22 +129,22 @@
 <p>Primary entity resolution function using DuckDB queries against the dbssert database.</p>
 <h3 id="function-signature">Function Signature</h3>
 <pre><code class="language-python">def version4(
-  p: Path,
+  lf: pl.LazyFrame,
   col: str,
-  dbssert: Path,
-  taxon: Optional[str],S
+  conn: object,
+  taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
   tag: str = &quot; one&quot;
-) -&gt; pl.DataFrame
+) -&gt; pl.LazyFrame
 </code></pre>
 <h3 id="parameters">Parameters</h3>
-<p><strong><code>p: Path</code></strong></p>
-<p>Path to the input parquet file containing the DataFrame to process.</p>
+<p><strong><code>lf: pl.LazyFrame</code></strong></p>
+<p>Input LazyFrame containing the data to process. Internally collected at explicit collection points for DuckDB queries and joins.</p>
 <p><strong><code>col: str</code></strong></p>
 <p>Column name containing text strings to resolve.</p>
-<p><strong><code>dbssert: Path</code></strong></p>
-<p>Path to the DuckDB entity resolution database.</p>
+<p><strong><code>conn: object</code></strong></p>
+<p>DuckDB connection to the entity resolution database.</p>
 <p>This database contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
@@ -167,7 +167,7 @@
 - <code>col + tag</code> (normalized text, typically lowercase)</p>
 <p>Default <code>" one"</code> means it uses level-one text processing (lowercase, stripped).</p>
 <h3 id="return-value">Return Value</h3>
-<p>Returns a Polars DataFrame with these columns added:</p>
+<p>Returns a Polars LazyFrame with these columns added:</p>
 <table>
 <thead>
 <tr>
@@ -243,19 +243,27 @@
 <pre><code class="language-python">from tablassert.fullmap import version4
 from tablassert.enums import Categories
 from pathlib import Path
+import duckdb
+import polars as pl
+
+# Open DuckDB connection
+conn = duckdb.connect(&quot;/data/dbssert.duckdb&quot;, read_only=True)
+
+# LazyFrame with data to resolve
+lf = pl.scan_parquet(&quot;data.parquet&quot;)
 
 # Resolve gene symbols to CURIEs
 result = version4(
-  p=Path(&quot;data.parquet&quot;),
+  lf=lf,
   col=&quot;gene_symbol&quot;,
-  dbssert=Path(&quot;/data/dbssert.duckdb&quot;),
+  conn=conn,
   taxon=&quot;9606&quot;,  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
   tag=&quot; one&quot;
 )
 
-# Result DataFrame includes:
+# Result LazyFrame includes:
 # - gene_symbol: &quot;HGNC:11998&quot;
 # - gene_symbol name: &quot;TP53&quot;
 # - gene_symbol category: &quot;biolink:Gene&quot;
