@@ -1,7 +1,6 @@
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from tablassert.utils import DISKCACHE
-from functools import partial
 from rapidfuzz import fuzz
 import onnxruntime as ort
 from pathlib import Path

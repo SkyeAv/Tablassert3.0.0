@@ -5,7 +5,6 @@ from typing import Optional
 from pathlib import Path
 from operator import add
 import polars as pl
-import duckdb
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame

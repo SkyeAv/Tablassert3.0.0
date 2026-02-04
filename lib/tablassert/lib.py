@@ -119,7 +119,7 @@ def sig(
     return lf.with_columns(cutoff.alias(out))
 
   else:
-    return df.with_columns(pl.lit("UNSURE").alias(out))
+    return lf.with_columns(pl.lit("UNSURE").alias(out))
 
 def idx(lf: pl.LazyFrame, col: str = "row number") -> pl.LazyFrame:
   # ? Creates An Index Column Of Row Numbers
