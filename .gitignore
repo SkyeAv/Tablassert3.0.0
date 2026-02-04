@@ -2,6 +2,8 @@
 *__pycache__/
 *plans/
 *CLAUDE.md
+*AGENTS.md
+*.claude/
 *cachessert/
 *storessert/
 *DATALAKE/

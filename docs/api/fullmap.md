@@ -10,29 +10,29 @@ Primary entity resolution function using DuckDB queries against the dbssert data
 
 ```python
 def version4(
-  p: Path,
+  lf: pl.LazyFrame,
   col: str,
-  dbssert: Path,
-  taxon: Optional[str],S
+  conn: object,
+  taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
   tag: str = " one"
-) -> pl.DataFrame
+) -> pl.LazyFrame
 ```
 
 ### Parameters
 
-**`p: Path`**
+**`lf: pl.LazyFrame`**
 
-Path to the input parquet file containing the DataFrame to process.
+Input LazyFrame containing the data to process. Internally collected at explicit collection points for DuckDB queries and joins.
 
 **`col: str`**
 
 Column name containing text strings to resolve.
 
-**`dbssert: Path`**
+**`conn: object`**
 
-Path to the DuckDB entity resolution database.
+DuckDB connection to the entity resolution database.
 
 This database contains:
 - Synonym mappings (text → CURIE)
@@ -71,7 +71,7 @@ Default `" one"` means it uses level-one text processing (lowercase, stripped).
 
 ### Return Value
 
-Returns a Polars DataFrame with these columns added:
+Returns a Polars LazyFrame with these columns added:
 
 | Column | Description | Example |
 |--------|-------------|---------|
@@ -105,19 +105,27 @@ The function executes a complex SQL query that:
 from tablassert.fullmap import version4
 from tablassert.enums import Categories
 from pathlib import Path
+import duckdb
+import polars as pl
+
+# Open DuckDB connection
+conn = duckdb.connect("/data/dbssert.duckdb", read_only=True)
+
+# LazyFrame with data to resolve
+lf = pl.scan_parquet("data.parquet")
 
 # Resolve gene symbols to CURIEs
 result = version4(
-  p=Path("data.parquet"),
+  lf=lf,
   col="gene_symbol",
-  dbssert=Path("/data/dbssert.duckdb"),
+  conn=conn,
   taxon="9606",  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
   tag=" one"
 )
 
-# Result DataFrame includes:
+# Result LazyFrame includes:
 # - gene_symbol: "HGNC:11998"
 # - gene_symbol name: "TP53"
 # - gene_symbol category: "biolink:Gene"

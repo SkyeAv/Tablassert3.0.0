@@ -7,19 +7,21 @@ from operator import add
 import polars as pl
 import duckdb
 
-def distinct(df: pl.DataFrame, l0: str, l1: str) -> pl.DataFrame:
-  # ? Extract Unique Terms From Two Text Normalization Columns
-  t0: pl.DataFrame = df.select(pl.col(l0).alias("term")).unique()
+def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
+  # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
+  t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
-  t1: pl.DataFrame = df.select(pl.col(l1).alias("term")).unique()
+  t1: pl.LazyFrame = lf.select(pl.col(l1).alias("term")).unique()
   t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
-  terms: pl.DataFrame = pl.concat([t0, t1]).unique(subset=["term"])
+  terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
   return terms.with_row_index("term id")
 
-def to_temp(df: pl.DataFrame, tmp: Path = Path(gettempdir())) -> Path:
-  # ? Writes DF To A Tempfile To Be Used In Fullmap
+def to_temp(lf: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
+  # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap
+  # ! Collection Point: samphash And write_parquet Require Eager
+  df: pl.DataFrame = lf.collect()
   p: Path = tmp / samphash(df)
   p = p.with_suffix(".parquet")
   df.write_parquet(p)
@@ -68,40 +70,38 @@ def query_builder(
 
 def query_distinct(
   p: Path,
-  dbssert: Path,
+  conn: object,
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]]
 ) -> pl.DataFrame:
-  # ? Query Database For Distinct Terms Only
-  try:
-    with duckdb.connect(dbssert) as conn:
-      query: str = query_builder(p, prioritize, avoid, taxon)
-      results: pl.DataFrame = conn.execute(query).pl()
-
-      results = results.sort(["term", "PR", "NLP_LEVEL"])
-      results = results.unique(subset=["term", "CURIE"], keep="first")
-      return results
-
-  finally:
-    p.unlink(missing_ok=True)
+  # ? Query Database For Distinct Terms Only Using Persistent Connection
+  query: str = query_builder(p, prioritize, avoid, taxon)
+  results: pl.DataFrame = conn.execute(query).pl()
+  results = results.sort(["term", "PR", "NLP_LEVEL"])
+  results = results.unique(subset=["term", "CURIE"], keep="first")
+  p.unlink(missing_ok=True)
+  return results
 
 def version4(
-  df: pl.DataFrame,
+  lf: pl.LazyFrame,
   col: str,
-  dbssert: Path,
+  conn: object,
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
   tag: str = " one"
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
   # ? Case Dependant, Provenance Rich Name Entity Recognition
   l0: str = col
   l1: str = add(l0, tag)
 
-  terms: pl.DataFrame = distinct(df, l0, l1)
+  terms: pl.LazyFrame = distinct(lf, l0, l1)
   p: Path = to_temp(terms)
-  matches: pl.DataFrame = query_distinct(p, dbssert, taxon, prioritize, avoid)
+  matches: pl.DataFrame = query_distinct(p, conn, taxon, prioritize, avoid)
+
+  # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
+  df: pl.DataFrame = lf.collect()
   result: pl.DataFrame = df.join(
     matches.filter(pl.col("NLP_LEVEL").eq(0)),
     left_on=l0,
@@ -153,4 +153,5 @@ def version4(
   result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR)( l1)?$"))
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
-  return result
+
+  return result.lazy()
