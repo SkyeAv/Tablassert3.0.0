@@ -236,6 +236,7 @@ Defines how to extract and resolve entities.
 | `prioritize` | List[String] | No | Preferred Biolink categories |
 | `avoid` | List[String] | No | Excluded Biolink categories |
 | `regex` | List[Regex] | No | Pattern replacements |
+| `fill` | String | No | Null-filling strategy: `"forward"`, `"backward"`, `"min"`, `"max"`, `"mean"`, `"zero"`, `"one"` |
 | `remove` | List[String] | No | Strings to filter out |
 | `prefix` | String | No | Add prefix to values |
 | `suffix` | String | No | Add suffix to values |
@@ -344,6 +345,33 @@ subject:
 object:
   encoding: identifier
   prefix: "CUSTOM:"  # "123" → "CUSTOM:123"
+```
+
+#### Null Handling
+
+**`fill: string`** - Fill null values using a strategy
+
+Available strategies:
+- `"forward"` - Fill nulls with previous non-null value
+- `"backward"` - Fill nulls with next non-null value
+- `"min"` - Fill with column minimum
+- `"max"` - Fill with column maximum
+- `"mean"` - Fill with column mean
+- `"zero"` - Fill with 0
+- `"one"` - Fill with 1
+
+```yaml
+subject:
+  encoding: gene_symbol
+  fill: forward  # Propagate values down through null rows
+```
+
+```yaml
+annotations:
+  - annotation: expression_level
+    method: column
+    encoding: expression
+    fill: mean  # Replace nulls with column average
 ```
 
 #### Multi-Value Handling
