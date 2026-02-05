@@ -101,6 +101,8 @@
     </li>
     <li class="toctree-l4"><a class="reference internal" href="#text-transformations">Text Transformations</a>
     </li>
+    <li class="toctree-l4"><a class="reference internal" href="#null-handling">Null Handling</a>
+    </li>
     <li class="toctree-l4"><a class="reference internal" href="#multi-value-handling">Multi-Value Handling</a>
     </li>
     <li class="toctree-l4"><a class="reference internal" href="#mathematical-transformations">Mathematical Transformations</a>
@@ -541,6 +543,12 @@ sections:
 <td>Pattern replacements</td>
 </tr>
 <tr>
+<td><code>fill</code></td>
+<td>String</td>
+<td>No</td>
+<td>Null-filling strategy: <code>"forward"</code>, <code>"backward"</code>, <code>"min"</code>, <code>"max"</code>, <code>"mean"</code>, <code>"zero"</code>, <code>"one"</code></td>
+</tr>
+<tr>
 <td><code>remove</code></td>
 <td>List[String]</td>
 <td>No</td>
@@ -640,6 +648,26 @@ sections:
 <pre><code class="language-yaml">object:
   encoding: identifier
   prefix: &quot;CUSTOM:&quot;  # &quot;123&quot; → &quot;CUSTOM:123&quot;
+</code></pre>
+<h4 id="null-handling">Null Handling</h4>
+<p><strong><code>fill: string</code></strong> - Fill null values using a strategy</p>
+<p>Available strategies:
+- <code>"forward"</code> - Fill nulls with previous non-null value
+- <code>"backward"</code> - Fill nulls with next non-null value
+- <code>"min"</code> - Fill with column minimum
+- <code>"max"</code> - Fill with column maximum
+- <code>"mean"</code> - Fill with column mean
+- <code>"zero"</code> - Fill with 0
+- <code>"one"</code> - Fill with 1</p>
+<pre><code class="language-yaml">subject:
+  encoding: gene_symbol
+  fill: forward  # Propagate values down through null rows
+</code></pre>
+<pre><code class="language-yaml">annotations:
+  - annotation: expression_level
+    method: column
+    encoding: expression
+    fill: mean  # Replace nulls with column average
 </code></pre>
 <h4 id="multi-value-handling">Multi-Value Handling</h4>
 <p><strong><code>explode_by: string</code></strong> - Split delimited values into multiple rows</p>
