@@ -394,14 +394,17 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
     subnodes.append(partial)
     subedges.append(lf)
 
+  # ! Collection Point: Appending To Output Files
   with n.open("a") as f:
     for subnode in subnodes:
+      subnode.collect()
       subnode.write_ndjson(f)
 
   with e.open("a") as f:
     with pl.Config(set_fmt_float=fmt):
       with pl.Config(float_precision=precision):
         for subedge in subedges:
+          subedge.collect()
           subedge.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
