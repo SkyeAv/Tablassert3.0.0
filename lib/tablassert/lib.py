@@ -380,33 +380,29 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
   e: Path = p.with_suffix(".edges.ndjson.temp") # ! For Labeling
   n: Path = p.with_suffix(".nodes.ndjson")
 
-  combined_nodes: list[pl.LazyFrame] = []
-  combined_edges: list[pl.LazyFrame] = []
-
+  subnodes: list[pl.LazyFrame] = []
+  subedges: list[pl.LazyFrame] = []
   for s in subgraphs:
     lf: pl.LazyFrame = pl.scan_parquet(s)
 
     node_cols: list[str] = [col.replace("original ", "") for col in lf.collect_schema().names() if "original " in col]
     for col in node_cols:
       partial, lf = normalize(lf, col)
-      combined_nodes.append(partial)
+      subnodes.append(partial)
 
-    combined_edges.append(lf)
-
-  nodes: pl.DataFrame = pl.concat(combined_nodes, how="vertical").unique().collect()
-  edges: pl.DataFrame = pl.concat(combined_edges, how="vertical").collect()
-
-  pubs, edges = publications(edges)
-  pubs = pubs.unique()
+    partial, lf = publications(lf)
+    subnodes.append(partial)
+    subedges.append(lf)
 
   with n.open("a") as f:
-    nodes.write_ndjson(f)
-    pubs.write_ndjson(f)
+    for subnode in subnodes:
+      subnode.write_ndjson(f)
 
   with e.open("a") as f:
     with pl.Config(set_fmt_float=fmt):
       with pl.Config(float_precision=precision):
-        edges.write_ndjson(f)
+        for subedge in subedges:
+          subedge.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
   jq: Path = environ.get("JQ_PATH")
