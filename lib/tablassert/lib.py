@@ -361,8 +361,8 @@ def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first a
   edges_out: pl.LazyFrame = edges.drop(cols[1:])
   return nodes, edges_out
 
-def label_edges(e_in: Path, domain: str = "MOKG", out: str = "uuid") -> None:
-  # ? Gives Each Edge In MOKG A UUID
+def label_edges(e_in: Path, domain: str = "TABLASSERT", out: str = "uuid") -> None:
+  # ? Gives Each Edge In TABLASSERT A UUID
   e_out = e_in.with_suffix("")
   with e_in.open("rb") as f_in, e_out.open("wb") as f_out:
     for line in f_in:
@@ -397,14 +397,14 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
   # ! Collection Point: Appending To Output Files
   with n.open("a") as f:
     for subnode in subnodes:
-      subnode: pl.DataFrame = subnode.collect()
+      subnode: pl.DataFrame = subnode.collect().unique()
       subnode.write_ndjson(f)
 
   with e.open("a") as f:
     with pl.Config(set_fmt_float=fmt):
       with pl.Config(float_precision=precision):
         for subedge in subedges:
-          subedge: pl.DataFrame = subedge.collect()
+          subedge: pl.DataFrame = subedge.collect().unique()
           subedge.write_ndjson(f)
 
   awk: Path = environ.get("AWK_PATH")
