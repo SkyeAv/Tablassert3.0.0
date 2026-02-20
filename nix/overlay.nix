@@ -29,7 +29,7 @@ final: prev: {
       };
       tablassert = pyFinal.buildPythonApplication rec {
         pname = "tablassert";
-        version = "6.1.0";
+        version = "6.2.0";
         format = "pyproject";
         src = ../.;
         build-system = with pyFinal; [
