@@ -1,10 +1,11 @@
 from playwright.sync_api import sync_playwright
+from typing import Optional
 from pathlib import Path
 from os import environ
 from time import sleep
 import pyexcel
 
-CHROMIUM: str = environ.get("CHROMIUM_PATH")
+CHROMIUM: str = environ["CHROMIUM_PATH"]
 
 def modernize_xls(p: Path) -> Path:
   xlsx: Path = p.with_suffix(".xlsx")

@@ -10,7 +10,7 @@ from operator import eq
 import polars as pl
 
 SESSION_OPTS: object = ort.SessionOptions()
-SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL # pyright: ignore
 
 MODEL: Path = Path("./onnx/")
 MODEL_BACKEND: str = "onnx"
@@ -33,14 +33,14 @@ else:
     model_kwargs=MODEL_KWARGS
   )
   MODEL.mkdir(parents=True, exist_ok=True)
-  BIOBERT.save(MODEL)
+  BIOBERT.save(MODEL) # pyright: ignore
 
-@DISKCACHE.memoize()
+@DISKCACHE.memoize() # pyright: ignore
 def fuzz_audit(x: object, original: str, preferred: str, curie: str, min_fuzz: float = 20) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On Fuzzy Matching
-  o: str = x[original]
-  p: str = x[preferred]
-  c: str = x[curie]
+  o: str = x[original] # pyright: ignore
+  p: str = x[preferred] # pyright: ignore
+  c: str = x[curie] # pyright: ignore
 
   return bool(
     ge(fuzz.ratio(o, p), min_fuzz)
@@ -49,14 +49,14 @@ def fuzz_audit(x: object, original: str, preferred: str, curie: str, min_fuzz: f
     or ge(fuzz.partial_token_sort_ratio(o, c), min_fuzz)
   )
 
-@DISKCACHE.memoize()
+@DISKCACHE.memoize() # pyright: ignore
 def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On BERT EMBEDDINGS
-  o: str = x[original]
-  p: str = x[preferred]
+  o: str = x[original] # pyright: ignore
+  p: str = x[preferred] # pyright: ignore
 
-  embeddings: object = BIOBERT.encode([o, p])
-  similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+  embeddings: object = BIOBERT.encode([o, p]) # pyright: ignore
+  similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0] # pyright: ignore
   return bool(ge(similarity, min_cos))
 
 def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFrame:

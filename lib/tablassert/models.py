@@ -23,7 +23,7 @@ from typing import Union
 from pathlib import Path
 
 class TablaBase(BaseModel):
-  model_config: ConfigDict = ConfigDict(
+  model_config: ConfigDict = ConfigDict( # pyright: ignore
     str_strip_whitespace=False,
     validate_assignment=True,
     use_enum_values=True,

@@ -76,7 +76,7 @@ def query_distinct(
 ) -> pl.DataFrame:
   # ? Query Database For Distinct Terms Only Using Persistent Connection
   query: str = query_builder(p, prioritize, avoid, taxon)
-  results: pl.DataFrame = conn.execute(query).pl()
+  results: pl.DataFrame = conn.execute(query).pl() # pyright: ignore
   results = results.sort(["term", "PR", "NLP_LEVEL"])
   results = results.unique(subset=["term", "CURIE"], keep="first")
   p.unlink(missing_ok=True)
