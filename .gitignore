@@ -1,5 +1,8 @@
 *.egg-info
 *__pycache__/
+*.logs/
+*.opencode/
+*.sisyphus/
 *plans/
 *CLAUDE.md
 *AGENTS.md
