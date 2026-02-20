@@ -3,6 +3,7 @@
 *.logs/
 *.opencode/
 *.sisyphus/
+*.ruff_cache/
 *plans/
 *CLAUDE.md
 *AGENTS.md
