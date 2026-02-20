@@ -421,13 +421,13 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
 CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 
 @CLI.command()
-def main(
-  ingest: Path = typer.Option(..., "-i", "-ingest", help="Knowledge Graph Configuration -- See Docs")
+def build_graph(
+  graph_configuration: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   # TODO: Make MeSH A Node (Micro Version)
   # TODO: Add Loguru Logging
-  r: object = from_yaml(ingest)
+  r: object = from_yaml(graph_configuration)
   g: Graph = Graph.model_validate(r)
   with Pool() as pool:
     raw: list[object] = pool.map(from_yaml, g.tables)
