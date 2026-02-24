@@ -424,7 +424,7 @@ CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 def build_knowledge_graph(
   graph_configuration_file: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
-  """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
+  """Build A Knowledge Graph From A Graph Configuration File"""
   # TODO: Make MeSH A Node (Micro Version)
   # TODO: Add Loguru Logging
   r: object = from_yaml(graph_configuration_file)
@@ -443,9 +443,10 @@ def build_knowledge_graph(
   compile_graph(subgraphs, g.name, g.version)
 
 @CLI.command()
-def verify_table_configuration_file(
+def verify_table_configuration_syntax(
   table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs")
 ) -> None:
+  """Verify The Syntax Of A Table Configuration File"""
   r: object = from_yaml(table_configuration_file)
   sections: list[dict[str, Any]] = to_sections(r) # pyright: ignore
 
