@@ -421,13 +421,13 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
 CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 
 @CLI.command()
-def build_graph(
-  graph_configuration: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs")
+def build_knowledge_graph(
+  graph_configuration_file: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs")
 ) -> None:
   """Tablassert Builds Knowledge Graphs From Declarative Configuration"""
   # TODO: Make MeSH A Node (Micro Version)
   # TODO: Add Loguru Logging
-  r: object = from_yaml(graph_configuration)
+  r: object = from_yaml(graph_configuration_file)
   g: Graph = Graph.model_validate(r)
   with Pool() as pool:
     raw: list[object] = pool.map(from_yaml, g.tables)
@@ -441,3 +441,13 @@ def build_graph(
     subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions] # pyright: ignore
 
   compile_graph(subgraphs, g.name, g.version)
+
+@CLI.command()
+def verify_table_configuration_file(
+  table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs")
+) -> None:
+  r: object = from_yaml(table_configuration_file)
+  sections: list[dict[str, Any]] = to_sections(r) # pyright: ignore
+
+  for s in sections:
+    Section.model_validate(s)
