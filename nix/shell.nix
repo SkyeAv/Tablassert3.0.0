@@ -4,9 +4,14 @@ let
 in {
   packages.default = py.tablassert;
   devShells.default = pkgs.mkShell {
-    packages = with py; [
+    packages = (with py; [
       tablassert
+      flake8
       mkdocs
-    ];
+    ]) ++ (with pkgs; [
+      pyright
+      pylint
+      ruff
+    ]);
   };
 }

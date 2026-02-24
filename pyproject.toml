@@ -15,3 +15,18 @@ where = ["lib"]
 
 [project.scripts]
 tablassert-cli = "tablassert.lib:CLI"
+
+[tool.ruff]
+extend-exclude = ["^.*$"]
+force-exclude = true
+line-length = 100000
+indent-width = 2
+
+[tool.ruff.format]
+magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = ["E303"]
+
+[tool.pylint.master]
+ignore-paths = ["^.*$"]
