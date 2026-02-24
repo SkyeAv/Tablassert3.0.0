@@ -1,12 +1,19 @@
-name: Deploy MkDocs to GitHub Pages
+name: Deploy MkDocs & Docker to GHCR
 on:
   push:
     branches:
       - main
+
 permissions:
   contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  deploy:
+  deploy-docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -24,3 +31,40 @@ jobs:
           publish_dir: ./site
           user_name: "github-actions[bot]"
           user_email: "github-actions[bot]@users.noreply.github.com"
+
+  deploy-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build Docker image with Nix
+        run: nix build .#packages.x86_64-linux.docker -L
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load, tag, and push image
+        run: |
+          docker load < result
+          IMAGE_ID="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          IMAGE_ID=$(echo "$IMAGE_ID" | tr '[:upper:]' '[:lower:]')
+
+          SHA_TAG="${IMAGE_ID}:sha-${GITHUB_SHA::7}"
+          LATEST_TAG="${IMAGE_ID}:latest"
+
+          docker tag tablassert-cli:x86_64-linux-latest "$SHA_TAG"
+          docker tag tablassert-cli:x86_64-linux-latest "$LATEST_TAG"
+
+          docker push "$SHA_TAG"
+          docker push "$LATEST_TAG"
