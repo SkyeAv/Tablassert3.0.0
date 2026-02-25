@@ -1,4 +1,6 @@
 from tablassert.enums import EncodingMethods
+from rich.progress import TaskProgressColumn
+from rich.progress import TimeElapsedColumn
 from tablassert.utils import namespace_uuid
 from tablassert.models import NodeEncoding
 from tablassert.downloader import from_url
@@ -6,12 +8,16 @@ from tablassert.ingests import to_sections
 from tablassert.ingests import from_yaml
 from tablassert.qc import fullmap_audit
 from tablassert.fullmap import version4
+from rich.progress import SpinnerColumn
 from tablassert.models import Encoding
 from tablassert.models import Section
+from rich.progress import TextColumn
 from tablassert.utils import mkhash
 from tablassert.enums import Tokens
 from pydantic import NonNegativeInt
 from tablassert.models import Graph
+from rich.progress import BarColumn
+from rich.progress import Progress
 from tablassert.enums import Files
 from tablassert.utils import STORE
 from sqlite_utils import Database
@@ -39,12 +45,6 @@ import duckdb
 import orjson
 import typer
 import math
-from rich.progress import BarColumn
-from rich.progress import Progress
-from rich.progress import SpinnerColumn
-from rich.progress import TaskProgressColumn
-from rich.progress import TextColumn
-from rich.progress import TimeElapsedColumn
 
 def value(lf: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
@@ -423,10 +423,12 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
     subprocess.run(command, shell=True, check=True)
 
   label_edges(e)
+
 def track(progress: Progress, task_id: Any, iterable: Any) -> Any:
   for item in iterable:
     yield item
     progress.advance(task_id)
+
 CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 
 @CLI.command()
@@ -438,19 +440,15 @@ def build_knowledge_graph(
   # TODO: Add Loguru Logging
   r: object = from_yaml(graph_configuration_file)
   g: Graph = Graph.model_validate(r)
-  progress: Progress = Progress(
-    SpinnerColumn(),
-    TextColumn("[progress.description]{task.description}"),
-    BarColumn(),
-    TaskProgressColumn(),
-    TimeElapsedColumn(),
-  )
+  progress: Progress = Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), TimeElapsedColumn())
+
   with progress:
     # ? Load Tables
     t1: Any = progress.add_task("Loading tables...", total=None)
     with Pool() as pool:
       raw: list[object] = pool.map(from_yaml, g.tables)
     progress.update(t1, total=1, completed=1)
+
     # ? Extract Sections
     t2: Any = progress.add_task("Extracting sections...", total=None)
     with Pool() as pool:
@@ -458,6 +456,7 @@ def build_knowledge_graph(
     progress.update(t2, total=1, completed=1)
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
+
     # ? Build Tcodes
     t3: Any = progress.add_task("Building tcodes...", total=n)
     tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in track(progress, t3, enumerate(sections, start=1))]
@@ -465,9 +464,11 @@ def build_knowledge_graph(
       # ? Collect Instructions
       t4: Any = progress.add_task("Collecting instructions...", total=n)
       instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(progress, t4, tcode)]  # pyright: ignore
+
       # ? Build Subgraphs
       t5: Any = progress.add_task("Building subgraphs...", total=n)
       subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in track(progress, t5, instructions)]  # pyright: ignore
+
     # ? Compile Graph
     t6: Any = progress.add_task("Compiling graph...", total=None)
     compile_graph(subgraphs, g.name, g.version)
