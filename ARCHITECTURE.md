@@ -108,7 +108,7 @@ Tablassert is a declarative biomedical knowledge graph (KG) extraction system th
 ┌─────────────────────────────────────────────────────────────────┐
 │              Post-Processing (subprocess)                       │
 │  ┌────────────┐         ┌──────────────┐                        │
-│  │    awk     │   ──▶  │     jq        │                        │
+│  │    awk     │   ──▶   │     jq       │                        │
 │  │ (AWK_PATH) │         │ (JQ_PATH)    │                        │
 │  └────────────┘         └──────────────┘                        │
 │  • AWK: Text processing and filtering                           │
