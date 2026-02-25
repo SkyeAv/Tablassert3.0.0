@@ -20,7 +20,7 @@ Tablassert is a declarative biomedical knowledge graph (KG) extraction system th
 │                     YAML Configuration                          │
 │  ┌─────────────────┐         ┌─────────────────┐                │
 │  │  Graph Config   │         │  Table Config   │                │
-│  │  (GC2/TC3)      │         │  (Multiple)      │               │
+│  │  (GC2/TC3)      │         │  (Multiple)     │                │
 │  └─────────────────┘         └─────────────────┘                │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -108,7 +108,7 @@ Tablassert is a declarative biomedical knowledge graph (KG) extraction system th
 ┌─────────────────────────────────────────────────────────────────┐
 │              Post-Processing (subprocess)                       │
 │  ┌────────────┐         ┌──────────────┐                        │
-│  │    awk     │   ──▶  │     jq      │                          │
+│  │    awk     │   ──▶  │     jq        │                        │
 │  │ (AWK_PATH) │         │ (JQ_PATH)    │                        │
 │  └────────────┘         └──────────────┘                        │
 │  • AWK: Text processing and filtering                           │
