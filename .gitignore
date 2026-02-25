@@ -6,7 +6,6 @@
 *.ruff_cache/
 *plans/
 *CLAUDE.md
-*AGENTS.md
 *.claude/
 *cachessert/
 *storessert/
