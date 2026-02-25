@@ -67,6 +67,9 @@ final: prev: {
           "--set AWK_PATH ${final.gawk}/bin/gawk"
           "--set JQ_PATH ${final.jq}/bin/jq"
         ];
+        postInstall = ''
+          ${pyFinal.python.interpreter} -m compileall $out/lib
+        '';
         doCheck = false;
       };
     };
