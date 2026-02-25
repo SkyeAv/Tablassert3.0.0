@@ -17,3 +17,5 @@
 *.ndjson
 *.wal
 *.sh
+*result/
+*result
