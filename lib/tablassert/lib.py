@@ -39,6 +39,12 @@ import duckdb
 import orjson
 import typer
 import math
+from rich.progress import BarColumn
+from rich.progress import Progress
+from rich.progress import SpinnerColumn
+from rich.progress import TaskProgressColumn
+from rich.progress import TextColumn
+from rich.progress import TimeElapsedColumn
 
 def value(lf: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
@@ -417,7 +423,10 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
     subprocess.run(command, shell=True, check=True)
 
   label_edges(e)
-
+def track(progress: Progress, task_id: Any, iterable: Any) -> Any:
+  for item in iterable:
+    yield item
+    progress.advance(task_id)
 CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 
 @CLI.command()
@@ -429,18 +438,40 @@ def build_knowledge_graph(
   # TODO: Add Loguru Logging
   r: object = from_yaml(graph_configuration_file)
   g: Graph = Graph.model_validate(r)
-  with Pool() as pool:
-    raw: list[object] = pool.map(from_yaml, g.tables)
-    temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw) # pyright: ignore
-
-  sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
-
-  tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in enumerate(sections, start=1)]
-  with duckdb.connect(g.dbssert, read_only=True) as conn:
-    instructions: Union[list[tuple[Callable, tuple[Any]]], Path] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in tcode] # pyright: ignore
-    subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in instructions] # pyright: ignore
-
-  compile_graph(subgraphs, g.name, g.version)
+  progress: Progress = Progress(
+    SpinnerColumn(),
+    TextColumn("[progress.description]{task.description}"),
+    BarColumn(),
+    TaskProgressColumn(),
+    TimeElapsedColumn(),
+  )
+  with progress:
+    # ? Load Tables
+    t1: Any = progress.add_task("Loading tables...", total=None)
+    with Pool() as pool:
+      raw: list[object] = pool.map(from_yaml, g.tables)
+    progress.update(t1, total=1, completed=1)
+    # ? Extract Sections
+    t2: Any = progress.add_task("Extracting sections...", total=None)
+    with Pool() as pool:
+      temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw)  # pyright: ignore
+    progress.update(t2, total=1, completed=1)
+    sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
+    n: int = len(sections)
+    # ? Build Tcodes
+    t3: Any = progress.add_task("Building tcodes...", total=n)
+    tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in track(progress, t3, enumerate(sections, start=1))]
+    with duckdb.connect(g.dbssert, read_only=True) as conn:
+      # ? Collect Instructions
+      t4: Any = progress.add_task("Collecting instructions...", total=n)
+      instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(progress, t4, tcode)]  # pyright: ignore
+      # ? Build Subgraphs
+      t5: Any = progress.add_task("Building subgraphs...", total=n)
+      subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in track(progress, t5, instructions)]  # pyright: ignore
+    # ? Compile Graph
+    t6: Any = progress.add_task("Compiling graph...", total=None)
+    compile_graph(subgraphs, g.name, g.version)
+    progress.update(t6, total=1, completed=1)
 
 @CLI.command()
 def verify_table_configuration_syntax(
