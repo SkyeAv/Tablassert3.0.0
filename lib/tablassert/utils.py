@@ -5,7 +5,7 @@ from typing import Any
 from uuid import uuid3
 from uuid import UUID
 import polars as pl
-import hashlib
+import xxhash
 
 STORE: Path = Path("./storessert")
 STORE.mkdir(parents=True, exist_ok=True)
@@ -18,7 +18,7 @@ DISKCACHE: object = Cache(
 
 def mkhash(x: Any) -> str:
   b: bytes = str(x).encode("utf-8")
-  return hashlib.md5(b).hexdigest()
+  return xxhash.xx64(b).hexdigest()
 
 def samphash(df: pl.DataFrame, n: int = 20) -> str:
   # ? Hash Of Sampled DataFrame For Tempfile Naming
@@ -33,7 +33,7 @@ def basespace(domain: str) -> UUID:
 
 def namespace_uuid(domain: Any, *values: list[Any]) -> str:
   domain = str(domain)
-  values = [str(x) for x in values if x]
+  values = [str(x) for x in values if x] # pyright: ignore
   domainspace: UUID = basespace(domain)
-  joined: str = "\t".join(values)
+  joined: str = "\t".join(values) # pyright: ignore
   return str(uuid3(domainspace, joined))

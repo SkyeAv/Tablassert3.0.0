@@ -37,10 +37,9 @@ from typing import Self
 from operator import eq
 from operator import le
 from typing import Any
-from os import environ
 import polars as pl
-import subprocess
 import operator
+import xxhash
 import duckdb
 import orjson
 import typer
@@ -368,16 +367,16 @@ def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first a
   edges_out: pl.LazyFrame = edges.drop(cols[1:])
   return nodes, edges_out
 
-def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> None:
+def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> object:
   # ? Gives Edges A Unique UUID In The Tablassert Namespace
   r[out] = namespace_uuid(domain, *r.values()) # pyright: ignore
   return r
 
 def strip_nulls(r: object) -> dict:
   # ? Removes Null Keys From NDJSON
-  return {k: v for k, v in r.items() if v is not None}
+  return {k: v for k, v in r.items() if v is not None} # pyright: ignore
 
-def dedup_stream(p_in: Path, is_edges: bool = False) -> None:
+def dedup_stream(p_in: Path, is_edges: bool) -> None:
   # ? Removes Null Values From And Deduplicates NDJSON
   # * Also Adds UUIDs To Edges
   p_out: Path = p_in.with_suffix("")
@@ -385,18 +384,19 @@ def dedup_stream(p_in: Path, is_edges: bool = False) -> None:
   seen: set[bytes] = set()
   with p_in.open("rb") as f_in, p_out.open("wb") as f_out:
     for line in f_in:
-      r: object = orjson.loads(r)
+      r: object = orjson.loads(line) # pyright: ignore
       r = strip_nulls(r)
 
       b: bytes = orjson.dumps(r)
-      if b not in seen:
-        seen |= {b}
+      h: bytes = xxhash.xxh64(b).digest()
+      if h not in seen:
+        seen |= {h}
 
         if is_edges:
           r = label_edge(r)
           b = orjson.dumps(r)
 
-        b = b + "\n"
+        b = b + ("\n").encode("utf-8")
         f_out.write(b)
 
 def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> None:
@@ -432,15 +432,8 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
           eageredge: pl.DataFrame = subedge.collect().unique()
           eageredge.write_ndjson(f)
 
-  awk: str = environ["AWK_PATH"]
-  jq: str = environ["JQ_PATH"]
-
-  for x in [e, n]:
-    temp: Path = x.with_suffix(add(x.suffix, ".tmp"))
-    command = f"{jq} -c 'walk(if type == \"object\" then with_entries(select(.value != null)) else . end)' {x} | {awk} '!seen[$0]++' > {temp} && mv {temp} {x}"
-    subprocess.run(command, shell=True, check=True)
-
-  label_edges(e)
+  dedup_stream(e, is_edges=True)
+  dedup_stream(n, is_edges=False)
 
 CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 PROGRESS: Progress = Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), TimeElapsedColumn())
