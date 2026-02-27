@@ -424,12 +424,13 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
 
   label_edges(e)
 
-def track(progress: Progress, task_id: Any, iterable: Any) -> Any:
+CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
+PROGRESS: Progress = Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), TimeElapsedColumn())
+
+def track(task_id: Any, iterable: Any) -> Any:
   for item in iterable:
     yield item
-    progress.advance(task_id)
-
-CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
+    PROGRESS.advance(task_id)
 
 @CLI.command()
 def build_knowledge_graph(
@@ -440,47 +441,55 @@ def build_knowledge_graph(
   # TODO: Add Loguru Logging
   r: object = from_yaml(graph_configuration_file)
   g: Graph = Graph.model_validate(r)
-  progress: Progress = Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), TimeElapsedColumn())
 
-  with progress:
+  with PROGRESS:
     # ? Load Tables
-    t1: Any = progress.add_task("Loading Tables...", total=None)
+    t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
     with Pool() as pool:
       raw: list[object] = pool.map(from_yaml, g.tables)
-    progress.update(t1, total=1, completed=1)
+    PROGRESS.update(t1, total=1, completed=1)
 
     # ? Extract Sections
-    t2: Any = progress.add_task("Extracting Sections...", total=None)
+    t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
     with Pool() as pool:
       temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw)  # pyright: ignore
-    progress.update(t2, total=1, completed=1)
+    PROGRESS.update(t2, total=1, completed=1)
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
 
     # ? Build Tcodes
-    t3: Any = progress.add_task("Building TCode...", total=n)
-    tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in track(progress, t3, enumerate(sections, start=1))]
+    t3: Any = PROGRESS.add_task("Building TCode...", total=n)
+    tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in track(t3, enumerate(sections, start=1))]
     with duckdb.connect(g.dbssert, read_only=True) as conn:
       # ? Collect Instructions
-      t4: Any = progress.add_task("Collecting Instructions...", total=n)
-      instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(progress, t4, tcode)]  # pyright: ignore
+      t4: Any = PROGRESS.add_task("Collecting Instructions...", total=n)
+      instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)]  # pyright: ignore
 
       # ? Build Subgraphs
-      t5: Any = progress.add_task("Building Subgraphs...", total=n)
-      subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in track(progress, t5, instructions)]  # pyright: ignore
+      t5: Any = PROGRESS.add_task("Building Subgraphs...", total=n)
+      subgraphs: list[Path] = [op if isinstance(op, Path) else compile_subgraph(op) for op in track(t5, instructions)]  # pyright: ignore
 
     # ? Compile Graph
-    t6: Any = progress.add_task("Compiling Graph...", total=None)
+    t6: Any = PROGRESS.add_task("Compiling Graph...", total=None)
     compile_graph(subgraphs, g.name, g.version)
-    progress.update(t6, total=1, completed=1)
+    PROGRESS.update(t6, total=1, completed=1)
 
 @CLI.command()
 def verify_table_configuration_syntax(
   table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs")
 ) -> None:
   """Verify The Syntax Of A Declarative Table Configuration File"""
-  r: object = from_yaml(table_configuration_file)
-  sections: list[dict[str, Any]] = to_sections(r) # pyright: ignore
+  with PROGRESS:
+    t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
+    r: object = from_yaml(table_configuration_file)
+    PROGRESS.update(t1, total=1, completed=1)
 
-  for s in sections:
-    Section.model_validate(s)
+    t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
+    sections: list[dict[str, Any]] = to_sections(r) # pyright: ignore
+    n: int = len(sections)
+    PROGRESS.update(t2, total=1, completed=1)
+
+    t3: Any = PROGRESS.add_task("Extracting Sections...", total=n)
+    for s in track(t3, sections):
+      Section.model_validate(s)
+
