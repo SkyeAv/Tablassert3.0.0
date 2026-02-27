@@ -480,16 +480,19 @@ def verify_table_configuration_syntax(
 ) -> None:
   """Verify The Syntax Of A Declarative Table Configuration File"""
   with PROGRESS:
+    # ? Load Tables
     t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
     r: object = from_yaml(table_configuration_file)
     PROGRESS.update(t1, total=1, completed=1)
 
+    # ? Extract Sections
     t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
     sections: list[dict[str, Any]] = to_sections(r) # pyright: ignore
     n: int = len(sections)
     PROGRESS.update(t2, total=1, completed=1)
 
-    t3: Any = PROGRESS.add_task("Extracting Sections...", total=n)
+    # ? Validating Section Syntax
+    t3: Any = PROGRESS.add_task("Validating Section Syntax...", total=n)
     for s in track(t3, sections):
       Section.model_validate(s)
 
