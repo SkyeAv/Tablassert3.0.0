@@ -45,6 +45,9 @@ import orjson
 import typer
 import math
 
+# ? Newline To Make Progress Bar More Readable
+print("\n")
+
 def value(lf: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
   return lf.with_columns(pl.lit(x).alias(col))
@@ -381,6 +384,9 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
   # * Also Adds UUIDs To Edges
   p_out: Path = p_in.with_suffix("")
 
+  if p_out.is_file():
+    p_out.unlink()
+
   seen: set[bytes] = set()
   with p_in.open("rb") as f_in, p_out.open("wb") as f_out:
     for line in f_in:
@@ -399,11 +405,19 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
         b = b + ("\n").encode("utf-8")
         f_out.write(b)
 
+  p_in.unlink()
+
 def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> None:
   # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
   p: Path = Path(f"./{name}_{version}")
+
   e: Path = p.with_suffix(".edges.ndjson.temp") # ! For Labeling
-  n: Path = p.with_suffix(".nodes.ndjson")
+  if e.exists():
+    e.unlink()
+
+  n: Path = p.with_suffix(".nodes.ndjson.temp")
+  if n.exists():
+    n.unlink()
 
   subnodes: list[pl.LazyFrame] = []
   subedges: list[pl.LazyFrame] = []
@@ -485,6 +499,8 @@ def build_knowledge_graph(
     compile_graph(subgraphs, g.name, g.version)
     PROGRESS.update(t6, total=1, completed=1)
 
+    PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)
+
 @CLI.command()
 def verify_table_configuration_syntax(
   table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs")
@@ -506,3 +522,6 @@ def verify_table_configuration_syntax(
     t3: Any = PROGRESS.add_task("Validating Section Syntax...", total=n)
     for s in track(t3, sections):
       Section.model_validate(s)
+      PROGRESS.update(t3, total=1, completed=1)
+
+    PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)

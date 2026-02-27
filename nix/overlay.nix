@@ -56,7 +56,13 @@ final: prev: {
           polars
           xxhash
           typer
+        ]) ++ (with final; [
+          chromium
         ]);
+        nativeBuildInputs = [final.makeWrapper];
+        makeWrapperArgs = [
+          "--set CHROMIUM_PATH ${final.chromium}/bin/chromium"
+        ];
         postInstall = ''
           ${pyFinal.python.interpreter} -m compileall $out/lib
         '';
