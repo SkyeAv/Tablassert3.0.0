@@ -495,4 +495,3 @@ def verify_table_configuration_syntax(
     t3: Any = PROGRESS.add_task("Validating Section Syntax...", total=n)
     for s in track(t3, sections):
       Section.model_validate(s)
-
