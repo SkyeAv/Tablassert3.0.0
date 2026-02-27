@@ -368,18 +368,36 @@ def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first a
   edges_out: pl.LazyFrame = edges.drop(cols[1:])
   return nodes, edges_out
 
-def label_edges(e_in: Path, domain: str = "TABLASSERT", out: str = "uuid") -> None:
-  # ? Gives Each Edge In TABLASSERT A UUID
-  e_out = e_in.with_suffix("")
-  with e_in.open("rb") as f_in, e_out.open("wb") as f_out:
+def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> None:
+  # ? Gives Edges A Unique UUID In The Tablassert Namespace
+  r[out] = namespace_uuid(domain, *r.values()) # pyright: ignore
+  return r
+
+def strip_nulls(r: object) -> dict:
+  # ? Removes Null Keys From NDJSON
+  return {k: v for k, v in r.items() if v is not None}
+
+def dedup_stream(p_in: Path, is_edges: bool = False) -> None:
+  # ? Removes Null Values From And Deduplicates NDJSON
+  # * Also Adds UUIDs To Edges
+  p_out: Path = p_in.with_suffix("")
+
+  seen: set[bytes] = set()
+  with p_in.open("rb") as f_in, p_out.open("wb") as f_out:
     for line in f_in:
-      r: object = orjson.loads(line)
-      r[out] = namespace_uuid(domain, *r.values()) # pyright: ignore
+      r: object = orjson.loads(r)
+      r = strip_nulls(r)
 
-      b: bytes = orjson.dumps(r) + b"\n"
-      f_out.write(b)
+      b: bytes = orjson.dumps(r)
+      if b not in seen:
+        seen |= {b}
 
-  e_in.unlink()
+        if is_edges:
+          r = label_edge(r)
+          b = orjson.dumps(r)
+
+        b = b + "\n"
+        f_out.write(b)
 
 def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> None:
   # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
