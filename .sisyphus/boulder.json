@@ -1,0 +1,12 @@
+{
+  "active_plan": "/home/skyeav/Code/ISB/Tablassert/.sisyphus/plans/docs-6.2.0.md",
+  "started_at": "2026-02-28T00:02:08.628Z",
+  "session_ids": [
+    "ses_35e7289ebffeRiVh3XduY4KX9c",
+    "ses_35e61a46fffeZj3SoFda0bY9l1"
+  ],
+  "plan_name": "docs-6.2.0",
+  "agent": "atlas",
+  "worktree_path": "/home/skyeav/Code/ISB/Tablassert",
+  "status": "complete"
+}

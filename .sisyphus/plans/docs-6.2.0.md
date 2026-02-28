@@ -65,12 +65,12 @@ Bring every user-facing documentation file and the CI workflow into 6.2.0 parity
 - `CHANGELOG.md` — Populated with 6.2.0 release notes from git history
 
 ### Definition of Done
-- [ ] `grep -r "6\.1\.0" docs/ README.md CHANGELOG.md` returns no lines (except intentional historical context in changelog itself)
-- [ ] `mkdocs build --strict` exits 0 with no warnings about missing nav pages
-- [ ] Both CLI commands documented with synopsis, options table, and example
-- [ ] Docker section present in `docs/installation.md` and `README.md`
-- [ ] CHANGELOG.md has at least 3 substantive bullet points describing 6.2.0 changes
-- [ ] `docs.yml` publish job builds and pushes both `linux/amd64` and `linux/arm64` manifests
+- [x] `grep -r "6\\.1\\.0" docs/ README.md CHANGELOG.md` returns no lines (except intentional historical context in changelog itself)
+- [x] `mkdocs build --strict` exits 0 with no warnings about missing nav pages
+- [x] Both CLI commands documented with synopsis, options table, and example
+- [x] Docker section present in `docs/installation.md` and `README.md`
+- [x] CHANGELOG.md has at least 3 substantive bullet points describing 6.2.0 changes
+- [x] `docs.yml` publish job builds and pushes both `linux/amd64` and `linux/arm64` manifests
 
 ### Must Have
 - All "6.1.0" version strings replaced where they describe the current version (not historical context)
