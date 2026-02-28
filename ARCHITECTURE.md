@@ -105,15 +105,9 @@ Tablassert is a declarative biomedical knowledge graph (KG) extraction system th
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Post-Processing (subprocess)                       │
-│  ┌────────────┐         ┌──────────────┐                        │
-│  │    awk     │   ──▶   │     jq       │                        │
-│  │ (AWK_PATH) │         │ (JQ_PATH)    │                        │
-│  └────────────┘         └──────────────┘                        │
-│  • AWK: Text processing and filtering                           │
-│  • JQ: JSON transformation and validation                       │
-└─────────────────────────────────────────────────────────────────┘
+```
+
+## CORE ABSTRACTIONS
 ```
 
 ## CORE ABSTRACTIONS
@@ -413,12 +407,9 @@ TablaBase (BaseModel, extra='forbid')
 **Config**:
 - jsonschema: JSON schema validation
 
-### System Packages (3)
+### System Packages (1)
 
 - chromium: Playwright browser (CHROMIUM_PATH env var)
-- gawk: Text processing for post-processing (AWK_PATH env var)
-- jq: JSON processing for post-processing (JQ_PATH env var)
-
 ### External Data
 
 - dbssert: SQLite database with SYNONYMS, SOURCES, CURIES, CATEGORIES tables

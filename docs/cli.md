@@ -84,9 +84,6 @@ See [Table Configuration](configuration/table.md) for details on the YAML schema
 When using Nix, these are configured automatically:
 
 - `CHROMIUM_PATH` - Chromium for file downloads
-- `AWK_PATH` - GNU AWK for NDJSON processing
-- `JQ_PATH` - JQ for JSON cleanup
-
 ## Examples
 
 ### Build Knowledge Graph

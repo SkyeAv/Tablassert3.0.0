@@ -30,14 +30,14 @@ The development shell provides:
 - `tablassert-cli` command
 - `mkdocs` for documentation
 - All Python dependencies
-- Chromium, AWK, JQ binaries (auto-configured)
+- Chromium binary (auto-configured)
 
 ## Method 2: Direct Run from Flake
 
 Run Tablassert without cloning or installing.
 
 ```bash
-nix run github:SkyeAv/Tablassert#default -- -i /path/to/config.yaml
+nix run github:SkyeAv/Tablassert#default -- /path/to/config.yaml
 ```
 
 Useful for:
@@ -54,7 +54,7 @@ Install Tablassert persistently to your user environment.
 nix profile install github:SkyeAv/Tablassert#default
 
 # Use anywhere
-tablassert-cli -i /path/to/config.yaml
+tablassert-cli /path/to/config.yaml
 
 # Upgrade
 nix profile upgrade tablassert
@@ -92,16 +92,14 @@ Integrate Tablassert into your own Nix flake or NixOS configuration.
 
 Use prebuilt images from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.
 
-### x86_64 / amd64
-
 ```bash
-docker run --rm -v $(pwd):/workdir -w /workdir ghcr.io/SkyeAv/Tablassert:latest tablassert-cli -i /path/to/config.yaml
+# x86_64 / amd64
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-amd64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
 ```
 
-### aarch64 / arm64
-
 ```bash
-docker run --rm -v $(pwd):/workdir -w /workdir ghcr.io/SkyeAv/Tablassert:latest tablassert-cli -i /path/to/config.yaml
+# aarch64 / arm64
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-arm64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
 ```
 
 ### Environment variables in the container
@@ -117,8 +115,6 @@ Tablassert requires these environment variables (automatically set by Nix wrappe
 
 - `CHROMIUM_PATH` - Path to Chromium browser for Playwright downloads
 - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` - Use system Chromium
-- `AWK_PATH` - Path to GNU AWK for NDJSON processing
-- `JQ_PATH` - Path to JQ for JSON cleanup
 
 **Note:** When using the Nix-provided package, these are configured automatically. Manual installation would require setting these.
 
@@ -136,14 +132,14 @@ If installing outside Nix (not recommended):
 tablassert-cli --help
 
 # Should output:
-# Usage: tablassert-cli [OPTIONS]
+# Usage: tablassert-cli [OPTIONS] COMMAND [ARGS]...
 #
 # Tablassert Builds Knowledge Graphs From Declarative Configuration
 #
-# Options:
-#   -i, --ingest PATH  Knowledge Graph Configuration -- See Docs
-#                      [required]
-#   --help             Show this message and exit.
+# Commands:
+#   build-knowledge-graph     Build knowledge graph from configuration
+#   verify-table-configuration Verify table configuration syntax
+#   --help                    Show this message and exit.
 ```
 
 ## Next Steps

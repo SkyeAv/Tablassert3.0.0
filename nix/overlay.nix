@@ -62,6 +62,7 @@ final: prev: {
         nativeBuildInputs = [final.makeWrapper];
         makeWrapperArgs = [
           "--set CHROMIUM_PATH ${final.chromium}/bin/chromium"
+          "--set PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD 1"
         ];
         postInstall = ''
           ${pyFinal.python.interpreter} -m compileall $out/lib

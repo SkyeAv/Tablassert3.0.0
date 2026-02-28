@@ -17,6 +17,7 @@ in {
     };
     config = {
       Entrypoint = ["tablassert-cli"];
+      WorkingDir = "/workdir";
     };
   };
 }
