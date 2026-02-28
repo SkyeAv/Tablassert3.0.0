@@ -87,6 +87,18 @@ Integrate into your own Nix flake or NixOS configuration.
   };
 }
 ```
+#### Docker (non-Nix / non-x86 Linux)
+
+```bash
+# amd64
+docker run --rm -v $(pwd):/workdir -w /workdir ghcr.io/SkyeAv/Tablassert:latest tablassert-cli -i /path/to/config.yaml
+
+# arm64
+docker run --rm -v $(pwd):/workdir -w /workdir ghcr.io/SkyeAv/Tablassert:latest tablassert-cli -i /path/to/config.yaml
+```
+
+See [Installation docs](docs/installation.md) for full Docker details.
+
 
 ## Key Features
 

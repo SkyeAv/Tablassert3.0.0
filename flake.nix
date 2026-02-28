@@ -6,7 +6,10 @@
   };
   outputs = inputs @ {self, nixpkgs, flake-parts, ...}:
     flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux"];
+      systems = [
+        "aarch64-linux"
+        "x86_64-linux" 
+      ];
       perSystem = {pkgs, lib, config, system, ...}: {
         _module.args.pkgs = import nixpkgs {
           inherit system;

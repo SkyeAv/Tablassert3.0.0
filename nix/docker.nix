@@ -4,7 +4,7 @@ let
 in {
   packages.docker = pkgs.dockerTools.buildImage {
     name = "tablassert-cli";
-    tag = "x86_64-linux-latest";
+    tag = "latest";
     copyToRoot = pkgs.buildEnv {
       name = "image-root";
       paths = (with py; [
