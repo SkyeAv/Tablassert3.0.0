@@ -35,7 +35,7 @@ jobs:
   deploy-docker:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # Keep going if one architecture fails
+      fail-fast: false
       matrix:
         include:
           - { arch: x86_64-linux, suffix: amd64 }
