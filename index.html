@@ -87,6 +87,10 @@
                   <li class="toctree-l1"><a class="reference internal" href="api/utils/">Utilities</a>
                   </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
       </div>
     </div>
     </nav>
@@ -111,7 +115,7 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="tablassert">Tablassert</h1>
-<p><strong>Version 6.1.0 (Beta)</strong></p>
+<p><strong>Version 6.2.0 (Beta)</strong></p>
 <p>Tablassert is a highly performant declarative knowledge graph backend that extracts knowledge assertions from tabular data and exports NCATS Translator-compliant KGX (Knowledge Graph Exchange) NDJSON.</p>
 <h2 id="what-is-tablassert">What is Tablassert?</h2>
 <p>Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge graphs through:</p>
@@ -136,7 +140,7 @@ cd Tablassert
 nix develop -L .
 
 # Run with your configuration
-tablassert-cli -i /path/to/graph-config.yaml
+| `tablassert-cli build-knowledge-graph &lt;config&gt;` | New 6.2.0 syntax |
 </code></pre>
 <h2 id="documentation-sections">Documentation Sections</h2>
 <ul>

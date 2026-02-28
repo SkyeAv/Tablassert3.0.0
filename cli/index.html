@@ -50,27 +50,37 @@
               <ul class="current">
                 <li class="toctree-l1 current"><a class="reference internal current" href="#">CLI Reference</a>
     <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#command">Command</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#options">Options</a>
+    <li class="toctree-l2"><a class="reference internal" href="#build-knowledge-graph">build-knowledge-graph</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#-i-ingest-path-required">-i, --ingest PATH (required)</a>
+    <li class="toctree-l3"><a class="reference internal" href="#synopsis">Synopsis</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#-help">--help</a>
+    <li class="toctree-l3"><a class="reference internal" href="#options">Options</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example">Example</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#description">Description</a>
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#output-files">Output Files</a>
+    <li class="toctree-l2"><a class="reference internal" href="#verify-table-configuration-syntax">verify-table-configuration-syntax</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#synopsis_1">Synopsis</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#output-format">Output Format</a>
+    <li class="toctree-l3"><a class="reference internal" href="#options_1">Options</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example_1">Example</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#description_1">Description</a>
+    </li>
+        </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#environment-variables">Environment Variables</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#basic-usage">Basic Usage</a>
+    <li class="toctree-l3"><a class="reference internal" href="#build-knowledge-graph_1">Build Knowledge Graph</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#with-absolute-path">With Absolute Path</a>
+    <li class="toctree-l3"><a class="reference internal" href="#validate-table-configuration">Validate Table Configuration</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#using-nix-run-no-installation">Using Nix Run (No Installation)</a>
     </li>
@@ -105,6 +115,10 @@
                   <li class="toctree-l1"><a class="reference internal" href="../api/utils/">Utilities</a>
                   </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
       </div>
     </div>
     </nav>
@@ -129,71 +143,104 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="cli-reference">CLI Reference</h1>
-<p>Tablassert provides a single command-line interface for building knowledge graphs from declarative configurations.</p>
-<h2 id="command">Command</h2>
-<pre><code class="language-bash">tablassert-cli -i &lt;graph-config.yaml&gt;
+<p>Tablassert provides two commands for building knowledge graphs and validating configuration files.</p>
+<h2 id="build-knowledge-graph">build-knowledge-graph</h2>
+<p>Build A KGX Compliant Knowledge Graph From A Graph Configuration File</p>
+<h3 id="synopsis">Synopsis</h3>
+<pre><code class="language-bash">tablassert-cli build-knowledge-graph &lt;graph_configuration_file&gt;
 </code></pre>
-<h2 id="options">Options</h2>
-<h3 id="-i-ingest-path-required"><code>-i, --ingest PATH</code> (required)</h3>
-<p>Path to the graph configuration file (YAML format).</p>
-<p><strong>Example:</strong></p>
-<pre><code class="language-bash">tablassert-cli -i /path/to/MOKGV6.yaml
+<h3 id="options">Options</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>graph_configuration_file</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>Knowledge Graph Configuration -- See Docs</td>
+</tr>
+</tbody>
+</table>
+<h3 id="example">Example</h3>
+<pre><code class="language-bash">tablassert-cli build-knowledge-graph /path/to/MOKGV6.yaml
 </code></pre>
-<p>The graph configuration specifies:
-- Output knowledge graph name and version
-- Paths to table configurations
-- Database locations (dbssert, pubmed_db, pmc_db)</p>
-<p>See <a href="../configuration/graph/">Graph Configuration</a> for details.</p>
-<h3 id="-help"><code>--help</code></h3>
-<p>Display help message and exit.</p>
-<pre><code class="language-bash">tablassert-cli --help
+<h3 id="description">Description</h3>
+<p>This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through dbssert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.</p>
+<p>The process executes in parallel stages with rich progress bars showing:
+- Loading Tables
+- Extracting Sections
+- Building TCode
+- Collecting Instructions
+- Building Subgraphs
+- Compiling Graph</p>
+<p>Output files are written to the <code>storessert/</code> directory as:
+- <code>{name}_{version}.nodes.ndjson</code> - Node file (entities)
+- <code>{name}_{version}.edges.ndjson</code> - Edge file (relationships)</p>
+<p>See <a href="../configuration/graph/">Graph Configuration</a> for details on the YAML schema.</p>
+<hr />
+<h2 id="verify-table-configuration-syntax">verify-table-configuration-syntax</h2>
+<p>Verify The Syntax Of A Declarative Table Configuration File</p>
+<h3 id="synopsis_1">Synopsis</h3>
+<pre><code class="language-bash">tablassert-cli verify-table-configuration-syntax &lt;table_configuration_file&gt;
 </code></pre>
-<h2 id="output-files">Output Files</h2>
-<p>Tablassert generates two NDJSON files:</p>
-<ul>
-<li><code>{name}_{version}.nodes.ndjson</code> - Node file (entities)</li>
-<li><code>{name}_{version}.edges.ndjson</code> - Edge file (relationships)</li>
-</ul>
-<p>Where <code>{name}</code> and <code>{version}</code> come from the graph configuration.</p>
-<p><strong>Example:</strong></p>
-<pre><code class="language-yaml"># graph-config.yaml
-name: MULTIOMICS_KG
-version: UNSTABLE
+<h3 id="options_1">Options</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>table_configuration_file</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>Table Configuration -- See Docs</td>
+</tr>
+</tbody>
+</table>
+<h3 id="example_1">Example</h3>
+<pre><code class="language-bash">tablassert-cli verify-table-configuration-syntax /path/to/table-config.yaml
 </code></pre>
-<p>Produces:
-- <code>MULTIOMICS_KG_UNSTABLE.nodes.ndjson</code>
-- <code>MULTIOMICS_KG_UNSTABLE.edges.ndjson</code></p>
-<h2 id="output-format">Output Format</h2>
-<p>Files are KGX-compliant NDJSON (newline-delimited JSON):</p>
-<p><strong>Nodes:</strong></p>
-<pre><code class="language-json">{&quot;id&quot;: &quot;HGNC:1234&quot;, &quot;name&quot;: &quot;GENE1&quot;, &quot;category&quot;: [&quot;biolink:Gene&quot;], &quot;taxon&quot;: &quot;NCBITaxon:9606&quot;}
-{&quot;id&quot;: &quot;MONDO:0005148&quot;, &quot;name&quot;: &quot;diabetes mellitus&quot;, &quot;category&quot;: [&quot;biolink:Disease&quot;]}
-</code></pre>
-<p><strong>Edges:</strong></p>
-<pre><code class="language-json">{&quot;id&quot;: &quot;uuid:...&quot;, &quot;subject&quot;: &quot;HGNC:1234&quot;, &quot;predicate&quot;: &quot;biolink:associated_with&quot;, &quot;object&quot;: &quot;MONDO:0005148&quot;}
-</code></pre>
+<h3 id="description_1">Description</h3>
+<p>This command validates a TC3 YAML configuration file without running the full extraction pipeline. It loads the file, extracts sections, and validates each section against the schema using Pydantic models. The command exits with a non-zero status if schema errors are detected, making it useful for CI/CD pipelines and pre-commit hooks.</p>
+<p>Use this for:
+- Quick syntax validation during development
+- Pre-flight checks in CI/CD pipelines
+- Verifying configuration changes before running expensive graph builds</p>
+<p>See <a href="../configuration/table/">Table Configuration</a> for details on the YAML schema.</p>
+<hr />
 <h2 id="environment-variables">Environment Variables</h2>
 <p>When using Nix, these are configured automatically:</p>
 <ul>
 <li><code>CHROMIUM_PATH</code> - Chromium for file downloads</li>
-<li><code>AWK_PATH</code> - GNU AWK for NDJSON processing</li>
-<li><code>JQ_PATH</code> - JQ for JSON cleanup</li>
 </ul>
 <h2 id="examples">Examples</h2>
-<h3 id="basic-usage">Basic Usage</h3>
-<pre><code class="language-bash">tablassert-cli -i my-graph.yaml
+<h3 id="build-knowledge-graph_1">Build Knowledge Graph</h3>
+<pre><code class="language-bash">tablassert-cli build-knowledge-graph my-graph.yaml
 </code></pre>
-<h3 id="with-absolute-path">With Absolute Path</h3>
-<pre><code class="language-bash">tablassert-cli -i /home/user/configs/graph.yaml
+<h3 id="validate-table-configuration">Validate Table Configuration</h3>
+<pre><code class="language-bash">tablassert-cli verify-table-configuration-syntax table-config.yaml
 </code></pre>
 <h3 id="using-nix-run-no-installation">Using Nix Run (No Installation)</h3>
-<pre><code class="language-bash">nix run github:SkyeAv/Tablassert#default -- -i ./graph.yaml
+<pre><code class="language-bash">nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph ./graph.yaml
 </code></pre>
 <h2 id="workflow">Workflow</h2>
 <ol>
+<li><strong>Create table configuration</strong> - Define data sources and transformations</li>
 <li><strong>Create graph configuration</strong> - Define output name, table configs, databases</li>
-<li><strong>Create table configurations</strong> - Define data sources and transformations</li>
-<li><strong>Run CLI</strong> - <code>tablassert-cli -i graph.yaml</code></li>
+<li><strong>Validate table config</strong> - <code>tablassert-cli verify-table-configuration-syntax table.yaml</code></li>
+<li><strong>Build knowledge graph</strong> - <code>tablassert-cli build-knowledge-graph graph.yaml</code></li>
 <li><strong>Process executes:</strong></li>
 <li>Downloads files from URLs (if needed)</li>
 <li>Applies transformations to each table</li>

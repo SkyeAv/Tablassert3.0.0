@@ -95,6 +95,10 @@
                   <li class="toctree-l1"><a class="reference internal" href="../api/utils/">Utilities</a>
                   </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
       </div>
     </div>
     </nav>
@@ -212,7 +216,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 - <strong>tables</strong>: List of table configurations to process
 - <strong>databases</strong>: Paths to entity resolution and provenance databases</p>
 <h2 id="step-4-run-tablassert">Step 4: Run Tablassert</h2>
-<pre><code class="language-bash">tablassert-cli -i tutorial-graph.yaml
+<pre><code class="language-bash">tablassert-cli build-knowledge-graph tutorial-graph.yaml
 </code></pre>
 <p><strong>What happens:</strong>
 1. Loads graph configuration

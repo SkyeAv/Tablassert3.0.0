@@ -135,6 +135,10 @@
                   <li class="toctree-l1"><a class="reference internal" href="../../api/utils/">Utilities</a>
                   </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
       </div>
     </div>
     </nav>
@@ -677,16 +681,8 @@ sections:
 </code></pre>
 <h4 id="mathematical-transformations">Mathematical Transformations</h4>
 <p><strong><code>transformations: list[{function, arguments}]</code></strong></p>
-<p>Available functions: <code>add</code>, <code>subtract</code>, <code>multiply</code>, <code>divide</code>, <code>log</code>, <code>exp</code>, <code>abs</code>, <code>round</code></p>
-<p>Use <code>"values"</code> token to reference column values:</p>
-<pre><code class="language-yaml">annotations:
-  - annotation: &quot;adjusted p value&quot;
-    method: column
-    encoding: p_value
-    transformations:
-      - function: multiply
-        arguments: [&quot;values&quot;, 0.05]  # p_value * 0.05
-</code></pre>
+<p>Available functions: <code>copysign</code>, <code>pow</code></p>
+<p>Use the <code>"values"</code> token to reference column values in transformations.</p>
 <h3 id="qualifiers">Qualifiers</h3>
 <p>Add context to edges (anatomical location, species, etc.).</p>
 <table>
@@ -763,7 +759,7 @@ sections:
 <td><code>kind</code></td>
 <td>String</td>
 <td>Yes</td>
-<td><code>"curation"</code>, <code>"analysis"</code>, <code>"validation"</code></td>
+<td><code>"curation"</code>, <code>"validation"</code>, <code>"tool"</code></td>
 </tr>
 <tr>
 <td><code>name</code></td>

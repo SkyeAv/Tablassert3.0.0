@@ -99,6 +99,10 @@
                   <li class="toctree-l1"><a class="reference internal" href="../../api/utils/">Utilities</a>
                   </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
       </div>
     </div>
     </nav>
@@ -180,7 +184,7 @@
 </table>
 <h3 id="field-details">Field Details</h3>
 <p><strong><code>syntax: "GC2"</code></strong></p>
-<p>Configuration syntax version. Must be <code>"GC2"</code> for version 6.1.0.</p>
+<p>Configuration syntax version. Must be "GC2" for version 6.2.0.</p>
 <p><strong><code>name: string</code></strong></p>
 <p>Output knowledge graph name. Used as prefix for NDJSON files.</p>
 <p>Example: <code>name: MULTIOMICS_KG</code> produces <code>MULTIOMICS_KG_{version}.nodes.ndjson</code></p>
@@ -239,7 +243,7 @@ pubmed_db: /databases/PubMed.db
 pmc_db: /databases/PMCSuppCaptions.db
 </code></pre>
 <h2 id="processing-flow">Processing Flow</h2>
-<p>When you run <code>tablassert-cli -i graph.yaml</code>:</p>
+<p>When you run <code>tablassert-cli build-knowledge-graph graph.yaml</code>:</p>
 <ol>
 <li><strong>Load graph configuration</strong> - Parse YAML, validate schema</li>
 <li><strong>For each table in <code>tables</code>:</strong></li>

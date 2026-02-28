@@ -56,6 +56,12 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#method-4-use-as-overlay">Method 4: Use as Overlay</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#method-5-docker">Method 5: Docker</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#environment-variables-in-the-container">Environment variables in the container</a>
+    </li>
+        </ul>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#environment-variables">Environment Variables</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#python-requirements">Python Requirements</a>
@@ -92,6 +98,10 @@
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../api/utils/">Utilities</a>
                   </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../CHANGELOG.md">Changelog</a>
+                </li>
               </ul>
       </div>
     </div>
@@ -142,10 +152,10 @@ tablassert-cli --help
 - <code>tablassert-cli</code> command
 - <code>mkdocs</code> for documentation
 - All Python dependencies
-- Chromium, AWK, JQ binaries (auto-configured)</p>
+- Chromium binary (auto-configured)</p>
 <h2 id="method-2-direct-run-from-flake">Method 2: Direct Run from Flake</h2>
 <p>Run Tablassert without cloning or installing.</p>
-<pre><code class="language-bash">nix run github:SkyeAv/Tablassert#default -- -i /path/to/config.yaml
+<pre><code class="language-bash">nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph /path/to/config.yaml
 </code></pre>
 <p>Useful for:
 - One-off graph builds
@@ -157,7 +167,7 @@ tablassert-cli --help
 nix profile install github:SkyeAv/Tablassert#default
 
 # Use anywhere
-tablassert-cli -i /path/to/config.yaml
+tablassert-cli build-knowledge-graph /path/to/config.yaml
 
 # Upgrade
 nix profile upgrade tablassert
@@ -187,13 +197,25 @@ nix profile remove tablassert
   };
 }
 </code></pre>
+<h2 id="method-5-docker">Method 5: Docker</h2>
+<p>Use prebuilt images from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.</p>
+<pre><code class="language-bash"># x86_64 / amd64
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-amd64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
+</code></pre>
+<pre><code class="language-bash"># aarch64 / arm64
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-arm64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
+</code></pre>
+<h3 id="environment-variables-in-the-container">Environment variables in the container</h3>
+<p>These are auto-configured in the image and do not need manual setup:</p>
+<ul>
+<li><code>CHROMIUM_PATH</code></li>
+<li><code>PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1</code></li>
+</ul>
 <h2 id="environment-variables">Environment Variables</h2>
 <p>Tablassert requires these environment variables (automatically set by Nix wrapper):</p>
 <ul>
 <li><code>CHROMIUM_PATH</code> - Path to Chromium browser for Playwright downloads</li>
 <li><code>PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1</code> - Use system Chromium</li>
-<li><code>AWK_PATH</code> - Path to GNU AWK for NDJSON processing</li>
-<li><code>JQ_PATH</code> - Path to JQ for JSON cleanup</li>
 </ul>
 <p><strong>Note:</strong> When using the Nix-provided package, these are configured automatically. Manual installation would require setting these.</p>
 <h2 id="python-requirements">Python Requirements</h2>
@@ -207,14 +229,14 @@ nix profile remove tablassert
 tablassert-cli --help
 
 # Should output:
-# Usage: tablassert-cli [OPTIONS]
+# Usage: tablassert-cli [OPTIONS] COMMAND [ARGS]...
 #
 # Tablassert Builds Knowledge Graphs From Declarative Configuration
 #
-# Options:
-#   -i, --ingest PATH  Knowledge Graph Configuration -- See Docs
-#                      [required]
-#   --help             Show this message and exit.
+# Commands:
+#   build-knowledge-graph     Build knowledge graph from configuration
+#   verify-table-configuration-syntax Verify table configuration syntax
+#   --help                    Show this message and exit.
 </code></pre>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
