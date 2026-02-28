@@ -90,52 +90,26 @@ Integrate Tablassert into your own Nix flake or NixOS configuration.
 ```
 ## Method 5: Docker
 
-
-Use prebuilt Docker images from GitHub Container Registry. Useful for:
-
-- Systems not running NixOS
-- Non-x86_64 architectures (ARM64)
-- CI/CD environments with Docker
-- Isolated container environments
+Use prebuilt images from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.
 
 ### x86_64 / amd64
 
 ```bash
-# Pull and run latest image
-docker run --rm -v $(pwd):/workdir -w /workdir \
-  ghcr.io/SkyeAv/Tablassert:latest \
-  tablassert-cli -i /path/to/config.yaml
-
-# Pull specific commit version
-docker run --rm -v $(pwd):/workdir -w /workdir \
-  ghcr.io/SkyeAv/Tablassert:sha-<commit> \
-  tablassert-cli -i /path/to/config.yaml
+docker run --rm -v $(pwd):/workdir -w /workdir ghcr.io/SkyeAv/Tablassert:latest tablassert-cli -i /path/to/config.yaml
 ```
 
 ### aarch64 / arm64
 
 ```bash
-# Pull and run latest image (available after Task 7 CI update)
-docker run --rm -v $(pwd):/workdir -w /workdir \
-  ghcr.io/SkyeAv/Tablassert:latest \
-  tablassert-cli -i /path/to/config.yaml
-
-# Pull specific commit version (available after Task 7 CI update)
-docker run --rm -v $(pwd):/workdir -w /workdir \
-  ghcr.io/SkyeAv/Tablassert:sha-<commit> \
-  tablassert-cli -i /path/to/config.yaml
+docker run --rm -v $(pwd):/workdir -w /workdir ghcr.io/SkyeAv/Tablassert:latest tablassert-cli -i /path/to/config.yaml
 ```
 
-### Environment Variables
+### Environment variables in the container
 
-The Docker image includes the same environment variables as the Nix wrapper:
+These are auto-configured in the image and do not need manual setup:
 
-- `CHROMIUM_PATH` - Path to Chromium browser for Playwright downloads
-- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` - Use system Chromium
-
-These are automatically configured in the container and do not require manual setup.
-
-
+- `CHROMIUM_PATH`
+- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`
 
 ## Environment Variables
 

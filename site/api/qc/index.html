@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Quality Control - Tablassert</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Quality Control";
+        var mkdocs_page_input_path = "api/qc.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Tablassert
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/graph/">Graph Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/table/">Table Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/advanced-example/">Advanced Example</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../fullmap/">Entity Resolution</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Quality Control</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#fullmap_audit">fullmap_audit()</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#function-signature">Function Signature</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#return-value">Return Value</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#three-stage-pipeline">Three-Stage Pipeline</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#stage-1-exact-string-match">Stage 1: Exact String Match</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#stage-2-fuzzy-matching">Stage 2: Fuzzy Matching</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#stage-3-bert-semantic-similarity">Stage 3: BERT Semantic Similarity</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#biobert-model">BioBERT Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#disk-caching">Disk Caching</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example-usage">Example Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#pipeline-flow">Pipeline Flow</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#confidence-levels">Confidence Levels</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#performance-characteristics">Performance Characteristics</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#integration-with-pipeline">Integration with Pipeline</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">Utilities</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../changelog.md">Changelog</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Tablassert</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Quality Control</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="quality-control-qc">Quality Control (qc)</h1>
+<p>The <code>qc</code> module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BERT semantic similarity.</p>
+<h2 id="fullmap_audit">fullmap_audit()</h2>
+<p>Primary quality control function that filters entity mappings based on confidence criteria.</p>
+<h3 id="function-signature">Function Signature</h3>
+<pre><code class="language-python">def fullmap_audit(
+  lf: pl.LazyFrame,
+  col: str,
+  out: str = &quot;passed&quot;
+) -&gt; pl.LazyFrame
+</code></pre>
+<h3 id="parameters">Parameters</h3>
+<p><strong><code>lf: pl.LazyFrame</code></strong></p>
+<p>Input LazyFrame containing entity resolution results.</p>
+<p>Expected columns:
+- <code>original {col}</code> - Original text string
+- <code>{col}</code> - Resolved CURIE
+- <code>{col} name</code> - Preferred entity name</p>
+<p><strong><code>col: str</code></strong></p>
+<p>Base column name for entity resolution.</p>
+<p>Example: If <code>col="subject"</code>, looks for:
+- <code>"original subject"</code>
+- <code>"subject"</code>
+- <code>"subject name"</code></p>
+<p><strong><code>out: str</code> (default: <code>"passed"</code>)</strong></p>
+<p>Name of the boolean column indicating validation status.</p>
+<p>Rows with <code>out=True</code> passed QC, <code>out=False</code> failed.</p>
+<h3 id="return-value">Return Value</h3>
+<p>Returns a Polars LazyFrame with only validated rows (where <code>out=True</code>).</p>
+<p>Removes the <code>out</code> column before returning.</p>
+<h3 id="three-stage-pipeline">Three-Stage Pipeline</h3>
+<p>The function applies three validation stages in sequence:</p>
+<h4 id="stage-1-exact-string-match">Stage 1: Exact String Match</h4>
+<p><strong>Fast path for high-confidence mappings.</strong></p>
+<pre><code class="language-python">original == preferred_name
+</code></pre>
+<p><strong>Example passes:</strong>
+- Original: <code>"TP53"</code> → Preferred: <code>"TP53"</code> ✓
+- Original: <code>"diabetes"</code> → Preferred: <code>"diabetes mellitus"</code> ✗ (goes to Stage 2)</p>
+<p><strong>Performance:</strong> O(1) string comparison</p>
+<h4 id="stage-2-fuzzy-matching">Stage 2: Fuzzy Matching</h4>
+<p><strong>Medium confidence using RapidFuzz.</strong></p>
+<p>Four fuzzy matching algorithms:
+1. <strong>Ratio:</strong> Overall string similarity
+2. <strong>Partial ratio:</strong> Substring matching
+3. <strong>Token sort ratio:</strong> Order-independent word matching
+4. <strong>Partial token sort ratio:</strong> Combined approach</p>
+<p><strong>Threshold:</strong> Default 20% similarity (configurable)</p>
+<pre><code class="language-python">fuzz.ratio(original, preferred) &gt;= 20
+or fuzz.ratio(original, curie) &gt;= 20
+or fuzz.partial_token_sort_ratio(original, preferred) &gt;= 20
+or fuzz.partial_token_sort_ratio(original, curie) &gt;= 20
+</code></pre>
+<p><strong>Example passes:</strong>
+- Original: <code>"breast ca"</code> → Preferred: <code>"breast cancer"</code> ✓
+- Original: <code>"T53"</code> → CURIE: <code>"HGNC:11998"</code> (TP53) ✗ (goes to Stage 3)</p>
+<p><strong>Performance:</strong> O(n) string operations, cached via <code>@DISKCACHE.memoize()</code></p>
+<h4 id="stage-3-bert-semantic-similarity">Stage 3: BERT Semantic Similarity</h4>
+<p><strong>High confidence using BioBERT embeddings.</strong></p>
+<ol>
+<li><strong>Encode</strong> original and preferred name with BioBERT</li>
+<li><strong>Compute</strong> cosine similarity between embeddings</li>
+<li><strong>Accept</strong> if similarity &gt;= 0.2 (20%)</li>
+</ol>
+<pre><code class="language-python">embeddings = BIOBERT.encode([original, preferred])
+similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+return similarity &gt;= 0.2
+</code></pre>
+<p><strong>Example passes:</strong>
+- Original: <code>"lung carcinoma"</code> → Preferred: <code>"lung cancer"</code> ✓ (high semantic similarity)
+- Original: <code>"random text"</code> → Preferred: <code>"diabetes"</code> ✗ (rejected, low similarity)</p>
+<p><strong>Performance:</strong> Expensive (ONNX inference), heavily cached</p>
+<h3 id="biobert-model">BioBERT Model</h3>
+<p><strong>Model:</strong> <code>pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb</code></p>
+<p><strong>Backend:</strong> ONNX Runtime (CPU)</p>
+<p><strong>Optimizations:</strong>
+- Graph optimization level: ALL
+- ONNX session caching
+- Disk cache for embeddings (~100MB LRU)</p>
+<p>Loaded once at module import, reused for all calls.</p>
+<h3 id="disk-caching">Disk Caching</h3>
+<p>All expensive operations are cached to disk:</p>
+<pre><code class="language-python">@DISKCACHE.memoize()
+def fuzz_audit(...): ...
+
+@DISKCACHE.memoize()
+def BERT_audit(...): ...
+</code></pre>
+<p><strong>Cache location:</strong> <code>cachessert/</code> directory</p>
+<p><strong>Cache strategy:</strong> LRU eviction when size exceeds limit</p>
+<p><strong>Why caching matters:</strong>
+- Fuzzy matching: 100-1000x speedup on repeated strings
+- BERT inference: 10,000x speedup on repeated strings
+- Enables iterative development without recomputing</p>
+<h3 id="example-usage">Example Usage</h3>
+<pre><code class="language-python">from tablassert.qc import fullmap_audit
+import polars as pl
+
+# LazyFrame with entity resolution results
+lf = pl.scan_parquet(&quot;resolved.parquet&quot;)
+
+# Expected columns:
+# - original subject
+# - subject (CURIE)
+# - subject name
+
+# Run QC
+validated = fullmap_audit(lf, col=&quot;subject&quot;)
+
+# Only rows that passed QC remain
+# Rows with low-confidence mappings removed
+</code></pre>
+<h3 id="pipeline-flow">Pipeline Flow</h3>
+<pre><code>Input: 1000 rows with entity mappings
+
+Stage 1 (Exact): 700 pass → 300 pending
+Stage 2 (Fuzzy): 250 pass → 50 pending
+Stage 3 (BERT): 40 pass → 10 rejected
+
+Output: 990 rows (700 + 250 + 40)
+</code></pre>
+<h3 id="confidence-levels">Confidence Levels</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Method</th>
+<th>Confidence</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Exact match</td>
+<td>Highest</td>
+<td>Standardized IDs, acronyms</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Fuzzy</td>
+<td>Medium</td>
+<td>Abbreviations, typos</td>
+</tr>
+<tr>
+<td>3</td>
+<td>BERT</td>
+<td>High</td>
+<td>Synonyms, paraphrases</td>
+</tr>
+</tbody>
+</table>
+<h3 id="performance-characteristics">Performance Characteristics</h3>
+<p><strong>Best case</strong> (all exact matches):
+- 1M rows: ~1 second</p>
+<p><strong>Worst case</strong> (all go to BERT):
+- 1M rows: ~30 minutes (first run)
+- 1M rows: ~10 seconds (cached)</p>
+<p><strong>Typical case</strong> (70% exact, 25% fuzzy, 5% BERT):
+- 1M rows: ~2 minutes (first run)
+- 1M rows: ~5 seconds (cached)</p>
+<h3 id="integration-with-pipeline">Integration with Pipeline</h3>
+<p>QC is applied after entity resolution:</p>
+<ol>
+<li><strong>Entity resolution</strong> (<code>version4()</code>) - Maps text to CURIEs</li>
+<li><strong>Quality control</strong> (<code>fullmap_audit()</code>) - Validates mappings</li>
+<li><strong>Export</strong> - Only validated mappings in final output</li>
+</ol>
+<p>This ensures knowledge graphs contain only high-confidence assertions.</p>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><strong><a href="../fullmap/">Entity Resolution</a></strong> - How mappings are generated</li>
+<li><strong><a href="../../configuration/table/">Configuration</a></strong> - Prioritize/avoid to improve resolution</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../fullmap/" class="btn btn-neutral float-left" title="Entity Resolution"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../utils/" class="btn btn-neutral float-right" title="Utilities">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../fullmap/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../utils/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
