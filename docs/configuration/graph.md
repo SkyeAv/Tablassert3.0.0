@@ -27,7 +27,7 @@ A graph configuration file specifies:
 
 **`syntax: "GC2"`**
 
-Configuration syntax version. Must be `"GC2"` for version 6.1.0.
+Configuration syntax version. Must be "GC2" for version 6.2.0.
 
 **`name: string`**
 
@@ -114,7 +114,7 @@ pmc_db: /databases/PMCSuppCaptions.db
 
 ## Processing Flow
 
-When you run `tablassert-cli -i graph.yaml`:
+When you run `tablassert-cli build-knowledge-graph graph.yaml`:
 
 1. **Load graph configuration** - Parse YAML, validate schema
 2. **For each table in `tables`:**

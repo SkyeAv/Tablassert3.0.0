@@ -1,6 +1,6 @@
 # Tablassert
 
-**Version 6.1.0 (Beta)**
+**Version 6.2.0 (Beta)**
 
 Tablassert is a highly performant declarative knowledge graph backend that extracts knowledge assertions from tabular data and exports NCATS Translator-compliant KGX (Knowledge Graph Exchange) NDJSON.
 
@@ -30,7 +30,7 @@ cd Tablassert
 nix develop -L .
 
 # Run with your configuration
-tablassert-cli -i /path/to/graph-config.yaml
+| `tablassert-cli build-knowledge-graph <config>` | New 6.2.0 syntax |
 ```
 
 ## Documentation Sections

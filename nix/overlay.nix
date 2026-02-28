@@ -29,7 +29,7 @@ final: prev: {
       };
       tablassert = pyFinal.buildPythonApplication rec {
         pname = "tablassert";
-        version = "6.1.0";
+        version = "6.2.0";
         format = "pyproject";
         src = ../.;
         build-system = with pyFinal; [
@@ -54,19 +54,19 @@ final: prev: {
           duckdb
           orjson
           polars
+          xxhash
           typer
         ]) ++ (with final; [
           chromium
-          gawk
-          jq
         ]);
         nativeBuildInputs = [final.makeWrapper];
         makeWrapperArgs = [
           "--set CHROMIUM_PATH ${final.chromium}/bin/chromium"
           "--set PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD 1"
-          "--set AWK_PATH ${final.gawk}/bin/gawk"
-          "--set JQ_PATH ${final.jq}/bin/jq"
         ];
+        postInstall = ''
+          ${pyFinal.python.interpreter} -m compileall $out/lib
+        '';
         doCheck = false;
       };
     };

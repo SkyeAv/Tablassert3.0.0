@@ -1,6 +1,7 @@
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from tablassert.utils import DISKCACHE
+from typing import Optional
 from rapidfuzz import fuzz
 import onnxruntime as ort
 from pathlib import Path
@@ -10,53 +11,49 @@ from operator import eq
 import polars as pl
 
 SESSION_OPTS: object = ort.SessionOptions()
-SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
 
 MODEL: Path = Path("./onnx/")
 MODEL_BACKEND: str = "onnx"
 MODEL_KWARGS: dict[str, object] = {
   "provider": "CPUExecutionProvider",
-  "session_options": SESSION_OPTS
+  "session_options": SESSION_OPTS,
 }
 
 # TODO: Explore Best Model For QC
-if MODEL.exists():
-    BIOBERT: object = SentenceTransformer(
-      str(MODEL),
-      backend=MODEL_BACKEND,
-      model_kwargs=MODEL_KWARGS
-    )
-else: 
-  BIOBERT = SentenceTransformer(
-    "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb",
-    backend=MODEL_BACKEND,
-    model_kwargs=MODEL_KWARGS
-  )
-  MODEL.mkdir(parents=True, exist_ok=True)
-  BIOBERT.save(MODEL)
+BIOBERT: Optional[object] = None
+def get_biobert() -> object:
+  # ? Lazy-loads BioBERT once on first BERT_audit call, then caches globally
+  global BIOBERT
+  if BIOBERT:
+    return BIOBERT
+  elif not BIOBERT and MODEL.exists():
+    BIOBERT = SentenceTransformer(str(MODEL), backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS) # pyright: ignore
+  else:
+    BIOBERT = SentenceTransformer("pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS) # pyright: ignore
+    MODEL.mkdir(parents=True, exist_ok=True)
+    BIOBERT.save(MODEL) # pyright: ignore
+  return BIOBERT
 
-@DISKCACHE.memoize()
-def fuzz_audit(x: object, original: str, preferred: str, curie: str, min_fuzz: float = 20) -> bool:
+@DISKCACHE.memoize() # pyright: ignore
+def fuzz_audit(
+    x: object, original: str, preferred: str, curie: str, min_fuzz: float = 20
+) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On Fuzzy Matching
-  o: str = x[original]
-  p: str = x[preferred]
-  c: str = x[curie]
+  o: str = x[original]  # pyright: ignore
+  p: str = x[preferred]  # pyright: ignore
+  c: str = x[curie]  # pyright: ignore
 
-  return bool(
-    ge(fuzz.ratio(o, p), min_fuzz)
-    or ge(fuzz.ratio(o, c), min_fuzz)
-    or ge(fuzz.partial_token_sort_ratio(o, p), min_fuzz)
-    or ge(fuzz.partial_token_sort_ratio(o, c), min_fuzz)
-  )
+  return bool(ge(fuzz.ratio(o, p), min_fuzz) or ge(fuzz.ratio(o, c), min_fuzz) or ge(fuzz.partial_token_sort_ratio(o, p), min_fuzz) or ge(fuzz.partial_token_sort_ratio(o, c), min_fuzz))
 
-@DISKCACHE.memoize()
+@DISKCACHE.memoize()  # pyright: ignore
 def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On BERT EMBEDDINGS
-  o: str = x[original]
-  p: str = x[preferred]
+  o: str = x[original]  # pyright: ignore
+  p: str = x[preferred]  # pyright: ignore
 
-  embeddings: object = BIOBERT.encode([o, p])
-  similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+  embeddings: object = get_biobert().encode([o, p])  # pyright: ignore
+  similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]  # pyright: ignore
   return bool(ge(similarity, min_cos))
 
 def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFrame:

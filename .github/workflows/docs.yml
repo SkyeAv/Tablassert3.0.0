@@ -1,12 +1,19 @@
-name: Deploy MkDocs to GitHub Pages
+name: Deploy MkDocs & Docker to GHCR
 on:
   push:
     branches:
       - main
+
 permissions:
   contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  deploy:
+  deploy-docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -24,3 +31,67 @@ jobs:
           publish_dir: ./site
           user_name: "github-actions[bot]"
           user_email: "github-actions[bot]@users.noreply.github.com"
+
+  deploy-docker:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64-linux, suffix: amd64 }
+          - { arch: aarch64-linux, suffix: arm64 }
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build Docker image with Nix
+        run: nix build .#docker --system ${{ matrix.arch }}
+      - name: Load image into local Docker daemon
+        run: docker load < result
+      - name: Compute image tags
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert-cli-${{ matrix.suffix }}"
+
+          TAGS="${IMAGE}:sha-${GITHUB_SHA}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            TAGS+=$'\n'"${IMAGE}:${GITHUB_REF_NAME}"
+          fi
+
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            TAGS+=$'\n'"${IMAGE}:latest"
+          fi
+
+          {
+            echo "image=${IMAGE}"
+            echo "tags<<EOF"
+            echo "${TAGS}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and Push
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE="tablassert-cli:latest"
+          while IFS= read -r tag; do
+            [[ -z "$tag" ]] && continue
+            echo "Tagging $SOURCE as $tag..."
+            docker tag "$SOURCE" "$tag"
+            docker push "$tag"
+          done <<< "${{ steps.meta.outputs.tags }}"

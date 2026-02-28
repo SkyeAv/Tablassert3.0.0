@@ -1,19 +1,22 @@
 {
-  description = "tablassert (6.1.0)";
+  description = "tablassert (6.2.0)";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    systems.url = "github:nix-systems/default";
     flake-parts.url = "github:hercules-ci/flake-parts";
   };
-  outputs = inputs @ {self, systems, nixpkgs, flake-parts, ...}:
+  outputs = inputs @ {self, nixpkgs, flake-parts, ...}:
     flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = import inputs.systems;
+      systems = [
+        "aarch64-linux"
+        "x86_64-linux" 
+      ];
       perSystem = {pkgs, lib, config, system, ...}: {
         _module.args.pkgs = import nixpkgs {
           inherit system;
           overlays = [self.overlays.default];
         };
         imports = [
+          ./nix/docker.nix
           ./nix/shell.nix
         ];
       };

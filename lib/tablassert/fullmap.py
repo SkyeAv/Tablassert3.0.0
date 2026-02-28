@@ -8,6 +8,8 @@ import polars as pl
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
+  lf = lf.filter(~(pl.col(l0).is_in(["none", "", "nan", "na"])))
+
   t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
@@ -76,7 +78,7 @@ def query_distinct(
 ) -> pl.DataFrame:
   # ? Query Database For Distinct Terms Only Using Persistent Connection
   query: str = query_builder(p, prioritize, avoid, taxon)
-  results: pl.DataFrame = conn.execute(query).pl()
+  results: pl.DataFrame = conn.execute(query).pl() # pyright: ignore
   results = results.sort(["term", "PR", "NLP_LEVEL"])
   results = results.unique(subset=["term", "CURIE"], keep="first")
   p.unlink(missing_ok=True)

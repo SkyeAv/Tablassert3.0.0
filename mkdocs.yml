@@ -13,3 +13,4 @@ nav:
     - Entity Resolution: api/fullmap.md
     - Quality Control: api/qc.md
     - Utilities: api/utils.md
+  - Changelog: ../CHANGELOG.md

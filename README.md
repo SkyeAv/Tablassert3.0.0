@@ -1,6 +1,6 @@
 # Tablassert
 
-## Version 6.1.0 (Beta)
+## Version 6.2.0 (Beta)
 
 ### By Skye Lane Goetz, Gwênlyn Glusman, and Jared C. Roach
 
@@ -39,7 +39,7 @@ cd Tablassert
 nix develop -L .
 
 # CLI is now available
-tablassert-cli -i /path/to/graph-config.yaml
+tablassert-cli build-knowledge-graph /path/to/graph-config.yaml
 ```
 
 ### Method 2: Direct Run from Flake
@@ -47,7 +47,7 @@ tablassert-cli -i /path/to/graph-config.yaml
 Run without cloning or installing.
 
 ```bash
-nix run github:SkyeAv/Tablassert#default -- -i /path/to/config.yaml
+nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph /path/to/config.yaml
 ```
 
 ### Method 3: User Profile Installation
@@ -59,7 +59,7 @@ Install persistently to your user environment.
 nix profile install github:SkyeAv/Tablassert#default
 
 # Use anywhere
-tablassert-cli -i /path/to/config.yaml
+tablassert-cli build-knowledge-graph /path/to/config.yaml
 ```
 
 ### Method 4: Use as Overlay
@@ -86,6 +86,19 @@ Integrate into your own Nix flake or NixOS configuration.
     };
   };
 }
+```
+## Method 5: Docker
+
+Use prebuilt images from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.
+
+```bash
+# x86_64 / amd64
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-amd64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
+```
+
+```bash
+# aarch64 / arm64
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-arm64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
 ```
 
 ## Key Features

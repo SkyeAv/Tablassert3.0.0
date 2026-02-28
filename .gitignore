@@ -1,8 +1,11 @@
 *.egg-info
 *__pycache__/
+*.logs/
+*.opencode/
+*.sisyphus/
+*.ruff_cache/
 *plans/
 *CLAUDE.md
-*AGENTS.md
 *.claude/
 *cachessert/
 *storessert/
@@ -14,3 +17,5 @@
 *.ndjson
 *.wal
 *.sh
+*result/
+*result
