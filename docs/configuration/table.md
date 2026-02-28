@@ -388,19 +388,9 @@ object:
 
 **`transformations: list[{function, arguments}]`**
 
-Available functions: `add`, `subtract`, `multiply`, `divide`, `log`, `exp`, `abs`, `round`
+Available functions: `copysign`, `pow`
 
-Use `"values"` token to reference column values:
-
-```yaml
-annotations:
-  - annotation: "adjusted p value"
-    method: column
-    encoding: p_value
-    transformations:
-      - function: multiply
-        arguments: ["values", 0.05]  # p_value * 0.05
-```
+Use the `"values"` token to reference column values in transformations.
 
 ### Qualifiers
 
@@ -433,7 +423,7 @@ Required metadata about data source.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `kind` | String | Yes | `"curation"`, `"analysis"`, `"validation"` |
+  `kind` | String | Yes | `"curation"`, `"validation"`, `"tool"` |
 | `name` | String | Yes | Contributor name |
 | `date` | String | Yes | Date (free format) |
 | `organizations` | List[String] | No | Affiliations |

@@ -39,7 +39,7 @@ cd Tablassert
 nix develop -L .
 
 # CLI is now available
-tablassert-cli /path/to/graph-config.yaml
+tablassert-cli build-knowledge-graph /path/to/graph-config.yaml
 ```
 
 ### Method 2: Direct Run from Flake
@@ -47,7 +47,7 @@ tablassert-cli /path/to/graph-config.yaml
 Run without cloning or installing.
 
 ```bash
-nix run github:SkyeAv/Tablassert#default -- /path/to/config.yaml
+nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph /path/to/config.yaml
 ```
 
 ### Method 3: User Profile Installation
@@ -59,7 +59,7 @@ Install persistently to your user environment.
 nix profile install github:SkyeAv/Tablassert#default
 
 # Use anywhere
-tablassert-cli /path/to/config.yaml
+tablassert-cli build-knowledge-graph /path/to/config.yaml
 ```
 
 ### Method 4: Use as Overlay

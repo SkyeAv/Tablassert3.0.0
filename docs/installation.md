@@ -37,7 +37,7 @@ The development shell provides:
 Run Tablassert without cloning or installing.
 
 ```bash
-nix run github:SkyeAv/Tablassert#default -- /path/to/config.yaml
+nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph /path/to/config.yaml
 ```
 
 Useful for:
@@ -54,7 +54,7 @@ Install Tablassert persistently to your user environment.
 nix profile install github:SkyeAv/Tablassert#default
 
 # Use anywhere
-tablassert-cli /path/to/config.yaml
+tablassert-cli build-knowledge-graph /path/to/config.yaml
 
 # Upgrade
 nix profile upgrade tablassert
@@ -138,7 +138,7 @@ tablassert-cli --help
 #
 # Commands:
 #   build-knowledge-graph     Build knowledge graph from configuration
-#   verify-table-configuration Verify table configuration syntax
+#   verify-table-configuration-syntax Verify table configuration syntax
 #   --help                    Show this message and exit.
 ```
 

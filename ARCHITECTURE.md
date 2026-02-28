@@ -228,7 +228,7 @@ def transform(lf: LazyFrame, col: str, x: Any) -> LazyFrame:
 
 ## MODULE ARCHITECTURE
 
-### lib.py (Core Pipeline, 454 LOC)
+### lib.py (Core Pipeline, 528 LOC)
 
 **Responsibilities**:
 - Transform operation implementations (value, column, math_op, zero, one, prefix, suffix, regex, fill, explode, sig, idx, csv, excel, crop)
@@ -265,7 +265,7 @@ def transform(lf: LazyFrame, col: str, x: Any) -> LazyFrame:
 - Values are lowercase/PascalCase (consistent with KGX standard)
 - Used as literal types in Pydantic models
 
-### models.py (Pydantic Models, 119 LOC)
+### models.py (Pydantic Models, 120 LOC)
 
 **Responsibilities**:
 - TablaBase: Base class with ConfigDict (extra='forbid', strict validation)
@@ -393,7 +393,7 @@ TablaBase (BaseModel, extra='forbid')
 - onnxruntime: ONNX model inference
 
 **CLI / UX**:
-- click: CLI framework
+- typer: CLI framework
 - rich: Terminal output formatting
 
 **Validation / Build**:
@@ -412,7 +412,7 @@ TablaBase (BaseModel, extra='forbid')
 - chromium: Playwright browser (CHROMIUM_PATH env var)
 ### External Data
 
-- dbssert: SQLite database with SYNONYMS, SOURCES, CURIES, CATEGORIES tables
+- dbssert: DuckDB database with SYNONYMS, SOURCES, CURIES, CATEGORIES tables
 - BioBERT model: pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb (cached in onnx/)
 
 ## DESIGN PATTERNS
@@ -543,7 +543,7 @@ onnx/            # BioBERT model cache (gitignored)
 └── *           # Saved BioBERT ONNX model
 
 dbssert         # Entity resolution database (external)
-└── *.sqlite    # Synonyms, sources, curies, categories
+└── *.duckdb   # Synonyms, sources, curies, categories
 ```
 
 ## KEY DESIGN DECISIONS
