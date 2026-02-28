@@ -68,7 +68,7 @@ nix develop -L . -c mkdocs serve
 ```
 
 ## NOTES
-
+| `tablassert-cli build-knowledge-graph <config>` | New 6.2.0 syntax |
 - Current CI is `.github/workflows/docs.yml` with two jobs: docs deploy and Docker publish.
 - `pyproject.toml` defines `tablassert-cli = tablassert.lib:CLI`.
 - Current Nix wrapper explicitly sets `CHROMIUM_PATH`; AWK/JQ references exist in docs/architecture but are not currently wrapped in `nix/overlay.nix`.

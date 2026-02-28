@@ -30,7 +30,7 @@ cd Tablassert
 nix develop -L .
 
 # Run with your configuration
-tablassert-cli -i /path/to/graph-config.yaml
+| `tablassert-cli build-knowledge-graph <config>` | New 6.2.0 syntax |
 ```
 
 ## Documentation Sections
