@@ -175,8 +175,8 @@ Wave FINAL (After ALL tasks):
   - `docs/configuration/graph.md:30` — line currently reads "Must be GC2 for version 6.1.0"
 
   **Acceptance Criteria**:
-  - [ ] `grep -n "6\.1\.0" docs/index.md` → no output
-  - [ ] `grep -n "6\.1\.0" docs/configuration/graph.md` → no output
+  - [x] `grep -n "6\.1\.0" docs/index.md` → no output
+  - [x] `grep -n "6\.1\.0" docs/configuration/graph.md` → no output
 
   **QA Scenarios**:
   ```
@@ -234,10 +234,10 @@ Wave FINAL (After ALL tasks):
   - `docs/cli.md` (current) — existing structure to replace; retain environment variables section
 
   **Acceptance Criteria**:
-  - [ ] `grep -c 'build-knowledge-graph' docs/cli.md` → ≥ 1
-  - [ ] `grep -c 'verify-table-configuration-syntax' docs/cli.md` → ≥ 1
-  - [ ] Both commands have a synopsis block and options table
-  - [ ] Environment variables section retained
+  - [x] `grep -c 'build-knowledge-graph' docs/cli.md` → ≥ 1
+  - [x] `grep -c 'verify-table-configuration-syntax' docs/cli.md` → ≥ 1
+  - [x] Both commands have a synopsis block and options table
+  - [x] Environment variables section retained
 
   **QA Scenarios**:
   ```
@@ -285,9 +285,9 @@ Wave FINAL (After ALL tasks):
   - `.github/workflows/docs.yml` — contains exact GHCR image names/tags; read `docker tag` lines
 
   **Acceptance Criteria**:
-  - [ ] `grep -c 'Docker\|docker' docs/installation.md` → ≥ 3
-  - [ ] Section covers both amd64 and arm64 images
-  - [ ] Existing Nix sections unchanged
+  - [x] `grep -c 'Docker\|docker' docs/installation.md` → ≥ 3
+  - [x] Section covers both amd64 and arm64 images
+  - [x] Existing Nix sections unchanged
 
   **QA Scenarios**:
   ```
@@ -333,8 +333,8 @@ Wave FINAL (After ALL tasks):
   - `.github/workflows/docs.yml` — for canonical image names/tags
 
   **Acceptance Criteria**:
-  - [ ] `grep -c 'docker run' README.md` → ≥ 2 (one per arch)
-  - [ ] Existing README sections unmodified
+  - [x] `grep -c 'docker run' README.md` → ≥ 2 (one per arch)
+  - [x] Existing README sections unmodified
 
   **QA Scenarios**:
   ```
@@ -382,9 +382,9 @@ Wave FINAL (After ALL tasks):
   - `CHANGELOG.md` (current) — just the stub `# 6.2.0`; replace entirely
 
   **Acceptance Criteria**:
-  - [ ] `wc -l CHANGELOG.md` → ≥ 20 lines
-  - [ ] `grep -c '###' CHANGELOG.md` → ≥ 2 sections
-  - [ ] `grep -c 'verify\|Verify' CHANGELOG.md` → ≥ 1
+  - [x] `wc -l CHANGELOG.md` → ≥ 20 lines
+  - [x] `grep -c '###' CHANGELOG.md` → ≥ 2 sections
+  - [x] `grep -c 'verify\|Verify' CHANGELOG.md` → ≥ 1
 
   **QA Scenarios**:
   ```
@@ -426,7 +426,7 @@ Wave FINAL (After ALL tasks):
   - `mkdocs.yml` (current) — contains the existing nav list; read to find insertion point
 
   **Acceptance Criteria**:
-  - [ ] `grep -c 'changelog\|Changelog' mkdocs.yml` → ≥ 1
+  - [x] `grep -c 'changelog\|Changelog' mkdocs.yml` → ≥ 1
 
   **QA Scenarios**:
   ```
@@ -479,10 +479,10 @@ Wave FINAL (After ALL tasks):
   - Docker build-push-action docs: https://github.com/docker/build-push-action
 
   **Acceptance Criteria**:
-  - [ ] `grep -c 'setup-qemu-action\|setup-buildx-action\|build-push-action' .github/workflows/docs.yml` → ≥ 3
-  - [ ] `grep -c 'platforms' .github/workflows/docs.yml` → ≥ 1
-  - [ ] `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/docs.yml'))"` exits 0
-  - [ ] `grep -n 'nix build .#packages.x86_64-linux.docker' .github/workflows/docs.yml` → ≥ 1 line
+  - [x] `grep -c 'setup-qemu-action\|setup-buildx-action\|build-push-action' .github/workflows/docs.yml` → ≥ 3
+  - [x] `grep -c 'platforms' .github/workflows/docs.yml` → ≥ 1
+  - [x] `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/docs.yml'))"` exits 0
+  - [x] `grep -n 'nix build .#packages.x86_64-linux.docker' .github/workflows/docs.yml` → ≥ 1 line
 
   **QA Scenarios**:
   ```
