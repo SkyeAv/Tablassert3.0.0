@@ -8,7 +8,7 @@ import polars as pl
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-  lf = lf.filter(~(pl.col(l0).is_in(["none", "", "nan", "na"])))
+  lf = lf.filter(~(pl.col(l0).is_in(["none", "", "nan", "na", "0", "1", "2", "3", "4"])))
 
   t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
