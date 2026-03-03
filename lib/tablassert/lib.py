@@ -382,7 +382,7 @@ def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> obje
 
 def strip_nulls(r: object) -> dict:
   # ? Removes Null Keys From NDJSON
-  return {k: v for k, v in r.items() if v is not None} # pyright: ignore
+  return {k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v for k, v in r.items() if v} # pyright: ignore
 
 def dedup_stream(p_in: Path, is_edges: bool) -> None:
   # ? Removes Null Values From And Deduplicates NDJSON
