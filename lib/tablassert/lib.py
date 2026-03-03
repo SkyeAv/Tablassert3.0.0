@@ -206,8 +206,6 @@ def to_store(lf: pl.LazyFrame, p: Path) -> Path:
   # ? Writes A LazyFrame To Store To Later Be Aggregated
   # ! Terminal Collection Point: Parquet Write Requires Eager
   lf.collect().write_parquet(p)
-  print(lf.collect().shape)
-  print(p)
   return p
 
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
