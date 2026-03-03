@@ -37,14 +37,12 @@ def get_biobert() -> object:
 
 @DISKCACHE.memoize() # pyright: ignore
 def fuzz_audit(
-    x: object, original: str, preferred: str, curie: str, min_fuzz: float = 20
+  x: object, original: str, preferred: str, min_fuzz: float = 20
 ) -> bool:
   # ? Decides Whether To Remove A Suspected Fullmap Error Based On Fuzzy Matching
   o: str = x[original]  # pyright: ignore
   p: str = x[preferred]  # pyright: ignore
-  c: str = x[curie]  # pyright: ignore
-
-  return bool(ge(fuzz.ratio(o, p), min_fuzz) or ge(fuzz.ratio(o, c), min_fuzz) or ge(fuzz.partial_token_sort_ratio(o, p), min_fuzz) or ge(fuzz.partial_token_sort_ratio(o, c), min_fuzz))
+  return bool(ge(fuzz.ratio(o, p), min_fuzz) or ge(fuzz.partial_token_sort_ratio(o, p), min_fuzz))
 
 @DISKCACHE.memoize()  # pyright: ignore
 def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -> bool:
@@ -62,10 +60,9 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
   # ! Collection Points: map_elements With Custom Functions Require Eager
   original: str = add("original ", col)
   preferred: str = add(col, " name")
-  curie: str = col
-  cols: list[str] = [original, preferred, curie]
+  cols: list[str] = [original, preferred]
 
-  # * Stage 1: Exact String Matching (Can Stay Lazy Until Filter)
+  # * Stage 1: Exact String Matching Or Is Curie (Can Stay Lazy Until Filter)
   df: pl.DataFrame = lf.collect()
   pairs: pl.DataFrame = df.select(cols).unique()
   pairs = pairs.with_columns(eq(pl.col(cols[0]), pl.col(cols[1])).alias(out))
@@ -73,15 +70,21 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
   passed: pl.DataFrame = pairs.filter(pl.col(out))
   pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
+  is_curie: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(":").alias(out))
+  pairs = pl.concat((passed, is_curie))
+
+  passed = pairs.filter(pl.col(out))
+  pending = pairs.filter(~pl.col(out))
+
   # * Stage 2: Fuzzy Matching Via RapidFuzz (Requires Eager)
-  masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: fuzz_audit(x, original, preferred, curie), return_dtype=pl.Boolean).alias(out))
+  masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: fuzz_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, masked_fuzz))
 
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
   # * Stage 3: BioBERT Embeddings (Requires Eager)
-  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[:-1]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
+  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, BERT_fuzz))
 
   passed = pairs.filter(pl.col(out))

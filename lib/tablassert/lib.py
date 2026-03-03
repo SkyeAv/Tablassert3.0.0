@@ -48,9 +48,13 @@ import math
 # ? Newline To Make Progress Bar More Readable
 print("\n")
 
-def value(lf: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
+def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
   return lf.with_columns(pl.lit(x).alias(col))
+
+def contributor_values(lf: pl.LazyFrame, col: str, contributors: list[dict[str, Any]]) -> pl.LazyFrame:
+  # ? Adds Nested Contributors Fields To Column
+  return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col))
 
 def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With From An Old Column
@@ -201,6 +205,8 @@ def to_store(lf: pl.LazyFrame, p: Path) -> Path:
   # ? Writes A LazyFrame To Store To Later Be Aggregated
   # ! Terminal Collection Point: Parquet Write Requires Eager
   lf.collect().write_parquet(p)
+  print(lf.collect().shape)
+  print(p)
   return p
 
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
@@ -269,6 +275,9 @@ LIMIT 1
     df = df.with_columns(pl.lit(caption).alias("file caption"))
 
   return df.lazy()
+
+def decode_json_string(df: pl.DataFrame, col: str = "contributors") -> pl.DataFrame:
+  return df.with_columns((pl.col(col).str.json_decode(dtype=pl.Object)).alias(col))
 
 class Tcode(Section):
   # ? Extends Section To Compile A KG
@@ -340,9 +349,9 @@ class Tcode(Section):
         (value, ("status", self.status,)),
         (value, ("repository", self.provenance.repo,)),
         (value, ("publication", (self.provenance.repo + ":" + self.provenance.publication),)),
-        (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.model_dump().items() if v],)),
+        (contributor_values, ("contributors", self.provenance.contributors,)),
         (value, ("url", str(self.source.url),)),
-        (value, ("section md5", self.store.stem,)),
+        (value, ("section hash", self.store.stem,)),
         (with_mesh, (pubmed_db, self.provenance.publication,)),
         (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)),
         (sig, ()),

@@ -52,8 +52,8 @@ class Text(BaseSource):
   delimiter: Optional[str] = Field(",")
 
 class Regex(TablaBase):
-  pattern: str = Field(...)
-  replacement: str = Field(...)
+  pattern: Union[int, float, str] = Field(...)
+  replacement: Union[int, float, str] = Field(...)
 
 class Math(TablaBase):
   function: Functions = Field(...)

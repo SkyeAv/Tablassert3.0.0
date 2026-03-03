@@ -1,3 +1,4 @@
+from copy import deepcopy
 from yaml import CLoader
 from pathlib import Path
 from typing import Union
@@ -38,4 +39,4 @@ def to_sections(instructions: dict[str, Any]) -> list[list[dict[str, Any]]]:
   # ? Converts Dict To Sections
   template: dict[str, Any] = instructions.get("template", {})
   sections: list[dict[str, Any]] = instructions.get("sections" , [{}])
-  return [fastmerge(template, x) for x in sections]
+  return [fastmerge(deepcopy(template), x) for x in sections]
