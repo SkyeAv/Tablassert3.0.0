@@ -115,7 +115,8 @@ def fill(lf: pl.LazyFrame, col: str, method: str) -> pl.LazyFrame:
 def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   # ? Explodes A Row With Items Into Many Unique Rows By A Delimiter
   expr: pl.Expr = pl.col(col).cast(pl.String).str.split(delimiter)
-  return lf.with_columns(expr.explode().alias(col))
+  lf = lf.with_columns(expr.alias(col))
+  return lf.explode(col)
 
 def sig(
   lf: pl.LazyFrame,
@@ -275,9 +276,6 @@ LIMIT 1
     df = df.with_columns(pl.lit(caption).alias("file caption"))
 
   return df.lazy()
-
-def decode_json_string(df: pl.DataFrame, col: str = "contributors") -> pl.DataFrame:
-  return df.with_columns((pl.col(col).str.json_decode(dtype=pl.Object)).alias(col))
 
 class Tcode(Section):
   # ? Extends Section To Compile A KG
