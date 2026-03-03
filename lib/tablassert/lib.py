@@ -370,6 +370,7 @@ def normalize(edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "
 
 def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]) -> tuple[pl.LazyFrame, pl.LazyFrame]:
   cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
+  cols = [x for x in cols if x in edges.collect_schema().names()]
   nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
   nodes = nodes.with_columns(pl.lit("biolink:Publication").alias("category"))
   edges_out: pl.LazyFrame = edges.drop(cols[1:])
