@@ -6,8 +6,9 @@ from pathlib import Path
 from operator import add
 import polars as pl
 
-def distinct(lf: pl.LazyFrame, l0: str, l1: str, bad: list[str] = ["none", "", "nan", "na", "0", "1", "2", "3", "4"]) -> pl.LazyFrame:
+def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
+  bad: list[str] = ["none", "", "nan", "na", "0", "1", "2", "3", "4", "unknown"]
   t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
