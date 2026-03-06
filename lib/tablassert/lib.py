@@ -278,6 +278,7 @@ LIMIT 1
 class Tcode(Section):
   # ? Extends Section To Compile A KG
   number: PositiveInt = Field(...)
+  config: Path = Field(...)
   store: Path = Field(...)
 
   def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
@@ -341,6 +342,7 @@ class Tcode(Section):
         (value, ("predicate", self.statement.predicate,)),
         [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conn)] if self.statement.qualifiers else None,
         (value, ("syntax", self.syntax,)),
+        (value, ("configuration file", self.config.name,)),
         (value, ("section number", self.number,)),
         (value, ("status", self.status,)),
         (value, ("repository", self.provenance.repo,)),
@@ -483,7 +485,7 @@ def build_knowledge_graph(
     # ? Extract Sections
     t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
     with Pool() as pool:
-      temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw)  # pyright: ignore
+      temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
     PROGRESS.update(t2, total=1, completed=1)
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
