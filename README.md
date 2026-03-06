@@ -1,6 +1,6 @@
 # Tablassert
 
-## Version 6.2.0 (Beta)
+## Version 6.2.1 (Beta)
 
 ### By Skye Lane Goetz, Gwênlyn Glusman, and Jared C. Roach
 

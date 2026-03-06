@@ -54,7 +54,7 @@ def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
 
 def contributor_values(lf: pl.LazyFrame, col: str, contributors: list[dict[str, Any]]) -> pl.LazyFrame:
   # ? Adds Nested Contributors Fields To Column
-  return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col))
+  return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col)) # pyright: ignore
 
 def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With From An Old Column
