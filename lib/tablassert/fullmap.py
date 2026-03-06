@@ -1,3 +1,5 @@
+import re
+from click.utils import R
 from tablassert.enums import Categories
 from tablassert.utils import samphash
 from tempfile import gettempdir
@@ -76,10 +78,17 @@ def query_distinct(
   avoid: Optional[list[Categories]]
 ) -> pl.DataFrame:
   # ? Query Database For Distinct Terms Only Using Persistent Connection
+  # * Added Column Prioritization Logic From 4.2.0
   query: str = query_builder(p, prioritize, avoid, taxon)
   results: pl.DataFrame = conn.execute(query).pl() # pyright: ignore
-  results = results.sort(["term", "PR", "NLP_LEVEL"])
+
+  frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
+  results = results.join(frequency, on="CATEGORY_NAME", how="left")
+
+  results = results.sort(["term", "PR", "NLP_LEVEL", "FREQUENCY"], descending=[False, False, False, True])
   results = results.unique(subset=["term"], keep="first")
+  results = results.drop("FREQUENCY")
+
   p.unlink(missing_ok=True)
   return results
 
