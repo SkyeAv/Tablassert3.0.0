@@ -319,7 +319,7 @@ class Tcode(Section):
         result.append(x)
     return result
 
-  def collect(self: Self, conn: object, pubmed_db: Path, pmc_db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+  def collect(self: Self, conn: object, pubmed_db: Optional[Path], pmc_db: Optional[Path]) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
     # ? Code That Tells Tablassert What Actions To While Transforming Data
 
     if self.store.is_file():
@@ -350,8 +350,8 @@ class Tcode(Section):
         (contributor_values, ("contributors", self.provenance.contributors,)),
         (value, ("url", str(self.source.url),)),
         (value, ("section hash", self.store.stem,)),
-        (with_mesh, (pubmed_db, self.provenance.publication,)),
-        (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)),
+        (with_mesh, (pubmed_db, self.provenance.publication,)) if pubmed_db else None,
+        (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)) if pmc_db else None,
         (sig, ()),
         (trim, ()),
         (to_store, (self.store,))
