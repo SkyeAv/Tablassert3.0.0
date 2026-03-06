@@ -1,5 +1,3 @@
-import re
-from click.utils import R
 from tablassert.enums import Categories
 from tablassert.utils import samphash
 from tempfile import gettempdir
@@ -7,6 +5,7 @@ from typing import Optional
 from pathlib import Path
 from operator import add
 import polars as pl
+from loguru import logger # pyright: ignore[reportMissingImports]
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
@@ -98,7 +97,9 @@ def version4(
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
-  tag: str = " one"
+  tag: str = " one",
+  section_hash: str = '',
+  config_file: str = ''
 ) -> pl.LazyFrame:
   # ? Case Dependant, Provenance Rich Name Entity Recognition
   l0: str = col
@@ -161,5 +162,14 @@ def version4(
   result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"))
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
+
+  # ? log unmatched entity rows before return
+  unmatched: pl.DataFrame = result.filter(pl.col("CURIE").is_null()).select([l0, l1])
+  if unmatched.height > 0 and (section_hash or config_file):
+    for row in unmatched.iter_rows(named=True):
+      logger.info(
+        f'fullmap drop | hash={section_hash} | config={config_file}'
+        f' | col={col} | l0={row[l0]!r} | l1={row[l1]!r}'
+      )
 
   return result.lazy()
