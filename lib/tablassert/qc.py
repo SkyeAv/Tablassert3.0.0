@@ -9,6 +9,7 @@ from operator import add
 from operator import ge
 from operator import eq
 import polars as pl
+from loguru import logger # pyright: ignore
 
 SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
@@ -54,7 +55,7 @@ def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -
   similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]  # pyright: ignore
   return bool(ge(similarity, min_cos))
 
-def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFrame:
+def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed", section_hash: str = '', config_file: str = '') -> pl.LazyFrame:
   # ? Ensures Fullmap Correct Processes Strings To CURIES
   # * Deletes Suspected Errors
   # ! Collection Points: map_elements With Custom Functions Require Eager
@@ -88,5 +89,15 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, out: str = "passed") -> pl.LazyFra
   pairs = pl.concat((passed, BERT_fuzz))
 
   passed = pairs.filter(pl.col(out))
+  pending = pairs.filter(~pl.col(out))
+  # ? Log BERT-stage dropped rows before final join
+  dropped: pl.DataFrame = pending
+  if dropped.height > 0 and (section_hash or config_file):
+    for row in dropped.iter_rows(named=True):
+      logger.info(
+        f'qc drop | hash={section_hash} | config={config_file} | col={col}'
+        f' | stage=bert | original={row.get(add("original ", col), "")!r}'
+        f' | preferred={row.get(add(col, " name"), "")!r}'
+      )
   df = df.join(passed, on=cols, how="left").filter(pl.col(out)).drop(out)
   return df.lazy()
