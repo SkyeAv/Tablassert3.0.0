@@ -23,7 +23,7 @@ from tablassert.utils import STORE
 from sqlite_utils import Database
 from pydantic import PositiveInt
 from multiprocessing import Pool
-from functools import reduce
+from functools import reduce, partial
 from os.path import basename
 from itertools import chain
 from typing import Callable
@@ -31,6 +31,7 @@ from typing import Optional
 from typing import Literal
 from pydantic import Field
 from pathlib import Path
+from tablassert.log import logger # pyright: ignore
 from typing import Union
 from operator import add
 from typing import Self
@@ -203,9 +204,11 @@ def trim(lf: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
   return lf.select(pl.exclude(regex))
 
 def to_store(lf: pl.LazyFrame, p: Path) -> Path:
-  # ? Writes A LazyFrame To Store To Later Be Aggregated
-  # ! Terminal Collection Point: Parquet Write Requires Eager
-  lf.collect().write_parquet(p)
+  # ? collect and write section parquet; warn if result is empty
+  df: pl.DataFrame = lf.collect()
+  if df.height == 0:
+    logger.warning(f'empty section | store={p.stem}')
+  df.write_parquet(p)
   return p
 
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
@@ -302,8 +305,8 @@ class Tcode(Section):
       (column, (add("original ", col), col,)),
       (zero, (col,)),
       (one, (col,)),
-      (version4, (col, conn, x.taxon, x.prioritize, x.avoid,)),
-      (fullmap_audit, (col,))
+      (partial(version4, section_hash=self.store.stem, config_file=self.config.name), (col, conn, x.taxon, x.prioritize, x.avoid,)),
+      (partial(fullmap_audit, section_hash=self.store.stem, config_file=self.config.name), (col,))
     ]
     return add(encoding, node)
 
@@ -471,7 +474,6 @@ def build_knowledge_graph(
 ) -> None:
   """Build A KGX Compliant Knowledge Graph From A Graph Configuration File"""
   # TODO: Make MeSH A Node (Micro Version)
-  # TODO: Add Loguru Logging
   r: object = from_yaml(graph_configuration_file)
   g: Graph = Graph.model_validate(r)
 
