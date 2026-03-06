@@ -87,7 +87,6 @@ def query_distinct(
 
   results = results.sort(["term", "PR", "NLP_LEVEL", "FREQUENCY"], descending=[False, False, False, True])
   results = results.unique(subset=["term"], keep="first")
-  results = results.drop("FREQUENCY")
 
   p.unlink(missing_ok=True)
   return results
@@ -159,7 +158,7 @@ def version4(
       .alias(add(col, " nlp level"))
   ])
 
-  result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR)( l1)?$"))
+  result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"))
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
 
