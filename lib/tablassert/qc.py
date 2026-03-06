@@ -91,7 +91,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
-  # ? Add Logging For Failed CURIES
+  # * Add Logging For Failed CURIES
   if pending.height > 0:
     for c, o, p in zip(pending.get_column(col).to_list(), pending.get_column(original).to_list(), pending.get_column(preferred).to_list()):
       logger.info(f"FAILED QC | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {o!r} | PREFERRED: {p!r} | CURIE: {c!r}")
