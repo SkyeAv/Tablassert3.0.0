@@ -49,6 +49,7 @@ final: prev: {
           pydantic
           pyexcel
           pyarrow
+          loguru
           mkdocs
           pyyaml
           duckdb
