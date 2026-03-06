@@ -97,9 +97,9 @@ def version4(
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
-  tag: str = " one",
-  section_hash: str = '',
-  config_file: str = ''
+  section_hash: str,
+  config_file: str,
+  tag: str = " one"
 ) -> pl.LazyFrame:
   # ? Case Dependant, Provenance Rich Name Entity Recognition
   l0: str = col
@@ -108,6 +108,15 @@ def version4(
   terms: pl.LazyFrame = distinct(lf, l0, l1)
   p: Path = to_temp(terms)
   matches: pl.DataFrame = query_distinct(p, conn, taxon, prioritize, avoid)
+
+  # * Log Unmatched Entities
+  antimatches: pl.LazyFrame = terms.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
+
+  # ! Collection Point: Requires Eager
+  unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
+  if unnmatched.height > 0:
+    for term in unnmatched.get_column("term").to_list():
+      logger.info(f"FAILED FULLMAP | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | L0: {term!r}")
 
   # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
   df: pl.DataFrame = lf.collect()
@@ -162,14 +171,5 @@ def version4(
   result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"))
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
-
-  # ? log unmatched entity rows before return
-  unmatched: pl.DataFrame = result.filter(pl.col("CURIE").is_null()).select([l0, l1])
-  if unmatched.height > 0 and (section_hash or config_file):
-    for row in unmatched.iter_rows(named=True):
-      logger.info(
-        f'fullmap drop | hash={section_hash} | config={config_file}'
-        f' | col={col} | l0={row[l0]!r} | l1={row[l1]!r}'
-      )
 
   return result.lazy()

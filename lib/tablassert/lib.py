@@ -20,10 +20,11 @@ from rich.progress import BarColumn
 from rich.progress import Progress
 from tablassert.enums import Files
 from tablassert.utils import STORE
+from tablassert.log import logger
 from sqlite_utils import Database
 from pydantic import PositiveInt
 from multiprocessing import Pool
-from functools import reduce, partial
+from functools import reduce
 from os.path import basename
 from itertools import chain
 from typing import Callable
@@ -31,7 +32,6 @@ from typing import Optional
 from typing import Literal
 from pydantic import Field
 from pathlib import Path
-from tablassert.log import logger # pyright: ignore
 from typing import Union
 from operator import add
 from typing import Self
@@ -203,12 +203,14 @@ def trim(lf: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
   # ? Removes Columns With The Excel Naming Conventions From LazyFrame
   return lf.select(pl.exclude(regex))
 
-def to_store(lf: pl.LazyFrame, p: Path) -> Path:
+def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
   # ? collect and write section parquet; warn if result is empty
   df: pl.DataFrame = lf.collect()
+
   if df.height == 0:
-    logger.warning(f'empty section | store={p.stem}')
+    logger.warning(f"EMPTY SUBGRAPH | STORE: {p.stem} | CONFIG: {config_name}")
   df.write_parquet(p)
+
   return p
 
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
@@ -305,8 +307,8 @@ class Tcode(Section):
       (column, (add("original ", col), col,)),
       (zero, (col,)),
       (one, (col,)),
-      (partial(version4, section_hash=self.store.stem, config_file=self.config.name), (col, conn, x.taxon, x.prioritize, x.avoid,)),
-      (partial(fullmap_audit, section_hash=self.store.stem, config_file=self.config.name), (col,))
+      (version4, (col, conn, x.taxon, x.prioritize, x.avoid, self.store.stem, self.config.name,)),
+      (fullmap_audit, (col, self.store.stem, self.config.name,))
     ]
     return add(encoding, node)
 
@@ -357,7 +359,7 @@ class Tcode(Section):
         (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)) if pmc_db else None,
         (sig, ()),
         (trim, ()),
-        (to_store, (self.store,))
+        (to_store, (self.store, self.config.name,))
       ]
       return self.clean(tcode)
 
