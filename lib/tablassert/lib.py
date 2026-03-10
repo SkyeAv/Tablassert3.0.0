@@ -340,7 +340,7 @@ class Tcode(Section):
         (idx, ()),
         (crop, (self.source.row_slice,)) if self.source.row_slice else None,
         (pick, (self.source.rows,)) if self.source.rows else None,
-        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator,)) for x in self.source.reindex] if self.source.reindex else None,
+        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator,)) if x.comparison not in ["ne", "eq"] else (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator, False)) for x in self.source.reindex] if self.source.reindex else None,
         [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
         self.node(self.statement.subject, "subject", conn),
         self.node(self.statement.object, "object", conn),
