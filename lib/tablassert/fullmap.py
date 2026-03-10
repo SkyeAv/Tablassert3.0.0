@@ -116,7 +116,7 @@ def version4(
   unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
   if unnmatched.height > 0:
     for term in unnmatched.get_column("term").to_list():
-      logger.info(f"FAILED FULLMAP | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | L0: {term!r}")
+      logger.info(f"FAILED FULLMAP | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}")
 
   # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
   df: pl.DataFrame = lf.collect()
@@ -171,5 +171,6 @@ def version4(
   result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"))
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
+  result = result.filter(pl.col(col).is_not_null())
 
   return result.lazy()
