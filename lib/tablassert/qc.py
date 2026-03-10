@@ -61,31 +61,31 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
   # ! Collection Points: map_elements With Custom Functions Require Eager
   original: str = add("original ", col)
   preferred: str = add(col, " name")
-  cols: list[str] = [original, preferred]
+  cols: list[str] = [col, original, preferred]
 
   # * Stage 1: Exact String Matching Or Is Curie (Can Stay Lazy Until Filter)
   df: pl.DataFrame = lf.collect()
   pairs: pl.DataFrame = df.select(cols).unique()
-  pairs = pairs.with_columns(eq(pl.col(cols[0]), pl.col(cols[1])).alias(out))
+  pairs = pairs.with_columns(eq(pl.col(cols[1]), pl.col(cols[2])).alias(out))
 
   passed: pl.DataFrame = pairs.filter(pl.col(out))
   pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-  is_curie: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(":").alias(out))
+  is_curie: pl.DataFrame = pending.with_columns(pl.col(cols[1]).str.contains(":").alias(out))
   pairs = pl.concat((passed, is_curie))
 
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
   # * Stage 2: Fuzzy Matching Via RapidFuzz (Requires Eager)
-  masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: fuzz_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
+  masked_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[1:]).map_elements(lambda x: fuzz_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, masked_fuzz))
 
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
   # * Stage 3: BioBERT Embeddings (Requires Eager)
-  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
+  BERT_fuzz: pl.DataFrame = pending.with_columns(pl.struct(cols[1:]).map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean).alias(out))
   pairs = pl.concat((passed, BERT_fuzz))
 
   passed = pairs.filter(pl.col(out))
