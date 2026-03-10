@@ -37,6 +37,7 @@ def from_yaml(p: Path) -> object:
 
 def to_sections(instructions: dict[str, Any], table: Path) -> list[list[dict[str, Any]]]:
   # ? Converts Dict To Sections
-  template: dict[str, Any] = instructions.get("template", {"config": table})
+  template: dict[str, Any] = instructions.get("template", {})
+  template["config"] = table
   sections: list[dict[str, Any]] = instructions.get("sections" , [{}])
   return [fastmerge(deepcopy(template), x) for x in sections]

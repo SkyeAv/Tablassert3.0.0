@@ -406,17 +406,18 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
       r: object = orjson.loads(line) # pyright: ignore
       r = strip_nulls(r)
 
-      b: bytes = orjson.dumps(r)
-      h: bytes = xxhash.xxh64(b).digest()
-      if h not in seen:
-        seen |= {h}
+      if r:
+        b: bytes = orjson.dumps(r)
+        h: bytes = xxhash.xxh64(b).digest()
+        if h not in seen:
+          seen |= {h}
 
-        if is_edges:
-          r = label_edge(r)
-          b = orjson.dumps(r)
+          if is_edges:
+            r = label_edge(r)
+            b = orjson.dumps(r)
 
-        b = b + ("\n").encode("utf-8")
-        f_out.write(b)
+          b = b + ("\n").encode("utf-8")
+          f_out.write(b)
 
   p_in.unlink()
 
