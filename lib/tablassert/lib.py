@@ -297,7 +297,7 @@ class Tcode(Section):
       [(regex, (col, r,)) for r in x.remove] if x.remove else None,
       (prefix, (col, x.prefix,)) if x.prefix else None,
       (suffix, (col, x.suffix,)) if x.suffix else None,
-      [(math_op, (col, col, t.function, t.arguments,)) for t in x.transformations] if x.transformations else None
+      [(math_op, (col, t.function, t.arguments,)) for t in x.transformations] if x.transformations else None
     ]
 
   def node(self: Self, x: NodeEncoding, col: str, conn: object) -> list[Any]:
