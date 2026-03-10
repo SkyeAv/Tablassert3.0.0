@@ -72,8 +72,8 @@ def math_op(
   df: pl.DataFrame = lf.collect()
   expr: pl.Expr = pl.col(col).cast(pl.Float64)
   attr: Callable[[Any], Any] = getattr(math, func)
-  transform: Callable[[float], float] = lambda x: attr(x if eq(a, Tokens.VALUES) else a for a in args)
-  df = df.with_columns(expr.map_elements(transform).alias(col))
+  transform: Callable[[float], float] = lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args))
+  df = df.with_columns(expr.map_elements(transform, return_dtype=pl.Float64).alias(col))
   return df.lazy()
 
 def zero(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:
