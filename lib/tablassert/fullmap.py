@@ -9,7 +9,6 @@ import polars as pl
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-  bad: list[str] = ["none", "", "nan", "na", "null", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "unknown"]
   t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
@@ -17,7 +16,9 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
   terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
-  return terms.filter(~(pl.col("term").is_in(bad)))
+
+  bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
+  return terms.filter(~pl.col("term").str.contains(bad))
 
 def to_temp(lf: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
   # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap

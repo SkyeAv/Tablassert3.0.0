@@ -388,7 +388,7 @@ def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> obje
   r[out] = namespace_uuid(domain, *r.values()) # pyright: ignore
   return r
 
-def strip_nulls(r: object, bad: list[str] = ["na", "nan", "null", "none", ""]) -> dict:
+def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) -> dict:
   # ? Removes Null Keys From NDJSON
   return {k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v for k, v in r.items() if v and str(v).strip().lower() not in bad} # pyright: ignore
 
