@@ -1,15 +1,15 @@
 from tablassert.enums import Categories
 from tablassert.utils import samphash
+from tablassert.log import logger
 from tempfile import gettempdir
 from typing import Optional
 from pathlib import Path
 from operator import add
 import polars as pl
-from loguru import logger # pyright: ignore[reportMissingImports]
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-  bad: list[str] = ["none", "", "nan", "na", "null", "0", "1", "2", "3", "4", "unknown"]
+  bad: list[str] = ["none", "", "nan", "na", "null", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "unknown"]
   t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
