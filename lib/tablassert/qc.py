@@ -71,7 +71,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
   passed: pl.DataFrame = pairs.filter(pl.col(out))
   pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-  exempt_curies: str = r"|CHEBI|PR|UniProtKB|"
+  exempt_curies: str = r"CHEBI|PR|UniProtKB|"
   is_exempt: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(exempt_curies).alias(out))
   pairs = pl.concat((passed, is_exempt))
 
@@ -84,7 +84,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
   passed = pairs.filter(pl.col(out))
   pending = pairs.filter(~pl.col(out))
 
-  exceptions: str = r"|LOC|si:"
+  exceptions: str = r"LOC|si:"
   is_exception: pl.DataFrame = pending.with_columns(pl.col(cols[2]).str.contains(exceptions).alias(out))
   pairs = pl.concat((passed, is_exception))
 
