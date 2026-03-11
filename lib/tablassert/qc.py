@@ -110,4 +110,4 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     for c, o, p in zip(pending.get_column(col).to_list(), pending.get_column(original).to_list(), pending.get_column(preferred).to_list()):
       logger.info(f"FAILED QC | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {o!r} | PREFERRED: {p!r} | CURIE: {c!r}")
 
-  return df.lazy()
+  return df.join(passed.select(col), on=col, how="semi").lazy()
