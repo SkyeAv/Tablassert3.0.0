@@ -60,7 +60,7 @@ def query_builder(
 
   priority_case: str = f"WHEN CA.CATEGORY_NAME IN ({", ".join(f"'{x}'" for x in prioritize)}) THEN 1" if prioritize else "WHEN TRUE THEN 50"
   avoid_filter: str = f"AND CA.CATEGORY_NAME NOT IN ({", ".join(f"'{x}'" for x in avoid)})" if avoid else ""
-  taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon}" if taxon else ""
+  taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon} OR CA.CATEGORY_NAME != 'Gene'" if taxon else ""
 
   return base.format(
     priority_case=priority_case,
