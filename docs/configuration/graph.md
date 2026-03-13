@@ -20,6 +20,11 @@ A graph configuration file specifies:
 | `version` | String | Knowledge graph version (used in output filename) |
 | `tables` | List[Path] | Paths to table configuration YAML files |
 | `dbssert` | Path | Path to DuckDB entity resolution database |
+
+### Optional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
 | `pubmed_db` | Path | Path to SQLite PubMed metadata database |
 | `pmc_db` | Path | Path to SQLite PMC figure captions database |
 
@@ -27,7 +32,7 @@ A graph configuration file specifies:
 
 **`syntax: "GC2"`**
 
-Configuration syntax version. Must be "GC2" for version 6.2.0.
+Configuration syntax version. Must be `"GC2"`.
 
 **`name: string`**
 
@@ -63,19 +68,19 @@ Path to DuckDB database for entity resolution. This database contains:
 
 **`pubmed_db: path`**
 
-Path to SQLite database with PubMed metadata:
+Optional path to SQLite database with PubMed metadata:
 - MeSH terms
 - Authors
 - Journal information
 - Publication dates
 
-Used to enrich edges with MeSH annotations.
+When provided, this enriches edges with MeSH annotations.
 
 **`pmc_db: path`**
 
-Path to SQLite database with PubMed Central figure captions.
+Optional path to SQLite database with PubMed Central figure captions.
 
-Used when provenance specifies PMC publications.
+When provided, this is used when provenance specifies PMC publications.
 
 ## Path Resolution
 
@@ -125,7 +130,7 @@ When you run `tablassert-cli build-knowledge-graph graph.yaml`:
    - Validate with QC pipeline
    - Create subgraph parquet file
 3. **Aggregate subgraphs** - Merge all parquet files
-4. **Add provenance** - Query `pubmed_db` and `pmc_db` for metadata
+4. **Add provenance (optional)** - Query `pubmed_db` and `pmc_db` for metadata when configured
 5. **Export NDJSON** - Generate `{name}_{version}.nodes.ndjson` and `.edges.ndjson`
 
 ## Output Files

@@ -127,7 +127,7 @@ sections:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `syntax` | String | Yes | Configuration version (must be `"TC3"`) |
-| `status` | String | No | Development status: `"alpha"`, `"beta"`, `"stable"` |
+| `status` | String | No | Development status: `"alpha"`, `"beta"`, `"primetime"` |
 
 ### Source
 
@@ -415,7 +415,7 @@ Required metadata about data source.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `repo` | String | Yes | Repository: `"PMC"`, `"PUBMED"`, `"DOI"` |
+| `repo` | String | Yes | Repository: `"PMC"`, `"PMID"` |
 | `publication` | String | Yes | Identifier (e.g., `"PMC11708054"`, `"PMID123"`) |
 | `contributors` | List[Contributor] | Yes | Curation information |
 
@@ -423,7 +423,7 @@ Required metadata about data source.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-  `kind` | String | Yes | `"curation"`, `"validation"`, `"tool"` |
+| `kind` | String | Yes | `"curation"`, `"validation"`, `"tool"` |
 | `name` | String | Yes | Contributor name |
 | `date` | String | Yes | Date (free format) |
 | `organizations` | List[String] | No | Affiliations |
@@ -497,7 +497,7 @@ template:
       prioritize: [Disease]
 
   provenance:
-    repo: PUBMED
+    repo: PMID
     publication: PMID12345678
     contributors:
       - kind: curation

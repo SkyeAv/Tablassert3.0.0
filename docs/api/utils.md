@@ -19,7 +19,8 @@ def namespace_uuid(domain: Any, *values: list[Any]) -> str
 Domain string used to create the namespace UUID.
 
 Converted to string internally. Common domains:
-- `"edges"` - For knowledge graph edges
+- `"TABLASSERT"` - Default domain used for knowledge graph edge IDs
+- `"edges"` - Optional custom domain for edge IDs
 - `"nodes"` - For custom node IDs
 - `"tablassert"` - For application-specific IDs
 
@@ -98,7 +99,7 @@ Tablassert uses this function to generate edge identifiers:
 
 ```python
 edge_id = namespace_uuid(
-  "edges",
+  "TABLASSERT",
   subject_curie,
   predicate,
   object_curie,
@@ -111,7 +112,7 @@ edge_id = namespace_uuid(
 
 ```python
 edge_id = namespace_uuid(
-  "edges",
+  "TABLASSERT",
   "HGNC:11998",  # TP53
   "biolink:associated_with",
   "MONDO:0005148",  # Type 2 diabetes
