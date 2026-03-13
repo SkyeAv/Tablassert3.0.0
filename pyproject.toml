@@ -13,6 +13,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["./src/tablassert"]
 
+[project.scripts]
+tablassert = "tablassert.lib:CLI"
+
 [dependency-groups]
 dev = [
     "mkdocs>=1.6.1",
