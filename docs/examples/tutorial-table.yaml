@@ -22,8 +22,8 @@ template:
       prioritize:
         - Disease
   provenance:
-    repo: PUBMED
-    publication: PMID12345678
+    repo: PMID
+    publication: 12345678
     contributors:
       - kind: curation
         name: Tutorial Example

@@ -1,5 +1,6 @@
 from tablassert.enums import Categories
 from tablassert.utils import samphash
+from tablassert.log import logger
 from tempfile import gettempdir
 from typing import Optional
 from pathlib import Path
@@ -8,8 +9,6 @@ import polars as pl
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-  lf = lf.filter(~(pl.col(l0).is_in(["none", "", "nan", "na"])))
-
   t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
   t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
@@ -17,7 +16,9 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
   t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
   terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
-  return terms.with_row_index("term id")
+
+  bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
+  return terms.filter(~pl.col("term").str.contains(bad))
 
 def to_temp(lf: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
   # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap
@@ -60,7 +61,7 @@ def query_builder(
 
   priority_case: str = f"WHEN CA.CATEGORY_NAME IN ({", ".join(f"'{x}'" for x in prioritize)}) THEN 1" if prioritize else "WHEN TRUE THEN 50"
   avoid_filter: str = f"AND CA.CATEGORY_NAME NOT IN ({", ".join(f"'{x}'" for x in avoid)})" if avoid else ""
-  taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon}" if taxon else ""
+  taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon} OR CA.CATEGORY_NAME != 'Gene'" if taxon else ""
 
   return base.format(
     priority_case=priority_case,
@@ -77,10 +78,16 @@ def query_distinct(
   avoid: Optional[list[Categories]]
 ) -> pl.DataFrame:
   # ? Query Database For Distinct Terms Only Using Persistent Connection
+  # * Added Column Prioritization Logic From 4.2.0
   query: str = query_builder(p, prioritize, avoid, taxon)
   results: pl.DataFrame = conn.execute(query).pl() # pyright: ignore
-  results = results.sort(["term", "PR", "NLP_LEVEL"])
-  results = results.unique(subset=["term", "CURIE"], keep="first")
+
+  frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
+  results = results.join(frequency, on="CATEGORY_NAME", how="left")
+
+  results = results.sort(["term", "PR", "NLP_LEVEL", "FREQUENCY"], descending=[False, False, False, True])
+  results = results.unique(subset=["term"], keep="first")
+
   p.unlink(missing_ok=True)
   return results
 
@@ -91,6 +98,8 @@ def version4(
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
+  section_hash: str,
+  config_file: str,
   tag: str = " one"
 ) -> pl.LazyFrame:
   # ? Case Dependant, Provenance Rich Name Entity Recognition
@@ -100,6 +109,15 @@ def version4(
   terms: pl.LazyFrame = distinct(lf, l0, l1)
   p: Path = to_temp(terms)
   matches: pl.DataFrame = query_distinct(p, conn, taxon, prioritize, avoid)
+
+  # * Log Unmatched Entities
+  antimatches: pl.LazyFrame = terms.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
+
+  # ! Collection Point: Requires Eager
+  unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
+  if unnmatched.height > 0:
+    for term in unnmatched.get_column("term").to_list():
+      logger.info(f"FAILED FULLMAP | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}")
 
   # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
   df: pl.DataFrame = lf.collect()
@@ -151,8 +169,9 @@ def version4(
       .alias(add(col, " nlp level"))
   ])
 
-  result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR)( l1)?$"))
+  result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"))
   result = result.select(pl.exclude(add(col, " one")))
   result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
+  result = result.filter(pl.col(col).is_not_null())
 
   return result.lazy()

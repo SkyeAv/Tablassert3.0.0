@@ -12,6 +12,8 @@ Primary quality control function that filters entity mappings based on confidenc
 def fullmap_audit(
   lf: pl.LazyFrame,
   col: str,
+  section_hash: str,
+  config_file: str,
   out: str = "passed"
 ) -> pl.LazyFrame
 ```
@@ -42,9 +44,13 @@ Name of the boolean column indicating validation status.
 
 Rows with `out=True` passed QC, `out=False` failed.
 
+**`section_hash: str` / `config_file: str`**
+
+Context fields used in QC failure logs for traceability.
+
 ### Return Value
 
-Returns a Polars LazyFrame with only validated rows (where `out=True`).
+Returns a Polars LazyFrame with only validated rows (where `out=True`). Failed pairs are logged with section/config/column context.
 
 Removes the `out` column before returning.
 
@@ -160,7 +166,12 @@ lf = pl.scan_parquet("resolved.parquet")
 # - subject name
 
 # Run QC
-validated = fullmap_audit(lf, col="subject")
+validated = fullmap_audit(
+  lf,
+  col="subject",
+  section_hash="tutorial-section",
+  config_file="tutorial-table.yaml"
+)
 
 # Only rows that passed QC remain
 # Rows with low-confidence mappings removed

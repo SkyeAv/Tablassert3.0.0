@@ -29,7 +29,7 @@ final: prev: {
       };
       tablassert = pyFinal.buildPythonApplication rec {
         pname = "tablassert";
-        version = "6.2.0";
+        version = "6.2.1";
         format = "pyproject";
         src = ../.;
         build-system = with pyFinal; [
@@ -49,6 +49,7 @@ final: prev: {
           pydantic
           pyexcel
           pyarrow
+          loguru
           mkdocs
           pyyaml
           duckdb

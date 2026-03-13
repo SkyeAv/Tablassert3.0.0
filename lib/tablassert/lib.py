@@ -20,6 +20,7 @@ from rich.progress import BarColumn
 from rich.progress import Progress
 from tablassert.enums import Files
 from tablassert.utils import STORE
+from tablassert.log import logger
 from sqlite_utils import Database
 from pydantic import PositiveInt
 from multiprocessing import Pool
@@ -48,9 +49,13 @@ import math
 # ? Newline To Make Progress Bar More Readable
 print("\n")
 
-def value(lf: pl.LazyFrame, col: Any, x: str) -> pl.LazyFrame:
+def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
   return lf.with_columns(pl.lit(x).alias(col))
+
+def contributor_values(lf: pl.LazyFrame, col: str, contributors: list[dict[str, Any]]) -> pl.LazyFrame:
+  # ? Adds Nested Contributors Fields To Column
+  return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col)) # pyright: ignore
 
 def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With From An Old Column
@@ -67,8 +72,8 @@ def math_op(
   df: pl.DataFrame = lf.collect()
   expr: pl.Expr = pl.col(col).cast(pl.Float64)
   attr: Callable[[Any], Any] = getattr(math, func)
-  transform: Callable[[float], float] = lambda x: attr(x if eq(a, Tokens.VALUES) else a for a in args)
-  df = df.with_columns(expr.map_elements(transform).alias(col))
+  transform: Callable[[float], float] = lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args))
+  df = df.with_columns(expr.map_elements(transform, return_dtype=pl.Float64).alias(col))
   return df.lazy()
 
 def zero(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:
@@ -111,7 +116,8 @@ def fill(lf: pl.LazyFrame, col: str, method: str) -> pl.LazyFrame:
 def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   # ? Explodes A Row With Items Into Many Unique Rows By A Delimiter
   expr: pl.Expr = pl.col(col).cast(pl.String).str.split(delimiter)
-  return lf.with_columns(expr.explode().alias(col))
+  lf = lf.with_columns(expr.alias(col))
+  return lf.explode(col)
 
 def sig(
   lf: pl.LazyFrame,
@@ -121,7 +127,7 @@ def sig(
 ) -> pl.LazyFrame:
   # ? Creates The "significant" Column
   if col in lf.collect_schema().names():
-    expr: pl.Expr = pl.col(col).cast(pl.Float64)
+    expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
     cond: pl.Expr = le(expr, cutoff)
     cutoff: pl.Expr = pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
     return lf.with_columns(cutoff.alias(out))
@@ -197,10 +203,14 @@ def trim(lf: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
   # ? Removes Columns With The Excel Naming Conventions From LazyFrame
   return lf.select(pl.exclude(regex))
 
-def to_store(lf: pl.LazyFrame, p: Path) -> Path:
-  # ? Writes A LazyFrame To Store To Later Be Aggregated
-  # ! Terminal Collection Point: Parquet Write Requires Eager
-  lf.collect().write_parquet(p)
+def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
+  # ? collect and write section parquet; warn if result is empty
+  df: pl.DataFrame = lf.collect()
+
+  if df.height == 0:
+    logger.warning(f"EMPTY SUBGRAPH | STORE: {p.stem} | CONFIG: {config_name}")
+  df.write_parquet(p)
+
   return p
 
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
@@ -273,6 +283,7 @@ LIMIT 1
 class Tcode(Section):
   # ? Extends Section To Compile A KG
   number: PositiveInt = Field(...)
+  config: Path = Field(...)
   store: Path = Field(...)
 
   def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
@@ -286,7 +297,7 @@ class Tcode(Section):
       [(regex, (col, r,)) for r in x.remove] if x.remove else None,
       (prefix, (col, x.prefix,)) if x.prefix else None,
       (suffix, (col, x.suffix,)) if x.suffix else None,
-      [(math_op, (col, col, t.function, t.arguments,)) for t in x.transformations] if x.transformations else None
+      [(math_op, (col, t.function, t.arguments,)) for t in x.transformations] if x.transformations else None
     ]
 
   def node(self: Self, x: NodeEncoding, col: str, conn: object) -> list[Any]:
@@ -296,8 +307,8 @@ class Tcode(Section):
       (column, (add("original ", col), col,)),
       (zero, (col,)),
       (one, (col,)),
-      (version4, (col, conn, x.taxon, x.prioritize, x.avoid,)),
-      (fullmap_audit, (col,))
+      (version4, (col, conn, x.taxon, x.prioritize, x.avoid, self.store.stem, self.config.name,)),
+      (fullmap_audit, (col, self.store.stem, self.config.name,))
     ]
     return add(encoding, node)
 
@@ -313,7 +324,7 @@ class Tcode(Section):
         result.append(x)
     return result
 
-  def collect(self: Self, conn: object, pubmed_db: Path, pmc_db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+  def collect(self: Self, conn: object, pubmed_db: Optional[Path], pmc_db: Optional[Path]) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
     # ? Code That Tells Tablassert What Actions To While Transforming Data
 
     if self.store.is_file():
@@ -329,25 +340,26 @@ class Tcode(Section):
         (idx, ()),
         (crop, (self.source.row_slice,)) if self.source.row_slice else None,
         (pick, (self.source.rows,)) if self.source.rows else None,
-        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator,)) for x in self.source.reindex] if self.source.reindex else None,
+        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator,)) if x.comparison not in ["ne", "eq"] else (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator, False)) for x in self.source.reindex] if self.source.reindex else None,
         [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
         self.node(self.statement.subject, "subject", conn),
         self.node(self.statement.object, "object", conn),
         (value, ("predicate", self.statement.predicate,)),
         [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conn)] if self.statement.qualifiers else None,
         (value, ("syntax", self.syntax,)),
+        (value, ("configuration file", self.config.name,)),
         (value, ("section number", self.number,)),
         (value, ("status", self.status,)),
         (value, ("repository", self.provenance.repo,)),
         (value, ("publication", (self.provenance.repo + ":" + self.provenance.publication),)),
-        (value, ("contributors", [{k: v} for x in self.provenance.contributors for k, v in x.model_dump().items() if v],)),
+        (contributor_values, ("contributors", self.provenance.contributors,)),
         (value, ("url", str(self.source.url),)),
-        (value, ("section md5", self.store.stem,)),
-        (with_mesh, (pubmed_db, self.provenance.publication,)),
-        (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)),
+        (value, ("section hash", self.store.stem,)),
+        (with_mesh, (pubmed_db, self.provenance.publication,)) if pubmed_db else None,
+        (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)) if pmc_db else None,
         (sig, ()),
         (trim, ()),
-        (to_store, (self.store,))
+        (to_store, (self.store, self.config.name,))
       ]
       return self.clean(tcode)
 
@@ -365,6 +377,7 @@ def normalize(edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "
 
 def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]) -> tuple[pl.LazyFrame, pl.LazyFrame]:
   cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
+  cols = [x for x in cols if x in edges.collect_schema().names()]
   nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
   nodes = nodes.with_columns(pl.lit("biolink:Publication").alias("category"))
   edges_out: pl.LazyFrame = edges.drop(cols[1:])
@@ -375,9 +388,9 @@ def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> obje
   r[out] = namespace_uuid(domain, *r.values()) # pyright: ignore
   return r
 
-def strip_nulls(r: object) -> dict:
+def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) -> dict:
   # ? Removes Null Keys From NDJSON
-  return {k: v for k, v in r.items() if v is not None} # pyright: ignore
+  return {k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v for k, v in r.items() if v and str(v).strip().lower() not in bad} # pyright: ignore
 
 def dedup_stream(p_in: Path, is_edges: bool) -> None:
   # ? Removes Null Values From And Deduplicates NDJSON
@@ -393,17 +406,18 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
       r: object = orjson.loads(line) # pyright: ignore
       r = strip_nulls(r)
 
-      b: bytes = orjson.dumps(r)
-      h: bytes = xxhash.xxh64(b).digest()
-      if h not in seen:
-        seen |= {h}
+      if r:
+        b: bytes = orjson.dumps(r)
+        h: bytes = xxhash.xxh64(b).digest()
+        if h not in seen:
+          seen |= {h}
 
-        if is_edges:
-          r = label_edge(r)
-          b = orjson.dumps(r)
+          if is_edges:
+            r = label_edge(r)
+            b = orjson.dumps(r)
 
-        b = b + ("\n").encode("utf-8")
-        f_out.write(b)
+          b = b + ("\n").encode("utf-8")
+          f_out.write(b)
 
   p_in.unlink()
 
@@ -463,7 +477,6 @@ def build_knowledge_graph(
 ) -> None:
   """Build A KGX Compliant Knowledge Graph From A Graph Configuration File"""
   # TODO: Make MeSH A Node (Micro Version)
-  # TODO: Add Loguru Logging
   r: object = from_yaml(graph_configuration_file)
   g: Graph = Graph.model_validate(r)
 
@@ -477,7 +490,7 @@ def build_knowledge_graph(
     # ? Extract Sections
     t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
     with Pool() as pool:
-      temp: list[list[dict[str, Any]]] = pool.map(to_sections, raw)  # pyright: ignore
+      temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
     PROGRESS.update(t2, total=1, completed=1)
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)

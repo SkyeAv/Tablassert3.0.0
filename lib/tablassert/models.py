@@ -52,8 +52,8 @@ class Text(BaseSource):
   delimiter: Optional[str] = Field(",")
 
 class Regex(TablaBase):
-  pattern: str = Field(...)
-  replacement: str = Field(...)
+  pattern: Union[int, float, str] = Field(...)
+  replacement: Union[int, float, str] = Field(...)
 
 class Math(TablaBase):
   function: Functions = Field(...)
@@ -115,5 +115,5 @@ class Graph(TablaBase):
   version: str = Field(...)
   tables: list[Path] = Field(...)
   dbssert: Path = Field(...)
-  pubmed_db: Path = Field(...)
-  pmc_db: Path = Field(...)
+  pubmed_db: Optional[Path] = Field(None)
+  pmc_db: Optional[Path] = Field(None)

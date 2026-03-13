@@ -7,7 +7,7 @@ This tutorial walks through building a simple knowledge graph from a CSV file of
 ## Prerequisites
 
 - Tablassert installed (see [Installation](installation.md))
-- Required databases: dbssert, pubmed_db, pmc_db
+- Required database: dbssert (`pubmed_db` and `pmc_db` are optional enrichments)
 - Basic familiarity with YAML
 
 ## The Data
@@ -67,7 +67,7 @@ template:
       prioritize:
         - Disease
   provenance:
-    repo: PUBMED
+    repo: PMID
     publication: PMID12345678
     contributors:
       - kind: curation
@@ -112,7 +112,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 **What this does:**
 - **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson` and `TUTORIAL_KG_1.0.0.edges.ndjson`
 - **tables**: List of table configurations to process
-- **databases**: Paths to entity resolution and provenance databases
+- **databases**: Path to entity resolution database, plus optional provenance databases
 
 ## Step 4: Run Tablassert
 

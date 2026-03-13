@@ -6,6 +6,7 @@ in {
   devShells.default = pkgs.mkShell {
     packages = (with py; [
       tablassert
+      pytest
       flake8
       mkdocs
     ]) ++ (with pkgs; [

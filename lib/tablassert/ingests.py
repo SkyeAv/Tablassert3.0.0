@@ -1,3 +1,4 @@
+from copy import deepcopy
 from yaml import CLoader
 from pathlib import Path
 from typing import Union
@@ -34,8 +35,9 @@ def from_yaml(p: Path) -> object:
   with p.open("r") as f:
     return yaml.load(f, Loader=CLoader)
 
-def to_sections(instructions: dict[str, Any]) -> list[list[dict[str, Any]]]:
+def to_sections(instructions: dict[str, Any], table: Path) -> list[list[dict[str, Any]]]:
   # ? Converts Dict To Sections
   template: dict[str, Any] = instructions.get("template", {})
+  template["config"] = table
   sections: list[dict[str, Any]] = instructions.get("sections" , [{}])
-  return [fastmerge(template, x) for x in sections]
+  return [fastmerge(deepcopy(template), x) for x in sections]

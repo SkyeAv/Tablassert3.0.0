@@ -9,7 +9,9 @@
 *.claude/
 *cachessert/
 *storessert/
+*logassert/
 *DATALAKE/
+*.planning/
 *onnx/
 *venv/
 *.log

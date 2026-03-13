@@ -16,6 +16,8 @@ def version4(
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
+  section_hash: str,
+  config_file: str,
   tag: str = " one"
 ) -> pl.LazyFrame
 ```
@@ -69,6 +71,10 @@ The function looks for both:
 
 Default `" one"` means it uses level-one text processing (lowercase, stripped).
 
+**`section_hash: str` / `config_file: str`**
+
+Context fields used for operational logging when unmatched values are encountered.
+
 ### Return Value
 
 Returns a Polars LazyFrame with these columns added:
@@ -82,7 +88,6 @@ Returns a Polars LazyFrame with these columns added:
 | `{col} source` | Source database | `"HGNC"` |
 | `{col} source version` | Database version | `"2025-01"` |
 | `{col} nlp level` | NLP processing level | `0` or `1` |
-| `{col} synonym` | Matched synonym | `"TP53"` or `"tumor protein p53"` |
 
 ### DuckDB Query
 
@@ -122,6 +127,8 @@ result = version4(
   taxon="9606",  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
+  section_hash="tutorial-section",
+  config_file="tutorial-table.yaml",
   tag=" one"
 )
 
@@ -145,6 +152,8 @@ result = version4(
 - Preferred for disease names, free text
 
 The function tries level 0 first, then level 1.
+
+Rows without a valid CURIE are filtered from the returned frame.
 
 ### Case-Dependent Behavior
 

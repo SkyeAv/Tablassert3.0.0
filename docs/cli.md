@@ -36,9 +36,11 @@ The process executes in parallel stages with rich progress bars showing:
 - Building Subgraphs
 - Compiling Graph
 
-Output files are written to the `storessert/` directory as:
+Final output files are written to the current working directory as:
 - `{name}_{version}.nodes.ndjson` - Node file (entities)
 - `{name}_{version}.edges.ndjson` - Edge file (relationships)
+
+Intermediate parquet artifacts are written to `storessert/` during section processing.
 
 See [Graph Configuration](configuration/graph.md) for details on the YAML schema.
 
