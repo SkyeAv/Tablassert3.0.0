@@ -198,13 +198,11 @@ nix profile remove tablassert
 }
 </code></pre>
 <h2 id="method-5-docker">Method 5: Docker</h2>
-<p>Use prebuilt images from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.</p>
-<pre><code class="language-bash"># x86_64 / amd64
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-amd64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
+<p>Use the unified multi-arch image from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.</p>
+<pre><code class="language-bash"># Multi-arch image (amd64 + arm64)
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
 </code></pre>
-<pre><code class="language-bash"># aarch64 / arm64
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-arm64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
-</code></pre>
+<p>The publish workflow (<code>workflow.yml</code>) also pushes a commit-pinned tag as <code>ghcr.io/skyeav/tablassert-cli:sha-&lt;commit-sha&gt;</code>.</p>
 <h3 id="environment-variables-in-the-container">Environment variables in the container</h3>
 <p>These are auto-configured in the image and do not need manual setup:</p>
 <ul>
