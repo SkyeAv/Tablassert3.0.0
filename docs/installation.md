@@ -90,17 +90,14 @@ Integrate Tablassert into your own Nix flake or NixOS configuration.
 ```
 ## Method 5: Docker
 
-Use prebuilt images from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.
+Use the unified multi-arch image from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.
 
 ```bash
-# x86_64 / amd64
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-amd64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
+# Multi-arch image (amd64 + arm64)
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
 ```
 
-```bash
-# aarch64 / arm64
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli-arm64:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
-```
+The publish workflow (`workflow.yml`) also pushes a commit-pinned tag as `ghcr.io/skyeav/tablassert-cli:sha-<commit-sha>`.
 
 ### Environment variables in the container
 
