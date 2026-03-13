@@ -49,69 +49,75 @@ import math
 # ? Newline To Make Progress Bar More Readable
 print("\n")
 
+
 def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With A Literal Value
   return lf.with_columns(pl.lit(x).alias(col))
 
+
 def contributor_values(lf: pl.LazyFrame, col: str, contributors: list[dict[str, Any]]) -> pl.LazyFrame:
   # ? Adds Nested Contributors Fields To Column
-  return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col)) # pyright: ignore
+  return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col))  # pyright: ignore
+
 
 def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
   # ? Creates A New Column With From An Old Column
   return lf.with_columns(pl.col(x).alias(col))
 
+
 def math_op(
-  lf: pl.LazyFrame,
-  col: str,
-  func: str,
-  args: list[Union[Literal[Tokens.VALUES], float, int]]
+  lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Tokens.VALUES], float, int]]
 ) -> pl.LazyFrame:
   # ? Transform Values In A Column With The Math Module
   # ! Collection Point: Required For map_elements
   df: pl.DataFrame = lf.collect()
   expr: pl.Expr = pl.col(col).cast(pl.Float64)
   attr: Callable[[Any], Any] = getattr(math, func)
-  transform: Callable[[float], float] = lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args))
-  df = df.with_columns(expr.map_elements(transform, return_dtype=pl.Float64).alias(col))
+  df = df.with_columns(
+    expr.map_elements(lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args)), return_dtype=pl.Float64).alias(
+      col
+    )
+  )
   return df.lazy()
+
 
 def zero(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:
   # ? Level Zero Text Processing
   expr: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars().str.to_lowercase()
   return lf.with_columns(expr.alias(col))
 
+
 def one(
   lf: pl.LazyFrame,
-  col: str, # pyright: ignore
+  col: str,  # pyright: ignore
   regex: str = r"\W+",
-  tag: str = " one"
+  tag: str = " one",
 ) -> pl.LazyFrame:
   # ? Level One Text Processing
   expr: pl.Expr = pl.col(col).str.replace_all(regex, "")
   col: str = add(col, tag)
   return lf.with_columns(expr.alias(col))
 
+
 def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
   expr: pl.Expr = add(pl.lit(prefix), pl.col(col).cast(pl.String))
   return lf.with_columns(expr.alias(col))
+
 
 def suffix(lf: pl.LazyFrame, col: str, suffix: str) -> pl.LazyFrame:
   expr: pl.Expr = add(pl.col(col).cast(pl.String), pl.lit(suffix))
   return lf.with_columns(expr.alias(col))
 
-def regex(
-  lf: pl.LazyFrame,
-  col: str,
-  pattern: str,
-  replacement: str = ""
-) -> pl.LazyFrame:
+
+def regex(lf: pl.LazyFrame, col: str, pattern: str, replacement: str = "") -> pl.LazyFrame:
   expr: pl.Expr = pl.col(col).cast(pl.String).str.replace_all(pattern, replacement)
   return lf.with_columns(expr.alias(col))
 
+
 def fill(lf: pl.LazyFrame, col: str, method: str) -> pl.LazyFrame:
-  expr: pl.Expr = pl.col(col).fill_null(strategy=method) # pyright: ignore
+  expr: pl.Expr = pl.col(col).fill_null(strategy=method)  # pyright: ignore
   return lf.with_columns(expr.alias(col))
+
 
 def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   # ? Explodes A Row With Items Into Many Unique Rows By A Delimiter
@@ -119,9 +125,10 @@ def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
   lf = lf.with_columns(expr.alias(col))
   return lf.explode(col)
 
+
 def sig(
   lf: pl.LazyFrame,
-  cutoff: float = 0.05, # pyright: ignore
+  cutoff: float = 0.05,  # pyright: ignore
   col: str = "p value",
   out: str = "significant",
 ) -> pl.LazyFrame:
@@ -129,36 +136,36 @@ def sig(
   if col in lf.collect_schema().names():
     expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
     cond: pl.Expr = le(expr, cutoff)
-    cutoff: pl.Expr = pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
+    cutoff: pl.Expr = (
+      pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
+    )
     return lf.with_columns(cutoff.alias(out))
 
   else:
     return lf.with_columns(pl.lit("UNSURE").alias(out))
 
+
 def idx(lf: pl.LazyFrame, col: str = "row number") -> pl.LazyFrame:
   # ? Creates An Index Column Of Row Numbers
   return lf.with_row_index(col)
 
+
 def csv(p: Path, sep: str) -> pl.LazyFrame:
   # ? Reads Source From CSV And TSV As LazyFrame
-  return pl.scan_csv(
-    source=p,
-    separator=sep,
-    has_header=False,
-    infer_schema_length=None,
-    truncate_ragged_lines=True
-  )
+  return pl.scan_csv(source=p, separator=sep, has_header=False, infer_schema_length=None, truncate_ragged_lines=True)
+
 
 def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
   # ? Reads Source From Excel As LazyFrame
   df: pl.DataFrame = pl.read_excel(
     source=p,
     sheet_name=sheet,
-    engine=engine, # pyright: ignore
+    engine=engine,  # pyright: ignore
     has_header=False,
-    infer_schema_length=None
+    infer_schema_length=None,
   )
   return df.lazy()
+
 
 def crop(lf: pl.LazyFrame, row_slice: list[Union[NonNegativeInt, Literal[Tokens.AUTO]]]) -> pl.LazyFrame:
   # ? Takes A Slice From A LazyFrame
@@ -167,28 +174,25 @@ def crop(lf: pl.LazyFrame, row_slice: list[Union[NonNegativeInt, Literal[Tokens.
   n: int = df.select(pl.len()).item()
   start: Union[int, Literal[Tokens.AUTO]] = row_slice[0]
   stop: Union[int, Literal[Tokens.AUTO]] = row_slice[1]
-  offset: int = 0 if eq(start, Tokens.AUTO) else start # pyright: ignore
-  length: int = n if eq(stop, Tokens.AUTO) else (stop - offset) # pyright: ignore
+  offset: int = 0 if eq(start, Tokens.AUTO) else start  # pyright: ignore
+  length: int = n if eq(stop, Tokens.AUTO) else (stop - offset)  # pyright: ignore
   df = df.slice(offset=offset, length=length)
   return df.lazy()
+
 
 def pick(lf: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
   # ? Picks A List Of Rows From A LazyFrame
   # ! Collection Point: take() Requires Eager, Relazy After
   df: pl.DataFrame = lf.collect()
-  df = df.select(pl.all().take(indices=rows)) # pyright: ignore
+  df = df.select(pl.all().take(indices=rows))  # pyright: ignore
   return df.lazy()
 
-def reindex(
-  df: pl.LazyFrame,
-  col: str,
-  op: Callable,
-  comp: Union[str, int, float],
-  cast: bool = True
-) -> pl.LazyFrame:
+
+def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: Union[str, int, float], cast: bool = True) -> pl.LazyFrame:
   # ? Reindex A LazyFrame Based On A Condition
   expr: pl.Expr = pl.col(col).cast(pl.Float64) if cast else pl.col(col)
   return df.filter(op(expr, comp))
+
 
 def idxname(col: Any) -> str:
   # ? Converts Excel Style Column Names To Polars Column Names
@@ -199,9 +203,11 @@ def idxname(col: Any) -> str:
 
   return f"column_{idx}"
 
+
 def trim(lf: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
   # ? Removes Columns With The Excel Naming Conventions From LazyFrame
   return lf.select(pl.exclude(regex))
+
 
 def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
   # ? collect and write section parquet; warn if result is empty
@@ -212,6 +218,7 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
   df.write_parquet(p)
 
   return p
+
 
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
   # ? Adds PubMedDB Related MeSH Annotations To LazyFrame
@@ -259,6 +266,7 @@ LIMIT 1
 
   return df.lazy()
 
+
 def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
   # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
   # ! Collection Point: SQLite Query Then Literal Assignment
@@ -280,6 +288,7 @@ LIMIT 1
 
   return df.lazy()
 
+
 class Tcode(Section):
   # ? Extends Section To Compile A KG
   number: PositiveInt = Field(...)
@@ -289,26 +298,26 @@ class Tcode(Section):
   def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
     # ? Collect Helper For Encoding Classes
     return [
-      (value, (col, x.encoding,)) if eq(x.method, EncodingMethods.VALUE) else None,
-      (column, (col, idxname(x.encoding),)) if eq(x.method, EncodingMethods.COLUMN) else None,
-      (fill, (col, x.fill,)) if x.fill else None,
-      (explode, (col, x.explode_by,)) if x.explode_by else None,
-      [(regex, (col, r.pattern, r.replacement,)) for r in x.regex] if x.regex else None,
-      [(regex, (col, r,)) for r in x.remove] if x.remove else None,
-      (prefix, (col, x.prefix,)) if x.prefix else None,
-      (suffix, (col, x.suffix,)) if x.suffix else None,
-      [(math_op, (col, t.function, t.arguments,)) for t in x.transformations] if x.transformations else None
+      (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
+      (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
+      (fill, (col, x.fill)) if x.fill else None,
+      (explode, (col, x.explode_by)) if x.explode_by else None,
+      [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
+      [(regex, (col, r)) for r in x.remove] if x.remove else None,
+      (prefix, (col, x.prefix)) if x.prefix else None,
+      (suffix, (col, x.suffix)) if x.suffix else None,
+      [(math_op, (col, t.function, t.arguments)) for t in x.transformations] if x.transformations else None,
     ]
 
   def node(self: Self, x: NodeEncoding, col: str, conn: object) -> list[Any]:
     # ? Collect Helper For NodeEncoding Classes
     encoding: list[Any] = self.encoding(x, col)
     node: list[Any] = [
-      (column, (add("original ", col), col,)),
+      (column, (add("original ", col), col)),
       (zero, (col,)),
       (one, (col,)),
-      (version4, (col, conn, x.taxon, x.prioritize, x.avoid, self.store.stem, self.config.name,)),
-      (fullmap_audit, (col, self.store.stem, self.config.name,))
+      (version4, (col, conn, x.taxon, x.prioritize, x.avoid, self.store.stem, self.config.name)),
+      (fullmap_audit, (col, self.store.stem, self.config.name)),
     ]
     return add(encoding, node)
 
@@ -324,7 +333,9 @@ class Tcode(Section):
         result.append(x)
     return result
 
-  def collect(self: Self, conn: object, pubmed_db: Optional[Path], pmc_db: Optional[Path]) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+  def collect(
+    self: Self, conn: object, pubmed_db: Optional[Path], pmc_db: Optional[Path]
+  ) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
     # ? Code That Tells Tablassert What Actions To While Transforming Data
 
     if self.store.is_file():
@@ -334,48 +345,71 @@ class Tcode(Section):
     else:
       # * Returns A List Of: (Function, (Arguments))
       tcode: Optional[list[Any]] = [
-        (from_url, (str(self.source.url), self.source.local,)),
-        (csv, (self.source.delimiter,)) if eq(self.source.kind, Files.TEXT) else None, # pyright: ignore
-        (excel, (self.source.sheet,)) if eq(self.source.kind, Files.EXCEL) else None, # pyright: ignore
+        (from_url, (str(self.source.url), self.source.local)),
+        (csv, (self.source.delimiter,)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
+        (excel, (self.source.sheet,)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
         (idx, ()),
         (crop, (self.source.row_slice,)) if self.source.row_slice else None,
         (pick, (self.source.rows,)) if self.source.rows else None,
-        [(reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator,)) if x.comparison not in ["ne", "eq"] else (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator, False)) for x in self.source.reindex] if self.source.reindex else None,
+        [
+          (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator))
+          if x.comparison not in ["ne", "eq"]
+          else (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator, False))
+          for x in self.source.reindex
+        ]
+        if self.source.reindex
+        else None,
         [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
         self.node(self.statement.subject, "subject", conn),
         self.node(self.statement.object, "object", conn),
-        (value, ("predicate", self.statement.predicate,)),
-        [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conn)] if self.statement.qualifiers else None,
-        (value, ("syntax", self.syntax,)),
-        (value, ("configuration file", self.config.name,)),
-        (value, ("section number", self.number,)),
-        (value, ("status", self.status,)),
-        (value, ("repository", self.provenance.repo,)),
-        (value, ("publication", (self.provenance.repo + ":" + self.provenance.publication),)),
-        (contributor_values, ("contributors", self.provenance.contributors,)),
-        (value, ("url", str(self.source.url),)),
-        (value, ("section hash", self.store.stem,)),
-        (with_mesh, (pubmed_db, self.provenance.publication,)) if pubmed_db else None,
-        (with_captions, (pmc_db, self.provenance.publication, str(self.source.url),)) if pmc_db else None,
+        (value, ("predicate", self.statement.predicate)),
+        [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conn)]
+        if self.statement.qualifiers
+        else None,
+        (value, ("syntax", self.syntax)),
+        (value, ("configuration file", self.config.name)),
+        (value, ("section number", self.number)),
+        (value, ("status", self.status)),
+        (value, ("repository", self.provenance.repo)),
+        (value, ("publication", (self.provenance.repo + ":" + self.provenance.publication))),
+        (contributor_values, ("contributors", self.provenance.contributors)),
+        (value, ("url", str(self.source.url))),
+        (value, ("section hash", self.store.stem)),
+        (with_mesh, (pubmed_db, self.provenance.publication)) if pubmed_db else None,
+        (with_captions, (pmc_db, self.provenance.publication, str(self.source.url))) if pmc_db else None,
         (sig, ()),
         (trim, ()),
-        (to_store, (self.store, self.config.name,))
+        (to_store, (self.store, self.config.name)),
       ]
       return self.clean(tcode)
 
+
 def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]]) -> Path:
   # ? Executes Tcode To Build Subgraphs As Parquets
-  return reduce(lambda acc, op: op[0](acc, *op[1]) if acc is not None else op[0](*op[1]), tcode, None) # pyright: ignore
+  return reduce(lambda acc, op: op[0](acc, *op[1]) if acc is not None else op[0](*op[1]), tcode, None)  # pyright: ignore
 
-def normalize(edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+
+def normalize(
+  edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]
+) -> tuple[pl.LazyFrame, pl.LazyFrame]:
   # ? Normalized Disparate Node Columns To A Unified Format And Removes Them From Edges
   # * Returns Partial Nodes And Modified Edges As LazyFrames
-  cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
+  cols: list[str] = [
+    col,
+    add(col, " name"),
+    add(col, " category"),
+    add(col, " taxon"),
+    add(col, " source"),
+    add(col, " source version"),
+  ]
   nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
   edges_out: pl.LazyFrame = edges.drop(cols[1:])
   return nodes, edges_out
 
-def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+
+def publications(
+  edges: pl.LazyFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]
+) -> tuple[pl.LazyFrame, pl.LazyFrame]:
   cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
   cols = [x for x in cols if x in edges.collect_schema().names()]
   nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
@@ -383,14 +417,25 @@ def publications(edges: pl.LazyFrame, names: list[str] = ["id", "name", "first a
   edges_out: pl.LazyFrame = edges.drop(cols[1:])
   return nodes, edges_out
 
+
 def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> object:
   # ? Gives Edges A Unique UUID In The Tablassert Namespace
-  r[out] = namespace_uuid(domain, *r.values()) # pyright: ignore
+  r[out] = namespace_uuid(domain, *r.values())  # pyright: ignore
   return r
+
 
 def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) -> dict:
   # ? Removes Null Keys From NDJSON
-  return {k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v for k, v in r.items() if v and str(v).strip().lower() not in bad} # pyright: ignore
+  return {
+    k: [strip_nulls(i) if isinstance(i, dict) else i for i in v]
+    if isinstance(v, list)
+    else strip_nulls(v)
+    if isinstance(v, dict)
+    else v
+    for k, v in r.items()  # pyright: ignore
+    if v and str(v).strip().lower() not in bad
+  }
+
 
 def dedup_stream(p_in: Path, is_edges: bool) -> None:
   # ? Removes Null Values From And Deduplicates NDJSON
@@ -403,7 +448,7 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
   seen: set[bytes] = set()
   with p_in.open("rb") as f_in, p_out.open("wb") as f_out:
     for line in f_in:
-      r: object = orjson.loads(line) # pyright: ignore
+      r: object = orjson.loads(line)  # pyright: ignore
       r = strip_nulls(r)
 
       if r:
@@ -421,11 +466,12 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
 
   p_in.unlink()
 
+
 def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> None:
   # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
   p: Path = Path(f"./{name}_{version}")
 
-  e: Path = p.with_suffix(".edges.ndjson.temp") # ! For Labeling
+  e: Path = p.with_suffix(".edges.ndjson.temp")  # ! For Labeling
   if e.exists():
     e.unlink()
 
@@ -454,7 +500,7 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
       eagernode.write_ndjson(f)
 
   with e.open("a") as f:
-    with pl.Config(set_fmt_float=fmt): # pyright: ignore
+    with pl.Config(set_fmt_float=fmt):  # pyright: ignore
       with pl.Config(float_precision=precision):
         for subedge in subedges:
           eageredge: pl.DataFrame = subedge.collect().unique()
@@ -463,17 +509,26 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
   dedup_stream(e, is_edges=True)
   dedup_stream(n, is_edges=False)
 
+
 CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
-PROGRESS: Progress = Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), TimeElapsedColumn())
+PROGRESS: Progress = Progress(
+  SpinnerColumn(),
+  TextColumn("[progress.description]{task.description}"),
+  BarColumn(),
+  TaskProgressColumn(),
+  TimeElapsedColumn(),
+)
+
 
 def track(task_id: Any, iterable: Any) -> Any:
   for item in iterable:
     yield item
     PROGRESS.advance(task_id)
 
+
 @CLI.command()
 def build_knowledge_graph(
-  graph_configuration_file: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs")
+  graph_configuration_file: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs"),
 ) -> None:
   """Build A KGX Compliant Knowledge Graph From A Graph Configuration File"""
   # TODO: Make MeSH A Node (Micro Version)
@@ -497,11 +552,16 @@ def build_knowledge_graph(
 
     # ? Build Tcodes
     t3: Any = PROGRESS.add_task("Building TCode...", total=n)
-    tcode: list[Tcode] = [Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}) for idx, s in track(t3, enumerate(sections, start=1))]
+    tcode: list[Tcode] = [
+      Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")})
+      for idx, s in track(t3, enumerate(sections, start=1))
+    ]
     with duckdb.connect(g.dbssert, read_only=True) as conn:
       # ? Collect Instructions
       t4: Any = PROGRESS.add_task("Collecting Instructions...", total=n)
-      instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)]  # pyright: ignore
+      instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [
+        x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)
+      ]  # pyright: ignore
 
       # ? Build Subgraphs
       t5: Any = PROGRESS.add_task("Building Subgraphs...", total=n)
@@ -514,9 +574,10 @@ def build_knowledge_graph(
 
     PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)
 
+
 @CLI.command()
 def verify_table_configuration_syntax(
-  table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs")
+  table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs"),
 ) -> None:
   """Verify The Syntax Of A Declarative Table Configuration File"""
   with PROGRESS:
@@ -527,7 +588,7 @@ def verify_table_configuration_syntax(
 
     # ? Extract Sections
     t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
-    sections: list[dict[str, Any]] = to_sections(r) # pyright: ignore
+    sections: list[dict[str, Any]] = to_sections(r)  # pyright: ignore
     n: int = len(sections)
     PROGRESS.update(t2, total=1, completed=1)
 

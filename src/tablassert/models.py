@@ -22,19 +22,18 @@ from typing import Literal
 from typing import Union
 from pathlib import Path
 
+
 class TablaBase(BaseModel):
-  model_config: ConfigDict = ConfigDict( # pyright: ignore
-    str_strip_whitespace=False,
-    validate_assignment=True,
-    use_enum_values=True,
-    extra="forbid",
-    populate_by_name=True,
+  model_config: ConfigDict = ConfigDict(  # pyright: ignore
+    str_strip_whitespace=False, validate_assignment=True, use_enum_values=True, extra="forbid", populate_by_name=True
   )
+
 
 class Reindex(TablaBase):
   column: str = Field(...)
   comparison: Comparisons = Field(Comparisons.NE)
   comparator: Union[str, int, float] = Field(...)
+
 
 class BaseSource(TablaBase):
   local: Path = Field(...)
@@ -43,21 +42,26 @@ class BaseSource(TablaBase):
   row_slice: Optional[list[Union[NonNegativeInt, Literal[Tokens.AUTO]]]] = Field(None)
   reindex: Optional[list[Reindex]] = Field(None)
 
+
 class Excel(BaseSource):
   kind: Literal[Files.EXCEL] = Field(Files.EXCEL)
   sheet: Optional[str] = Field("Sheet1")
+
 
 class Text(BaseSource):
   kind: Literal[Files.TEXT] = Field(Files.TEXT)
   delimiter: Optional[str] = Field(",")
 
+
 class Regex(TablaBase):
   pattern: Union[int, float, str] = Field(...)
   replacement: Union[int, float, str] = Field(...)
 
+
 class Math(TablaBase):
   function: Functions = Field(...)
   arguments: list[Union[Literal[Tokens.VALUES], float, int]] = Field(...)
+
 
 class Encoding(TablaBase):
   method: EncodingMethods = Field(EncodingMethods.VALUE)
@@ -70,19 +74,23 @@ class Encoding(TablaBase):
   explode_by: Optional[str] = Field(None)
   transformations: Optional[list[Math]] = Field(None)
 
+
 class NodeEncoding(Encoding):
   taxon: Optional[PositiveInt] = Field(None)
   prioritize: Optional[list[Categories]] = Field(None)
   avoid: Optional[list[Categories]] = Field(None)
 
+
 class Qualifier(NodeEncoding):
   qualifier: Qualifiers = Field(...)
+
 
 class Statement(TablaBase):
   subject: NodeEncoding = Field(...)
   object: NodeEncoding = Field(...)
   predicate: Predicates = Field(Predicates.RELATED_TO)
   qualifiers: Optional[list[Qualifier]] = Field(None)
+
 
 class Contributor(TablaBase):
   kind: Contributions = Field(Contributions.CURATION)
@@ -91,13 +99,16 @@ class Contributor(TablaBase):
   organizations: Optional[list[str]] = Field(None)
   comment: Optional[str] = Field(None)
 
+
 class Provenance(TablaBase):
   repo: Repositories = Field(Repositories.PUBMED_CENTRAL)
   publication: str = Field(...)
   contributors: list[Contributor] = Field(...)
 
+
 class Annotation(Encoding):
   annotation: str = Field(...)
+
 
 class Section(TablaBase):
   # ? Pydantic "Section" Model And Coercion
@@ -107,6 +118,7 @@ class Section(TablaBase):
   statement: Statement = Field(...)
   provenance: Provenance = Field(...)
   annotations: Optional[list[Annotation]] = Field(None)
+
 
 class Graph(TablaBase):
   # ? Pydantic "Graph" Configuration
