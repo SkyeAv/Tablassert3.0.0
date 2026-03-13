@@ -1,7 +1,7 @@
 from loguru import logger
 from pathlib import Path
 
-LOGASSERT: Path = Path("./logassert")
+LOGASSERT: Path = Path("./.logassert")
 LOGASSERT.mkdir(parents=True, exist_ok=True)
 
 logger.remove()

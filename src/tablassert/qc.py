@@ -14,7 +14,7 @@ import polars as pl
 SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
 
-MODEL: Path = Path("./onnx/")
+MODEL: Path = Path("./.onnxassert/")
 MODEL_BACKEND: str = "onnx"
 MODEL_KWARGS: dict[str, object] = {
   "provider": "CPUExecutionProvider",

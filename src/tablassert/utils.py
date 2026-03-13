@@ -7,11 +7,11 @@ from uuid import UUID
 import polars as pl
 import xxhash
 
-STORE: Path = Path("./storessert")
+STORE: Path = Path("./.storassert")
 STORE.mkdir(parents=True, exist_ok=True)
 
 DISKCACHE: object = Cache(
-  "./cachessert",
+  "./.cachassert",
   size_limit=100_000_000, # ~100MB
   eviction_policy="least-recently-used"
 )
