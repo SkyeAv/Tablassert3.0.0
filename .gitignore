@@ -4,6 +4,7 @@
 *.opencode/
 *.sisyphus/
 *.ruff_cache/
+*.pytest_cache/
 *plans/
 *CLAUDE.md
 *.claude/
