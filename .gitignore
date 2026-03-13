@@ -11,6 +11,7 @@
 *storessert/
 *logassert/
 *DATALAKE/
+*.planning/
 *onnx/
 *venv/
 *.log
