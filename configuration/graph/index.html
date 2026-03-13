@@ -65,6 +65,8 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#required-fields">Required Fields</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#optional-fields">Optional Fields</a>
+    </li>
     <li class="toctree-l3"><a class="reference internal" href="#field-details">Field Details</a>
     </li>
         </ul>
@@ -170,6 +172,18 @@
 <td>Path</td>
 <td>Path to DuckDB entity resolution database</td>
 </tr>
+</tbody>
+</table>
+<h3 id="optional-fields">Optional Fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
 <tr>
 <td><code>pubmed_db</code></td>
 <td>Path</td>
@@ -184,7 +198,7 @@
 </table>
 <h3 id="field-details">Field Details</h3>
 <p><strong><code>syntax: "GC2"</code></strong></p>
-<p>Configuration syntax version. Must be "GC2" for version 6.2.0.</p>
+<p>Configuration syntax version. Must be <code>"GC2"</code>.</p>
 <p><strong><code>name: string</code></strong></p>
 <p>Output knowledge graph name. Used as prefix for NDJSON files.</p>
 <p>Example: <code>name: MULTIOMICS_KG</code> produces <code>MULTIOMICS_KG_{version}.nodes.ndjson</code></p>
@@ -206,15 +220,15 @@
 - Taxonomic information
 - Source provenance (which database provided the mapping)</p>
 <p><strong><code>pubmed_db: path</code></strong></p>
-<p>Path to SQLite database with PubMed metadata:
+<p>Optional path to SQLite database with PubMed metadata:
 - MeSH terms
 - Authors
 - Journal information
 - Publication dates</p>
-<p>Used to enrich edges with MeSH annotations.</p>
+<p>When provided, this enriches edges with MeSH annotations.</p>
 <p><strong><code>pmc_db: path</code></strong></p>
-<p>Path to SQLite database with PubMed Central figure captions.</p>
-<p>Used when provenance specifies PMC publications.</p>
+<p>Optional path to SQLite database with PubMed Central figure captions.</p>
+<p>When provided, this is used when provenance specifies PMC publications.</p>
 <h2 id="path-resolution">Path Resolution</h2>
 <p>Paths can be:
 - <strong>Absolute:</strong> <code>/home/user/data/dbssert.duckdb</code>
@@ -254,7 +268,7 @@ pmc_db: /databases/PMCSuppCaptions.db
 <li>Validate with QC pipeline</li>
 <li>Create subgraph parquet file</li>
 <li><strong>Aggregate subgraphs</strong> - Merge all parquet files</li>
-<li><strong>Add provenance</strong> - Query <code>pubmed_db</code> and <code>pmc_db</code> for metadata</li>
+<li><strong>Add provenance (optional)</strong> - Query <code>pubmed_db</code> and <code>pmc_db</code> for metadata when configured</li>
 <li><strong>Export NDJSON</strong> - Generate <code>{name}_{version}.nodes.ndjson</code> and <code>.edges.ndjson</code></li>
 </ol>
 <h2 id="output-files">Output Files</h2>

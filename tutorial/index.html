@@ -128,7 +128,7 @@
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
 <li>Tablassert installed (see <a href="../installation/">Installation</a>)</li>
-<li>Required databases: dbssert, pubmed_db, pmc_db</li>
+<li>Required database: dbssert (<code>pubmed_db</code> and <code>pmc_db</code> are optional enrichments)</li>
 <li>Basic familiarity with YAML</li>
 </ul>
 <h2 id="the-data">The Data</h2>
@@ -176,7 +176,7 @@ EOF
       prioritize:
         - Disease
   provenance:
-    repo: PUBMED
+    repo: PMID
     publication: PMID12345678
     contributors:
       - kind: curation
@@ -214,7 +214,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 <p><strong>What this does:</strong>
 - <strong>name/version</strong>: Output files will be <code>TUTORIAL_KG_1.0.0.nodes.ndjson</code> and <code>TUTORIAL_KG_1.0.0.edges.ndjson</code>
 - <strong>tables</strong>: List of table configurations to process
-- <strong>databases</strong>: Paths to entity resolution and provenance databases</p>
+- <strong>databases</strong>: Path to entity resolution database, plus optional provenance databases</p>
 <h2 id="step-4-run-tablassert">Step 4: Run Tablassert</h2>
 <pre><code class="language-bash">tablassert-cli build-knowledge-graph tutorial-graph.yaml
 </code></pre>

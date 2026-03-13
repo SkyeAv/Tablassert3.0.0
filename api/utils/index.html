@@ -140,7 +140,8 @@
 <p><strong><code>domain: Any</code></strong></p>
 <p>Domain string used to create the namespace UUID.</p>
 <p>Converted to string internally. Common domains:
-- <code>"edges"</code> - For knowledge graph edges
+- <code>"TABLASSERT"</code> - Default domain used for knowledge graph edge IDs
+- <code>"edges"</code> - Optional custom domain for edge IDs
 - <code>"nodes"</code> - For custom node IDs
 - <code>"tablassert"</code> - For application-specific IDs</p>
 <p><strong><code>*values: list[Any]</code></strong></p>
@@ -187,7 +188,7 @@ assert uuid1 != uuid2  # Different namespaces
 <h3 id="use-case-kgx-edge-ids">Use Case: KGX Edge IDs</h3>
 <p>Tablassert uses this function to generate edge identifiers:</p>
 <pre><code class="language-python">edge_id = namespace_uuid(
-  &quot;edges&quot;,
+  &quot;TABLASSERT&quot;,
   subject_curie,
   predicate,
   object_curie,
@@ -197,7 +198,7 @@ assert uuid1 != uuid2  # Different namespaces
 </code></pre>
 <p><strong>Example:</strong></p>
 <pre><code class="language-python">edge_id = namespace_uuid(
-  &quot;edges&quot;,
+  &quot;TABLASSERT&quot;,
   &quot;HGNC:11998&quot;,  # TP53
   &quot;biolink:associated_with&quot;,
   &quot;MONDO:0005148&quot;,  # Type 2 diabetes

@@ -139,6 +139,8 @@
   taxon: Optional[str],
   prioritize: Optional[list[Categories]],
   avoid: Optional[list[Categories]],
+  section_hash: str,
+  config_file: str,
   tag: str = &quot; one&quot;
 ) -&gt; pl.LazyFrame
 </code></pre>
@@ -170,6 +172,8 @@
 - <code>col</code> (original text, case-preserved)
 - <code>col + tag</code> (normalized text, typically lowercase)</p>
 <p>Default <code>" one"</code> means it uses level-one text processing (lowercase, stripped).</p>
+<p><strong><code>section_hash: str</code> / <code>config_file: str</code></strong></p>
+<p>Context fields used for operational logging when unmatched values are encountered.</p>
 <h3 id="return-value">Return Value</h3>
 <p>Returns a Polars LazyFrame with these columns added:</p>
 <table>
@@ -216,11 +220,6 @@
 <td>NLP processing level</td>
 <td><code>0</code> or <code>1</code></td>
 </tr>
-<tr>
-<td><code>{col} synonym</code></td>
-<td>Matched synonym</td>
-<td><code>"TP53"</code> or <code>"tumor protein p53"</code></td>
-</tr>
 </tbody>
 </table>
 <h3 id="duckdb-query">DuckDB Query</h3>
@@ -264,6 +263,8 @@ result = version4(
   taxon=&quot;9606&quot;,  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
+  section_hash=&quot;tutorial-section&quot;,
+  config_file=&quot;tutorial-table.yaml&quot;,
   tag=&quot; one&quot;
 )
 
@@ -283,6 +284,7 @@ result = version4(
 - Lowercased, whitespace stripped
 - Preferred for disease names, free text</p>
 <p>The function tries level 0 first, then level 1.</p>
+<p>Rows without a valid CURIE are filtered from the returned frame.</p>
 <h3 id="case-dependent-behavior">Case-Dependent Behavior</h3>
 <p>"TP53" vs "tp53":
 - Level 0: Only matches "TP53" synonym

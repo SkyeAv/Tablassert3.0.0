@@ -147,6 +147,8 @@
 <pre><code class="language-python">def fullmap_audit(
   lf: pl.LazyFrame,
   col: str,
+  section_hash: str,
+  config_file: str,
   out: str = &quot;passed&quot;
 ) -&gt; pl.LazyFrame
 </code></pre>
@@ -166,8 +168,10 @@
 <p><strong><code>out: str</code> (default: <code>"passed"</code>)</strong></p>
 <p>Name of the boolean column indicating validation status.</p>
 <p>Rows with <code>out=True</code> passed QC, <code>out=False</code> failed.</p>
+<p><strong><code>section_hash: str</code> / <code>config_file: str</code></strong></p>
+<p>Context fields used in QC failure logs for traceability.</p>
 <h3 id="return-value">Return Value</h3>
-<p>Returns a Polars LazyFrame with only validated rows (where <code>out=True</code>).</p>
+<p>Returns a Polars LazyFrame with only validated rows (where <code>out=True</code>). Failed pairs are logged with section/config/column context.</p>
 <p>Removes the <code>out</code> column before returning.</p>
 <h3 id="three-stage-pipeline">Three-Stage Pipeline</h3>
 <p>The function applies three validation stages in sequence:</p>
@@ -246,7 +250,12 @@ lf = pl.scan_parquet(&quot;resolved.parquet&quot;)
 # - subject name
 
 # Run QC
-validated = fullmap_audit(lf, col=&quot;subject&quot;)
+validated = fullmap_audit(
+  lf,
+  col=&quot;subject&quot;,
+  section_hash=&quot;tutorial-section&quot;,
+  config_file=&quot;tutorial-table.yaml&quot;
+)
 
 # Only rows that passed QC remain
 # Rows with low-confidence mappings removed
