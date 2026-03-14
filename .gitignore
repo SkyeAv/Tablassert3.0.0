@@ -20,5 +20,6 @@
 *.ndjson
 *.wal
 *.sh
+*.pyc
 *result/
 *result
