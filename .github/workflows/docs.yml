@@ -1,4 +1,4 @@
-name: Deploy MkDocs & Docker to GHCR
+name: Deploy MkDocs
 on:
   push:
     branches:
@@ -14,12 +14,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
       - name: Build documentation
-        run: nix run .#docs -- build
+        run: uv run --group dev mkdocs build
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -27,67 +25,3 @@ jobs:
           publish_dir: ./site
           user_name: "github-actions[bot]"
           user_email: "github-actions[bot]@users.noreply.github.com"
-  deploy-docker:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: x86_64-linux, suffix: x86_64 }
-          - { arch: aarch64-linux, suffix: aarch64 }
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            extra-platforms = aarch64-linux
-      - name: Build Docker image with Nix
-        run: nix build .#docker --system ${{ matrix.arch }}
-      - name: Load image into local Docker daemon
-        run: docker load < result
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push arch-specific image
-        id: push
-        shell: bash
-        run: |
-          set -euo pipefail
-          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert"
-          TAG="${IMAGE}:${{ matrix.suffix }}"
-          docker tag "tablassert:latest" "$TAG"
-          docker push "$TAG"
-          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
-
-  create-manifest:
-    needs: deploy-docker
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create and push multi-arch manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert"
-          X86_64="${IMAGE}:x86_64"
-          AARCH64="${IMAGE}:aarch64"
-
-          docker manifest create "${IMAGE}:latest" "$X86_64" "$AARCH64"
-          docker manifest annotate "${IMAGE}:latest" "$X86_64" --os linux --arch amd64
-          docker manifest annotate "${IMAGE}:latest" "$AARCH64" --os linux --arch arm64
-          docker manifest push "${IMAGE}:latest"
