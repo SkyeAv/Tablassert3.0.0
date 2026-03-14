@@ -5,9 +5,6 @@ on:
       - main
 permissions:
   contents: write
-  packages: write
-env:
-  REGISTRY: ghcr.io
 jobs:
   deploy-docs:
     runs-on: ubuntu-latest
