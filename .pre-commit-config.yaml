@@ -13,3 +13,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+  - repo: local
+    hooks:
+      - id: nixfmt
+        name: nixfmt
+        entry: nixfmt
+        args: [./flake.nix]
+        language: system
+        types: [nix]
+        pass_filenames: false

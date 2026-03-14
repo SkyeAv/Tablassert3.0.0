@@ -19,7 +19,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - name: Build documentation
-        run: nix develop -L . -c mkdocs build
+        run: nix run .#docs -- build
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -62,9 +62,9 @@ jobs:
         run: |
           set -euo pipefail
           OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert-cli"
+          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert"
           TAG="${IMAGE}:${{ matrix.suffix }}"
-          docker tag "tablassert-cli:latest" "$TAG"
+          docker tag "tablassert:latest" "$TAG"
           docker push "$TAG"
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
 
@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert-cli"
+          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert"
           X86_64="${IMAGE}:x86_64"
           AARCH64="${IMAGE}:aarch64"
 
