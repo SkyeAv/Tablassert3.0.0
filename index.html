@@ -115,7 +115,6 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="tablassert">Tablassert</h1>
-<p><strong>Version 6.2.1 (Beta)</strong></p>
 <p>Tablassert is a highly performant declarative knowledge graph backend that extracts knowledge assertions from tabular data and exports NCATS Translator-compliant KGX (Knowledge Graph Exchange) NDJSON.</p>
 <h2 id="what-is-tablassert">What is Tablassert?</h2>
 <p>Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge graphs through:</p>
@@ -131,20 +130,32 @@
 <li><strong>Quality Control</strong>: Three-stage validation (exact → fuzzy → BERT embeddings)</li>
 <li><strong>Biolink Compliance</strong>: Uses Biolink categories and predicates throughout</li>
 <li><strong>Performance</strong>: Parallel processing with disk caching for expensive operations</li>
-<li><strong>Reproducible</strong>: Nix-based development environment with deterministic builds</li>
+<li><strong>Reproducible</strong>: UV-based development environment with deterministic builds</li>
 </ul>
 <h2 id="quick-start">Quick Start</h2>
-<pre><code class="language-bash"># Clone and enter development environment
-git clone https://github.com/SkyeAv/Tablassert.git
+<pre><code class="language-bash"># Install from PyPI (UV)
+uv tool install tablassert
+tablassert --help
+
+# Install from PyPI (pip)
+pip install tablassert
+tablassert --help
+
+# Or install latest from GitHub main
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
+tablassert --help
+</code></pre>
+<p>For development from source:</p>
+<pre><code class="language-bash">git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
-nix develop -L .
+uv sync
 
 # Run with your configuration
-tablassert-cli build-knowledge-graph &lt;config&gt;
+uv run tablassert build-knowledge-graph &lt;config&gt;
 </code></pre>
 <h2 id="documentation-sections">Documentation Sections</h2>
 <ul>
-<li><strong><a href="installation/">Installation</a></strong> - All Nix usage patterns</li>
+<li><strong><a href="installation/">Installation</a></strong> - Installation methods (PyPI, GitHub main, source development)</li>
 <li><strong><a href="cli/">CLI Reference</a></strong> - Command-line interface usage</li>
 <li><strong><a href="tutorial/">Tutorial</a></strong> - Step-by-step example with synthetic data</li>
 <li><strong><a href="configuration/graph/">Configuration</a></strong> - Graph and table configuration reference</li>
@@ -206,5 +217,5 @@ tablassert-cli build-knowledge-graph &lt;config&gt;
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 1980-01-01 00:00:00+00:00
+Build Date UTC : 2026-03-17 22:45:12.936911+00:00
 -->

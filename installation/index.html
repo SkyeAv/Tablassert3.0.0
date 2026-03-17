@@ -47,28 +47,36 @@
                 <li class="toctree-l1 current"><a class="reference internal current" href="#">Installation</a>
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#method-1-development-shell-recommended">Method 1: Development Shell (Recommended)</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#method-2-direct-run-from-flake">Method 2: Direct Run from Flake</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#method-3-user-profile-installation">Method 3: User Profile Installation</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#method-4-use-as-overlay">Method 4: Use as Overlay</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#method-5-docker">Method 5: Docker</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#environment-variables-in-the-container">Environment variables in the container</a>
+    <li class="toctree-l3"><a class="reference internal" href="#installing-uv">Installing UV</a>
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#environment-variables">Environment Variables</a>
+    <li class="toctree-l2"><a class="reference internal" href="#installation-methods">Installation Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#method-1-development-installation-with-uv-recommended">Method 1: Development Installation with UV (Recommended)</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#python-requirements">Python Requirements</a>
+    <li class="toctree-l3"><a class="reference internal" href="#method-2-install-from-pypi">Method 2: Install from PyPI</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#method-3-install-from-github-main">Method 3: Install from GitHub main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#method-4-install-from-local-source">Method 4: Install from local source</a>
+    </li>
+        </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#verifying-installation">Verifying Installation</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
+    <li class="toctree-l2"><a class="reference internal" href="#development-setup">Development Setup</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#upgrading-development-installation">Upgrading Development Installation</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#python-version-issues">Python Version Issues</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#dependency-installation-issues">Dependency Installation Issues</a>
+    </li>
+        </ul>
     </li>
     </ul>
                 </li>
@@ -127,120 +135,118 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="installation">Installation</h1>
-<p>Tablassert uses Nix flakes for reproducible development environments. Below are all supported usage patterns.</p>
+<p>This guide covers installing Tablassert on your system.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
-<li><strong>Nix with flakes enabled</strong> - <a href="https://nixos.org/download.html">Install Nix</a></li>
-<li><strong>Databases</strong> (required at runtime):</li>
-<li><code>dbssert.duckdb</code> - Entity resolution database (DuckDB)</li>
-<li><code>PubMed.db</code> - PubMed metadata (SQLite)</li>
-<li><code>PMCSuppCaptions.db</code> - PMC figure captions (SQLite)</li>
+<li><strong>Python 3.13 or higher</strong>: Tablassert requires Python 3.13+ for compatibility with modern tooling</li>
+<li><strong>UV package manager</strong>: Recommended for fast, reliable dependency management</li>
 </ul>
-<h2 id="method-1-development-shell-recommended">Method 1: Development Shell (Recommended)</h2>
-<p>Best for exploring Tablassert or active development.</p>
-<pre><code class="language-bash"># Clone repository
+<h3 id="installing-uv">Installing UV</h3>
+<p>See the <a href="https://github.com/astral-sh/uv">official UV installation guide</a> for your platform:</p>
+<pre><code class="language-bash"># On Linux/macOS with curl
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# On Linux/macOS with pip
+pip install uv
+
+# On Windows with PowerShell
+powershell -ExecutionPolicy ByPass -c &quot;irm https://astral.sh/uv/install.ps1 | iex&quot;
+</code></pre>
+<h2 id="installation-methods">Installation Methods</h2>
+<h3 id="method-1-development-installation-with-uv-recommended">Method 1: Development Installation with UV (Recommended)</h3>
+<p>Best for development, testing, and active work on Tablassert.</p>
+<pre><code class="language-bash"># Clone the repository
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
-# Enter development shell
-nix develop -L .
+# Install dependencies with UV
+uv sync
 
-# CLI is now available
-tablassert-cli --help
+# Run Tablassert
+uv run tablassert --help
 </code></pre>
-<p>The development shell provides:
-- <code>tablassert-cli</code> command
-- <code>mkdocs</code> for documentation
-- All Python dependencies
-- Chromium binary (auto-configured)</p>
-<h2 id="method-2-direct-run-from-flake">Method 2: Direct Run from Flake</h2>
-<p>Run Tablassert without cloning or installing.</p>
-<pre><code class="language-bash">nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph /path/to/config.yaml
+<p>This creates a virtual environment in <code>.venv/</code> and installs all dependencies. The <code>tablassert</code> command is available through <code>uv run</code>.</p>
+<h3 id="method-2-install-from-pypi">Method 2: Install from PyPI</h3>
+<p>Recommended for most users who just need the CLI.</p>
+<pre><code class="language-bash"># Option A: Install from PyPI with UV
+uv tool install tablassert
+
+# Option B: Install from PyPI with pip
+pip install tablassert
+
+# Tablassert CLI is now available
+tablassert --help
 </code></pre>
-<p>Useful for:
-- One-off graph builds
-- CI/CD pipelines
-- Testing latest version</p>
-<h2 id="method-3-user-profile-installation">Method 3: User Profile Installation</h2>
-<p>Install Tablassert persistently to your user environment.</p>
-<pre><code class="language-bash"># Install
-nix profile install github:SkyeAv/Tablassert#default
+<h3 id="method-3-install-from-github-main">Method 3: Install from GitHub main</h3>
+<p>Use this when you want the latest main-branch build.</p>
+<pre><code class="language-bash"># Install from main branch
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 
-# Use anywhere
-tablassert-cli build-knowledge-graph /path/to/config.yaml
-
-# Upgrade
-nix profile upgrade tablassert
-
-# Remove
-nix profile remove tablassert
+# Tablassert CLI is now available
+tablassert --help
 </code></pre>
-<h2 id="method-4-use-as-overlay">Method 4: Use as Overlay</h2>
-<p>Integrate Tablassert into your own Nix flake or NixOS configuration.</p>
-<pre><code class="language-nix">{
-  inputs = {
-    nixpkgs.url = &quot;github:nixos/nixpkgs/nixos-unstable&quot;;
-    tablassert.url = &quot;github:SkyeAv/Tablassert&quot;;
-  };
+<h3 id="method-4-install-from-local-source">Method 4: Install from local source</h3>
+<p>For contributors testing local repository changes.</p>
+<pre><code class="language-bash"># Clone the repository
+git clone https://github.com/SkyeAv/Tablassert.git
+cd Tablassert
 
-  outputs = { self, nixpkgs, tablassert }: {
-    # Add overlay to nixpkgs
-    pkgs = import nixpkgs {
-      system = &quot;x86_64-linux&quot;;
-      overlays = [ tablassert.overlays.default ];
-    };
+# Install Tablassert CLI tool from local source
+uv tool install .
 
-    # Now tablassert is available as pkgs.python313Packages.tablassert
-    devShells.default = pkgs.mkShell {
-      packages = [ pkgs.python313Packages.tablassert ];
-    };
-  };
-}
+# Tablassert CLI is now available
+tablassert --help
 </code></pre>
-<h2 id="method-5-docker">Method 5: Docker</h2>
-<p>Use the unified multi-arch image from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.</p>
-<pre><code class="language-bash"># Multi-arch image (amd64 + arm64)
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
-</code></pre>
-<p>The publish workflow (<code>workflow.yml</code>) also pushes a commit-pinned tag as <code>ghcr.io/skyeav/tablassert-cli:sha-&lt;commit-sha&gt;</code>.</p>
-<h3 id="environment-variables-in-the-container">Environment variables in the container</h3>
-<p>These are auto-configured in the image and do not need manual setup:</p>
-<ul>
-<li><code>CHROMIUM_PATH</code></li>
-<li><code>PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1</code></li>
-</ul>
-<h2 id="environment-variables">Environment Variables</h2>
-<p>Tablassert requires these environment variables (automatically set by Nix wrapper):</p>
-<ul>
-<li><code>CHROMIUM_PATH</code> - Path to Chromium browser for Playwright downloads</li>
-<li><code>PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1</code> - Use system Chromium</li>
-</ul>
-<p><strong>Note:</strong> When using the Nix-provided package, these are configured automatically. Manual installation would require setting these.</p>
-<h2 id="python-requirements">Python Requirements</h2>
-<p>If installing outside Nix (not recommended):</p>
-<ul>
-<li>Python 3.13+</li>
-<li>See <code>nix/overlay.nix</code> for complete dependency list</li>
-</ul>
 <h2 id="verifying-installation">Verifying Installation</h2>
-<pre><code class="language-bash"># Check CLI is available
-tablassert-cli --help
+<p>After installation, verify that Tablassert is working correctly:</p>
+<pre><code class="language-bash"># If using UV
+uv run tablassert --help
 
-# Should output:
-# Usage: tablassert-cli [OPTIONS] COMMAND [ARGS]...
-#
-# Tablassert Builds Knowledge Graphs From Declarative Configuration
-#
-# Commands:
-#   build-knowledge-graph     Build knowledge graph from configuration
-#   verify-table-configuration-syntax Verify table configuration syntax
-#   --help                    Show this message and exit.
+# If installed as a UV tool
+tablassert --help
 </code></pre>
-<h2 id="next-steps">Next Steps</h2>
-<ul>
-<li><strong><a href="../tutorial/">Tutorial</a></strong> - Build your first knowledge graph</li>
-<li><strong><a href="../configuration/graph/">Configuration</a></strong> - Learn configuration syntax</li>
-</ul>
+<p>You should see the Tablassert CLI help message with available commands.</p>
+<h2 id="development-setup">Development Setup</h2>
+<p>For contributing to Tablassert or running tests, follow these additional steps:</p>
+<pre><code class="language-bash"># Install development dependencies (includes pre-commit hooks)
+uv sync --dev
+
+# Install pre-commit hooks
+pre-commit install
+
+# Run tests
+uv run pytest
+
+# Run type checking
+uv run pyright
+
+# Run linting
+uv run ruff check .
+</code></pre>
+<h2 id="upgrading-development-installation">Upgrading Development Installation</h2>
+<p>To upgrade to the latest version:</p>
+<pre><code class="language-bash"># Pull latest changes
+git pull origin main
+
+# Update dependencies
+uv sync
+</code></pre>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="python-version-issues">Python Version Issues</h3>
+<p>Tablassert requires Python 3.13 or higher. If you encounter version errors:</p>
+<pre><code class="language-bash"># Check your Python version
+python --version
+
+# Use UV to manage Python versions
+uv python install 3.13
+uv python pin 3.13
+</code></pre>
+<h3 id="dependency-installation-issues">Dependency Installation Issues</h3>
+<p>If you encounter dependency installation issues, try:</p>
+<pre><code class="language-bash"># Clear UV cache and reinstall
+uv cache clean
+uv sync --reinstall
+</code></pre>
               
             </div>
           </div><footer>
