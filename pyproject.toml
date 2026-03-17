@@ -1,8 +1,27 @@
 [project]
 name = "tablassert"
-version = "7.0.0"
-description = "Add your description here"
+version = "7.0.1"
+description = "Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON."
+authors = [
+    { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" },
+    { name = "Gwennen Glusman", email = "gglusman@isbscience.org" },
+    { name = "Jared C. Roach" },
+]
+keywords = [
+    "knowledge graph",
+    "natural language processing",
+    "ner",
+    "ncats translator",
+    "yaml configuration",
+    "table mining",
+    "declarative pipeline",
+    "tablassert"
+]
 readme = "README.md"
+license = "Apache-2.0"
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
 requires-python = ">=3.13"
 dependencies = [
     "diskcache>=5.6.3",
@@ -26,6 +45,11 @@ dependencies = [
     "typer>=0.24.1",
     "xxhash>=3.6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/SkyeAv/Tablassert"
+Source = "https://github.com/SkyeAv/Tablassert"
+Documentation = "https://skyeav.github.io/Tablassert/"
 
 [build-system]
 requires = ["hatchling"]
