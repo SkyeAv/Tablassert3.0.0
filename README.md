@@ -33,6 +33,12 @@ uv tool install tablassert
 # Option B: pip install
 pip install tablassert
 
+# Option C: runtime-compatible Polars build
+# (for CPUs without the required Polars instructions)
+uv tool install "tablassert[rtcompat]"
+# or
+pip install "tablassert[rtcompat]"
+
 tablassert --help
 ```
 
@@ -62,11 +68,17 @@ uv run tablassert build-knowledge-graph /path/to/graph-config.yaml
 Recommended for most users.
 
 ```bash
-# Option A: UV tool install
+# Option A: standard install (UV)
 uv tool install tablassert
 
-# Option B: pip install
+# Option B: standard install (pip)
 pip install tablassert
+
+# Option C: runtime-compatible Polars build
+# (for CPUs without the required Polars instructions)
+uv tool install "tablassert[rtcompat]"
+# or
+pip install "tablassert[rtcompat]"
 
 tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
@@ -79,6 +91,9 @@ Use this when you want the latest main-branch build before a tagged release.
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
+
+If your CPU does not support the instructions required by default Polars builds,
+use **Method 2** with `tablassert[rtcompat]`.
 
 ### Method 4: Local source install
 
