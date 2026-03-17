@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## 7.x - 2026-03-17
+## 7.0.0 - 2026-03-17
 
 ### New Features
 - Added pre-commit hooks for code quality (ruff linting, formatting, and pyright type checking).

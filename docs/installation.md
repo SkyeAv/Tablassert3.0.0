@@ -42,9 +42,36 @@ uv run tablassert --help
 
 This creates a virtual environment in `.venv/` and installs all dependencies. The `tablassert` command is available through `uv run`.
 
-### Method 2: Install as a UV Tool
+### Method 2: Install from PyPI
 
-For direct CLI usage without manually activating a virtual environment.
+Recommended for most users who just need the CLI.
+
+```bash
+# Option A: Install from PyPI with UV
+uv tool install tablassert
+
+# Option B: Install from PyPI with pip
+pip install tablassert
+
+# Tablassert CLI is now available
+tablassert --help
+```
+
+### Method 3: Install from GitHub main
+
+Use this when you want the latest main-branch build.
+
+```bash
+# Install from main branch
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
+
+# Tablassert CLI is now available
+tablassert --help
+```
+
+### Method 4: Install from local source
+
+For contributors testing local repository changes.
 
 ```bash
 # Clone the repository
@@ -56,13 +83,6 @@ uv tool install .
 
 # Tablassert CLI is now available
 tablassert --help
-```
-
-You can also install directly from GitHub without cloning:
-
-```bash
-# Install from main branch
-uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 ```
 
 ## Verifying Installation
@@ -100,7 +120,7 @@ uv run pyright
 uv run ruff check .
 ```
 
-## Upgrading
+## Upgrading Development Installation
 
 To upgrade to the latest version:
 

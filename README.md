@@ -24,6 +24,18 @@ uv sync
 uv run tablassert --help
 ```
 
+Or install the CLI directly from PyPI:
+
+```bash
+# Option A: UV tool install
+uv tool install tablassert
+
+# Option B: pip install
+pip install tablassert
+
+tablassert --help
+```
+
 ## Usage (With UV)
 
 ### Prerequisites
@@ -45,9 +57,32 @@ uv sync
 uv run tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
 
-### Method 2: Tool Installation with UV
+### Method 2: Install from PyPI
 
-For direct CLI usage without activating a virtual environment.
+Recommended for most users.
+
+```bash
+# Option A: UV tool install
+uv tool install tablassert
+
+# Option B: pip install
+pip install tablassert
+
+tablassert build-knowledge-graph /path/to/graph-config.yaml
+```
+
+### Method 3: Install from GitHub main
+
+Use this when you want the latest main-branch build before a tagged release.
+
+```bash
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
+tablassert build-knowledge-graph /path/to/graph-config.yaml
+```
+
+### Method 4: Local source install
+
+For contributors testing local changes.
 
 ```bash
 # Clone repository
@@ -59,13 +94,6 @@ uv tool install .
 
 # CLI is now available
 tablassert build-knowledge-graph /path/to/graph-config.yaml
-```
-
-You can also install directly from GitHub without cloning:
-
-```bash
-# Install from main branch
-uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 ```
 
 ## Key Features

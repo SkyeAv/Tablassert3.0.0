@@ -22,7 +22,22 @@ Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge g
 ## Quick Start
 
 ```bash
-# Clone and install dependencies
+# Install from PyPI (UV)
+uv tool install tablassert
+tablassert --help
+
+# Install from PyPI (pip)
+pip install tablassert
+tablassert --help
+
+# Or install latest from GitHub main
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
+tablassert --help
+```
+
+For development from source:
+
+```bash
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 uv sync
@@ -33,7 +48,7 @@ uv run tablassert build-knowledge-graph <config>
 
 ## Documentation Sections
 
-- **[Installation](installation.md)** - Installation methods (UV, virtual environment)
+- **[Installation](installation.md)** - Installation methods (PyPI, GitHub main, source development)
 - **[CLI Reference](cli.md)** - Command-line interface usage
 - **[Tutorial](tutorial.md)** - Step-by-step example with synthetic data
 - **[Configuration](configuration/graph.md)** - Graph and table configuration reference
