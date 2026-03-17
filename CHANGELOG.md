@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## 7.0.0 - 2026-03-17
+## 7.x - 2026-03-17
 
 ### New Features
 - Added pre-commit hooks for code quality (ruff linting, formatting, and pyright type checking).
@@ -24,7 +24,7 @@ All notable changes to this project are documented in this file.
 ### Documentation
 - Completely rewrote installation documentation to reflect UV-based development environment.
 - Updated CLI and configuration documentation to remove Nix-specific sections.
-- Updated project README to version 7.0.0 with new installation instructions.
+- Updated project README with new installation instructions.
 
 ## 6.2.1 - 2026-03-12
 

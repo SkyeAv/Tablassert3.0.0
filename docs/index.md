@@ -1,7 +1,5 @@
 # Tablassert
 
-**Version 7.0.0**
-
 Tablassert is a highly performant declarative knowledge graph backend that extracts knowledge assertions from tabular data and exports NCATS Translator-compliant KGX (Knowledge Graph Exchange) NDJSON.
 
 ## What is Tablassert?

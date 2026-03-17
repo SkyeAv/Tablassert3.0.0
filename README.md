@@ -1,7 +1,5 @@
 # Tablassert
 
-## Version 7.0.0
-
 ### By Skye Lane Goetz, Gwênlyn Glusman, and Jared C. Roach
 
 Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON.
@@ -61,6 +59,13 @@ uv tool install .
 
 # CLI is now available
 tablassert build-knowledge-graph /path/to/graph-config.yaml
+```
+
+You can also install directly from GitHub without cloning:
+
+```bash
+# Install from main branch
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 ```
 
 ## Key Features

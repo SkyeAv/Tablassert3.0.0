@@ -58,6 +58,13 @@ uv tool install .
 tablassert --help
 ```
 
+You can also install directly from GitHub without cloning:
+
+```bash
+# Install from main branch
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
+```
+
 ## Verifying Installation
 
 After installation, verify that Tablassert is working correctly:
