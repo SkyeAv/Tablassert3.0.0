@@ -61,6 +61,11 @@ packages = ["./src/tablassert"]
 [project.scripts]
 tablassert = "tablassert.lib:CLI"
 
+[project.optional-dependencies]
+rtcompat = [
+    "polars[rtcompat]>=1.39.0",
+]
+
 [dependency-groups]
 dev = [
     "mkdocs>=1.6.1",
