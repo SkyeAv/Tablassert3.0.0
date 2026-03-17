@@ -20,3 +20,5 @@
 *.wal
 *.sh
 *.pyc
+*.tar.gz
+*.whl
