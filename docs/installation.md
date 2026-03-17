@@ -45,6 +45,8 @@ This creates a virtual environment in `.venv/` and installs all dependencies. Th
 ### Method 2: Install from PyPI
 
 Recommended for most users who just need the CLI.
+`pyproject.toml` also defines `tablassert[rtcompat]`, which installs runtime-compatible
+Polars for systems without the required default Polars CPU instructions.
 
 ```bash
 # Option A: Install from PyPI with UV
@@ -52,6 +54,12 @@ uv tool install tablassert
 
 # Option B: Install from PyPI with pip
 pip install tablassert
+
+# Option C: Install runtime-compatible Polars build
+# (for CPUs without the required Polars instructions)
+uv tool install "tablassert[rtcompat]"
+# or
+pip install "tablassert[rtcompat]"
 
 # Tablassert CLI is now available
 tablassert --help
@@ -155,4 +163,16 @@ If you encounter dependency installation issues, try:
 # Clear UV cache and reinstall
 uv cache clean
 uv sync --reinstall
+```
+
+### Polars CPU Instruction Issues
+
+If your machine does not support the CPU instructions required by default Polars
+builds, install Tablassert with the runtime-compat package extra from
+`pyproject.toml`:
+
+```bash
+uv tool install "tablassert[rtcompat]"
+# or
+pip install "tablassert[rtcompat]"
 ```
