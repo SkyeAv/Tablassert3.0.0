@@ -1,17 +1,21 @@
 from enum import Enum
 
+
 class Tokens(str, Enum):
   AUTO = "auto"
   VALUES = "values"
+
 
 class Repositories(str, Enum):
   PUBMED_CENTRAL = "PMC"
   PUBMED = "PMID"
 
+
 class Contributions(str, Enum):
   CURATION = "curation"
   VALIDATION = "validation"
   TOOL = "tool"
+
 
 class Comparisons(str, Enum):
   GT = "gt"
@@ -21,17 +25,21 @@ class Comparisons(str, Enum):
   EQ = "eq"
   NE = "ne"
 
+
 class Functions(str, Enum):
   COPYSIGN = "copysign"
   POW = "pow"
+
 
 class Files(str, Enum):
   TEXT = "text"
   EXCEL = "excel"
 
+
 class EncodingMethods(str, Enum):
   VALUE = "value"
   COLUMN = "column"
+
 
 class FillMethods(str, Enum):
   FORWARD = "forward"
@@ -42,14 +50,17 @@ class FillMethods(str, Enum):
   ZERO = "zero"
   ONE = "one"
 
+
 class Syntaxes(str, Enum):
   TC3 = "TC3"
   GC2 = "GC2"
+
 
 class Statuses(str, Enum):
   ALPHA = "alpha"
   BETA = "beta"
   PRIMETIME = "primetime"
+
 
 class Categories(str, Enum):
   ACCESSIBLE_DNA_REGION = "AccessibleDnaRegion"
@@ -221,6 +232,7 @@ class Categories(str, Enum):
   VIRUS = "Virus"
   WEB_PAGE = "WebPage"
   ZYGOSITY = "Zygosity"
+
 
 class Predicates(str, Enum):
   ACTIVE_IN = "active_in"
@@ -448,7 +460,9 @@ class Predicates(str, Enum):
   SIMILAR_TO = "similar_to"
   STUDIED_TO_TREAT = "studied_to_treat"
   SUBCLASS_OF = "subclass_of"
-  SUBJECT_OF_TREATMENT_APPLICATION_OR_STUDY_FOR_TREATMENT_BY = "subject_of_treatment_application_or_study_for_treatment_by"
+  SUBJECT_OF_TREATMENT_APPLICATION_OR_STUDY_FOR_TREATMENT_BY = (
+    "subject_of_treatment_application_or_study_for_treatment_by"
+  )
   SUPERCLASS_OF = "superclass_of"
   TARGET_FOR = "target_for"
   TAXON_OF = "taxon_of"
@@ -466,6 +480,7 @@ class Predicates(str, Enum):
   TREATS_OR_APPLIED_OR_STUDIED_TO_TREAT = "treats_or_applied_or_studied_to_treat"
   VARIANT_PART_OF = "variant_part_of"
   XENOLOGOUS_TO = "xenologous_to"
+
 
 class Qualifiers(str, Enum):
   ANATOMICAL_CONTEXT_QUALIFIER = "anatomical_context_qualifier"

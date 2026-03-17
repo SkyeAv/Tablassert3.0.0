@@ -1,32 +1,20 @@
-name: Deploy MkDocs & Docker to GHCR
-
+name: Deploy MkDocs
 on:
   push:
     branches:
       - main
-
 permissions:
   contents: write
-  packages: write
-
-env:
-  REGISTRY: ghcr.io
-
 jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
       - name: Build documentation
-        run: nix develop -L . -c mkdocs build
-
+        run: uv run --group dev mkdocs build
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -34,95 +22,3 @@ jobs:
           publish_dir: ./site
           user_name: "github-actions[bot]"
           user_email: "github-actions[bot]@users.noreply.github.com"
-
-  deploy-docker:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: x86_64-linux, suffix: amd64 }
-          - { arch: aarch64-linux, suffix: arm64 }
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            extra-platforms = aarch64-linux
-
-      - name: Build Docker image with Nix
-        run: nix build .#docker --system ${{ matrix.arch }}
-
-      - name: Load image into local Docker daemon
-        run: docker load < result
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push arch-specific image
-        id: push
-        shell: bash
-        run: |
-          set -euo pipefail
-          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert-cli"
-          TAG="${IMAGE}:sha-${GITHUB_SHA}-${{ matrix.suffix }}"
-
-          docker tag "tablassert-cli:latest" "$TAG"
-          docker push "$TAG"
-
-          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
-
-  create-manifest:
-    needs: deploy-docker
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push multi-arch manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          IMAGE="ghcr.io/${OWNER_LOWER}/tablassert-cli"
-
-          AMD64="${IMAGE}:sha-${GITHUB_SHA}-amd64"
-          ARM64="${IMAGE}:sha-${GITHUB_SHA}-arm64"
-
-          # Always push the SHA-tagged manifest
-          docker manifest create "${IMAGE}:sha-${GITHUB_SHA}" "$AMD64" "$ARM64"
-          docker manifest annotate "${IMAGE}:sha-${GITHUB_SHA}" "$AMD64" --os linux --arch amd64
-          docker manifest annotate "${IMAGE}:sha-${GITHUB_SHA}" "$ARM64" --os linux --arch arm64
-          docker manifest push "${IMAGE}:sha-${GITHUB_SHA}"
-
-          # Push latest on main
-          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
-            docker manifest create "${IMAGE}:latest" "$AMD64" "$ARM64"
-            docker manifest annotate "${IMAGE}:latest" "$AMD64" --os linux --arch amd64
-            docker manifest annotate "${IMAGE}:latest" "$ARM64" --os linux --arch arm64
-            docker manifest push "${IMAGE}:latest"
-          fi
-
-          # Push version tag if this is a tag push
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            docker manifest create "${IMAGE}:${GITHUB_REF_NAME}" "$AMD64" "$ARM64"
-            docker manifest annotate "${IMAGE}:${GITHUB_REF_NAME}" "$AMD64" --os linux --arch amd64
-            docker manifest annotate "${IMAGE}:${GITHUB_REF_NAME}" "$ARM64" --os linux --arch arm64
-            docker manifest push "${IMAGE}:${GITHUB_REF_NAME}"
-          fi

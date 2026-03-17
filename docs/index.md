@@ -1,7 +1,5 @@
 # Tablassert
 
-**Version 6.2.1 (Beta)**
-
 Tablassert is a highly performant declarative knowledge graph backend that extracts knowledge assertions from tabular data and exports NCATS Translator-compliant KGX (Knowledge Graph Exchange) NDJSON.
 
 ## What is Tablassert?
@@ -19,23 +17,38 @@ Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge g
 - **Quality Control**: Three-stage validation (exact → fuzzy → BERT embeddings)
 - **Biolink Compliance**: Uses Biolink categories and predicates throughout
 - **Performance**: Parallel processing with disk caching for expensive operations
-- **Reproducible**: Nix-based development environment with deterministic builds
+- **Reproducible**: UV-based development environment with deterministic builds
 
 ## Quick Start
 
 ```bash
-# Clone and enter development environment
+# Install from PyPI (UV)
+uv tool install tablassert
+tablassert --help
+
+# Install from PyPI (pip)
+pip install tablassert
+tablassert --help
+
+# Or install latest from GitHub main
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
+tablassert --help
+```
+
+For development from source:
+
+```bash
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
-nix develop -L .
+uv sync
 
 # Run with your configuration
-tablassert-cli build-knowledge-graph <config>
+uv run tablassert build-knowledge-graph <config>
 ```
 
 ## Documentation Sections
 
-- **[Installation](installation.md)** - All Nix usage patterns
+- **[Installation](installation.md)** - Installation methods (PyPI, GitHub main, source development)
 - **[CLI Reference](cli.md)** - Command-line interface usage
 - **[Tutorial](tutorial.md)** - Step-by-step example with synthetic data
 - **[Configuration](configuration/graph.md)** - Graph and table configuration reference

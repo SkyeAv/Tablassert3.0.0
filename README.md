@@ -1,7 +1,5 @@
 # Tablassert
 
-## Version 6.2.1 (Beta)
-
 ### By Skye Lane Goetz, Gwênlyn Glusman, and Jared C. Roach
 
 Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON.
@@ -19,84 +17,84 @@ Complete guides covering installation, configuration, tutorials, and API referen
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
-# Enter development shell
-nix develop -L .
+# Install with UV (requires Python 3.13+)
+uv sync
 
 # Run CLI
-tablassert-cli --help
+uv run tablassert --help
 ```
 
-## Usage (With Nix)
+Or install the CLI directly from PyPI:
 
-### Method 1: Development Shell (Recommended)
+```bash
+# Option A: UV tool install
+uv tool install tablassert
+
+# Option B: pip install
+pip install tablassert
+
+tablassert --help
+```
+
+## Usage (With UV)
+
+### Prerequisites
+
+- Python 3.13 or higher
+- UV package manager
+
+### Method 1: Development Installation (Recommended)
 
 Best for exploring Tablassert or active development.
 
 ```bash
-# Clone and enter development shell
+# Clone and install dependencies
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
-nix develop -L .
+uv sync
+
+# Run CLI through UV
+uv run tablassert build-knowledge-graph /path/to/graph-config.yaml
+```
+
+### Method 2: Install from PyPI
+
+Recommended for most users.
+
+```bash
+# Option A: UV tool install
+uv tool install tablassert
+
+# Option B: pip install
+pip install tablassert
+
+tablassert build-knowledge-graph /path/to/graph-config.yaml
+```
+
+### Method 3: Install from GitHub main
+
+Use this when you want the latest main-branch build before a tagged release.
+
+```bash
+uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
+tablassert build-knowledge-graph /path/to/graph-config.yaml
+```
+
+### Method 4: Local source install
+
+For contributors testing local changes.
+
+```bash
+# Clone repository
+git clone https://github.com/SkyeAv/Tablassert.git
+cd Tablassert
+
+# Install CLI tool from local source
+uv tool install .
 
 # CLI is now available
-tablassert-cli build-knowledge-graph /path/to/graph-config.yaml
+tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
-
-### Method 2: Direct Run from Flake
-
-Run without cloning or installing.
-
-```bash
-nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph /path/to/config.yaml
-```
-
-### Method 3: User Profile Installation
-
-Install persistently to your user environment.
-
-```bash
-# Install
-nix profile install github:SkyeAv/Tablassert#default
-
-# Use anywhere
-tablassert-cli build-knowledge-graph /path/to/config.yaml
-```
-
-### Method 4: Use as Overlay
-
-Integrate into your own Nix flake or NixOS configuration.
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    tablassert.url = "github:SkyeAv/Tablassert";
-  };
-
-  outputs = { self, nixpkgs, tablassert }: {
-    # Add overlay to nixpkgs
-    pkgs = import nixpkgs {
-      system = "x86_64-linux";
-      overlays = [ tablassert.overlays.default ];
-    };
-
-    # Tablassert available as pkgs.python313Packages.tablassert
-    devShells.default = pkgs.mkShell {
-      packages = [ pkgs.python313Packages.tablassert ];
-    };
-  };
-}
-```
-## Method 5: Docker
-
-Use the unified multi-arch image from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.
-
-```bash
-# Multi-arch image (amd64 + arm64)
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
-```
-
-The publish workflow (`workflow.yml`) also pushes a commit-pinned tag as `ghcr.io/skyeav/tablassert-cli:sha-<commit-sha>`.
 
 ## Key Features
 

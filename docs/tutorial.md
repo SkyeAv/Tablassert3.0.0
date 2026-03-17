@@ -117,7 +117,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 ## Step 4: Run Tablassert
 
 ```bash
-tablassert-cli build-knowledge-graph tutorial-graph.yaml
+tablassert build-knowledge-graph tutorial-graph.yaml
 ```
 
 **What happens:**

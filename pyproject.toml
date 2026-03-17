@@ -1,32 +1,57 @@
-[build-system]
-requires = [
-  "setuptools>=80.9.0",
-  "wheel>=0.45.1"
-]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "tablassert"
-version = "6.2.1"
+version = "7.0.0"
+description = "Add your description here"
+readme = "README.md"
 requires-python = ">=3.13"
+dependencies = [
+    "diskcache>=5.6.3",
+    "duckdb>=1.5.0",
+    "fastexcel>=0.19.0",
+    "loguru>=0.7.3",
+    "mkdocs>=1.6.1",
+    "onnxruntime>=1.24.3",
+    "optimum-onnx>=0.1.0",
+    "orjson>=3.11.7",
+    "playwright>=1.58.0",
+    "polars>=1.39.0",
+    "pyarrow>=23.0.1",
+    "pydantic>=2.12.5",
+    "pyexcel>=0.7.4",
+    "pyyaml>=6.0.3",
+    "rapidfuzz>=3.14.3",
+    "scikit-learn>=1.8.0",
+    "sentence-transformers>=5.3.0",
+    "sqlite-utils>=3.39",
+    "typer>=0.24.1",
+    "xxhash>=3.6.0",
+]
 
-[tool.setuptools.packages.find]
-where = ["lib"]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["./src/tablassert"]
 
 [project.scripts]
-tablassert-cli = "tablassert.lib:CLI"
+tablassert = "tablassert.lib:CLI"
+
+[dependency-groups]
+dev = [
+    "mkdocs>=1.6.1",
+    "pre-commit>=4.5.1",
+    "pyright>=1.1.408",
+    "pytest>=9.0.2",
+    "ruff>=0.15.6",
+]
 
 [tool.ruff]
-extend-exclude = ["^.*$"]
-force-exclude = true
-line-length = 100000
+line-length = 120
 indent-width = 2
+target-version = "py313"
 
 [tool.ruff.format]
-magic-trailing-comma = false
-
-[tool.ruff.lint]
-select = ["E303"]
-
-[tool.pylint.master]
-ignore-paths = ["^.*$"]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = true
