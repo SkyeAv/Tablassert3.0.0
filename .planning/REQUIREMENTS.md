@@ -14,14 +14,14 @@ Requirements for initial release automation. Each maps to roadmap phases.
 
 ### Build and Artifacts
 
-- [ ] **BLD-01**: Release workflow builds both sdist and wheel artifacts using UV.
+- [x] **BLD-01**: Release workflow builds both sdist and wheel artifacts using UV.
 - [ ] **BLD-02**: Build job stores immutable artifacts for downstream jobs in the same workflow run.
 - [ ] **BLD-03**: Release workflow fails if artifact metadata is invalid or artifact checks fail.
 
 ### Publish and Security
 
-- [ ] **PUB-01**: Publish job uploads only artifacts produced by the validated build job.
-- [ ] **PUB-02**: Publish job uses PyPI trusted publishing (OIDC) or equivalent secure credentials with no hardcoded secrets in repo files.
+- [x] **PUB-01**: Publish job uploads only artifacts produced by the validated build job.
+- [x] **PUB-02**: Publish job uses PyPI trusted publishing (OIDC) or equivalent secure credentials with no hardcoded secrets in repo files.
 - [ ] **PUB-03**: Publish step is gated by GitHub environment protections for production PyPI publication.
 
 ### Operations and Reliability
@@ -54,11 +54,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | TRIG-01 | Phase 1 | Pending |
 | TRIG-02 | Phase 1 | Pending |
-| BLD-01 | Phase 1 | Pending |
+| BLD-01 | Phase 1 | Complete |
 | BLD-02 | Phase 2 | Pending |
 | BLD-03 | Phase 2 | Pending |
-| PUB-01 | Phase 3 | Pending |
-| PUB-02 | Phase 3 | Pending |
+| PUB-01 | Phase 3 | Complete |
+| PUB-02 | Phase 3 | Complete |
 | PUB-03 | Phase 3 | Pending |
 | OPS-01 | Phase 2 | Pending |
 | OPS-02 | Phase 4 | Pending |
