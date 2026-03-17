@@ -13,6 +13,7 @@
 *DATALAKE/
 *.planning/
 *.onnxassert/
+*.envrc
 *venv/
 *.log
 *.duckdb
