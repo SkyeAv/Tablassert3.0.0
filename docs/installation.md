@@ -62,27 +62,6 @@ uv pip install -e .
 tablassert-cli --help
 ```
 
-### Method 3: Docker
-
-Use the pre-built Docker image from GitHub Container Registry for containerized environments, CI pipelines, or when Python is not available.
-
-```bash
-# Pull the latest image
-docker pull ghcr.io/skyeav/tablassert-cli:latest
-
-# Run Tablassert
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
-```
-
-For reproducible builds, you can also use commit-pinned tags:
-
-```bash
-# Use a specific commit
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:sha-<commit-sha> tablassert-cli build-knowledge-graph /path/to/config.yaml
-```
-
-The Docker image includes all dependencies and is multi-arch (amd64 + arm64).
-
 ## Verifying Installation
 
 After installation, verify that Tablassert is working correctly:
@@ -93,9 +72,6 @@ uv run tablassert-cli --help
 
 # If installed to virtual environment (with venv activated)
 tablassert-cli --help
-
-# If using Docker
-docker run --rm ghcr.io/skyeav/tablassert-cli:latest tablassert-cli --help
 ```
 
 You should see the Tablassert CLI help message with available commands.
@@ -131,9 +107,6 @@ git pull origin main
 
 # Update dependencies
 uv sync
-
-# If using Docker, pull the latest image
-docker pull ghcr.io/skyeav/tablassert-cli:latest
 ```
 
 ## Troubleshooting
@@ -159,15 +132,4 @@ If you encounter dependency installation issues, try:
 # Clear UV cache and reinstall
 uv cache clean
 uv sync --reinstall
-```
-
-### Docker Permission Issues
-
-If you encounter permission issues with Docker on Linux:
-
-```bash
-# Add your user to the docker group
-sudo usermod -aG docker $USER
-
-# Log out and back in for changes to take effect
 ```

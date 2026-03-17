@@ -67,17 +67,6 @@ uv pip install -e .
 tablassert-cli build-knowledge-graph /path/to/graph-config.yaml
 ```
 
-### Method 3: Docker
-
-Use the unified multi-arch image from GitHub Container Registry for containerized environments or when UV is not available.
-
-```bash
-# Multi-arch image (amd64 + arm64)
-docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
-```
-
-The publish workflow (`workflow.yml`) also pushes a commit-pinned tag as `ghcr.io/skyeav/tablassert-cli:sha-<commit-sha>`.
-
 ## Key Features
 
 - **Declarative Configuration:** YAML-based, no code required

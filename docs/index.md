@@ -35,7 +35,7 @@ uv run tablassert-cli build-knowledge-graph <config>
 
 ## Documentation Sections
 
-- **[Installation](installation.md)** - Installation methods (UV, virtual environment, Docker)
+- **[Installation](installation.md)** - Installation methods (UV, virtual environment)
 - **[CLI Reference](cli.md)** - Command-line interface usage
 - **[Tutorial](tutorial.md)** - Step-by-step example with synthetic data
 - **[Configuration](configuration/graph.md)** - Graph and table configuration reference
