@@ -1,11 +1,9 @@
 [project]
 name = "tablassert"
-version = "7.0.1"
+version = "7.0.2"
 description = "Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON."
 authors = [
-    { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" },
-    { name = "Gwennen Glusman", email = "gglusman@isbscience.org" },
-    { name = "Jared C. Roach" },
+    { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
 ]
 keywords = [
     "knowledge graph",
