@@ -141,10 +141,19 @@ tablassert --help
 pip install tablassert
 tablassert --help
 
+# Install runtime-compatible Polars build
+# (for CPUs without the required Polars instructions)
+uv tool install &quot;tablassert[rtcompat]&quot;
+# or
+pip install &quot;tablassert[rtcompat]&quot;
+tablassert --help
+
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 </code></pre>
+<p><code>tablassert[rtcompat]</code> is defined in <code>pyproject.toml</code> and installs a runtime-compatible
+Polars dependency for systems without the default Polars CPU instruction support.</p>
 <p>For development from source:</p>
 <pre><code class="language-bash">git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
@@ -217,5 +226,5 @@ uv run tablassert build-knowledge-graph &lt;config&gt;
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-03-17 22:45:12.936911+00:00
+Build Date UTC : 2026-03-17 23:15:42.994588+00:00
 -->

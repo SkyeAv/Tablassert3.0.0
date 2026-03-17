@@ -76,6 +76,8 @@
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#dependency-installation-issues">Dependency Installation Issues</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#polars-cpu-instruction-issues">Polars CPU Instruction Issues</a>
+    </li>
         </ul>
     </li>
     </ul>
@@ -167,12 +169,20 @@ uv run tablassert --help
 </code></pre>
 <p>This creates a virtual environment in <code>.venv/</code> and installs all dependencies. The <code>tablassert</code> command is available through <code>uv run</code>.</p>
 <h3 id="method-2-install-from-pypi">Method 2: Install from PyPI</h3>
-<p>Recommended for most users who just need the CLI.</p>
+<p>Recommended for most users who just need the CLI.
+<code>pyproject.toml</code> also defines <code>tablassert[rtcompat]</code>, which installs runtime-compatible
+Polars for systems without the required default Polars CPU instructions.</p>
 <pre><code class="language-bash"># Option A: Install from PyPI with UV
 uv tool install tablassert
 
 # Option B: Install from PyPI with pip
 pip install tablassert
+
+# Option C: Install runtime-compatible Polars build
+# (for CPUs without the required Polars instructions)
+uv tool install &quot;tablassert[rtcompat]&quot;
+# or
+pip install &quot;tablassert[rtcompat]&quot;
 
 # Tablassert CLI is now available
 tablassert --help
@@ -246,6 +256,14 @@ uv python pin 3.13
 <pre><code class="language-bash"># Clear UV cache and reinstall
 uv cache clean
 uv sync --reinstall
+</code></pre>
+<h3 id="polars-cpu-instruction-issues">Polars CPU Instruction Issues</h3>
+<p>If your machine does not support the CPU instructions required by default Polars
+builds, install Tablassert with the runtime-compat package extra from
+<code>pyproject.toml</code>:</p>
+<pre><code class="language-bash">uv tool install &quot;tablassert[rtcompat]&quot;
+# or
+pip install &quot;tablassert[rtcompat]&quot;
 </code></pre>
               
             </div>
