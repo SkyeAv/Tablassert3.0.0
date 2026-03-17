@@ -9,7 +9,7 @@ Build A KGX Compliant Knowledge Graph From A Graph Configuration File
 ### Synopsis
 
 ```bash
-tablassert-cli build-knowledge-graph <graph_configuration_file>
+tablassert build-knowledge-graph <graph_configuration_file>
 ```
 
 ### Options
@@ -21,7 +21,7 @@ tablassert-cli build-knowledge-graph <graph_configuration_file>
 ### Example
 
 ```bash
-tablassert-cli build-knowledge-graph /path/to/MOKGV6.yaml
+tablassert build-knowledge-graph /path/to/MOKGV6.yaml
 ```
 
 ### Description
@@ -53,7 +53,7 @@ Verify The Syntax Of A Declarative Table Configuration File
 ### Synopsis
 
 ```bash
-tablassert-cli verify-table-configuration-syntax <table_configuration_file>
+tablassert verify-table-configuration-syntax <table_configuration_file>
 ```
 
 ### Options
@@ -65,7 +65,7 @@ tablassert-cli verify-table-configuration-syntax <table_configuration_file>
 ### Example
 
 ```bash
-tablassert-cli verify-table-configuration-syntax /path/to/table-config.yaml
+tablassert verify-table-configuration-syntax /path/to/table-config.yaml
 ```
 
 ### Description
@@ -86,21 +86,21 @@ See [Table Configuration](configuration/table.md) for details on the YAML schema
 ### Build Knowledge Graph
 
 ```bash
-tablassert-cli build-knowledge-graph my-graph.yaml
+tablassert build-knowledge-graph my-graph.yaml
 ```
 
 ### Validate Table Configuration
 
 ```bash
-tablassert-cli verify-table-configuration-syntax table-config.yaml
+tablassert verify-table-configuration-syntax table-config.yaml
 ```
 
 ## Workflow
 
 1. **Create table configuration** - Define data sources and transformations
 2. **Create graph configuration** - Define output name, table configs, databases
-3. **Validate table config** - `tablassert-cli verify-table-configuration-syntax table.yaml`
-4. **Build knowledge graph** - `tablassert-cli build-knowledge-graph graph.yaml`
+3. **Validate table config** - `tablassert verify-table-configuration-syntax table.yaml`
+4. **Build knowledge graph** - `tablassert build-knowledge-graph graph.yaml`
 5. **Process executes:**
    - Downloads files from URLs (if needed)
    - Applies transformations to each table

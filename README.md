@@ -23,7 +23,7 @@ cd Tablassert
 uv sync
 
 # Run CLI
-uv run tablassert-cli --help
+uv run tablassert --help
 ```
 
 ## Usage (With UV)
@@ -44,27 +44,23 @@ cd Tablassert
 uv sync
 
 # Run CLI through UV
-uv run tablassert-cli build-knowledge-graph /path/to/graph-config.yaml
+uv run tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
 
-### Method 2: Install to Virtual Environment
+### Method 2: Tool Installation with UV
 
-For a more traditional Python development environment.
+For direct CLI usage without activating a virtual environment.
 
 ```bash
 # Clone repository
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install with UV
-uv pip install -e .
+# Install CLI tool from local source
+uv tool install .
 
 # CLI is now available
-tablassert-cli build-knowledge-graph /path/to/graph-config.yaml
+tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
 
 ## Key Features

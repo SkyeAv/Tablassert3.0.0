@@ -119,7 +119,7 @@ pmc_db: /databases/PMCSuppCaptions.db
 
 ## Processing Flow
 
-When you run `tablassert-cli build-knowledge-graph graph.yaml`:
+When you run `tablassert build-knowledge-graph graph.yaml`:
 
 1. **Load graph configuration** - Parse YAML, validate schema
 2. **For each table in `tables`:**

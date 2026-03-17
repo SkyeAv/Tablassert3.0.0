@@ -37,29 +37,25 @@ cd Tablassert
 uv sync
 
 # Run Tablassert
-uv run tablassert-cli --help
+uv run tablassert --help
 ```
 
-This creates a virtual environment in `.venv/` and installs all dependencies. The `tablassert-cli` command is available through `uv run`.
+This creates a virtual environment in `.venv/` and installs all dependencies. The `tablassert` command is available through `uv run`.
 
-### Method 2: Install to Virtual Environment
+### Method 2: Install as a UV Tool
 
-For a traditional Python development environment without UV's managed virtual environment.
+For direct CLI usage without manually activating a virtual environment.
 
 ```bash
 # Clone the repository
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install Tablassert with UV
-uv pip install -e .
+# Install Tablassert CLI tool from local source
+uv tool install .
 
 # Tablassert CLI is now available
-tablassert-cli --help
+tablassert --help
 ```
 
 ## Verifying Installation
@@ -68,10 +64,10 @@ After installation, verify that Tablassert is working correctly:
 
 ```bash
 # If using UV
-uv run tablassert-cli --help
+uv run tablassert --help
 
-# If installed to virtual environment (with venv activated)
-tablassert-cli --help
+# If installed as a UV tool
+tablassert --help
 ```
 
 You should see the Tablassert CLI help message with available commands.

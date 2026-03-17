@@ -11,7 +11,7 @@ All notable changes to this project are documented in this file.
 ### Changes
 - Migrated dependency management from Nix to UV for improved Python toolchain integration and simpler development workflow.
 - Updated GitHub Actions workflows to use UV for deployment and documentation building.
-- Improved Docker documentation to align with new UV-based development environment.
+- Removed Docker installation method from documentation to align with current supported usage.
 - Removed Nix-specific installation methods and dependencies from the project.
 - Removed Chromium dependency as it's no longer required for the core functionality.
 - Removed random callable from codebase to simplify dependencies.
@@ -47,13 +47,13 @@ All notable changes to this project are documented in this file.
 ## 6.2.0 - 2026-02-27
 
 ### New Features
-- Added `tablassert-cli verify-table-configuration-syntax <table-config.yaml>` for fast TC3 schema validation without running a full graph build.
+- Added `tablassert verify-table-configuration-syntax <table-config.yaml>` for fast TC3 schema validation without running a full graph build.
 - Added rich progress bars across pipeline stages to improve runtime visibility during large graph builds.
 - Added automated Docker publishing in CI so container images are built and distributed from the docs workflow.
 - Added improved progress messaging and stage-level status updates for entity mapping and build orchestration.
 
 ### Changes
-- Updated the CLI interface for graph builds from `tablassert-cli -i <graph-config.yaml>` to `tablassert-cli build-knowledge-graph <graph-config.yaml>`.
+- Updated the CLI interface for graph builds from `tablassert -i <graph-config.yaml>` to `tablassert build-knowledge-graph <graph-config.yaml>`.
 - Swapped hashing internals to xxHash to improve throughput in high-volume processing paths.
 - Updated label-rebuild startup logic so label generation begins with clearer rebuild conditions.
 - Refactored AGENTS.md hierarchy into root and scoped instruction files (`docs/`, `nix/`, `lib/tablassert/`) to reduce duplication and clarify ownership.
