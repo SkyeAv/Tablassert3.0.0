@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.0.0 - 2026-03-17
+
+### New Features
+- Added pre-commit hooks for code quality (ruff linting, formatting, and pyright type checking).
+- Enhanced development environment with improved VSCode settings and better gitignore including direnv support.
+
+### Changes
+- Migrated dependency management from Nix to UV for improved Python toolchain integration and simpler development workflow.
+- Updated GitHub Actions workflows to use UV for deployment and documentation building.
+- Improved Docker documentation to align with new UV-based development environment.
+- Removed Nix-specific installation methods and dependencies from the project.
+- Removed Chromium dependency as it's no longer required for the core functionality.
+- Removed random callable from codebase to simplify dependencies.
+- Updated directory naming conventions for better consistency throughout the project.
+
+### Breaking Changes
+- Nix is no longer supported for development and installation. Use UV-based installation instead.
+- Project now requires Python 3.13+ for compatibility with UV toolchain.
+
+### Documentation
+- Completely rewrote installation documentation to reflect UV-based development environment.
+- Updated CLI and configuration documentation to remove Nix-specific sections.
+- Updated project README to version 7.0.0 with new installation instructions.
+
 ## 6.2.1 - 2026-03-12
 
 ### Features

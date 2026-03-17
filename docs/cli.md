@@ -81,11 +81,6 @@ See [Table Configuration](configuration/table.md) for details on the YAML schema
 
 ---
 
-## Environment Variables
-
-When using Nix, these are configured automatically:
-
-- `CHROMIUM_PATH` - Chromium for file downloads
 ## Examples
 
 ### Build Knowledge Graph
@@ -98,12 +93,6 @@ tablassert-cli build-knowledge-graph my-graph.yaml
 
 ```bash
 tablassert-cli verify-table-configuration-syntax table-config.yaml
-```
-
-### Using Nix Run (No Installation)
-
-```bash
-nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph ./graph.yaml
 ```
 
 ## Workflow

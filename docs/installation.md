@@ -1,145 +1,173 @@
 # Installation
 
-Tablassert uses Nix flakes for reproducible development environments. Below are all supported usage patterns.
+This guide covers installing Tablassert on your system.
 
 ## Prerequisites
 
-- **Nix with flakes enabled** - [Install Nix](https://nixos.org/download.html)
-- **Databases** (required at runtime):
-  - `dbssert.duckdb` - Entity resolution database (DuckDB)
-  - `PubMed.db` - PubMed metadata (SQLite)
-  - `PMCSuppCaptions.db` - PMC figure captions (SQLite)
+- **Python 3.13 or higher**: Tablassert requires Python 3.13+ for compatibility with modern tooling
+- **UV package manager**: Recommended for fast, reliable dependency management
 
-## Method 1: Development Shell (Recommended)
+### Installing UV
 
-Best for exploring Tablassert or active development.
+See the [official UV installation guide](https://github.com/astral-sh/uv) for your platform:
 
 ```bash
-# Clone repository
+# On Linux/macOS with curl
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# On Linux/macOS with pip
+pip install uv
+
+# On Windows with PowerShell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+## Installation Methods
+
+### Method 1: Development Installation with UV (Recommended)
+
+Best for development, testing, and active work on Tablassert.
+
+```bash
+# Clone the repository
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
-# Enter development shell
-nix develop -L .
+# Install dependencies with UV
+uv sync
 
-# CLI is now available
+# Run Tablassert
+uv run tablassert-cli --help
+```
+
+This creates a virtual environment in `.venv/` and installs all dependencies. The `tablassert-cli` command is available through `uv run`.
+
+### Method 2: Install to Virtual Environment
+
+For a traditional Python development environment without UV's managed virtual environment.
+
+```bash
+# Clone the repository
+git clone https://github.com/SkyeAv/Tablassert.git
+cd Tablassert
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install Tablassert with UV
+uv pip install -e .
+
+# Tablassert CLI is now available
 tablassert-cli --help
 ```
 
-The development shell provides:
-- `tablassert-cli` command
-- `mkdocs` for documentation
-- All Python dependencies
-- Chromium binary (auto-configured)
+### Method 3: Docker
 
-## Method 2: Direct Run from Flake
-
-Run Tablassert without cloning or installing.
+Use the pre-built Docker image from GitHub Container Registry for containerized environments, CI pipelines, or when Python is not available.
 
 ```bash
-nix run github:SkyeAv/Tablassert#default -- build-knowledge-graph /path/to/config.yaml
-```
+# Pull the latest image
+docker pull ghcr.io/skyeav/tablassert-cli:latest
 
-Useful for:
-- One-off graph builds
-- CI/CD pipelines
-- Testing latest version
-
-## Method 3: User Profile Installation
-
-Install Tablassert persistently to your user environment.
-
-```bash
-# Install
-nix profile install github:SkyeAv/Tablassert#default
-
-# Use anywhere
-tablassert-cli build-knowledge-graph /path/to/config.yaml
-
-# Upgrade
-nix profile upgrade tablassert
-
-# Remove
-nix profile remove tablassert
-```
-
-## Method 4: Use as Overlay
-
-Integrate Tablassert into your own Nix flake or NixOS configuration.
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    tablassert.url = "github:SkyeAv/Tablassert";
-  };
-
-  outputs = { self, nixpkgs, tablassert }: {
-    # Add overlay to nixpkgs
-    pkgs = import nixpkgs {
-      system = "x86_64-linux";
-      overlays = [ tablassert.overlays.default ];
-    };
-
-    # Now tablassert is available as pkgs.python313Packages.tablassert
-    devShells.default = pkgs.mkShell {
-      packages = [ pkgs.python313Packages.tablassert ];
-    };
-  };
-}
-```
-## Method 5: Docker
-
-Use the unified multi-arch image from GitHub Container Registry when Nix is not available, on non-x86 systems, or in CI environments.
-
-```bash
-# Multi-arch image (amd64 + arm64)
+# Run Tablassert
 docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:latest tablassert-cli build-knowledge-graph /path/to/config.yaml
 ```
 
-The publish workflow (`workflow.yml`) also pushes a commit-pinned tag as `ghcr.io/skyeav/tablassert-cli:sha-<commit-sha>`.
+For reproducible builds, you can also use commit-pinned tags:
 
-### Environment variables in the container
+```bash
+# Use a specific commit
+docker run --rm -v $(pwd):/workdir ghcr.io/skyeav/tablassert-cli:sha-<commit-sha> tablassert-cli build-knowledge-graph /path/to/config.yaml
+```
 
-These are auto-configured in the image and do not need manual setup:
-
-- `CHROMIUM_PATH`
-- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`
-
-## Environment Variables
-
-Tablassert requires these environment variables (automatically set by Nix wrapper):
-
-- `CHROMIUM_PATH` - Path to Chromium browser for Playwright downloads
-- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` - Use system Chromium
-
-**Note:** When using the Nix-provided package, these are configured automatically. Manual installation would require setting these.
-
-## Python Requirements
-
-If installing outside Nix (not recommended):
-
-- Python 3.13+
-- See `nix/overlay.nix` for complete dependency list
+The Docker image includes all dependencies and is multi-arch (amd64 + arm64).
 
 ## Verifying Installation
 
+After installation, verify that Tablassert is working correctly:
+
 ```bash
-# Check CLI is available
+# If using UV
+uv run tablassert-cli --help
+
+# If installed to virtual environment (with venv activated)
 tablassert-cli --help
 
-# Should output:
-# Usage: tablassert-cli [OPTIONS] COMMAND [ARGS]...
-#
-# Tablassert Builds Knowledge Graphs From Declarative Configuration
-#
-# Commands:
-#   build-knowledge-graph     Build knowledge graph from configuration
-#   verify-table-configuration-syntax Verify table configuration syntax
-#   --help                    Show this message and exit.
+# If using Docker
+docker run --rm ghcr.io/skyeav/tablassert-cli:latest tablassert-cli --help
 ```
 
-## Next Steps
+You should see the Tablassert CLI help message with available commands.
 
-- **[Tutorial](tutorial.md)** - Build your first knowledge graph
-- **[Configuration](configuration/graph.md)** - Learn configuration syntax
+## Development Setup
+
+For contributing to Tablassert or running tests, follow these additional steps:
+
+```bash
+# Install development dependencies (includes pre-commit hooks)
+uv sync --dev
+
+# Install pre-commit hooks
+pre-commit install
+
+# Run tests
+uv run pytest
+
+# Run type checking
+uv run pyright
+
+# Run linting
+uv run ruff check .
+```
+
+## Upgrading
+
+To upgrade to the latest version:
+
+```bash
+# Pull latest changes
+git pull origin main
+
+# Update dependencies
+uv sync
+
+# If using Docker, pull the latest image
+docker pull ghcr.io/skyeav/tablassert-cli:latest
+```
+
+## Troubleshooting
+
+### Python Version Issues
+
+Tablassert requires Python 3.13 or higher. If you encounter version errors:
+
+```bash
+# Check your Python version
+python --version
+
+# Use UV to manage Python versions
+uv python install 3.13
+uv python pin 3.13
+```
+
+### Dependency Installation Issues
+
+If you encounter dependency installation issues, try:
+
+```bash
+# Clear UV cache and reinstall
+uv cache clean
+uv sync --reinstall
+```
+
+### Docker Permission Issues
+
+If you encounter permission issues with Docker on Linux:
+
+```bash
+# Add your user to the docker group
+sudo usermod -aG docker $USER
+
+# Log out and back in for changes to take effect
+```
