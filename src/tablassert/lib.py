@@ -1,50 +1,30 @@
-from tablassert.enums import EncodingMethods
-from rich.progress import TaskProgressColumn
-from rich.progress import TimeElapsedColumn
-from tablassert.utils import namespace_uuid
-from tablassert.models import NodeEncoding
-from tablassert.downloader import from_url
-from tablassert.ingests import to_sections
-from tablassert.ingests import from_yaml
-from tablassert.qc import fullmap_audit
-from tablassert.fullmap import version4
-from rich.progress import SpinnerColumn
-from tablassert.models import Encoding
-from tablassert.models import Section
-from rich.progress import TextColumn
-from tablassert.utils import mkhash
-from tablassert.enums import Tokens
-from pydantic import NonNegativeInt
-from tablassert.models import Graph
-from rich.progress import BarColumn
-from rich.progress import Progress
-from tablassert.enums import Files
-from tablassert.utils import STORE
-from tablassert.log import logger
-from sqlite_utils import Database
-from pydantic import PositiveInt
-from multiprocessing import Pool
-from functools import reduce
-from os.path import basename
-from itertools import chain
-from typing import Callable
-from typing import Optional
-from typing import Literal
-from pydantic import Field
-from pathlib import Path
-from typing import Union
-from operator import add
-from typing import Self
-from operator import eq
-from operator import le
-from typing import Any
-import polars as pl
+import math
 import operator
-import xxhash
+from functools import reduce
+from itertools import chain
+from multiprocessing import Pool
+from operator import add, eq, le
+from os.path import basename
+from pathlib import Path
+from typing import Any, Callable, Literal, Optional, Self, Union
+
 import duckdb
 import orjson
+import polars as pl
 import typer
-import math
+import xxhash
+from pydantic import Field, NonNegativeInt, PositiveInt
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
+from sqlite_utils import Database
+
+from tablassert.downloader import from_url
+from tablassert.enums import EncodingMethods, Files, Tokens
+from tablassert.fullmap import version4
+from tablassert.ingests import from_yaml, to_sections
+from tablassert.log import logger
+from tablassert.models import Encoding, Graph, NodeEncoding, Section
+from tablassert.qc import fullmap_audit
+from tablassert.utils import STORE, mkhash, namespace_uuid
 
 # ? Newline To Make Progress Bar More Readable
 print("\n")
@@ -316,7 +296,7 @@ class Tcode(Section):
       (column, (add("original ", col), col)),
       (zero, (col,)),
       (one, (col,)),
-      (version4, (col, conn, x.taxon, x.prioritize, x.avoid, self.store.stem, self.config.name)),
+      (version4, (col, conn, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
       (fullmap_audit, (col, self.store.stem, self.config.name)),
     ]
     return add(encoding, node)

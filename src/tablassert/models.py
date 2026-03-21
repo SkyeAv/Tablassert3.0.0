@@ -1,26 +1,23 @@
-from tablassert.enums import EncodingMethods
-from tablassert.enums import Contributions
-from tablassert.enums import Repositories
-from tablassert.enums import Comparisons
-from tablassert.enums import FillMethods
-from tablassert.enums import Predicates
-from tablassert.enums import Qualifiers
-from tablassert.enums import Categories
-from tablassert.enums import Functions
-from tablassert.enums import Statuses
-from tablassert.enums import Syntaxes
-from tablassert.enums import Tokens
-from pydantic import NonNegativeInt
-from tablassert.enums import Files
-from pydantic import PositiveInt
-from pydantic import ConfigDict
-from pydantic import BaseModel
-from pydantic import HttpUrl
-from typing import Optional
-from pydantic import Field
-from typing import Literal
-from typing import Union
 from pathlib import Path
+from typing import Literal, Optional, Union
+
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, PositiveInt
+
+from tablassert.enums import (
+  Categories,
+  Comparisons,
+  Contributions,
+  EncodingMethods,
+  Files,
+  FillMethods,
+  Functions,
+  Predicates,
+  Qualifiers,
+  Repositories,
+  Statuses,
+  Syntaxes,
+  Tokens,
+)
 
 
 class TablaBase(BaseModel):

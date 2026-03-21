@@ -1,16 +1,15 @@
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
-from tablassert.utils import DISKCACHE
-from tablassert.log import logger
-from typing import Optional
-from typing import Literal
-from rapidfuzz import fuzz
-import onnxruntime as ort
+from operator import add, eq, ge
 from pathlib import Path
-from operator import add
-from operator import ge
-from operator import eq
+from typing import Literal, Optional
+
+import onnxruntime as ort
 import polars as pl
+from rapidfuzz import fuzz
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+from tablassert.log import logger
+from tablassert.utils import DISKCACHE
 
 SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore

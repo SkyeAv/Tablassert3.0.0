@@ -1,11 +1,11 @@
-from diskcache import Cache
 from functools import cache
 from pathlib import Path
 from typing import Any
-from uuid import uuid3
-from uuid import UUID
+from uuid import UUID, uuid3
+
 import polars as pl
 import xxhash
+from diskcache import Cache
 
 STORE: Path = Path("./.storassert")
 STORE.mkdir(parents=True, exist_ok=True)

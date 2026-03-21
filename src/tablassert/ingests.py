@@ -1,9 +1,9 @@
 from copy import deepcopy
-from yaml import CLoader
 from pathlib import Path
-from typing import Union
-from typing import Any
+from typing import Any, Union
+
 import yaml
+from yaml import CLoader
 
 
 def fastmerge(a: Union[list[Any], dict[str, Any]], b: Union[list[Any], dict[str, Any]]) -> Any:

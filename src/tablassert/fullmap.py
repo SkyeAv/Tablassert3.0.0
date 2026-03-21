@@ -1,11 +1,13 @@
-from tablassert.enums import Categories
-from tablassert.utils import samphash
-from tablassert.log import logger
+from operator import add
+from pathlib import Path
 from tempfile import gettempdir
 from typing import Optional
-from pathlib import Path
-from operator import add
+
 import polars as pl
+
+from tablassert.enums import Categories
+from tablassert.log import logger
+from tablassert.utils import samphash
 
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
@@ -71,42 +73,35 @@ def query_builder(
 
 
 def query_distinct(
-  p: Path, conn: object, taxon: Optional[str], prioritize: Optional[list[Categories]], avoid: Optional[list[Categories]]
+  p: Path,
+  conn: object,
+  taxon: Optional[str],
+  prioritize: Optional[list[Categories]],
+  avoid: Optional[list[Categories]],
+  column_context: bool,
 ) -> pl.DataFrame:
   # ? Query Database For Distinct Terms Only Using Persistent Connection
   # * Added Column Prioritization Logic From 4.2.0
   query: str = query_builder(p, prioritize, avoid, taxon)
   results: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
 
-  frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
-  results = results.join(frequency, on="CATEGORY_NAME", how="left")
+  sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
 
-  results = results.sort(["term", "PR", "NLP_LEVEL", "FREQUENCY"], descending=[False, False, False, True])
+  if column_context:
+    frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
+    results = results.join(frequency, on="CATEGORY_NAME", how="left")
+    sort_by += ["FREQUENCY"]
+
+  results = results.sort(sort_by, descending=[False, False, False, True])
   results = results.unique(subset=["term"], keep="first")
 
   p.unlink(missing_ok=True)
   return results
 
 
-def version4(
-  lf: pl.LazyFrame,
-  col: str,
-  conn: object,
-  taxon: Optional[str],
-  prioritize: Optional[list[Categories]],
-  avoid: Optional[list[Categories]],
-  section_hash: str,
-  config_file: str,
-  tag: str = " one",
-) -> pl.LazyFrame:
-  # ? Case Dependant, Provenance Rich Name Entity Recognition
-  l0: str = col
-  l1: str = add(l0, tag)
-
-  terms: pl.LazyFrame = distinct(lf, l0, l1)
-  p: Path = to_temp(terms)
-  matches: pl.DataFrame = query_distinct(p, conn, taxon, prioritize, avoid)
-
+def log_unmatched(
+  col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]
+) -> None:
   # * Log Unmatched Entities
   antimatches: pl.LazyFrame = terms.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
 
@@ -115,6 +110,31 @@ def version4(
   if unnmatched.height > 0:
     for term in unnmatched.get_column("term").to_list():
       logger.info(f"FAILED FULLMAP | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}")
+
+
+def version4(
+  lf: pl.LazyFrame,
+  col: str,
+  conn: object,
+  taxon: Optional[str] = None,
+  prioritize: Optional[list[Categories]] = None,
+  avoid: Optional[list[Categories]] = None,
+  log: bool = True,
+  section_hash: Optional[str] = None,
+  config_file: Optional[str] = None,
+  column_context: bool = True,
+  tag: str = " one",
+) -> pl.LazyFrame:
+  # ? Case Dependant, Provenance Rich Name Entity Recognition
+  l0: str = col
+  l1: str = add(l0, tag)
+
+  terms: pl.LazyFrame = distinct(lf, l0, l1)
+  p: Path = to_temp(terms)
+  matches: pl.DataFrame = query_distinct(p, conn, taxon, prioritize, avoid, column_context)
+
+  if log:
+    log_unmatched(col, terms, matches, section_hash, config_file)
 
   # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
   df: pl.DataFrame = lf.collect()

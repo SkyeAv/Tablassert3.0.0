@@ -1,5 +1,6 @@
-from loguru import logger
 from pathlib import Path
+
+from loguru import logger
 
 LOGASSERT: Path = Path("./.logassert")
 LOGASSERT.mkdir(parents=True, exist_ok=True)

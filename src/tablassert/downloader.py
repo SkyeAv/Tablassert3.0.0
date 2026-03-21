@@ -1,8 +1,10 @@
-from playwright.sync_api import sync_playwright
-from typing import Optional
 from pathlib import Path
 from time import sleep
+from typing import Optional
+
 import pyexcel
+from playwright.sync_api import sync_playwright
+
 
 def modernize_xls(p: Path) -> Path:
   xlsx: Path = p.with_suffix(".xlsx")
