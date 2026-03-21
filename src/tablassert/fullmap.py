@@ -39,26 +39,26 @@ def query_builder(
 ) -> str:
     # ? Build Query With UNION For Better Index Utilization
     base: str = """
-  SELECT
-    PA.term,
-    CU.CURIE,
-    CU.PREFERRED_NAME,
-    CA.CATEGORY_NAME,
-    CU.TAXON_ID,
-    SO.SOURCE_NAME,
-    SO.SOURCE_VERSION,
-    PA."nlp level" AS NLP_LEVEL,
-    CASE
-      {priority_case}
-      ELSE 50
-    END AS PR
-  FROM SYNONYMS SY
-  JOIN SOURCES SO ON SY.SOURCE_ID = SO.SOURCE_ID
-  JOIN CURIES CU ON SY.CURIE_ID = CU.CURIE_ID
-  JOIN CATEGORIES CA ON CU.CATEGORY_ID = CA.CATEGORY_ID
-    {avoid_filter}
-  JOIN read_parquet('{parquet}') PA ON PA.term = SY.SYNONYM
-  {taxon_filter}
+    SELECT
+        PA.term,
+        CU.CURIE,
+        CU.PREFERRED_NAME,
+        CA.CATEGORY_NAME,
+        CU.TAXON_ID,
+        SO.SOURCE_NAME,
+        SO.SOURCE_VERSION,
+        PA."nlp level" AS NLP_LEVEL,
+        CASE
+            {priority_case}
+            ELSE 50
+        END AS PR
+    FROM SYNONYMS SY
+    JOIN SOURCES SO ON SY.SOURCE_ID = SO.SOURCE_ID
+    JOIN CURIES CU ON SY.CURIE_ID = CU.CURIE_ID
+    JOIN CATEGORIES CA ON CU.CATEGORY_ID = CA.CATEGORY_ID
+        {avoid_filter}
+    JOIN read_parquet('{parquet}') PA ON PA.term = SY.SYNONYM
+    {taxon_filter}
 """
 
     priority_case: str = (
