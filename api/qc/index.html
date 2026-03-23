@@ -183,22 +183,19 @@
 - Original: <code>"TP53"</code> → Preferred: <code>"TP53"</code> ✓
 - Original: <code>"diabetes"</code> → Preferred: <code>"diabetes mellitus"</code> ✗ (goes to Stage 2)</p>
 <p><strong>Performance:</strong> O(1) string comparison</p>
+<p>Before fuzzy matching, the function also applies rule-based pass-through checks for known safe patterns (for example CHEBI/PR/UniProtKB CURIE families and selected exception prefixes).</p>
 <h4 id="stage-2-fuzzy-matching">Stage 2: Fuzzy Matching</h4>
 <p><strong>Medium confidence using RapidFuzz.</strong></p>
-<p>Four fuzzy matching algorithms:
+<p>Two fuzzy matching algorithms:
 1. <strong>Ratio:</strong> Overall string similarity
-2. <strong>Partial ratio:</strong> Substring matching
-3. <strong>Token sort ratio:</strong> Order-independent word matching
-4. <strong>Partial token sort ratio:</strong> Combined approach</p>
+2. <strong>Partial token sort ratio:</strong> Combined token/subsequence matching</p>
 <p><strong>Threshold:</strong> Default 20% similarity (configurable)</p>
 <pre><code class="language-python">fuzz.ratio(original, preferred) &gt;= 20
-or fuzz.ratio(original, curie) &gt;= 20
 or fuzz.partial_token_sort_ratio(original, preferred) &gt;= 20
-or fuzz.partial_token_sort_ratio(original, curie) &gt;= 20
 </code></pre>
 <p><strong>Example passes:</strong>
 - Original: <code>"breast ca"</code> → Preferred: <code>"breast cancer"</code> ✓
-- Original: <code>"T53"</code> → CURIE: <code>"HGNC:11998"</code> (TP53) ✗ (goes to Stage 3)</p>
+- Original: <code>"T53"</code> → Preferred: <code>"tumor protein p53"</code> ✗ (goes to Stage 3)</p>
 <p><strong>Performance:</strong> O(n) string operations, cached via <code>@DISKCACHE.memoize()</code></p>
 <h4 id="stage-3-bert-semantic-similarity">Stage 3: BERT Semantic Similarity</h4>
 <p><strong>High confidence using BioBERT embeddings.</strong></p>
@@ -222,7 +219,7 @@ return similarity &gt;= 0.2
 - Graph optimization level: ALL
 - ONNX session caching
 - Disk cache for embeddings (~100MB LRU)</p>
-<p>Loaded once at module import, reused for all calls.</p>
+<p>Lazy-loaded on first <code>BERT_audit()</code> call, then reused for subsequent calls.</p>
 <h3 id="disk-caching">Disk Caching</h3>
 <p>All expensive operations are cached to disk:</p>
 <pre><code class="language-python">@DISKCACHE.memoize()
@@ -231,7 +228,7 @@ def fuzz_audit(...): ...
 @DISKCACHE.memoize()
 def BERT_audit(...): ...
 </code></pre>
-<p><strong>Cache location:</strong> <code>cachessert/</code> directory</p>
+<p><strong>Cache location:</strong> <code>./.cachassert</code> directory</p>
 <p><strong>Cache strategy:</strong> LRU eviction when size exceeds limit</p>
 <p><strong>Why caching matters:</strong>
 - Fuzzy matching: 100-1000x speedup on repeated strings

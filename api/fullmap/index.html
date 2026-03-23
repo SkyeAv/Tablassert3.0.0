@@ -136,11 +136,13 @@
   lf: pl.LazyFrame,
   col: str,
   conn: object,
-  taxon: Optional[str],
-  prioritize: Optional[list[Categories]],
-  avoid: Optional[list[Categories]],
-  section_hash: str,
-  config_file: str,
+  taxon: Optional[str] = None,
+  prioritize: Optional[list[Categories]] = None,
+  avoid: Optional[list[Categories]] = None,
+  log: bool = True,
+  section_hash: Optional[str] = None,
+  config_file: Optional[str] = None,
+  column_context: bool = True,
   tag: str = &quot; one&quot;
 ) -&gt; pl.LazyFrame
 </code></pre>
@@ -166,14 +168,18 @@
 <p><strong><code>avoid: Optional[list[Categories]]</code></strong></p>
 <p>Optional list of Biolink categories to exclude from results.</p>
 <p>Example: <code>[Categories.Gene]</code> prevents gene mappings.</p>
+<p><strong><code>log: bool</code> (default: <code>True</code>)</strong></p>
+<p>Controls unmatched-value logging. When enabled, unresolved terms are logged with section/config/column context.</p>
+<p><strong><code>section_hash: Optional[str]</code> / <code>config_file: Optional[str]</code></strong></p>
+<p>Optional context fields used for operational logging when unmatched values are encountered.</p>
+<p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
+<p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the query result adds a category frequency score and prefers more frequent category hits.</p>
 <p><strong><code>tag: str</code> (default: <code>" one"</code>)</strong></p>
 <p>Suffix for NLP processing level column.</p>
 <p>The function looks for both:
 - <code>col</code> (original text, case-preserved)
 - <code>col + tag</code> (normalized text, typically lowercase)</p>
 <p>Default <code>" one"</code> means it uses level-one text processing (lowercase, stripped).</p>
-<p><strong><code>section_hash: str</code> / <code>config_file: str</code></strong></p>
-<p>Context fields used for operational logging when unmatched values are encountered.</p>
 <h3 id="return-value">Return Value</h3>
 <p>Returns a Polars LazyFrame with these columns added:</p>
 <table>
@@ -223,13 +229,18 @@
 </tbody>
 </table>
 <h3 id="duckdb-query">DuckDB Query</h3>
-<p>The function executes a complex SQL query that:</p>
+<p>The function executes a SQL query that:</p>
 <ol>
-<li><strong>Ranks matches</strong> by:</li>
+<li>
+<p><strong>Builds an in-memory term table</strong> by collecting distinct terms from both NLP levels and registering them in DuckDB as <code>PARQUET</code> via <code>conn.register("PARQUET", df.to_arrow())</code>.</p>
+</li>
+<li>
+<p><strong>Ranks matches</strong> by:</p>
+</li>
 <li>Category priority (if <code>prioritize</code> specified)</li>
 <li>NLP level (exact case match preferred over normalized)</li>
 <li>
-<p>Source confidence</p>
+<p>Category frequency (if <code>column_context=True</code>)</p>
 </li>
 <li>
 <p><strong>Filters by:</strong></p>
@@ -239,13 +250,12 @@
 <p>Category avoidance (if specified)</p>
 </li>
 <li>
-<p><strong>Deduplicates</strong> to one CURIE per row per input string</p>
+<p><strong>Deduplicates</strong> to one CURIE per input string</p>
 </li>
 </ol>
 <h3 id="example-usage">Example Usage</h3>
 <pre><code class="language-python">from tablassert.fullmap import version4
 from tablassert.enums import Categories
-from pathlib import Path
 import duckdb
 import polars as pl
 
@@ -263,8 +273,10 @@ result = version4(
   taxon=&quot;9606&quot;,  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
+  log=True,
   section_hash=&quot;tutorial-section&quot;,
   config_file=&quot;tutorial-table.yaml&quot;,
+  column_context=True,
   tag=&quot; one&quot;
 )
 
