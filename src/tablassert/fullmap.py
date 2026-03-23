@@ -1,13 +1,10 @@
 from operator import add
-from pathlib import Path
-from tempfile import gettempdir
 from typing import Optional
 
 import polars as pl
 
 from tablassert.enums import Categories
 from tablassert.log import logger
-from tablassert.utils import samphash
 
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
@@ -24,18 +21,8 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
     return terms.filter(~pl.col("term").str.contains(bad))
 
 
-def to_temp(lf: pl.LazyFrame, tmp: Path = Path(gettempdir())) -> Path:
-    # ? Writes LazyFrame To A Tempfile To Be Used In Fullmap
-    # ! Collection Point: samphash And write_parquet Require Eager
-    df: pl.DataFrame = lf.collect()
-    p: Path = tmp / samphash(df)
-    p = p.with_suffix(".parquet")
-    df.write_parquet(p)
-    return p
-
-
 def query_builder(
-    p: Path, prioritize: Optional[list[Categories]], avoid: Optional[list[Categories]], taxon: Optional[str]
+    prioritize: Optional[list[Categories]], avoid: Optional[list[Categories]], taxon: Optional[str]
 ) -> str:
     # ? Build Query With UNION For Better Index Utilization
     base: str = """
@@ -57,7 +44,7 @@ def query_builder(
     JOIN CURIES CU ON SY.CURIE_ID = CU.CURIE_ID
     JOIN CATEGORIES CA ON CU.CATEGORY_ID = CA.CATEGORY_ID
         {avoid_filter}
-    JOIN read_parquet('{parquet}') PA ON PA.term = SY.SYNONYM
+    JOIN PARQUET PA ON PA.term = SY.SYNONYM
     {taxon_filter}
 """
 
@@ -69,11 +56,11 @@ def query_builder(
     avoid_filter: str = f"AND CA.CATEGORY_NAME NOT IN ({', '.join(f"'{x}'" for x in avoid)})" if avoid else ""
     taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon} OR CA.CATEGORY_NAME != 'Gene'" if taxon else ""
 
-    return base.format(priority_case=priority_case, avoid_filter=avoid_filter, taxon_filter=taxon_filter, parquet=p)
+    return base.format(priority_case=priority_case, avoid_filter=avoid_filter, taxon_filter=taxon_filter)
 
 
 def query_distinct(
-    p: Path,
+    lf: pl.LazyFrame,
     conn: object,
     taxon: Optional[str],
     prioritize: Optional[list[Categories]],
@@ -82,7 +69,10 @@ def query_distinct(
 ) -> pl.DataFrame:
     # ? Query Database For Distinct Terms Only Using Persistent Connection
     # * Added Column Prioritization Logic From 4.2.0
-    query: str = query_builder(p, prioritize, avoid, taxon)
+    df: pl.DataFrame = lf.collect()
+    conn.register("PARQUET", df.to_arrow())  # pyright: ignore
+
+    query: str = query_builder(prioritize, avoid, taxon)
     results: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
 
     sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
@@ -95,7 +85,6 @@ def query_distinct(
     results = results.sort(sort_by, descending=[False, False, False, True])
     results = results.unique(subset=["term"], keep="first")
 
-    p.unlink(missing_ok=True)
     return results
 
 
@@ -132,8 +121,7 @@ def version4(
     l1: str = add(l0, tag)
 
     terms: pl.LazyFrame = distinct(lf, l0, l1)
-    p: Path = to_temp(terms)
-    matches: pl.DataFrame = query_distinct(p, conn, taxon, prioritize, avoid, column_context)
+    matches: pl.DataFrame = query_distinct(terms, conn, taxon, prioritize, avoid, column_context)
 
     if log:
         log_unmatched(col, terms, matches, section_hash, config_file)
