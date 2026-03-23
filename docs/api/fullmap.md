@@ -13,11 +13,13 @@ def version4(
   lf: pl.LazyFrame,
   col: str,
   conn: object,
-  taxon: Optional[str],
-  prioritize: Optional[list[Categories]],
-  avoid: Optional[list[Categories]],
-  section_hash: str,
-  config_file: str,
+  taxon: Optional[str] = None,
+  prioritize: Optional[list[Categories]] = None,
+  avoid: Optional[list[Categories]] = None,
+  log: bool = True,
+  section_hash: Optional[str] = None,
+  config_file: Optional[str] = None,
+  column_context: bool = True,
   tag: str = " one"
 ) -> pl.LazyFrame
 ```
@@ -61,6 +63,18 @@ Optional list of Biolink categories to exclude from results.
 
 Example: `[Categories.Gene]` prevents gene mappings.
 
+**`log: bool` (default: `True`)**
+
+Controls unmatched-value logging. When enabled, unresolved terms are logged with section/config/column context.
+
+**`section_hash: Optional[str]` / `config_file: Optional[str]`**
+
+Optional context fields used for operational logging when unmatched values are encountered.
+
+**`column_context: bool` (default: `True`)**
+
+Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the query result adds a category frequency score and prefers more frequent category hits.
+
 **`tag: str` (default: `" one"`)**
 
 Suffix for NLP processing level column.
@@ -70,10 +84,6 @@ The function looks for both:
 - `col + tag` (normalized text, typically lowercase)
 
 Default `" one"` means it uses level-one text processing (lowercase, stripped).
-
-**`section_hash: str` / `config_file: str`**
-
-Context fields used for operational logging when unmatched values are encountered.
 
 ### Return Value
 
@@ -91,25 +101,26 @@ Returns a Polars LazyFrame with these columns added:
 
 ### DuckDB Query
 
-The function executes a complex SQL query that:
+The function executes a SQL query that:
 
-1. **Ranks matches** by:
+1. **Builds an in-memory term table** by collecting distinct terms from both NLP levels and registering them in DuckDB as `PARQUET` via `conn.register("PARQUET", df.to_arrow())`.
+
+2. **Ranks matches** by:
    - Category priority (if `prioritize` specified)
    - NLP level (exact case match preferred over normalized)
-   - Source confidence
+   - Category frequency (if `column_context=True`)
 
-2. **Filters by:**
+3. **Filters by:**
    - Taxon ID (if specified)
    - Category avoidance (if specified)
 
-3. **Deduplicates** to one CURIE per row per input string
+4. **Deduplicates** to one CURIE per input string
 
 ### Example Usage
 
 ```python
 from tablassert.fullmap import version4
 from tablassert.enums import Categories
-from pathlib import Path
 import duckdb
 import polars as pl
 
@@ -127,8 +138,10 @@ result = version4(
   taxon="9606",  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
+  log=True,
   section_hash="tutorial-section",
   config_file="tutorial-table.yaml",
+  column_context=True,
   tag=" one"
 )
 
