@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.0.2 - 2026-03-23
+
+### Changes
+- Updated package metadata for the 7.0.2 release.
+- Added optional `log` and `column_context` controls to `fullmap.version4()` for more configurable entity-resolution behavior.
+
+### Bug Fixes
+- Reworked entity-resolution querying to register terms directly in DuckDB instead of writing temporary parquet files, removing tempfile lifecycle issues in `fullmap` query execution.
+- Isolated unmatched-entity logging into a dedicated helper and gated it behind an explicit logging flag.
+
+### Documentation
+- Updated API reference docs to match the current `version4()` function signature and behavior.
+- Corrected QC documentation to reflect the implemented fuzzy/BERT validation pipeline.
+- Fixed documentation path typos for cache/store artifact directories.
+
 ## 7.0.1 - 2026-03-17
 
 ### Documentation

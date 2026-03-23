@@ -72,28 +72,26 @@ original == preferred_name
 
 **Performance:** O(1) string comparison
 
+Before fuzzy matching, the function also applies rule-based pass-through checks for known safe patterns (for example CHEBI/PR/UniProtKB CURIE families and selected exception prefixes).
+
 #### Stage 2: Fuzzy Matching
 
 **Medium confidence using RapidFuzz.**
 
-Four fuzzy matching algorithms:
+Two fuzzy matching algorithms:
 1. **Ratio:** Overall string similarity
-2. **Partial ratio:** Substring matching
-3. **Token sort ratio:** Order-independent word matching
-4. **Partial token sort ratio:** Combined approach
+2. **Partial token sort ratio:** Combined token/subsequence matching
 
 **Threshold:** Default 20% similarity (configurable)
 
 ```python
 fuzz.ratio(original, preferred) >= 20
-or fuzz.ratio(original, curie) >= 20
 or fuzz.partial_token_sort_ratio(original, preferred) >= 20
-or fuzz.partial_token_sort_ratio(original, curie) >= 20
 ```
 
 **Example passes:**
 - Original: `"breast ca"` → Preferred: `"breast cancer"` ✓
-- Original: `"T53"` → CURIE: `"HGNC:11998"` (TP53) ✗ (goes to Stage 3)
+- Original: `"T53"` → Preferred: `"tumor protein p53"` ✗ (goes to Stage 3)
 
 **Performance:** O(n) string operations, cached via `@DISKCACHE.memoize()`
 
@@ -128,7 +126,7 @@ return similarity >= 0.2
 - ONNX session caching
 - Disk cache for embeddings (~100MB LRU)
 
-Loaded once at module import, reused for all calls.
+Lazy-loaded on first `BERT_audit()` call, then reused for subsequent calls.
 
 ### Disk Caching
 
@@ -142,7 +140,7 @@ def fuzz_audit(...): ...
 def BERT_audit(...): ...
 ```
 
-**Cache location:** `cachessert/` directory
+**Cache location:** `./.cachassert` directory
 
 **Cache strategy:** LRU eviction when size exceeds limit
 
