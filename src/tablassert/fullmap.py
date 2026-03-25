@@ -76,13 +76,16 @@ def query_distinct(
     results: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
 
     sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
+    descending: list[bool] = [False, False, False]
 
     if column_context:
         frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
         results = results.join(frequency, on="CATEGORY_NAME", how="left")
-        sort_by += ["FREQUENCY"]
 
-    results = results.sort(sort_by, descending=[False, False, False, True])
+        sort_by += ["FREQUENCY"]
+        descending += [True]
+
+    results = results.sort(sort_by, descending=True)
     results = results.unique(subset=["term"], keep="first")
 
     return results
