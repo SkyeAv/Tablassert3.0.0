@@ -45,6 +45,9 @@ def query_builder(
         CASE
             {priority_case}
             ELSE 50
+        END * CASE
+            WHEN LOWER(CU.PREFERRED_NAME) = PA.term THEN 1
+            ELSE 10
         END AS PR
     FROM SYNONYMS SY
     JOIN SOURCES SO ON SY.SOURCE_ID = SO.SOURCE_ID
