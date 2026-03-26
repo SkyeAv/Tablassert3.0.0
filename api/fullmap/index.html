@@ -232,12 +232,13 @@
 <p>The function executes a SQL query that:</p>
 <ol>
 <li>
-<p><strong>Builds an in-memory term table</strong> by collecting distinct terms from both NLP levels and registering them in DuckDB as <code>PARQUET</code> via <code>conn.register("PARQUET", df.to_arrow())</code>.</p>
+<p><strong>Builds an in-memory term table</strong> by collecting terms from both NLP levels, deduplicating by keeping first occurrences for deterministic ordering, and registering them in DuckDB as <code>PARQUET</code> via <code>conn.register("PARQUET", df.to_arrow())</code>.</p>
 </li>
 <li>
 <p><strong>Ranks matches</strong> by:</p>
 </li>
 <li>Category priority (if <code>prioritize</code> specified)</li>
+<li>Preferred-name exactness (case-insensitive exact match of normalized term to preferred name)</li>
 <li>NLP level (exact case match preferred over normalized)</li>
 <li>
 <p>Category frequency (if <code>column_context=True</code>)</p>
