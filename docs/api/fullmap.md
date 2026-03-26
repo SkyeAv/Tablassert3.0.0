@@ -107,6 +107,7 @@ The function executes a SQL query that:
 
 2. **Ranks matches** by:
    - Category priority (if `prioritize` specified)
+   - Preferred-name exactness (case-insensitive exact match of normalized term to preferred name)
    - NLP level (exact case match preferred over normalized)
    - Category frequency (if `column_context=True`)
 

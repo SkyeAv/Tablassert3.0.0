@@ -95,7 +95,7 @@ def query_distinct(
         sort_by += ["FREQUENCY"]
         descending += [True]
 
-    results = results.sort(sort_by, descending=True)
+    results = results.sort(sort_by, descending=descending)
     results = results.unique(subset=["term"], keep="first")
 
     return results
