@@ -11,7 +11,7 @@ from tablassert.log import logger
 if TYPE_CHECKING:
     import polars as pl
 else:
-    pl = Lazy.load("pl")
+    pl = Lazy.load("polars")
 
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
