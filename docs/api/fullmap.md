@@ -103,7 +103,7 @@ Returns a Polars LazyFrame with these columns added:
 
 The function executes a SQL query that:
 
-1. **Builds an in-memory term table** by collecting distinct terms from both NLP levels and registering them in DuckDB as `PARQUET` via `conn.register("PARQUET", df.to_arrow())`.
+1. **Builds an in-memory term table** by collecting terms from both NLP levels, deduplicating by keeping first occurrences for deterministic ordering, and registering them in DuckDB as `PARQUET` via `conn.register("PARQUET", df.to_arrow())`.
 
 2. **Ranks matches** by:
    - Category priority (if `prioritize` specified)
