@@ -6,14 +6,15 @@ from typing import TYPE_CHECKING, Literal, Optional
 
 import lazy_loader as Lazy
 from rapidfuzz import fuzz
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
 if TYPE_CHECKING:
     import onnxruntime as ort
     import polars as pl
+    import sentence_transformers
 else:
     ort = Lazy.load("onnxruntime")
+    sentence_transformers = Lazy.load("sentence_transformers")
     pl = Lazy.load("polars")
 
 from tablassert.log import logger
@@ -36,9 +37,11 @@ def get_biobert() -> object:
     if BIOBERT:
         return BIOBERT
     elif not BIOBERT and MODEL.exists():
-        BIOBERT = SentenceTransformer(str(MODEL), backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS)  # pyright: ignore
+        BIOBERT = sentence_transformers.SentenceTransformer(
+            str(MODEL), backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS
+        )  # pyright: ignore
     else:
-        BIOBERT = SentenceTransformer(
+        BIOBERT = sentence_transformers.SentenceTransformer(
             "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS
         )  # pyright: ignore
         MODEL.mkdir(parents=True, exist_ok=True)
