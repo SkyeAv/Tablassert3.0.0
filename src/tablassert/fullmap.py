@@ -22,7 +22,7 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
     t1: pl.LazyFrame = lf.select(pl.col(l1).alias("term")).unique()
     t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
-    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
+    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"], keep="first")
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
     return terms.filter(~pl.col("term").str.contains(bad))
