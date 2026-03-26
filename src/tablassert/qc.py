@@ -1,12 +1,18 @@
 from operator import add, eq, ge
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
-import onnxruntime as ort
-import polars as pl
+import lazy_loader as Lazy
 from rapidfuzz import fuzz
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+
+if TYPE_CHECKING:
+    import onnxruntime as ort
+    import polars as pl
+else:
+    ort = Lazy.load("onnxruntime")
+    pl = Lazy.load("polars")
 
 from tablassert.log import logger
 from tablassert.utils import DISKCACHE

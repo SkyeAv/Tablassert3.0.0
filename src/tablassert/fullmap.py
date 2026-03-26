@@ -1,10 +1,15 @@
 from operator import add
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import polars as pl
+import lazy_loader as Lazy
 
 from tablassert.enums import Categories
 from tablassert.log import logger
+
+if TYPE_CHECKING:
+    import polars as pl
+else:
+    pl = Lazy.load("pl")
 
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:

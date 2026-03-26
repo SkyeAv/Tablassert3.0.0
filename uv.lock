@@ -364,6 +364,18 @@ wheels = [
 ]
 
 [[package]]
+name = "lazy-loader"
+version = "0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/49/ac/21a1f8aa3777f5658576777ea76bfb124b702c520bbe90edf4ae9915eafa/lazy_loader-0.5.tar.gz", hash = "sha256:717f9179a0dbed357012ddad50a5ad3d5e4d9a0b8712680d4e687f5e6e6ed9b3", size = 15294, upload-time = "2026-03-06T15:45:09.054Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/a1/8d812e53a5da1687abb10445275d41a8b13adb781bbf7196ddbcf8d88505/lazy_loader-0.5-py3-none-any.whl", hash = "sha256:ab0ea149e9c554d4ffeeb21105ac60bed7f3b4fd69b1d2360a4add51b170b005", size = 8044, upload-time = "2026-03-06T15:45:07.668Z" },
+]
+
+[[package]]
 name = "lml"
 version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1655,6 +1667,7 @@ dependencies = [
     { name = "diskcache" },
     { name = "duckdb" },
     { name = "fastexcel" },
+    { name = "lazy-loader" },
     { name = "loguru" },
     { name = "mkdocs" },
     { name = "onnxruntime" },
@@ -1693,6 +1706,7 @@ requires-dist = [
     { name = "diskcache", specifier = ">=5.6.3" },
     { name = "duckdb", specifier = ">=1.5.0" },
     { name = "fastexcel", specifier = ">=0.19.0" },
+    { name = "lazy-loader", specifier = ">=0.5" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "onnxruntime", specifier = ">=1.24.3" },

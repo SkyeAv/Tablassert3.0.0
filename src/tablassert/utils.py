@@ -1,11 +1,17 @@
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid3
 
-import polars as pl
-import xxhash
+import lazy_loader as Lazy
 from diskcache import Cache
+
+if TYPE_CHECKING:
+    import polars as pl
+    import xxhash
+else:
+    pl = Lazy.load("polars")
+    xxhash = Lazy.load("xxhash")
 
 STORE: Path = Path("./.storassert")
 STORE.mkdir(parents=True, exist_ok=True)
