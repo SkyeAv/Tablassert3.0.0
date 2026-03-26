@@ -1,9 +1,16 @@
+from __future__ import annotations
+
 from pathlib import Path
 from time import sleep
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import pyexcel
+import lazy_loader as Lazy
 from playwright.sync_api import sync_playwright
+
+if TYPE_CHECKING:
+    import pyexcel
+else:
+    pyexcel = Lazy.load("pyexcel")
 
 
 def modernize_xls(p: Path) -> Path:

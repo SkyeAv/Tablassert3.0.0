@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changes
+- Updated `fullmap` ranking to prioritize case-insensitive exact matches between normalized terms and preferred names.
+- Updated `fullmap` term de-duplication to keep first occurrences, improving deterministic output ordering.
+
 ## 7.0.2 - 2026-03-23
 
 ### Changes

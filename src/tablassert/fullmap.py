@@ -1,10 +1,17 @@
-from operator import add
-from typing import Optional
+from __future__ import annotations
 
-import polars as pl
+from operator import add
+from typing import TYPE_CHECKING, Optional
+
+import lazy_loader as Lazy
 
 from tablassert.enums import Categories
 from tablassert.log import logger
+
+if TYPE_CHECKING:
+    import polars as pl
+else:
+    pl = Lazy.load("polars")
 
 
 def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
@@ -15,7 +22,7 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
     t1: pl.LazyFrame = lf.select(pl.col(l1).alias("term")).unique()
     t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
-    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"])
+    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"], keep="first")
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
     return terms.filter(~pl.col("term").str.contains(bad))
@@ -38,6 +45,9 @@ def query_builder(
         CASE
             {priority_case}
             ELSE 50
+        END * CASE
+            WHEN LOWER(CU.PREFERRED_NAME) = PA.term THEN 1
+            ELSE 10
         END AS PR
     FROM SYNONYMS SY
     JOIN SOURCES SO ON SY.SOURCE_ID = SO.SOURCE_ID
@@ -76,13 +86,16 @@ def query_distinct(
     results: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
 
     sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
+    descending: list[bool] = [False, False, False]
 
     if column_context:
         frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
         results = results.join(frequency, on="CATEGORY_NAME", how="left")
-        sort_by += ["FREQUENCY"]
 
-    results = results.sort(sort_by, descending=[False, False, False, True])
+        sort_by += ["FREQUENCY"]
+        descending += [True]
+
+    results = results.sort(sort_by, descending=descending)
     results = results.unique(subset=["term"], keep="first")
 
     return results

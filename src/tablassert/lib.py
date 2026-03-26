@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 import operator
 from functools import reduce
@@ -6,13 +8,9 @@ from multiprocessing import Pool
 from operator import add, eq, le
 from os.path import basename
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Self, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
-import duckdb
-import orjson
-import polars as pl
-import typer
-import xxhash
+import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt, PositiveInt
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from sqlite_utils import Database
@@ -25,6 +23,19 @@ from tablassert.log import logger
 from tablassert.models import Encoding, Graph, NodeEncoding, Section
 from tablassert.qc import fullmap_audit
 from tablassert.utils import STORE, mkhash, namespace_uuid
+
+if TYPE_CHECKING:
+    import duckdb
+    import orjson
+    import polars as pl
+    import typer
+    import xxhash
+else:
+    duckdb = Lazy.load("duckdb")
+    orjson = Lazy.load("orjson")
+    pl = Lazy.load("polars")
+    typer = Lazy.load("typer")
+    xxhash = Lazy.load("xxhash")
 
 # ? Newline To Make Progress Bar More Readable
 print("\n")
