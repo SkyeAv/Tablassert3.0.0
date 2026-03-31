@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid3
 
 import lazy_loader as Lazy
-from diskcache import Cache
 
 if TYPE_CHECKING:
     import polars as pl
@@ -17,12 +16,6 @@ else:
 
 STORE: Path = Path("./.storassert")
 STORE.mkdir(parents=True, exist_ok=True)
-
-DISKCACHE: object = Cache(
-    "./.cachassert",
-    size_limit=100_000_000,  # ~100MB
-    eviction_policy="least-recently-used",
-)
 
 
 def mkhash(x: Any) -> str:

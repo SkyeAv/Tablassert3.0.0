@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from operator import add, eq, ge
+from operator import add, eq
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional
 
 import lazy_loader as Lazy
 from rapidfuzz import fuzz
+from rapidfuzz.process import cpdist
 from sklearn.metrics.pairwise import cosine_similarity
 
 if TYPE_CHECKING:
@@ -18,7 +19,6 @@ else:
     pl = Lazy.load("polars")
 
 from tablassert.log import logger
-from tablassert.utils import DISKCACHE
 
 SESSION_OPTS: object = ort.SessionOptions()
 SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
@@ -32,7 +32,7 @@ BIOBERT: Optional[object] = None
 
 
 def get_biobert() -> object:
-    # ? Lazy-loads BioBERT once on first BERT_audit call, then caches globally
+    # ? Lazy-loads BioBERT once on first batch audit call, then caches globally
     global BIOBERT
     if BIOBERT:
         return BIOBERT
@@ -49,29 +49,10 @@ def get_biobert() -> object:
     return BIOBERT
 
 
-@DISKCACHE.memoize()  # pyright: ignore
-def fuzz_audit(x: object, original: str, preferred: str, min_fuzz: float = 20) -> bool:
-    # ? Decides Whether To Remove A Suspected Fullmap Error Based On Fuzzy Matching
-    o: str = x[original]  # pyright: ignore
-    p: str = x[preferred]  # pyright: ignore
-    return bool(ge(fuzz.ratio(o, p), min_fuzz) or ge(fuzz.partial_token_sort_ratio(o, p), min_fuzz))
-
-
-@DISKCACHE.memoize()  # pyright: ignore
-def BERT_audit(x: object, original: str, preferred: str, min_cos: float = 0.2) -> bool:
-    # ? Decides Whether To Remove A Suspected Fullmap Error Based On BERT EMBEDDINGS
-    o: str = x[original]  # pyright: ignore
-    p: str = x[preferred]  # pyright: ignore
-
-    embeddings: object = get_biobert().encode([o, p])  # pyright: ignore
-    similarity: float = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]  # pyright: ignore
-    return bool(ge(similarity, min_cos))
-
-
 def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed") -> pl.LazyFrame:
     # ? Ensures Fullmap Correct Processes Strings To CURIES
     # * Deletes Suspected Errors
-    # ! Collection Points: map_elements With Custom Functions Require Eager
+    # ! Collection Point: Pending Pairs Require Eager
     original: str = add("original ", col)
     preferred: str = add(col, " name")
     cols: list[str] = [col, original, preferred]
@@ -104,23 +85,30 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
-    # * Stage 2: Fuzzy Matching Via RapidFuzz (Requires Eager)
-    masked_fuzz: pl.DataFrame = pending.with_columns(
-        pl.struct(cols[1:])
-        .map_elements(lambda x: fuzz_audit(x, original, preferred), return_dtype=pl.Boolean)
-        .alias(out)
-    )
+    # * Stage 2: Fuzzy Matching Via RapidFuzz (Batched)
+    originals: list[str] = pending.get_column(cols[1]).to_list()
+    preferreds: list[str] = pending.get_column(cols[2]).to_list()
+
+    ratio_scores: object = cpdist(originals, preferreds, scorer=fuzz.ratio)
+    partial_scores: object = cpdist(originals, preferreds, scorer=fuzz.partial_token_sort_ratio)
+
+    fuzz_mask: pl.Series = pl.Series(out, (ratio_scores >= 20) | (partial_scores >= 20), dtype=pl.Boolean)
+    masked_fuzz: pl.DataFrame = pending.with_columns(fuzz_mask)
     pairs = pl.concat((passed, masked_fuzz))
 
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
-    # * Stage 3: BioBERT Embeddings (Requires Eager)
-    BERT_fuzz: pl.DataFrame = pending.with_columns(
-        pl.struct(cols[1:])
-        .map_elements(lambda x: BERT_audit(x, original, preferred), return_dtype=pl.Boolean)
-        .alias(out)
-    )
+    # * Stage 3: BioBERT Embeddings (Batched)
+    originals = pending.get_column(cols[1]).to_list()
+    preferreds = pending.get_column(cols[2]).to_list()
+
+    embeddings: object = get_biobert().encode(originals + preferreds)  # pyright: ignore
+    n: int = len(originals)
+    similarity: object = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()  # pyright: ignore
+
+    bert_mask: pl.Series = pl.Series(out, similarity >= 0.2, dtype=pl.Boolean)  # pyright: ignore
+    BERT_fuzz: pl.DataFrame = pending.with_columns(bert_mask)
     pairs = pl.concat((passed, BERT_fuzz))
 
     passed = pairs.filter(pl.col(out))

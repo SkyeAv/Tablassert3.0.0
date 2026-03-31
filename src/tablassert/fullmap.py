@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from multiprocessing.pool import ThreadPool
 from operator import add
 from typing import TYPE_CHECKING, Optional
 
@@ -75,6 +76,26 @@ def query_builder(
     return base.format(priority_case=priority_case, avoid_filter=avoid_filter, taxon_filter=taxon_filter)
 
 
+def query_shard(conn: object, df: pl.DataFrame, query: str, column_context: bool) -> pl.DataFrame:
+    # ? Query A Single Shard Database For Distinct Terms
+    conn.register("PARQUET", df.to_arrow())  # pyright: ignore
+    result: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
+
+    sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
+    descending: list[bool] = [False, False, False]
+
+    if column_context:
+        frequency: pl.DataFrame = result.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
+        result = result.join(frequency, on="CATEGORY_NAME", how="left")
+
+        sort_by += ["FREQUENCY"]
+        descending += [True]
+
+    result = result.sort(sort_by, descending=descending)
+    result = result.unique(subset=["term"], keep="first")
+    return result
+
+
 def query_distinct(
     lf: pl.LazyFrame,
     conns: list[object],
@@ -83,33 +104,17 @@ def query_distinct(
     avoid: Optional[list[Categories]],
     column_context: bool,
 ) -> pl.DataFrame:
-    # ? Query Database For Distinct Terms Only Using Persistent Connection
+    # ? Query All Shard Databases In Parallel Using Thread Pool
     # * Added Column Prioritization Logic From 4.2.0
     shards: dict[tuple[str], pl.DataFrame] = (
         lf.sort("shard").collect().partition_by("shard", maintain_order=True, as_dict=True)
     )
     query: str = query_builder(prioritize, avoid, taxon)
 
-    results: list[pl.DataFrame] = []
-    for shard, df in shards.items():
-        conn: object = conns[int(shard[0])]
-
-        conn.register("PARQUET", df.to_arrow())  # pyright: ignore
-        result: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
-
-        sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
-        descending: list[bool] = [False, False, False]
-
-        if column_context:
-            frequency: pl.DataFrame = result.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
-            result = result.join(frequency, on="CATEGORY_NAME", how="left")
-
-            sort_by += ["FREQUENCY"]
-            descending += [True]
-
-        result = result.sort(sort_by, descending=descending)
-        result = result.unique(subset=["term"], keep="first")
-        results += [result]
+    args: list[tuple[object, pl.DataFrame, str, bool]] = [
+        (conns[int(shard[0])], df, query, column_context) for shard, df in shards.items()
+    ]
+    results: list[pl.DataFrame] = ThreadPool(SHARDS).starmap(query_shard, args)
 
     return pl.concat(results, how="vertical")
 
