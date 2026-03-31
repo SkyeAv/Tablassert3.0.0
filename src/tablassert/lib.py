@@ -16,6 +16,7 @@ from tablassert.downloader import from_url
 from tablassert.enums import EncodingMethods, Files, Tokens
 from tablassert.fullmap import version4
 from tablassert.log import logger
+from tablassert.nlp import level_one, level_two
 from tablassert.models import Encoding, NodeEncoding, Section
 from tablassert.qc import fullmap_audit
 from tablassert.utils import namespace_uuid
@@ -61,24 +62,6 @@ def math_op(
         ).alias(col)
     )
     return df.lazy()
-
-
-def zero(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:
-    # ? Level Zero Text Processing
-    expr: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars().str.to_lowercase()
-    return lf.with_columns(expr.alias(col))
-
-
-def one(
-    lf: pl.LazyFrame,
-    col: str,  # pyright: ignore
-    regex: str = r"\W+",
-    tag: str = " one",
-) -> pl.LazyFrame:
-    # ? Level One Text Processing
-    expr: pl.Expr = pl.col(col).str.replace_all(regex, "")
-    col: str = add(col, tag)
-    return lf.with_columns(expr.alias(col))
 
 
 def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
@@ -296,8 +279,8 @@ class Tcode(Section):
         encoding: list[Any] = self.encoding(x, col)
         node: list[Any] = [
             (column, (add("original ", col), col)),
-            (zero, (col,)),
-            (one, (col,)),
+            (level_one, (col,)),
+            (level_two, (col,)),
             (version4, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
             (fullmap_audit, (col, self.store.stem, self.config.name)),
         ]

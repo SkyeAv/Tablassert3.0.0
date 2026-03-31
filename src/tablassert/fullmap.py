@@ -140,7 +140,7 @@ def version4(
     section_hash: Optional[str] = None,
     config_file: Optional[str] = None,
     column_context: bool = True,
-    tag: str = " one",
+    tag: str = " two",
 ) -> pl.LazyFrame:
     # ? Case Dependant, Provenance Rich Name Entity Recognition
     l0: str = col
@@ -196,7 +196,7 @@ def version4(
             r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"
         )
     )
-    result = result.select(pl.exclude(add(col, " one")))
+    result = result.select(pl.exclude(add(col, " two")))
     result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
     result = result.filter(pl.col(col).is_not_null())
 
