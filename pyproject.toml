@@ -1,6 +1,6 @@
 [project]
 name = "tablassert"
-version = "7.1.0"
+version = "7.2.0"
 description = "Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON."
 authors = [
     { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
@@ -59,7 +59,7 @@ build-backend = "hatchling.build"
 packages = ["./src/tablassert"]
 
 [project.scripts]
-tablassert = "tablassert.lib:CLI"
+tablassert = "tablassert.cli:CLI"
 
 [project.optional-dependencies]
 rtcompat = [
