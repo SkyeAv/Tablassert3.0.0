@@ -12,6 +12,7 @@
 *.logassert/
 *DATALAKE/
 *.onnxassert/
+*.claude/
 *.envrc
 *venv/
 *.log
