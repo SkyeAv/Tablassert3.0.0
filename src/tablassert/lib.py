@@ -38,9 +38,6 @@ else:
     typer = Lazy.load("typer")
     xxhash = Lazy.load("xxhash")
 
-# ? Newline To Make Progress Bar More Readable
-print("\n")
-
 
 def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
     # ? Creates A New Column With A Literal Value
