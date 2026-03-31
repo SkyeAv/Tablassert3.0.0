@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
@@ -31,6 +32,13 @@ PROGRESS: Progress = Progress(
     TaskProgressColumn(),
     TimeElapsedColumn(),
 )
+
+
+@CLI.command()
+def version() -> None:
+    """Print The Tablassert Version"""
+    v: str = get_version("tablassert")
+    typer.echo(f"tablassert {v}")
 
 
 def track(task_id: Any, iterable: Any) -> Any:
