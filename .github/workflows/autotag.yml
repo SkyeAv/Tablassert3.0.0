@@ -1,5 +1,4 @@
-name: Auto Tag
-
+name: Auto Tag Versions
 on:
   push:
     branches:
