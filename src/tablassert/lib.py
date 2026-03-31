@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import operator
+from contextlib import ExitStack
 from functools import reduce
 from itertools import chain
 from multiprocessing import Pool
@@ -17,7 +18,7 @@ from sqlite_utils import Database
 
 from tablassert.downloader import from_url
 from tablassert.enums import EncodingMethods, Files, Tokens
-from tablassert.fullmap import version4
+from tablassert.fullmap import SHARDS, version4
 from tablassert.ingests import from_yaml, to_sections
 from tablassert.log import logger
 from tablassert.models import Encoding, Graph, NodeEncoding, Section
@@ -300,14 +301,14 @@ class Tcode(Section):
             [(math_op, (col, t.function, t.arguments)) for t in x.transformations] if x.transformations else None,
         ]
 
-    def node(self: Self, x: NodeEncoding, col: str, conn: object) -> list[Any]:
+    def node(self: Self, x: NodeEncoding, col: str, conns: list[object]) -> list[Any]:
         # ? Collect Helper For NodeEncoding Classes
         encoding: list[Any] = self.encoding(x, col)
         node: list[Any] = [
             (column, (add("original ", col), col)),
             (zero, (col,)),
             (one, (col,)),
-            (version4, (col, conn, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
+            (version4, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
             (fullmap_audit, (col, self.store.stem, self.config.name)),
         ]
         return add(encoding, node)
@@ -325,7 +326,7 @@ class Tcode(Section):
         return result
 
     def collect(
-        self: Self, conn: object, pubmed_db: Optional[Path], pmc_db: Optional[Path]
+        self: Self, conns: list[object], pubmed_db: Optional[Path], pmc_db: Optional[Path]
     ) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
         # ? Code That Tells Tablassert What Actions To While Transforming Data
 
@@ -351,10 +352,10 @@ class Tcode(Section):
                 if self.source.reindex
                 else None,
                 [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
-                self.node(self.statement.subject, "subject", conn),
-                self.node(self.statement.object, "object", conn),
+                self.node(self.statement.subject, "subject", conns),
+                self.node(self.statement.object, "object", conns),
                 (value, ("predicate", self.statement.predicate)),
-                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conn)]
+                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)]
                 if self.statement.qualifiers
                 else None,
                 (value, ("syntax", self.syntax)),
@@ -550,11 +551,15 @@ def build_knowledge_graph(
             Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")})
             for idx, s in track(t3, enumerate(sections, start=1))
         ]
-        with duckdb.connect(g.dbssert, read_only=True) as conn:
+        with ExitStack() as stack:
+            conns: list[object] = [
+                stack.enter_context(duckdb.connect(g.dbssert / "data" / f"{x}.duckdb", read_only=True))
+                for x in range(SHARDS)
+            ]
             # ? Collect Instructions
             t4: Any = PROGRESS.add_task("Collecting Instructions...", total=n)
             instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [
-                x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)
+                x.collect(conns, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)
             ]  # pyright: ignore
 
             # ? Build Subgraphs

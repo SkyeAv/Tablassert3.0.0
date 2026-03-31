@@ -10,22 +10,28 @@ from tablassert.log import logger
 
 if TYPE_CHECKING:
     import polars as pl
+    import polars_hash as plh
 else:
     pl = Lazy.load("polars")
+    plh = Lazy.load("polars_hash")
 
 
-def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
+SHARDS: int = 16
+
+
+def distinct(lf: pl.LazyFrame, l0: str, l1: str, col: str = "term") -> pl.LazyFrame:
     # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-    t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
+    t0: pl.LazyFrame = lf.select(pl.col(l0).alias(col)).unique()
     t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
-    t1: pl.LazyFrame = lf.select(pl.col(l1).alias("term")).unique()
+    t1: pl.LazyFrame = lf.select(pl.col(l1).alias(col)).unique()
     t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
-    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"], keep="first")
+    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=[col], keep="first")
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
-    return terms.filter(~pl.col("term").str.contains(bad))
+    terms = terms.filter(~pl.col(col).str.contains(bad))
+    return terms.with_columns((pl.col(col).chash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
 
 
 def query_builder(
@@ -71,7 +77,7 @@ def query_builder(
 
 def query_distinct(
     lf: pl.LazyFrame,
-    conn: object,
+    conns: list[object],
     taxon: Optional[str],
     prioritize: Optional[list[Categories]],
     avoid: Optional[list[Categories]],
@@ -79,26 +85,33 @@ def query_distinct(
 ) -> pl.DataFrame:
     # ? Query Database For Distinct Terms Only Using Persistent Connection
     # * Added Column Prioritization Logic From 4.2.0
-    df: pl.DataFrame = lf.collect()
-    conn.register("PARQUET", df.to_arrow())  # pyright: ignore
-
+    shards: dict[tuple[str], pl.DataFrame] = (
+        lf.sort("shard").collect().partition_by("shard", maintain_order=True, as_dict=True)
+    )
     query: str = query_builder(prioritize, avoid, taxon)
-    results: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
 
-    sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
-    descending: list[bool] = [False, False, False]
+    results: list[pl.DataFrame] = []
+    for shard, df in shards.items():
+        conn: object = conns[int(shard[0])]
 
-    if column_context:
-        frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
-        results = results.join(frequency, on="CATEGORY_NAME", how="left")
+        conn.register("PARQUET", df.to_arrow())  # pyright: ignore
+        result: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
 
-        sort_by += ["FREQUENCY"]
-        descending += [True]
+        sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
+        descending: list[bool] = [False, False, False]
 
-    results = results.sort(sort_by, descending=descending)
-    results = results.unique(subset=["term"], keep="first")
+        if column_context:
+            frequency: pl.DataFrame = result.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
+            result = result.join(frequency, on="CATEGORY_NAME", how="left")
 
-    return results
+            sort_by += ["FREQUENCY"]
+            descending += [True]
+
+        result = result.sort(sort_by, descending=descending)
+        result = result.unique(subset=["term"], keep="first")
+        results += [result]
+
+    return pl.concat(results, how="vertical")
 
 
 def log_unmatched(
@@ -119,7 +132,7 @@ def log_unmatched(
 def version4(
     lf: pl.LazyFrame,
     col: str,
-    conn: object,
+    conns: list[object],
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
@@ -134,7 +147,7 @@ def version4(
     l1: str = add(l0, tag)
 
     terms: pl.LazyFrame = distinct(lf, l0, l1)
-    matches: pl.DataFrame = query_distinct(terms, conn, taxon, prioritize, avoid, column_context)
+    matches: pl.DataFrame = query_distinct(terms, conns, taxon, prioritize, avoid, column_context)
 
     if log:
         log_unmatched(col, terms, matches, section_hash, config_file)
