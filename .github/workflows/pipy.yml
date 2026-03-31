@@ -1,8 +1,8 @@
 name: Deploy to PyPI
 on:
   push:
-    branches: [main]
-    paths: [pyproject.toml]
+    branches:
+      - main
 jobs:
   publish:
     runs-on: ubuntu-latest
