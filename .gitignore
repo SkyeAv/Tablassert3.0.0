@@ -5,8 +5,8 @@
 *.ruff_cache/
 *.pytest_cache/
 *plans/
-*CLAUDE.md
-*.claude/
+*AGENTS.md
+*specs/
 *.cachassert/
 *.storassert/
 *.logassert/
