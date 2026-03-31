@@ -1,0 +1,41 @@
+template:
+  syntax: TC3
+  source:
+    url: https://example.com/test.xlsx
+    local: ./test.xlsx
+    kind: excel
+    sheet: Sheet1
+    row_slice:
+      - 2
+      - auto
+  statement:
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+        - SmallMolecule
+    predicate: correlated_with
+  provenance:
+    repo: PMC
+    publication: PMC0000000
+    contributors:
+      - kind: curation
+        name: Test User
+        date: 01 JAN 2025
+sections:
+  - statement:
+      object:
+        method: value
+        encoding: glycine
+    annotations:
+      - annotation: p value
+        method: column
+        encoding: E
+  - statement:
+      object:
+        method: value
+        encoding: alanine
+    annotations:
+      - annotation: p value
+        method: column
+        encoding: F

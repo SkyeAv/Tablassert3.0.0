@@ -74,6 +74,9 @@ dev = [
     "ruff>=0.15.6",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 120
 indent-width = 4
