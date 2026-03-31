@@ -553,7 +553,7 @@ def build_knowledge_graph(
         ]
         with ExitStack() as stack:
             conns: list[object] = [
-                stack.enter_context(duckdb.connect(g.dbssert / "data" / f"{x}.duckdb", read_only=True))
+                stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True))
                 for x in range(SHARDS)
             ]
             # ? Collect Instructions

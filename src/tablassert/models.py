@@ -129,6 +129,6 @@ class Graph(TablaBase):
     name: str = Field(...)
     version: str = Field(...)
     tables: list[Path] = Field(...)
-    dbssert: Path = Field(...)
+    datassert: Path = Field(...)
     pubmed_db: Optional[Path] = Field(None)
     pmc_db: Optional[Path] = Field(None)
