@@ -23,5 +23,5 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner | lower }}/tablassert:latest
-            ghcr.io/${{ github.repository_owner | lower }}/tablassert:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/tablassert:latest
+            ghcr.io/${{ github.repository_owner }}/tablassert:${{ github.ref_name }}
