@@ -37,13 +37,18 @@ dependencies = [
     "fastexcel>=0.19.0",
     "lazy-loader>=0.5",
     "loguru>=0.7.3",
+    "onnxruntime>=1.24.4",
     "orjson>=3.11.7",
+    "playwright>=1.58.0",
     "polars>=1.39.0",
     "polars-hash>=0.5.6",
     "pyarrow>=23.0.1",
     "pydantic>=2.12.5",
+    "pyexcel>=0.7.4",
     "pyyaml>=6.0.3",
     "rapidfuzz>=3.14.3",
+    "scikit-learn>=1.8.0",
+    "sentence-transformers>=5.3.0",
     "sqlite-utils>=3.39",
     "typer>=0.24.1",
     "xxhash>=3.6.0",
@@ -70,24 +75,6 @@ rtcompat = [
 ]
 rt = [
     "tablassert[rtcompat]",
-]
-ml = [
-    "sentence-transformers>=5.3.0",
-    "onnxruntime>=1.24.3",
-    "optimum-onnx>=0.1.0",
-    "scikit-learn>=1.8.0",
-]
-web = [
-    "playwright>=1.58.0",
-]
-pyexcel = [
-    "pyexcel>=0.7.4",
-]
-full = [
-    "tablassert[ml,web,pyexcel]",
-]
-full-rt = [
-    "tablassert[full,rtcompat]",
 ]
 
 [dependency-groups]
