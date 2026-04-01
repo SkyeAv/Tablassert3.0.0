@@ -212,7 +212,7 @@ Output: 990 rows (700 + 250 + 40)
 
 QC is applied after entity resolution:
 
-1. **Entity resolution** (`version4()`) - Maps text to CURIEs
+1. **Entity resolution** (`resolve()`) - Maps text to CURIEs
 2. **Quality control** (`fullmap_audit()`) - Validates mappings
 3. **Export** - Only validated mappings in final output
 

@@ -251,6 +251,170 @@ This produces two sets of edges from one table:
 1. Positive correlations (rho > 0)
 2. Negative correlations (rho < 0)
 
+---
+
+## Dual-Column Mapping
+
+This pattern maps both subject and object from columns — both nodes require entity resolution.
+
+**Use case:** Correlation tables where each row links two biological entities (e.g., metabolite ↔ microbe).
+
+```yaml
+template:
+  syntax: TC3
+  source:
+    kind: excel
+    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
+    local: ./DATALAKE/AVUTHU1.xlsx
+    sheet: signif_metab_microb_corre
+    row_slice: [2, auto]
+
+  statement:
+    subject:
+      method: column
+      encoding: A  # Column A: metabolite names
+      remove:
+        - ".*_"    # Strip trailing underscore artifacts
+      prioritize:
+        - SmallMolecule
+        - ChemicalEntity
+
+    predicate: correlated_with
+
+    object:
+      method: column
+      encoding: B  # Column B: microbe names
+      prioritize:
+        - OrganismTaxon
+      regex:
+        - pattern: _
+          replacement: ' '   # "Lactobacillus_rhamnosus" → "Lactobacillus rhamnosus"
+
+    qualifiers:
+      - qualifier: p value
+        method: column
+        encoding: E
+
+  provenance:
+    repo: PMC
+    publication: PMC12345678
+    contributors:
+      - kind: curation
+        name: Skye Lane Goetz
+        date: 01 JAN 2025
+        organizations:
+          - Institute for Systems Biology
+
+  annotations:
+    - annotation: p value
+      method: column
+      encoding: E
+    - annotation: relationship strength
+      method: column
+      encoding: C
+```
+
+### Key Techniques
+
+**Both nodes from columns:** Setting `method: column` on both subject and object means both undergo entity resolution via `resolve()`. Each gets its own `prioritize` list to guide disambiguation.
+
+**`remove` vs `regex`:** `remove` filters out entire rows matching a pattern before resolution. `regex` transforms the column value in-place before resolution.
+
+---
+
+## Template + Sections
+
+This pattern handles wide tables where each column encodes a different object (e.g., 24 metabolite columns for the same set of microbe rows). Sections inherit the template's `source`, `provenance`, and `subject`, overriding only the `object` and optionally `row_slice` per section.
+
+**Use case:** Studies reporting microbe–metabolite associations across many metabolites, one column each.
+
+```yaml
+template:
+  syntax: TC3
+  source:
+    kind: excel
+    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
+    local: ./DATALAKE/BLANTON1.xlsx
+    sheet: Sheet1
+    row_slice: [2, auto]
+
+  statement:
+    subject:
+      method: column
+      encoding: A  # Microbe names
+      prioritize:
+        - OrganismTaxon
+      avoid:
+        - Gene
+      regex:
+        - pattern: "\\[|\\]"
+          replacement: ""    # Strip bracket annotations
+
+    predicate: correlated_with
+
+    object:
+      method: value
+      encoding: PLACEHOLDER  # Overridden per section
+
+  provenance:
+    repo: PMC
+    publication: PMC87654321
+    contributors:
+      - kind: curation
+        name: Skye Lane Goetz
+        date: 15 FEB 2025
+        organizations:
+          - Institute for Systems Biology
+
+sections:
+  # Each section targets one metabolite column
+
+  - statement:
+      object:
+        method: value
+        encoding: CHEBI:17196   # Glycine
+    source:
+      row_slice: [2, auto]
+    annotations:
+      - annotation: relationship strength
+        method: column
+        encoding: B
+
+  - statement:
+      object:
+        method: value
+        encoding: CHEBI:16977   # Alanine
+    source:
+      row_slice: [2, auto]
+    annotations:
+      - annotation: relationship strength
+        method: column
+        encoding: C
+
+  - statement:
+      object:
+        method: value
+        encoding: CHEBI:16414   # Valine
+    source:
+      row_slice: [2, auto]
+    annotations:
+      - annotation: relationship strength
+        method: column
+        encoding: D
+
+  # ... (pattern repeats for each metabolite column)
+```
+
+### Key Techniques
+
+**Shared template, per-section overrides:** The `source`, `provenance`, and `subject` are defined once in `template`. Each section only needs to declare what changes — the `object` CURIE and the annotation column.
+
+**`row_slice` per section:** When each metabolite occupies a different column range or row range, `row_slice` can be overridden per section independently of the template.
+
+**Scaling:** This pattern keeps 24-metabolite configs from becoming 24 separate files. Add a section entry per metabolite column; everything else is inherited.
+
+---
+
 ## Next Steps
 
 - **[Table Configuration Reference](table.md)** - Full field documentation

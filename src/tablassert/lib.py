@@ -14,7 +14,7 @@ from sqlite_utils import Database
 
 from tablassert.downloader import from_url
 from tablassert.enums import EncodingMethods, Files, Tokens
-from tablassert.fullmap import version4
+from tablassert.fullmap import resolve
 from tablassert.log import logger
 from tablassert.nlp import level_one, level_two
 from tablassert.models import Encoding, NodeEncoding, Section
@@ -281,7 +281,7 @@ class Tcode(Section):
             (column, (add("original ", col), col)),
             (level_one, (col,)),
             (level_two, (col,)),
-            (version4, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
+            (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
             (fullmap_audit, (col, self.store.stem, self.config.name)),
         ]
         return add(encoding, node)

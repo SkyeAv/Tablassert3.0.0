@@ -2,17 +2,17 @@
 
 The `fullmap` module provides entity resolution functionality, mapping text strings to standardized biological entities (CURIEs).
 
-## version4()
+## resolve()
 
-Primary entity resolution function using DuckDB queries against the dbssert database.
+Primary entity resolution function using DuckDB queries against the datassert database.
 
 ### Function Signature
 
 ```python
-def version4(
+def resolve(
   lf: pl.LazyFrame,
   col: str,
-  conn: object,
+  conns: list[object],
   taxon: Optional[str] = None,
   prioritize: Optional[list[Categories]] = None,
   avoid: Optional[list[Categories]] = None,
@@ -20,7 +20,7 @@ def version4(
   section_hash: Optional[str] = None,
   config_file: Optional[str] = None,
   column_context: bool = True,
-  tag: str = " one"
+  tag: str = " two"
 ) -> pl.LazyFrame
 ```
 
@@ -34,11 +34,11 @@ Input LazyFrame containing the data to process. Internally collected at explicit
 
 Column name containing text strings to resolve.
 
-**`conn: object`**
+**`conns: list[object]`**
 
-DuckDB connection to the entity resolution database.
+List of 16 DuckDB shard connections to the datassert database.
 
-This database contains:
+Each shard contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
 - Biolink categories
@@ -75,15 +75,15 @@ Optional context fields used for operational logging when unmatched values are e
 
 Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the query result adds a category frequency score and prefers more frequent category hits.
 
-**`tag: str` (default: `" one"`)**
+**`tag: str` (default: `" two"`)**
 
-Suffix for NLP processing level column.
+Suffix appended to `col` to locate the `level_two` output column.
 
-The function looks for both:
-- `col` (original text, case-preserved)
-- `col + tag` (normalized text, typically lowercase)
+`resolve()` expects the LazyFrame to already have two NLP columns applied upstream:
+- `col` — the `level_one` output (whitespace stripped, lowercased)
+- `col + tag` — the `level_two` output (non-word characters removed via `\W+`)
 
-Default `" one"` means it uses level-one text processing (lowercase, stripped).
+The default `" two"` matches `level_two`'s default tag.
 
 ### Return Value
 
@@ -120,22 +120,26 @@ The function executes a SQL query that:
 ### Example Usage
 
 ```python
-from tablassert.fullmap import version4
+from tablassert.fullmap import resolve
 from tablassert.enums import Categories
 import duckdb
 import polars as pl
 
-# Open DuckDB connection
-conn = duckdb.connect("/data/dbssert.duckdb", read_only=True)
+# Open all 16 shard connections
+datassert_dir = "/path/to/datassert"
+conns = [
+    duckdb.connect(f"{datassert_dir}/shard_{i:02d}.duckdb", read_only=True)
+    for i in range(16)
+]
 
 # LazyFrame with data to resolve
 lf = pl.scan_parquet("data.parquet")
 
 # Resolve gene symbols to CURIEs
-result = version4(
+result = resolve(
   lf=lf,
   col="gene_symbol",
-  conn=conn,
+  conns=conns,
   taxon="9606",  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
@@ -143,7 +147,6 @@ result = version4(
   section_hash="tutorial-section",
   config_file="tutorial-table.yaml",
   column_context=True,
-  tag=" one"
 )
 
 # Result LazyFrame includes:
@@ -153,29 +156,66 @@ result = version4(
 # - etc.
 ```
 
+### Mapping a Python List
+
+A common entry point for programmatic use is resolving a plain Python list of terms:
+
+```python
+import duckdb
+import polars as pl
+from tablassert.fullmap import resolve
+from tablassert.nlp import level_one, level_two
+from tablassert.enums import Categories
+
+# Open all 16 shard connections
+datassert_dir = "/path/to/datassert"
+conns = [
+    duckdb.connect(f"{datassert_dir}/shard_{i:02d}.duckdb", read_only=True)
+    for i in range(16)
+]
+
+# Map a list of gene symbols to CURIEs
+genes = ["TP53", "BRCA1", "EGFR", "KRAS"]
+lf = pl.LazyFrame({"gene": genes})
+
+# Apply NLP normalization (required before resolve)
+lf = level_one(lf, "gene")   # lowercase + strip
+lf = level_two(lf, "gene")   # remove non-word chars → "gene two" column
+
+result = resolve(
+    lf=lf,
+    col="gene",
+    conns=conns,
+    taxon="9606",               # Human only
+    prioritize=[Categories.Gene],
+    log=False,
+).collect()
+
+print(result.select(["gene", "gene name", "gene category"]))
+```
+
 ### NLP Processing Levels
 
-**Level 0** (exact case):
-- Column: `col`
-- Matches preserve case
-- Preferred for acronyms, gene symbols
+`resolve()` requires that `level_one` and `level_two` have been applied to the LazyFrame before calling it:
 
-**Level 1** (normalized):
-- Column: `col + " one"`
-- Lowercased, whitespace stripped
-- Preferred for disease names, free text
+**`level_one` output** (column: `col`):
+- Whitespace stripped, lowercased
+- Queried first; preferred for acronyms and gene symbols
 
-The function tries level 0 first, then level 1.
+**`level_two` output** (column: `col + " two"`):
+- All non-word characters removed (`\W+` → `""`) from the `level_one` result
+- Used as fallback when `level_one` produces no match
+- Preferred for disease names and free text
 
 Rows without a valid CURIE are filtered from the returned frame.
 
 ### Case-Dependent Behavior
 
-"TP53" vs "tp53":
-- Level 0: Only matches "TP53" synonym
-- Level 1: Matches any case variant
+`"TP53"` vs `"tp53"`:
+- After `level_one`: both become `"tp53"` — matches any case variant
+- `level_two` further strips punctuation, helping with hyphenated or slash-delimited names
 
-This preserves specificity for case-sensitive identifiers while allowing fuzzy matching for general terms.
+This preserves specificity for case-sensitive identifiers while allowing looser matching for general terms.
 
 ### Provenance Tracking
 

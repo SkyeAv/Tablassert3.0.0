@@ -3,6 +3,7 @@ theme: readthedocs
 nav:
   - Home: index.md
   - Installation: installation.md
+  - Datassert: datassert.md
   - CLI Reference: cli.md
   - Tutorial: tutorial.md
   - Configuration:

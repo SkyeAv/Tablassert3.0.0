@@ -2,11 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 7.2.0 - 2026-03-31
+
+### New Features
+- Added `tablassert version` command to display current package version.
+- Added autotag GitHub Action for automated version tagging on releases.
+- Added PyPI publishing GitHub Action.
 
 ### Changes
+- Sharded datassert entity-resolution database into 16 DuckDB shards for parallel querying.
+- Renamed dependency from DBssert to DATASSERT throughout.
+- Separated CLI logic into dedicated `cli.py` module.
+- Extracted NLP normalization into dedicated `nlp.py` module for cleaner separation of concerns.
+- Implemented improved parallelization model for graph compilation.
+- Annotated Pydantic model fields with `Field(...)` schema metadata.
+- Renamed `fullmap.version4()` to `fullmap.resolve()` for clarity.
 - Updated `fullmap` ranking to prioritize case-insensitive exact matches between normalized terms and preferred names.
 - Updated `fullmap` term de-duplication to keep first occurrences, improving deterministic output ordering.
+- Moved MkDocs to dev-only dependencies.
+
+### Testing
+- Added basic pytest suite covering core models, enums, ingests, lib, nlp, and utils.
+
+### Maintenance
+- Improved `.gitignore` to exclude common artifacts.
 
 ## 7.0.2 - 2026-03-23
 

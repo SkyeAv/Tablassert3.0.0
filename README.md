@@ -48,6 +48,7 @@ tablassert --help
 
 - Python 3.13 or higher
 - UV package manager
+- [Datassert](https://skyeav.github.io/Tablassert/datassert/) — the entity-resolution database (`git clone https://github.com/SkyeAv/datassert`)
 
 ### Method 1: Development Installation (Recommended)
 

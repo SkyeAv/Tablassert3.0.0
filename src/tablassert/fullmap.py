@@ -134,7 +134,7 @@ def log_unmatched(
             )
 
 
-def version4(
+def resolve(
     lf: pl.LazyFrame,
     col: str,
     conns: list[object],
