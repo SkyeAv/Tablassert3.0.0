@@ -38,6 +38,7 @@ dependencies = [
     "lazy-loader>=0.5",
     "loguru>=0.7.3",
     "onnxruntime>=1.24.4",
+    "optimum-onnx>=0.1.0",
     "orjson>=3.11.7",
     "playwright>=1.58.0",
     "polars>=1.39.0",
