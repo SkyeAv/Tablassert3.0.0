@@ -2,7 +2,7 @@
 
 ### By Skye Lane Goetz, Gwênlyn Glusman, and Jared C. Roach
 
-Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON.
+Tablassert is a highly performant declarative knowledge graph backend for bioinformatics that extracts knowledge assertions from tabular data, performs entity resolution and data quality control, and exports NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON.
 
 ## Documentation
 
