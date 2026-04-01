@@ -6,7 +6,6 @@
 *.ruff_cache/
 *.pytest_cache/
 *plans/
-*AGENTS.md
 *specs/
 *.storassert/
 *.logassert/
