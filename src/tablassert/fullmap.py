@@ -20,6 +20,24 @@ else:
 SHARDS: int = 16
 
 
+def empty_matches(column_context: bool) -> pl.DataFrame:
+    # ? Creates Empty Fullmap Matches DataFrame With Query Schema
+    schema: dict[str, object] = {
+        "term": pl.String,
+        "CURIE": pl.String,
+        "PREFERRED_NAME": pl.String,
+        "CATEGORY_NAME": pl.String,
+        "TAXON_ID": pl.Int64,
+        "SOURCE_NAME": pl.String,
+        "SOURCE_VERSION": pl.String,
+        "NLP_LEVEL": pl.Int64,
+        "PR": pl.Int64,
+    }
+    if column_context:
+        schema["FREQUENCY"] = pl.Int64
+    return pl.DataFrame(schema=schema)  # pyright: ignore
+
+
 def distinct(lf: pl.LazyFrame, l0: str, l1: str, col: str = "term") -> pl.LazyFrame:
     # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
     t0: pl.LazyFrame = lf.select(pl.col(l0).alias(col)).unique()
@@ -112,7 +130,14 @@ def query_distinct(
     args: list[tuple[object, pl.DataFrame, str, bool]] = [
         (conns[int(shard[0])], df, query, column_context) for shard, df in shards.items()
     ]
+
+    if len(args) == 0:
+        return empty_matches(column_context)
+
     results: list[pl.DataFrame] = ThreadPool(SHARDS).starmap(query_shard, args)
+
+    if len(results) == 0:
+        return empty_matches(column_context)
 
     return pl.concat(results, how="vertical")
 
