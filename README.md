@@ -49,7 +49,7 @@ docker run --rm \
 - **Entity Resolution** — Maps text to biological entities (genes, diseases, chemicals)
 - **Quality Control** — Three-stage validation (exact → fuzzy → BERT embeddings)
 - **KGX Compliance** — NCATS Translator-compatible NDJSON output
-- **Performance** — Parallel processing with disk caching
+- **Performance** — Lazy evaluation pipelines with Polars and DuckDB-accelerated entity resolution
 
 ## Contributing
 

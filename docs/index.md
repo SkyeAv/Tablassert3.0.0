@@ -16,7 +16,7 @@ Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge g
 - **Named Entity Recognition**: Case-dependent, provenance-rich NER with taxonomic filtering
 - **Quality Control**: Three-stage validation (exact → fuzzy → BERT embeddings)
 - **Biolink Compliance**: Uses Biolink categories and predicates throughout
-- **Performance**: Parallel processing with disk caching for expensive operations
+- **Performance**: Lazy evaluation pipelines via Polars with DuckDB-accelerated entity resolution
 - **Reproducible**: UV-based development environment with deterministic builds
 
 ## Quick Start
