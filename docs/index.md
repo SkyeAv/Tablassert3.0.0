@@ -61,6 +61,7 @@ uv run tablassert build-knowledge-graph <config>
 - **[Installation](installation.md)** - Installation methods (PyPI, GitHub main, source development)
 - **[CLI Reference](cli.md)** - Command-line interface usage
 - **[Tutorial](tutorial.md)** - Step-by-step example with synthetic data
+- **[Use Case Gallery](examples.md)** - Real-world configuration patterns for common data types
 - **[Configuration](configuration/graph.md)** - Graph and table configuration reference
 - **[API Reference](api/fullmap.md)** - Core functions documentation
 

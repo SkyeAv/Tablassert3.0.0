@@ -4,7 +4,7 @@ This guide covers installing Tablassert on your system.
 
 ## Prerequisites
 
-- **Python 3.13 or higher**: Tablassert requires Python 3.13+ for compatibility with modern tooling
+- **Python 3.11 or higher**: Tablassert requires Python 3.11+ for compatibility with modern tooling
 - **UV package manager**: Recommended for fast, reliable dependency management
 
 ### Installing UV
@@ -144,15 +144,15 @@ uv sync
 
 ### Python Version Issues
 
-Tablassert requires Python 3.13 or higher. If you encounter version errors:
+Tablassert requires Python 3.11 or higher. If you encounter version errors:
 
 ```bash
 # Check your Python version
 python --version
 
 # Use UV to manage Python versions
-uv python install 3.13
-uv python pin 3.13
+uv python install 3.11
+uv python pin 3.11
 ```
 
 ### Dependency Installation Issues

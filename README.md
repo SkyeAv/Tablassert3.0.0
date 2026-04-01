@@ -17,7 +17,7 @@ Complete guides covering installation, configuration, tutorials, and API referen
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
-# Install with UV (requires Python 3.13+)
+# Install with UV (requires Python 3.11+)
 uv sync
 
 # Run CLI
@@ -46,7 +46,7 @@ tablassert --help
 
 ### Prerequisites
 
-- Python 3.13 or higher
+- Python 3.11 or higher
 - UV package manager
 - [Datassert](https://skyeav.github.io/Tablassert/datassert/) — the entity-resolution database (`git clone https://github.com/SkyeAv/datassert`)
 
