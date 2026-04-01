@@ -33,8 +33,10 @@ def empty_matches(column_context: bool) -> pl.DataFrame:
         "NLP_LEVEL": pl.Int64,
         "PR": pl.Int64,
     }
+
     if column_context:
         schema["FREQUENCY"] = pl.Int64
+
     return pl.DataFrame(schema=schema)  # pyright: ignore
 
 
