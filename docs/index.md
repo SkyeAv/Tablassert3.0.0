@@ -22,28 +22,36 @@ Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge g
 ## Quick Start
 
 ```bash
-# Install from PyPI (UV)
+# Install from PyPI (UV) — minimal install
 uv tool install tablassert
 tablassert --help
 
-# Install from PyPI (pip)
+# Install from PyPI (pip) — minimal install
 pip install tablassert
 tablassert --help
 
+# Install with all optional extras
+uv tool install "tablassert[full]"
+# or
+pip install "tablassert[full]"
+
 # Install runtime-compatible Polars build
 # (for CPUs without the required Polars instructions)
-uv tool install "tablassert[rtcompat]"
+uv tool install "tablassert[rt]"
 # or
 pip install "tablassert[rtcompat]"
-tablassert --help
+
+# Install everything including runtime-compatible Polars
+uv tool install "tablassert[full-rt]"
 
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-`tablassert[rtcompat]` is defined in `pyproject.toml` and installs a runtime-compatible
-Polars dependency for systems without the default Polars CPU instruction support.
+Tablassert uses optional dependency groups to keep the base install lightweight.
+Available extras: `ml`, `web`, `pyexcel`, `rtcompat` (alias: `rt`), `full`, `full-rt`.
+See [Installation](installation.md) for details.
 
 For development from source:
 
