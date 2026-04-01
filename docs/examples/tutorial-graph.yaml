@@ -3,7 +3,7 @@ name: TUTORIAL_KG
 version: 1.0.0
 tables:
   - ./docs/examples/tutorial-table.yaml
-dbssert: /path/to/dbssert.duckdb
+datassert: /path/to/datassert
 # Optional enrichments:
 pubmed_db: /path/to/PubMed.db
 pmc_db: /path/to/PMCSuppCaptions.db

@@ -26,7 +26,7 @@ tablassert build-knowledge-graph /path/to/MOKGV6.yaml
 
 ### Description
 
-This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through dbssert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.
+This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through datassert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.
 
 The process executes in parallel stages with rich progress bars showing:
 - Loading Tables
@@ -104,7 +104,7 @@ tablassert verify-table-configuration-syntax table-config.yaml
 5. **Process executes:**
    - Downloads files from URLs (if needed)
    - Applies transformations to each table
-   - Resolves entities using dbssert
+   - Resolves entities using datassert
    - Validates mappings with QC pipeline
    - Aggregates subgraphs into NDJSON
 
