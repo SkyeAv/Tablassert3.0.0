@@ -99,6 +99,10 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
+    # * Quick Exit If No Rows Need BioBERT QC
+    if pending.height == 0:
+        return df.join(passed.select(col), on=col, how="semi").lazy()
+
     # * Stage 3: BioBERT Embeddings (Batched)
     originals = pending.get_column(cols[1]).to_list()
     preferreds = pending.get_column(cols[2]).to_list()
