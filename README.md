@@ -1,63 +1,39 @@
 # Tablassert
 
-### By Skye Lane Goetz, Gwênlyn Glusman, and Jared C. Roach
+[![PyPI](https://img.shields.io/pypi/v/tablassert.svg)](https://pypi.org/project/tablassert/)
+[![Python](https://img.shields.io/pypi/pyversions/tablassert.svg)](https://pypi.org/project/tablassert/)
+[![License](https://img.shields.io/pypi/l/tablassert.svg)](https://github.com/SkyeAv/Tablassert/blob/main/LICENSE)
+[![Docs](https://img.shields.io/github/deployments/SkyeAv/Tablassert/github-pages?label=docs)](https://skyeav.github.io/Tablassert/)
 
-Tablassert is a highly performant declarative knowledge graph backend for bioinformatics that extracts knowledge assertions from tabular data, performs entity resolution and data quality control, and exports NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON.
-
-## Documentation
-
-**[Full Documentation](https://skyeav.github.io/Tablassert/)**
-
-Complete guides covering installation, configuration, tutorials, and API reference.
-
-## Quick Start
+Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in.
 
 ```bash
-# Clone repository
-git clone https://github.com/SkyeAv/Tablassert.git
-cd Tablassert
-
-# Install with UV (requires Python 3.11+)
-uv sync
-
-# Run CLI
-uv run tablassert --help
-```
-
-Or install the CLI directly from PyPI:
-
-```bash
-# Option A: UV tool install
-uv tool install tablassert
-
-# Option B: pip install
 pip install tablassert
-
-# Option C: runtime-compatible Polars build
-# (for CPUs without the required Polars instructions)
-uv tool install "tablassert[rtcompat]"
-# or
-pip install "tablassert[rtcompat]"
-
-tablassert --help
+tablassert build-knowledge-graph config.yaml
 ```
 
-## Usage (With UV)
+📖 **[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
 
-### Prerequisites
+## Installation
 
-- Python 3.11 or higher
-- UV package manager
-- [Datassert](https://skyeav.github.io/Tablassert/datassert/) — the entity-resolution database (`git clone https://github.com/SkyeAv/datassert`)
+```bash
+pip install tablassert
+```
 
-### Method 1: Docker
+Optional extras for additional functionality:
 
-The quickest way to get started without a local Python installation.
+```bash
+pip install "tablassert[ml]"        # sentence-transformers, onnxruntime, scikit-learn
+pip install "tablassert[full]"      # all optional dependencies
+pip install "tablassert[rtcompat]"  # Polars build for CPUs without required instructions
+```
+
+<details>
+<summary><strong>Docker</strong></summary>
 
 ```bash
 docker pull ghcr.io/skyeav/tablassert:latest
 
-# Run a knowledge graph build
 docker run --rm \
   -v /path/to/config:/data \
   -v /path/to/datassert:/datassert \
@@ -65,80 +41,28 @@ docker run --rm \
   build-knowledge-graph /data/graph-config.yaml
 ```
 
-### Method 2: Development Installation (Recommended)
-
-Best for exploring Tablassert or active development.
-
-```bash
-# Clone and install dependencies
-git clone https://github.com/SkyeAv/Tablassert.git
-cd Tablassert
-uv sync
-
-# Run CLI through UV
-uv run tablassert build-knowledge-graph /path/to/graph-config.yaml
-```
-
-### Method 3: Install from PyPI
-
-Recommended for most users.
-
-```bash
-# Option A: standard install (UV)
-uv tool install tablassert
-
-# Option B: standard install (pip)
-pip install tablassert
-
-# Option C: runtime-compatible Polars build
-# (for CPUs without the required Polars instructions)
-uv tool install "tablassert[rtcompat]"
-# or
-pip install "tablassert[rtcompat]"
-
-tablassert build-knowledge-graph /path/to/graph-config.yaml
-```
-
-### Method 4: Install from GitHub main
-
-Use this when you want the latest main-branch build before a tagged release.
-
-```bash
-uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
-tablassert build-knowledge-graph /path/to/graph-config.yaml
-```
-
-If your CPU does not support the instructions required by default Polars builds,
-use **Method 3** with `tablassert[rtcompat]`.
-
-### Method 5: Local source install
-
-For contributors testing local changes.
-
-```bash
-# Clone repository
-git clone https://github.com/SkyeAv/Tablassert.git
-cd Tablassert
-
-# Install CLI tool from local source
-uv tool install .
-
-# CLI is now available
-tablassert build-knowledge-graph /path/to/graph-config.yaml
-```
+</details>
 
 ## Key Features
 
-- **Declarative Configuration:** YAML-based, no code required
-- **Entity Resolution:** Maps text to biological entities (genes, diseases, chemicals)
-- **Quality Control:** Three-stage validation (exact → fuzzy → BERT embeddings)
-- **KGX Compliance:** NCATS Translator-compatible NDJSON output
-- **Performance:** Parallel processing with disk caching
+- **Declarative Configuration** — YAML-based, no code required
+- **Entity Resolution** — Maps text to biological entities (genes, diseases, chemicals)
+- **Quality Control** — Three-stage validation (exact → fuzzy → BERT embeddings)
+- **KGX Compliance** — NCATS Translator-compatible NDJSON output
+- **Performance** — Parallel processing with disk caching
+
+## Contributing
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for development setup, code style, and pull request guidelines.
+
+## License
+
+[Apache License 2.0](LICENSE)
 
 ## Contributors
 
-[Skye Lane Goetz](mailto:sgoetz@isbscience.org) - Institute for Systems Biology, CalPoly SLO
+[Skye Lane Goetz](mailto:sgoetz@isbscience.org) — Institute for Systems Biology, CalPoly SLO
 
-[Gwênlyn Glusman](mailto:gglusman@isbscience.org) - Institute for Systems Biology
+[Gwênlyn Glusman](mailto:gglusman@isbscience.org) — Institute for Systems Biology
 
-Jared C. Roach - Institute for Systems Biology
+Jared C. Roach — Institute for Systems Biology
