@@ -140,7 +140,7 @@ def fuzz_audit(...): ...
 def BERT_audit(...): ...
 ```
 
-**Cache location:** `./.cachassert` directory
+**Cache location:** In-memory via `diskcache`
 
 **Cache strategy:** LRU eviction when size exceeds limit
 

@@ -1,6 +1,10 @@
 name: Auto Tag Versions
 on:
-  push:
+  workflow_run:
+    workflows:
+      - "Deploy to PyPI"
+    types:
+      - completed
     branches:
       - main
 permissions:

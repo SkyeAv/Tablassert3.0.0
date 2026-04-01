@@ -8,7 +8,6 @@
 *plans/
 *AGENTS.md
 *specs/
-*.cachassert/
 *.storassert/
 *.logassert/
 *DATALAKE/
