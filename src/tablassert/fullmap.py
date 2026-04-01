@@ -32,7 +32,7 @@ def distinct(lf: pl.LazyFrame, l0: str, l1: str, col: str = "term") -> pl.LazyFr
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
     terms = terms.filter(~pl.col(col).str.contains(bad))
-    return terms.with_columns((plh.col(col).chash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
+    return terms.with_columns((plh.col(col).nchash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
 
 
 def query_builder(
