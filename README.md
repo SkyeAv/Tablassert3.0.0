@@ -12,7 +12,7 @@ pip install tablassert
 tablassert build-knowledge-graph config.yaml
 ```
 
-📖 **[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
+**[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
 
 ## Installation
 
