@@ -97,7 +97,20 @@ pip install "tablassert[rtcompat]"
 tablassert --help
 ```
 
-### Method 3: Install from GitHub main
+### Method 3: Docker
+
+Pre-built Docker images are available from GitHub Container Registry for containerized usage without a local Python installation. The image includes all optional extras (`tablassert[full]`).
+
+```bash
+docker pull ghcr.io/skyeav/tablassert:latest
+
+# Run CLI
+docker run --rm ghcr.io/skyeav/tablassert:latest --help
+```
+
+See the [Docker documentation](docker.md) for full usage details including volume mounts and CI/CD integration.
+
+### Method 4: Install from GitHub main
 
 Use this when you want the latest main-branch build.
 
@@ -109,7 +122,7 @@ uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-### Method 4: Install from local source
+### Method 5: Install from local source
 
 For contributors testing local repository changes.
 

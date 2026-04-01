@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 - Added `tablassert version` command to display current package version.
 - Added autotag GitHub Action for automated version tagging on releases.
 - Added PyPI publishing GitHub Action.
+- Added Docker image publishing to GitHub Container Registry (ghcr.io).
 
 ### Changes
 - Sharded datassert entity-resolution database into 16 DuckDB shards for parallel querying.

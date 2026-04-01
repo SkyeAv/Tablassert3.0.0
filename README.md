@@ -50,7 +50,22 @@ tablassert --help
 - UV package manager
 - [Datassert](https://skyeav.github.io/Tablassert/datassert/) — the entity-resolution database (`git clone https://github.com/SkyeAv/datassert`)
 
-### Method 1: Development Installation (Recommended)
+### Method 1: Docker
+
+The quickest way to get started without a local Python installation.
+
+```bash
+docker pull ghcr.io/skyeav/tablassert:latest
+
+# Run a knowledge graph build
+docker run --rm \
+  -v /path/to/config:/data \
+  -v /path/to/datassert:/datassert \
+  ghcr.io/skyeav/tablassert:latest \
+  build-knowledge-graph /data/graph-config.yaml
+```
+
+### Method 2: Development Installation (Recommended)
 
 Best for exploring Tablassert or active development.
 
@@ -64,7 +79,7 @@ uv sync
 uv run tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
 
-### Method 2: Install from PyPI
+### Method 3: Install from PyPI
 
 Recommended for most users.
 
@@ -84,7 +99,7 @@ pip install "tablassert[rtcompat]"
 tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
 
-### Method 3: Install from GitHub main
+### Method 4: Install from GitHub main
 
 Use this when you want the latest main-branch build before a tagged release.
 
@@ -94,9 +109,9 @@ tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
 
 If your CPU does not support the instructions required by default Polars builds,
-use **Method 2** with `tablassert[rtcompat]`.
+use **Method 3** with `tablassert[rtcompat]`.
 
-### Method 4: Local source install
+### Method 5: Local source install
 
 For contributors testing local changes.
 
