@@ -7,13 +7,16 @@ authors = [
 ]
 keywords = [
     "knowledge graph",
-    "natural language processing",
+    "bioinformatics",
+    "entity resolution",
     "ner",
     "ncats translator",
+    "kgx",
     "yaml configuration",
     "table mining",
     "declarative pipeline",
-    "tablassert"
+    "data quality control",
+    "tablassert",
 ]
 readme = "README.md"
 license = "Apache-2.0"
