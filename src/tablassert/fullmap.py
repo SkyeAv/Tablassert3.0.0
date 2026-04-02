@@ -10,22 +10,48 @@ from tablassert.log import logger
 
 if TYPE_CHECKING:
     import polars as pl
+    import polars_hash as plh
 else:
     pl = Lazy.load("polars")
+    plh = Lazy.load("polars_hash")
 
 
-def distinct(lf: pl.LazyFrame, l0: str, l1: str) -> pl.LazyFrame:
+SHARDS: int = 16
+
+
+def empty_matches(column_context: bool) -> pl.DataFrame:
+    # ? Creates Empty Fullmap Matches DataFrame With Query Schema
+    schema: dict[str, object] = {
+        "term": pl.String,
+        "CURIE": pl.String,
+        "PREFERRED_NAME": pl.String,
+        "CATEGORY_NAME": pl.String,
+        "TAXON_ID": pl.Int64,
+        "SOURCE_NAME": pl.String,
+        "SOURCE_VERSION": pl.String,
+        "NLP_LEVEL": pl.Int64,
+        "PR": pl.Int64,
+    }
+
+    if column_context:
+        schema["FREQUENCY"] = pl.Int64
+
+    return pl.DataFrame(schema=schema)  # pyright: ignore
+
+
+def distinct(lf: pl.LazyFrame, l0: str, l1: str, col: str = "term") -> pl.LazyFrame:
     # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-    t0: pl.LazyFrame = lf.select(pl.col(l0).alias("term")).unique()
+    t0: pl.LazyFrame = lf.select(pl.col(l0).alias(col)).unique()
     t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
 
-    t1: pl.LazyFrame = lf.select(pl.col(l1).alias("term")).unique()
+    t1: pl.LazyFrame = lf.select(pl.col(l1).alias(col)).unique()
     t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
-    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=["term"], keep="first")
+    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=[col], keep="first")
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
-    return terms.filter(~pl.col("term").str.contains(bad))
+    terms = terms.filter(~pl.col(col).str.contains(bad))
+    return terms.with_columns((plh.col(col).nchash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
 
 
 def query_builder(
@@ -58,47 +84,63 @@ def query_builder(
     {taxon_filter}
 """
 
-    priority_case: str = (
-        f"WHEN CA.CATEGORY_NAME IN ({', '.join(f"'{x}'" for x in prioritize)}) THEN 1"
-        if prioritize
-        else "WHEN TRUE THEN 50"
-    )
-    avoid_filter: str = f"AND CA.CATEGORY_NAME NOT IN ({', '.join(f"'{x}'" for x in avoid)})" if avoid else ""
+    priority_list: str = ", ".join("'" + x + "'" for x in prioritize) if prioritize else ""
+    priority_case: str = f"WHEN CA.CATEGORY_NAME IN ({priority_list}) THEN 1" if prioritize else "WHEN TRUE THEN 50"
+    avoid_list: str = ", ".join("'" + x + "'" for x in avoid) if avoid else ""
+    avoid_filter: str = f"AND CA.CATEGORY_NAME NOT IN ({avoid_list})" if avoid else ""
     taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon} OR CA.CATEGORY_NAME != 'Gene'" if taxon else ""
 
     return base.format(priority_case=priority_case, avoid_filter=avoid_filter, taxon_filter=taxon_filter)
 
 
+def query_shard(conn: object, df: pl.DataFrame, query: str) -> pl.DataFrame:
+    # ? Query A Single Shard Database For Distinct Terms
+    conn.register("PARQUET", df.to_arrow())  # pyright: ignore
+    return conn.execute(query).pl()  # pyright: ignore
+
+
+def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFrame:
+    sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
+    descending: list[bool] = [False, False, False]
+
+    if column_context:
+        frequency: pl.DataFrame = result.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
+        result = result.join(frequency, on="CATEGORY_NAME", how="left")
+
+        sort_by += ["FREQUENCY"]
+        descending += [True]
+
+    result = result.sort(sort_by, descending=descending)
+    return result.unique(subset=["term"], keep="first")
+
+
 def query_distinct(
     lf: pl.LazyFrame,
-    conn: object,
+    conns: list[object],
     taxon: Optional[str],
     prioritize: Optional[list[Categories]],
     avoid: Optional[list[Categories]],
     column_context: bool,
 ) -> pl.DataFrame:
-    # ? Query Database For Distinct Terms Only Using Persistent Connection
+    # ? Query All Shard Databases In Parallel Using Thread Pool
     # * Added Column Prioritization Logic From 4.2.0
-    df: pl.DataFrame = lf.collect()
-    conn.register("PARQUET", df.to_arrow())  # pyright: ignore
+    shards: dict[tuple[str], pl.DataFrame] = lf.collect().partition_by("shard", as_dict=True)
+    if len(shards) == 0:
+        return empty_matches(column_context)
 
+    results: list[pl.DataFrame] = []
     query: str = query_builder(prioritize, avoid, taxon)
-    results: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
+    for shard, df in shards.items():
+        shard_number: int = int(shard[0])
+        conn: object = conns[shard_number]  # type: ignore
 
-    sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
-    descending: list[bool] = [False, False, False]
+        results += [query_shard(conn, df, query)]
 
-    if column_context:
-        frequency: pl.DataFrame = results.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
-        results = results.join(frequency, on="CATEGORY_NAME", how="left")
+    if len(results) == 0:
+        return empty_matches(column_context)
 
-        sort_by += ["FREQUENCY"]
-        descending += [True]
-
-    results = results.sort(sort_by, descending=descending)
-    results = results.unique(subset=["term"], keep="first")
-
-    return results
+    result: pl.DataFrame = pl.concat(results, how="vertical")
+    return deduplicate_result(result, column_context)
 
 
 def log_unmatched(
@@ -116,10 +158,10 @@ def log_unmatched(
             )
 
 
-def version4(
+def resolve(
     lf: pl.LazyFrame,
     col: str,
-    conn: object,
+    conns: list[object],
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
@@ -127,14 +169,14 @@ def version4(
     section_hash: Optional[str] = None,
     config_file: Optional[str] = None,
     column_context: bool = True,
-    tag: str = " one",
+    tag: str = " two",
 ) -> pl.LazyFrame:
     # ? Case Dependant, Provenance Rich Name Entity Recognition
     l0: str = col
     l1: str = add(l0, tag)
 
     terms: pl.LazyFrame = distinct(lf, l0, l1)
-    matches: pl.DataFrame = query_distinct(terms, conn, taxon, prioritize, avoid, column_context)
+    matches: pl.DataFrame = query_distinct(terms, conns, taxon, prioritize, avoid, column_context)
 
     if log:
         log_unmatched(col, terms, matches, section_hash, config_file)
@@ -183,7 +225,7 @@ def version4(
             r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"
         )
     )
-    result = result.select(pl.exclude(add(col, " one")))
+    result = result.select(pl.exclude(add(col, " two")))
     result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
     result = result.filter(pl.col(col).is_not_null())
 

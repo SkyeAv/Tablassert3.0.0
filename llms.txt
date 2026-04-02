@@ -1,0 +1,48 @@
+# Tablassert
+> Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON using declarative YAML, DuckDB-backed entity resolution, and staged quality control.
+
+This file is for two audiences: (1) YAML configuration authors and (2) package contributors.
+When source code and prose docs disagree, treat `src/tablassert/models.py` and `src/tablassert/cli.py` as the current authority.
+If you encounter older configurations, migrate `dbssert` to `datassert` (directory path).
+Current CLI behavior opens shard files at `datassert/data/{0..15}.duckdb`.
+
+## Quickstart
+- [README](README.md): high-level overview, install snippets, and one-command graph build.
+- [Installation Guide](docs/installation.md): local/dev/tool/docker installation paths. Only `rtcompat`/`rt` extras remain; all other deps are in core.
+- [CLI Reference](docs/cli.md): command syntax for building graphs and validating table configs.
+- [Tutorial](docs/tutorial.md): first end-to-end run from CSV input to KGX NDJSON output.
+
+## YAML Authoring
+- [Table Configuration Reference](docs/configuration/table.md): TC3 schema, template/sections patterns, and field semantics.
+- [Graph Configuration Reference](docs/configuration/graph.md): GC2 graph config fields and orchestration model.
+- [Tutorial Table Example](docs/examples/tutorial-table.yaml): minimal working TC3 table configuration.
+- [Tutorial Graph Example](docs/examples/tutorial-graph.yaml): minimal GC2 graph configuration.
+- [Advanced Example](docs/configuration/advanced-example.md): complex regex, filtering, annotations, and section overrides.
+
+## CLI and Runtime
+- [CLI Entry Point](src/tablassert/cli.py): command implementations and build pipeline stages.
+- [Pydantic Models](src/tablassert/models.py): authoritative schema for `Section` and `Graph`.
+- [YAML Ingestion](src/tablassert/ingests.py): `from_yaml()`, `to_sections()`, and template/section merge behavior.
+- [Datassert Guide](docs/datassert.md): entity-resolution database background and shard context.
+
+## Contributor Development
+- [Contributing Guide](CONTRIBUTING.md): setup, style conventions, checks, and PR expectations.
+- [Project Metadata](pyproject.toml): dependencies, tooling config, and CLI entrypoint. Only `rtcompat`/`rt` optional extras remain.
+- [Tests](tests/): pytest coverage and fixtures.
+- [MkDocs Configuration](mkdocs.yml): docs navigation and published pages.
+- [GitHub Workflows](.github/workflows/): release, docs, docker, and autotag automation.
+
+## Implementation Map
+- [Core Pipeline](src/tablassert/lib.py): extraction transforms, statement assembly, and graph compilation.
+- [Entity Resolution](src/tablassert/fullmap.py): shard-parallel synonym resolution and ranking logic.
+- [Quality Control](src/tablassert/qc.py): exact, fuzzy, and BioBERT validation stages.
+- [Normalization](src/tablassert/nlp.py): text normalization levels and preprocessing helpers.
+- [Enums Catalog](src/tablassert/enums.py): allowed values for syntax, predicates, categories, repositories, and transforms.
+- [Utilities](src/tablassert/utils.py): hashing, storage path constants, and filesystem helpers.
+
+## Optional
+- [API Reference: Fullmap](docs/api/fullmap.md): lower-level entity-resolution details.
+- [API Reference: QC](docs/api/qc.md): quality control internals.
+- [API Reference: Utils](docs/api/utils.md): utility function references.
+- [Documentation Home](docs/index.md): docs landing page and navigation context.
+- [Changelog](CHANGELOG.md): release history and version notes.

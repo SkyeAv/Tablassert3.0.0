@@ -2,24 +2,44 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 7.2.0 - 2026-03-31
+
+### New Features
+- Added `tablassert version` command to display current package version.
+- Added autotag GitHub Action for automated version tagging on releases.
+- Added PyPI publishing GitHub Action.
+- Added Docker image publishing to GitHub Container Registry (ghcr.io).
 
 ### Changes
+- Sharded datassert entity-resolution database into 16 DuckDB shards for parallel querying.
+- Renamed dependency from DBssert to DATASSERT throughout.
+- Separated CLI logic into dedicated `cli.py` module.
+- Extracted NLP normalization into dedicated `nlp.py` module for cleaner separation of concerns.
+- Implemented improved parallelization model for graph compilation.
+- Annotated Pydantic model fields with `Field(...)` schema metadata.
+- Renamed `fullmap.version4()` to `fullmap.resolve()` for clarity.
 - Updated `fullmap` ranking to prioritize case-insensitive exact matches between normalized terms and preferred names.
 - Updated `fullmap` term de-duplication to keep first occurrences, improving deterministic output ordering.
+- Moved MkDocs to dev-only dependencies.
+
+### Testing
+- Added basic pytest suite covering core models, enums, ingests, lib, nlp, and utils.
+
+### Maintenance
+- Improved `.gitignore` to exclude common artifacts.
 
 ## 7.0.2 - 2026-03-23
 
 ### Changes
 - Updated package metadata for the 7.0.2 release.
-- Added optional `log` and `column_context` controls to `fullmap.version4()` for more configurable entity-resolution behavior.
+- Added optional `log` and `column_context` controls to `fullmap.resolve()` for more configurable entity-resolution behavior.
 
 ### Bug Fixes
 - Reworked entity-resolution querying to register terms directly in DuckDB instead of writing temporary parquet files, removing tempfile lifecycle issues in `fullmap` query execution.
 - Isolated unmatched-entity logging into a dedicated helper and gated it behind an explicit logging flag.
 
 ### Documentation
-- Updated API reference docs to match the current `version4()` function signature and behavior.
+- Updated API reference docs to match the current `resolve()` function signature and behavior.
 - Corrected QC documentation to reflect the implemented fuzzy/BERT validation pipeline.
 - Fixed documentation path typos for cache/store artifact directories.
 
@@ -45,7 +65,7 @@ All notable changes to this project are documented in this file.
 
 ### Breaking Changes
 - Nix is no longer supported for development and installation. Use UV-based installation instead.
-- Project now requires Python 3.13+ for compatibility with UV toolchain.
+- Project now requires Python 3.11+ for compatibility with UV toolchain.
 
 ### Documentation
 - Completely rewrote installation documentation to reflect UV-based development environment.

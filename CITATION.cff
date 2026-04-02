@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use Tablassert, please cite it as below."
+type: software
+title: Tablassert
+version: 7.2.0
+license: Apache-2.0
+repository-code: https://github.com/SkyeAv/Tablassert
+abstract: Tablassert is a highly performant declarative knowledge graph backend for bioinformatics that extracts knowledge assertions from tabular data, performs entity resolution and data quality control, and exports NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON.
+authors:
+  - given-names: Skye Lane
+    family-names: Goetz
+    email: sgoetz@isbscience.org
+    affiliation: Institute for Systems Biology; CalPoly SLO
+  - given-names: "Gwênlyn"
+    family-names: Glusman
+    email: gglusman@isbscience.org
+    affiliation: Institute for Systems Biology
+  - given-names: Jared C.
+    family-names: Roach
+    affiliation: Institute for Systems Biology
+references:
+  - type: article
+    title: "MicrobiomeKG: bridging microbiome research and host health through knowledge graphs"
+    authors:
+      - given-names: Skye Lane
+        family-names: Goetz
+      - given-names: Alex K.
+        family-names: Glen
+      - given-names: "Gwênlyn"
+        family-names: Glusman
+    journal: Frontiers in Systems Biology
+    year: 2025
+    volume: 5
+    doi: "10.3389/fsysb.2025.1544432"

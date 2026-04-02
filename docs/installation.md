@@ -4,7 +4,7 @@ This guide covers installing Tablassert on your system.
 
 ## Prerequisites
 
-- **Python 3.13 or higher**: Tablassert requires Python 3.13+ for compatibility with modern tooling
+- **Python 3.11 or higher**: Tablassert requires Python 3.11+ for compatibility with modern tooling
 - **UV package manager**: Recommended for fast, reliable dependency management
 
 ### Installing UV
@@ -45,8 +45,7 @@ This creates a virtual environment in `.venv/` and installs all dependencies. Th
 ### Method 2: Install from PyPI
 
 Recommended for most users who just need the CLI.
-`pyproject.toml` also defines `tablassert[rtcompat]`, which installs runtime-compatible
-Polars for systems without the required default Polars CPU instructions.
+All dependencies (ML, web, Excel support) are included in the base install.
 
 ```bash
 # Option A: Install from PyPI with UV
@@ -54,18 +53,46 @@ uv tool install tablassert
 
 # Option B: Install from PyPI with pip
 pip install tablassert
+```
 
-# Option C: Install runtime-compatible Polars build
+#### Optional Extras
+
+| Extra | Description | Includes |
+|---|---|---|
+| `rtcompat` | Runtime-compatible Polars build | `polars[rtcompat]` |
+| `rt` | Alias for `rtcompat` | Same as `rtcompat` |
+
+```bash
+# Install with runtime-compatible Polars
 # (for CPUs without the required Polars instructions)
 uv tool install "tablassert[rtcompat]"
-# or
-pip install "tablassert[rtcompat]"
+# or use the shorter alias
+uv tool install "tablassert[rt]"
 
-# Tablassert CLI is now available
+# pip equivalents
+pip install "tablassert[rtcompat]"
+```
+
+Tablassert CLI is now available:
+
+```bash
 tablassert --help
 ```
 
-### Method 3: Install from GitHub main
+### Method 3: Docker
+
+Pre-built Docker images are available from GitHub Container Registry for containerized usage without a local Python installation.
+
+```bash
+docker pull ghcr.io/skyeav/tablassert:latest
+
+# Run CLI
+docker run --rm ghcr.io/skyeav/tablassert:latest --help
+```
+
+See the [Docker documentation](docker.md) for full usage details including volume mounts and CI/CD integration.
+
+### Method 4: Install from GitHub main
 
 Use this when you want the latest main-branch build.
 
@@ -77,7 +104,7 @@ uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-### Method 4: Install from local source
+### Method 5: Install from local source
 
 For contributors testing local repository changes.
 
@@ -144,15 +171,15 @@ uv sync
 
 ### Python Version Issues
 
-Tablassert requires Python 3.13 or higher. If you encounter version errors:
+Tablassert requires Python 3.11 or higher. If you encounter version errors:
 
 ```bash
 # Check your Python version
 python --version
 
 # Use UV to manage Python versions
-uv python install 3.13
-uv python pin 3.13
+uv python install 3.11
+uv python pin 3.11
 ```
 
 ### Dependency Installation Issues
@@ -168,11 +195,12 @@ uv sync --reinstall
 ### Polars CPU Instruction Issues
 
 If your machine does not support the CPU instructions required by default Polars
-builds, install Tablassert with the runtime-compat package extra from
-`pyproject.toml`:
+builds, install Tablassert with the runtime-compat extra from `pyproject.toml`:
 
 ```bash
 uv tool install "tablassert[rtcompat]"
+# or use the shorter alias
+uv tool install "tablassert[rt]"
 # or
 pip install "tablassert[rtcompat]"
 ```

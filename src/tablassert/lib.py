@@ -3,8 +3,6 @@ from __future__ import annotations
 import math
 import operator
 from functools import reduce
-from itertools import chain
-from multiprocessing import Pool
 from operator import add, eq, le
 from os.path import basename
 from pathlib import Path
@@ -12,33 +10,27 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt, PositiveInt
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from sqlite_utils import Database
 
 from tablassert.downloader import from_url
 from tablassert.enums import EncodingMethods, Files, Tokens
-from tablassert.fullmap import version4
-from tablassert.ingests import from_yaml, to_sections
+from tablassert.fullmap import resolve
 from tablassert.log import logger
-from tablassert.models import Encoding, Graph, NodeEncoding, Section
+from tablassert.nlp import level_one, level_two
+from tablassert.models import Encoding, NodeEncoding, Section
 from tablassert.qc import fullmap_audit
-from tablassert.utils import STORE, mkhash, namespace_uuid
+from tablassert.utils import namespace_uuid
 
 if TYPE_CHECKING:
     import duckdb
     import orjson
     import polars as pl
-    import typer
     import xxhash
 else:
     duckdb = Lazy.load("duckdb")
     orjson = Lazy.load("orjson")
     pl = Lazy.load("polars")
-    typer = Lazy.load("typer")
     xxhash = Lazy.load("xxhash")
-
-# ? Newline To Make Progress Bar More Readable
-print("\n")
 
 
 def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
@@ -70,24 +62,6 @@ def math_op(
         ).alias(col)
     )
     return df.lazy()
-
-
-def zero(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:
-    # ? Level Zero Text Processing
-    expr: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars().str.to_lowercase()
-    return lf.with_columns(expr.alias(col))
-
-
-def one(
-    lf: pl.LazyFrame,
-    col: str,  # pyright: ignore
-    regex: str = r"\W+",
-    tag: str = " one",
-) -> pl.LazyFrame:
-    # ? Level One Text Processing
-    expr: pl.Expr = pl.col(col).str.replace_all(regex, "")
-    col: str = add(col, tag)
-    return lf.with_columns(expr.alias(col))
 
 
 def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
@@ -300,14 +274,14 @@ class Tcode(Section):
             [(math_op, (col, t.function, t.arguments)) for t in x.transformations] if x.transformations else None,
         ]
 
-    def node(self: Self, x: NodeEncoding, col: str, conn: object) -> list[Any]:
+    def node(self: Self, x: NodeEncoding, col: str, conns: list[object]) -> list[Any]:
         # ? Collect Helper For NodeEncoding Classes
         encoding: list[Any] = self.encoding(x, col)
         node: list[Any] = [
             (column, (add("original ", col), col)),
-            (zero, (col,)),
-            (one, (col,)),
-            (version4, (col, conn, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
+            (level_one, (col,)),
+            (level_two, (col,)),
+            (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
             (fullmap_audit, (col, self.store.stem, self.config.name)),
         ]
         return add(encoding, node)
@@ -325,7 +299,7 @@ class Tcode(Section):
         return result
 
     def collect(
-        self: Self, conn: object, pubmed_db: Optional[Path], pmc_db: Optional[Path]
+        self: Self, conns: list[object], pubmed_db: Optional[Path], pmc_db: Optional[Path]
     ) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
         # ? Code That Tells Tablassert What Actions To While Transforming Data
 
@@ -351,10 +325,10 @@ class Tcode(Section):
                 if self.source.reindex
                 else None,
                 [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
-                self.node(self.statement.subject, "subject", conn),
-                self.node(self.statement.object, "object", conn),
+                self.node(self.statement.subject, "subject", conns),
+                self.node(self.statement.object, "object", conns),
                 (value, ("predicate", self.statement.predicate)),
-                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conn)]
+                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)]
                 if self.statement.qualifiers
                 else None,
                 (value, ("syntax", self.syntax)),
@@ -501,97 +475,3 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
 
     dedup_stream(e, is_edges=True)
     dedup_stream(n, is_edges=False)
-
-
-CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
-PROGRESS: Progress = Progress(
-    SpinnerColumn(),
-    TextColumn("[progress.description]{task.description}"),
-    BarColumn(),
-    TaskProgressColumn(),
-    TimeElapsedColumn(),
-)
-
-
-def track(task_id: Any, iterable: Any) -> Any:
-    for item in iterable:
-        yield item
-        PROGRESS.advance(task_id)
-
-
-@CLI.command()
-def build_knowledge_graph(
-    graph_configuration_file: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs"),
-) -> None:
-    """Build A KGX Compliant Knowledge Graph From A Graph Configuration File"""
-    # TODO: Make MeSH A Node (Micro Version)
-    # TODO: Add FullMap Column Context Flag"
-    r: object = from_yaml(graph_configuration_file)
-    g: Graph = Graph.model_validate(r)
-
-    with PROGRESS:
-        # ? Load Tables
-        t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
-        with Pool() as pool:
-            raw: list[object] = pool.map(from_yaml, g.tables)
-        PROGRESS.update(t1, total=1, completed=1)
-
-        # ? Extract Sections
-        t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
-        with Pool() as pool:
-            temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
-        PROGRESS.update(t2, total=1, completed=1)
-        sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
-        n: int = len(sections)
-
-        # ? Build Tcodes
-        t3: Any = PROGRESS.add_task("Building TCode...", total=n)
-        tcode: list[Tcode] = [
-            Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")})
-            for idx, s in track(t3, enumerate(sections, start=1))
-        ]
-        with duckdb.connect(g.dbssert, read_only=True) as conn:
-            # ? Collect Instructions
-            t4: Any = PROGRESS.add_task("Collecting Instructions...", total=n)
-            instructions: list[Union[list[tuple[Callable, tuple[Any, ...]]], Path]] = [
-                x.collect(conn, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)
-            ]  # pyright: ignore
-
-            # ? Build Subgraphs
-            t5: Any = PROGRESS.add_task("Building Subgraphs...", total=n)
-            subgraphs: list[Path] = [
-                op if isinstance(op, Path) else compile_subgraph(op) for op in track(t5, instructions)
-            ]  # pyright: ignore
-
-        # ? Compile Graph
-        t6: Any = PROGRESS.add_task("Compiling Graph...", total=None)
-        compile_graph(subgraphs, g.name, g.version)
-        PROGRESS.update(t6, total=1, completed=1)
-
-        PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)
-
-
-@CLI.command()
-def verify_table_configuration_syntax(
-    table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs"),
-) -> None:
-    """Verify The Syntax Of A Declarative Table Configuration File"""
-    with PROGRESS:
-        # ? Load Tables
-        t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
-        r: object = from_yaml(table_configuration_file)
-        PROGRESS.update(t1, total=1, completed=1)
-
-        # ? Extract Sections
-        t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
-        sections: list[dict[str, Any]] = to_sections(r)  # pyright: ignore
-        n: int = len(sections)
-        PROGRESS.update(t2, total=1, completed=1)
-
-        # ? Validating Section Syntax
-        t3: Any = PROGRESS.add_task("Validating Section Syntax...", total=n)
-        for s in track(t3, sections):
-            Section.model_validate(s)
-            PROGRESS.update(t3, total=1, completed=1)
-
-        PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)

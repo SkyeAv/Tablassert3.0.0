@@ -16,34 +16,33 @@ Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge g
 - **Named Entity Recognition**: Case-dependent, provenance-rich NER with taxonomic filtering
 - **Quality Control**: Three-stage validation (exact → fuzzy → BERT embeddings)
 - **Biolink Compliance**: Uses Biolink categories and predicates throughout
-- **Performance**: Parallel processing with disk caching for expensive operations
+- **Performance**: Lazy evaluation pipelines via Polars with DuckDB-accelerated entity resolution
 - **Reproducible**: UV-based development environment with deterministic builds
 
 ## Quick Start
 
 ```bash
-# Install from PyPI (UV)
+# Install from PyPI (UV) — minimal install
 uv tool install tablassert
 tablassert --help
 
-# Install from PyPI (pip)
+# Install from PyPI (pip) — minimal install
 pip install tablassert
 tablassert --help
 
 # Install runtime-compatible Polars build
 # (for CPUs without the required Polars instructions)
-uv tool install "tablassert[rtcompat]"
+uv tool install "tablassert[rt]"
 # or
 pip install "tablassert[rtcompat]"
-tablassert --help
 
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-`tablassert[rtcompat]` is defined in `pyproject.toml` and installs a runtime-compatible
-Polars dependency for systems without the default Polars CPU instruction support.
+All dependencies are included in the base install. An optional `rtcompat` (alias: `rt`) extra is available for CPUs that lack the default Polars instruction set.
+See [Installation](installation.md) for details.
 
 For development from source:
 
@@ -61,6 +60,7 @@ uv run tablassert build-knowledge-graph <config>
 - **[Installation](installation.md)** - Installation methods (PyPI, GitHub main, source development)
 - **[CLI Reference](cli.md)** - Command-line interface usage
 - **[Tutorial](tutorial.md)** - Step-by-step example with synthetic data
+- **[Use Case Gallery](examples.md)** - Real-world configuration patterns for common data types
 - **[Configuration](configuration/graph.md)** - Graph and table configuration reference
 - **[API Reference](api/fullmap.md)** - Core functions documentation
 

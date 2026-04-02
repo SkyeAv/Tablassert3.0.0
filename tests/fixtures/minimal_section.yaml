@@ -1,0 +1,20 @@
+syntax: TC3
+source:
+  url: https://example.com/test.tsv
+  local: ./test.tsv
+  kind: text
+  delimiter: "\t"
+statement:
+  subject:
+    method: value
+    encoding: BRCA1
+  object:
+    method: value
+    encoding: TP53
+provenance:
+  repo: PMC
+  publication: PMC0000000
+  contributors:
+    - kind: curation
+      name: Test User
+      date: 01 JAN 2025

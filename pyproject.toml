@@ -1,38 +1,48 @@
 [project]
 name = "tablassert"
-version = "7.1.0"
+version = "7.2.0"
 description = "Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON."
 authors = [
     { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
 ]
 keywords = [
     "knowledge graph",
-    "natural language processing",
+    "bioinformatics",
+    "entity resolution",
     "ner",
     "ncats translator",
+    "kgx",
     "yaml configuration",
     "table mining",
     "declarative pipeline",
-    "tablassert"
+    "data quality control",
+    "tablassert",
 ]
 readme = "README.md"
 license = "Apache-2.0"
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: Pydantic",
+    "Operating System :: OS Independent",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "diskcache>=5.6.3",
     "duckdb>=1.5.0",
     "fastexcel>=0.19.0",
     "lazy-loader>=0.5",
     "loguru>=0.7.3",
-    "mkdocs>=1.6.1",
-    "onnxruntime>=1.24.3",
+    "onnxruntime>=1.24.4",
     "optimum-onnx>=0.1.0",
     "orjson>=3.11.7",
     "playwright>=1.58.0",
     "polars>=1.39.0",
+    "polars-hash>=0.5.6",
     "pyarrow>=23.0.1",
     "pydantic>=2.12.5",
     "pyexcel>=0.7.4",
@@ -58,15 +68,19 @@ build-backend = "hatchling.build"
 packages = ["./src/tablassert"]
 
 [project.scripts]
-tablassert = "tablassert.lib:CLI"
+tablassert = "tablassert.cli:CLI"
 
 [project.optional-dependencies]
 rtcompat = [
     "polars[rtcompat]>=1.39.0",
 ]
+rt = [
+    "tablassert[rtcompat]",
+]
 
 [dependency-groups]
 dev = [
+    "grayskull>=3.1.0",
     "mkdocs>=1.6.1",
     "pre-commit>=4.5.1",
     "pyright>=1.1.408",
@@ -74,10 +88,13 @@ dev = [
     "ruff>=0.15.6",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 120
 indent-width = 4
-target-version = "py313"
+target-version = "py311"
 
 [tool.ruff.format]
 quote-style = "double"

@@ -19,7 +19,7 @@ A graph configuration file specifies:
 | `name` | String | Knowledge graph name (used in output filename) |
 | `version` | String | Knowledge graph version (used in output filename) |
 | `tables` | List[Path] | Paths to table configuration YAML files |
-| `dbssert` | Path | Path to DuckDB entity resolution database |
+| `datassert` | Path | Path to datassert directory containing DuckDB shards |
 
 ### Optional Fields
 
@@ -58,9 +58,9 @@ Each table config defines:
 
 See [Table Configuration](table.md) for details.
 
-**`dbssert: path`**
+**`datassert: path`**
 
-Path to DuckDB database for entity resolution. This database contains:
+Path to the datassert directory for entity resolution. Tablassert opens 16 shard files from `datassert/data/{0..15}.duckdb`. This database contains:
 - Synonym mappings (text → CURIE)
 - Biolink categories
 - Taxonomic information
@@ -85,7 +85,7 @@ When provided, this is used when provenance specifies PMC publications.
 ## Path Resolution
 
 Paths can be:
-- **Absolute:** `/home/user/data/dbssert.duckdb`
+- **Absolute:** `/home/user/data/datassert`
 - **Relative to graph config:** `./tables/table1.yaml`
 - **Relative to current directory:** `../configs/table.yaml`
 
@@ -97,7 +97,7 @@ name: MY_GRAPH
 version: 1.0.0
 tables:
   - ./my-table.yaml
-dbssert: /data/dbssert.duckdb
+datassert: /data/datassert
 pubmed_db: /data/PubMed.db
 pmc_db: /data/PMCSuppCaptions.db
 ```
@@ -112,7 +112,7 @@ tables:
   - /configs/gene-disease-associations.yaml
   - /configs/drug-targets.yaml
   - /configs/protein-interactions.yaml
-dbssert: /databases/dbssert.duckdb
+datassert: /databases/datassert
 pubmed_db: /databases/PubMed.db
 pmc_db: /databases/PMCSuppCaptions.db
 ```
@@ -126,7 +126,7 @@ When you run `tablassert build-knowledge-graph graph.yaml`:
    - Load table configuration
    - Download source file (if URL specified)
    - Apply transformations
-   - Resolve entities using `dbssert`
+   - Resolve entities using `datassert`
    - Validate with QC pipeline
    - Create subgraph parquet file
 3. **Aggregate subgraphs** - Merge all parquet files
@@ -155,7 +155,7 @@ name: MULTIOMICS_KG
 version: UNSTABLE
 tables:
   - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
-dbssert: /local_raid1/sgoetz/CODE/DBSSERT/dbssert.duckdb
+datassert: /local_raid1/sgoetz/CODE/DATASSERT/datassert
 pubmed_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
 pmc_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
 ```

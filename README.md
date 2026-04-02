@@ -1,128 +1,66 @@
 # Tablassert
 
-### By Skye Lane Goetz, Gwênlyn Glusman, and Jared C. Roach
+[![PyPI](https://img.shields.io/pypi/v/tablassert.svg)](https://pypi.org/project/tablassert/)
+[![Python](https://img.shields.io/pypi/pyversions/tablassert.svg)](https://pypi.org/project/tablassert/)
+[![License](https://img.shields.io/pypi/l/tablassert.svg)](https://github.com/SkyeAv/Tablassert/blob/main/LICENSE)
+[![Docs](https://img.shields.io/github/deployments/SkyeAv/Tablassert/github-pages?label=docs)](https://skyeav.github.io/Tablassert/)
 
-Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON.
-
-## Documentation
-
-**[Full Documentation](https://skyeav.github.io/Tablassert/)**
-
-Complete guides covering installation, configuration, tutorials, and API reference.
-
-## Quick Start
+Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in.
 
 ```bash
-# Clone repository
-git clone https://github.com/SkyeAv/Tablassert.git
-cd Tablassert
-
-# Install with UV (requires Python 3.13+)
-uv sync
-
-# Run CLI
-uv run tablassert --help
-```
-
-Or install the CLI directly from PyPI:
-
-```bash
-# Option A: UV tool install
-uv tool install tablassert
-
-# Option B: pip install
 pip install tablassert
-
-# Option C: runtime-compatible Polars build
-# (for CPUs without the required Polars instructions)
-uv tool install "tablassert[rtcompat]"
-# or
-pip install "tablassert[rtcompat]"
-
-tablassert --help
+tablassert build-knowledge-graph config.yaml
 ```
 
-## Usage (With UV)
+**[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
 
-### Prerequisites
-
-- Python 3.13 or higher
-- UV package manager
-
-### Method 1: Development Installation (Recommended)
-
-Best for exploring Tablassert or active development.
+## Installation
 
 ```bash
-# Clone and install dependencies
-git clone https://github.com/SkyeAv/Tablassert.git
-cd Tablassert
-uv sync
-
-# Run CLI through UV
-uv run tablassert build-knowledge-graph /path/to/graph-config.yaml
-```
-
-### Method 2: Install from PyPI
-
-Recommended for most users.
-
-```bash
-# Option A: standard install (UV)
-uv tool install tablassert
-
-# Option B: standard install (pip)
 pip install tablassert
-
-# Option C: runtime-compatible Polars build
-# (for CPUs without the required Polars instructions)
-uv tool install "tablassert[rtcompat]"
-# or
-pip install "tablassert[rtcompat]"
-
-tablassert build-knowledge-graph /path/to/graph-config.yaml
 ```
 
-### Method 3: Install from GitHub main
-
-Use this when you want the latest main-branch build before a tagged release.
+All dependencies (ML, web, Excel support) are included in the base install. An optional extra is available for CPU compatibility:
 
 ```bash
-uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
-tablassert build-knowledge-graph /path/to/graph-config.yaml
+pip install "tablassert[rtcompat]"  # Polars build for CPUs without required instructions
 ```
 
-If your CPU does not support the instructions required by default Polars builds,
-use **Method 2** with `tablassert[rtcompat]`.
-
-### Method 4: Local source install
-
-For contributors testing local changes.
+<details>
+<summary><strong>Docker</strong></summary>
 
 ```bash
-# Clone repository
-git clone https://github.com/SkyeAv/Tablassert.git
-cd Tablassert
+docker pull ghcr.io/skyeav/tablassert:latest
 
-# Install CLI tool from local source
-uv tool install .
-
-# CLI is now available
-tablassert build-knowledge-graph /path/to/graph-config.yaml
+docker run --rm \
+  -v /path/to/config:/data \
+  -v /path/to/datassert:/datassert \
+  ghcr.io/skyeav/tablassert:latest \
+  build-knowledge-graph /data/graph-config.yaml
 ```
+
+</details>
 
 ## Key Features
 
-- **Declarative Configuration:** YAML-based, no code required
-- **Entity Resolution:** Maps text to biological entities (genes, diseases, chemicals)
-- **Quality Control:** Three-stage validation (exact → fuzzy → BERT embeddings)
-- **KGX Compliance:** NCATS Translator-compatible NDJSON output
-- **Performance:** Parallel processing with disk caching
+- **Declarative Configuration** — YAML-based, no code required
+- **Entity Resolution** — Maps text to biological entities (genes, diseases, chemicals)
+- **Quality Control** — Three-stage validation (exact → fuzzy → BERT embeddings)
+- **KGX Compliance** — NCATS Translator-compatible NDJSON output
+- **Performance** — Lazy evaluation pipelines with Polars and DuckDB-accelerated entity resolution
+
+## Contributing
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for development setup, code style, and pull request guidelines.
+
+## License
+
+[Apache License 2.0](LICENSE)
 
 ## Contributors
 
-[Skye Lane Goetz](mailto:sgoetz@isbscience.org) - Institute for Systems Biology, CalPoly SLO
+[Skye Lane Goetz](mailto:sgoetz@isbscience.org) — Institute for Systems Biology, CalPoly SLO
 
-[Gwênlyn Glusman](mailto:gglusman@isbscience.org) - Institute for Systems Biology
+[Gwênlyn Glusman](mailto:gglusman@isbscience.org) — Institute for Systems Biology
 
-Jared C. Roach - Institute for Systems Biology
+Jared C. Roach — Institute for Systems Biology

@@ -93,7 +93,7 @@ or fuzz.partial_token_sort_ratio(original, preferred) >= 20
 - Original: `"breast ca"` → Preferred: `"breast cancer"` ✓
 - Original: `"T53"` → Preferred: `"tumor protein p53"` ✗ (goes to Stage 3)
 
-**Performance:** O(n) string operations, cached via `@DISKCACHE.memoize()`
+**Performance:** O(n) string operations
 
 #### Stage 3: BERT Semantic Similarity
 
@@ -124,25 +124,20 @@ return similarity >= 0.2
 **Optimizations:**
 - Graph optimization level: ALL
 - ONNX session caching
-- Disk cache for embeddings (~100MB LRU)
 
 Lazy-loaded on first `BERT_audit()` call, then reused for subsequent calls.
 
-### Disk Caching
+### Model Caching
 
-All expensive operations are cached to disk:
+BioBERT is lazy-loaded on first use and cached globally for the lifetime of the process:
 
 ```python
-@DISKCACHE.memoize()
-def fuzz_audit(...): ...
-
-@DISKCACHE.memoize()
-def BERT_audit(...): ...
+# ? Lazy-loads BioBERT once on first batch audit call, then caches globally
 ```
 
-**Cache location:** `./.cachassert` directory
+**Cache location:** In-memory (global model cache)
 
-**Cache strategy:** LRU eviction when size exceeds limit
+**Cache strategy:** BioBERT model loaded once on first batch audit, then reused globally
 
 **Why caching matters:**
 - Fuzzy matching: 100-1000x speedup on repeated strings
@@ -212,7 +207,7 @@ Output: 990 rows (700 + 250 + 40)
 
 QC is applied after entity resolution:
 
-1. **Entity resolution** (`version4()`) - Maps text to CURIEs
+1. **Entity resolution** (`resolve()`) - Maps text to CURIEs
 2. **Quality control** (`fullmap_audit()`) - Validates mappings
 3. **Export** - Only validated mappings in final output
 
