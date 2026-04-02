@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from multiprocessing.pool import ThreadPool
 from operator import add
 from typing import TYPE_CHECKING, Optional
 
@@ -126,15 +125,16 @@ def query_distinct(
     # ? Query All Shard Databases In Parallel Using Thread Pool
     # * Added Column Prioritization Logic From 4.2.0
     shards: dict[tuple[str], pl.DataFrame] = lf.collect().partition_by("shard", as_dict=True)
-
-    query: str = query_builder(prioritize, avoid, taxon)
-    args: list[tuple[object, pl.DataFrame, str]] = [(conns[int(shard[0])], df, query) for shard, df in shards.items()]
-
-    if len(args) == 0:
+    if len(shards) == 0:
         return empty_matches(column_context)
 
-    with ThreadPool(SHARDS) as pool:
-        results: list[pl.DataFrame] = pool.starmap(query_shard, args)
+    results: list[pl.DataFrame] = []
+    query: str = query_builder(prioritize, avoid, taxon)
+    for shard, df in shards.items():
+        shard_number: int = int(shard[0])
+        conn: object = conns[shard_number]  # type: ignore
+
+        results += [query_shard(conn, df, query)]
 
     if len(results) == 0:
         return empty_matches(column_context)
