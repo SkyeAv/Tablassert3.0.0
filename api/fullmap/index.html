@@ -48,11 +48,23 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
                 </li>
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -68,7 +80,7 @@
               <ul class="current">
                   <li class="toctree-l1 current"><a class="reference internal current" href="#">Entity Resolution</a>
     <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#version4">version4()</a>
+    <li class="toctree-l2"><a class="reference internal" href="#resolve">resolve()</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#function-signature">Function Signature</a>
     </li>
@@ -79,6 +91,8 @@
     <li class="toctree-l3"><a class="reference internal" href="#duckdb-query">DuckDB Query</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#example-usage">Example Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#mapping-a-python-list">Mapping a Python List</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#nlp-processing-levels">NLP Processing Levels</a>
     </li>
@@ -129,13 +143,13 @@
               
                 <h1 id="entity-resolution-fullmap">Entity Resolution (fullmap)</h1>
 <p>The <code>fullmap</code> module provides entity resolution functionality, mapping text strings to standardized biological entities (CURIEs).</p>
-<h2 id="version4">version4()</h2>
-<p>Primary entity resolution function using DuckDB queries against the dbssert database.</p>
+<h2 id="resolve">resolve()</h2>
+<p>Primary entity resolution function using DuckDB queries against the datassert database.</p>
 <h3 id="function-signature">Function Signature</h3>
-<pre><code class="language-python">def version4(
+<pre><code class="language-python">def resolve(
   lf: pl.LazyFrame,
   col: str,
-  conn: object,
+  conns: list[object],
   taxon: Optional[str] = None,
   prioritize: Optional[list[Categories]] = None,
   avoid: Optional[list[Categories]] = None,
@@ -143,7 +157,7 @@
   section_hash: Optional[str] = None,
   config_file: Optional[str] = None,
   column_context: bool = True,
-  tag: str = &quot; one&quot;
+  tag: str = &quot; two&quot;
 ) -&gt; pl.LazyFrame
 </code></pre>
 <h3 id="parameters">Parameters</h3>
@@ -151,9 +165,9 @@
 <p>Input LazyFrame containing the data to process. Internally collected at explicit collection points for DuckDB queries and joins.</p>
 <p><strong><code>col: str</code></strong></p>
 <p>Column name containing text strings to resolve.</p>
-<p><strong><code>conn: object</code></strong></p>
-<p>DuckDB connection to the entity resolution database.</p>
-<p>This database contains:
+<p><strong><code>conns: list[object]</code></strong></p>
+<p>List of 16 DuckDB shard connections to the datassert database.</p>
+<p>Each shard contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
 - Biolink categories
@@ -174,12 +188,12 @@
 <p>Optional context fields used for operational logging when unmatched values are encountered.</p>
 <p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
 <p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the query result adds a category frequency score and prefers more frequent category hits.</p>
-<p><strong><code>tag: str</code> (default: <code>" one"</code>)</strong></p>
-<p>Suffix for NLP processing level column.</p>
-<p>The function looks for both:
-- <code>col</code> (original text, case-preserved)
-- <code>col + tag</code> (normalized text, typically lowercase)</p>
-<p>Default <code>" one"</code> means it uses level-one text processing (lowercase, stripped).</p>
+<p><strong><code>tag: str</code> (default: <code>" two"</code>)</strong></p>
+<p>Suffix appended to <code>col</code> to locate the <code>level_two</code> output column.</p>
+<p><code>resolve()</code> expects the LazyFrame to already have two NLP columns applied upstream:
+- <code>col</code> — the <code>level_one</code> output (whitespace stripped, lowercased)
+- <code>col + tag</code> — the <code>level_two</code> output (non-word characters removed via <code>\W+</code>)</p>
+<p>The default <code>" two"</code> matches <code>level_two</code>'s default tag.</p>
 <h3 id="return-value">Return Value</h3>
 <p>Returns a Polars LazyFrame with these columns added:</p>
 <table>
@@ -255,22 +269,26 @@
 </li>
 </ol>
 <h3 id="example-usage">Example Usage</h3>
-<pre><code class="language-python">from tablassert.fullmap import version4
+<pre><code class="language-python">from tablassert.fullmap import resolve
 from tablassert.enums import Categories
 import duckdb
 import polars as pl
 
-# Open DuckDB connection
-conn = duckdb.connect(&quot;/data/dbssert.duckdb&quot;, read_only=True)
+# Open all 16 shard connections
+datassert_dir = &quot;/path/to/datassert&quot;
+conns = [
+    duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
+    for i in range(16)
+]
 
 # LazyFrame with data to resolve
 lf = pl.scan_parquet(&quot;data.parquet&quot;)
 
 # Resolve gene symbols to CURIEs
-result = version4(
+result = resolve(
   lf=lf,
   col=&quot;gene_symbol&quot;,
-  conn=conn,
+  conns=conns,
   taxon=&quot;9606&quot;,  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
@@ -278,7 +296,6 @@ result = version4(
   section_hash=&quot;tutorial-section&quot;,
   config_file=&quot;tutorial-table.yaml&quot;,
   column_context=True,
-  tag=&quot; one&quot;
 )
 
 # Result LazyFrame includes:
@@ -287,22 +304,55 @@ result = version4(
 # - gene_symbol category: &quot;biolink:Gene&quot;
 # - etc.
 </code></pre>
+<h3 id="mapping-a-python-list">Mapping a Python List</h3>
+<p>A common entry point for programmatic use is resolving a plain Python list of terms:</p>
+<pre><code class="language-python">import duckdb
+import polars as pl
+from tablassert.fullmap import resolve
+from tablassert.nlp import level_one, level_two
+from tablassert.enums import Categories
+
+# Open all 16 shard connections
+datassert_dir = &quot;/path/to/datassert&quot;
+conns = [
+    duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
+    for i in range(16)
+]
+
+# Map a list of gene symbols to CURIEs
+genes = [&quot;TP53&quot;, &quot;BRCA1&quot;, &quot;EGFR&quot;, &quot;KRAS&quot;]
+lf = pl.LazyFrame({&quot;gene&quot;: genes})
+
+# Apply NLP normalization (required before resolve)
+lf = level_one(lf, &quot;gene&quot;)   # lowercase + strip
+lf = level_two(lf, &quot;gene&quot;)   # remove non-word chars → &quot;gene two&quot; column
+
+result = resolve(
+    lf=lf,
+    col=&quot;gene&quot;,
+    conns=conns,
+    taxon=&quot;9606&quot;,               # Human only
+    prioritize=[Categories.Gene],
+    log=False,
+).collect()
+
+print(result.select([&quot;gene&quot;, &quot;gene name&quot;, &quot;gene category&quot;]))
+</code></pre>
 <h3 id="nlp-processing-levels">NLP Processing Levels</h3>
-<p><strong>Level 0</strong> (exact case):
-- Column: <code>col</code>
-- Matches preserve case
-- Preferred for acronyms, gene symbols</p>
-<p><strong>Level 1</strong> (normalized):
-- Column: <code>col + " one"</code>
-- Lowercased, whitespace stripped
-- Preferred for disease names, free text</p>
-<p>The function tries level 0 first, then level 1.</p>
+<p><code>resolve()</code> requires that <code>level_one</code> and <code>level_two</code> have been applied to the LazyFrame before calling it:</p>
+<p><strong><code>level_one</code> output</strong> (column: <code>col</code>):
+- Whitespace stripped, lowercased
+- Queried first; preferred for acronyms and gene symbols</p>
+<p><strong><code>level_two</code> output</strong> (column: <code>col + " two"</code>):
+- All non-word characters removed (<code>\W+</code> → <code>""</code>) from the <code>level_one</code> result
+- Used as fallback when <code>level_one</code> produces no match
+- Preferred for disease names and free text</p>
 <p>Rows without a valid CURIE are filtered from the returned frame.</p>
 <h3 id="case-dependent-behavior">Case-Dependent Behavior</h3>
-<p>"TP53" vs "tp53":
-- Level 0: Only matches "TP53" synonym
-- Level 1: Matches any case variant</p>
-<p>This preserves specificity for case-sensitive identifiers while allowing fuzzy matching for general terms.</p>
+<p><code>"TP53"</code> vs <code>"tp53"</code>:
+- After <code>level_one</code>: both become <code>"tp53"</code> — matches any case variant
+- <code>level_two</code> further strips punctuation, helping with hyphenated or slash-delimited names</p>
+<p>This preserves specificity for case-sensitive identifiers while allowing looser matching for general terms.</p>
 <h3 id="provenance-tracking">Provenance Tracking</h3>
 <p>Every resolved entity includes:
 - <strong>Source database</strong> (HGNC, MONDO, ChEBI, etc.)

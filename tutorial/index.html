@@ -48,6 +48,14 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../cli/">CLI Reference</a>
                 </li>
               </ul>
@@ -75,6 +83,10 @@
     <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
     </li>
     </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -128,7 +140,7 @@
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
 <li>Tablassert installed (see <a href="../installation/">Installation</a>)</li>
-<li>Required database: dbssert (<code>pubmed_db</code> and <code>pmc_db</code> are optional enrichments)</li>
+<li>Required database: datassert (<code>pubmed_db</code> and <code>pmc_db</code> are optional enrichments)</li>
 <li>Basic familiarity with YAML</li>
 </ul>
 <h2 id="the-data">The Data</h2>
@@ -206,7 +218,7 @@ name: TUTORIAL_KG
 version: 1.0.0
 tables:
   - ./tutorial-table.yaml
-dbssert: /path/to/dbssert.duckdb
+datassert: /path/to/datassert
 pubmed_db: /path/to/PubMed.db
 pmc_db: /path/to/PMCSuppCaptions.db
 </code></pre>
@@ -214,7 +226,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 <p><strong>What this does:</strong>
 - <strong>name/version</strong>: Output files will be <code>TUTORIAL_KG_1.0.0.nodes.ndjson</code> and <code>TUTORIAL_KG_1.0.0.edges.ndjson</code>
 - <strong>tables</strong>: List of table configurations to process
-- <strong>databases</strong>: Path to entity resolution database, plus optional provenance databases</p>
+- <strong>databases</strong>: Path to the datassert directory, plus optional provenance databases</p>
 <h2 id="step-4-run-tablassert">Step 4: Run Tablassert</h2>
 <pre><code class="language-bash">tablassert build-knowledge-graph tutorial-graph.yaml
 </code></pre>
@@ -277,7 +289,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
         <a href="../cli/" class="btn btn-neutral float-left" title="CLI Reference"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../configuration/graph/" class="btn btn-neutral float-right" title="Graph Config">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="../examples/" class="btn btn-neutral float-right" title="Use Case Gallery">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -303,7 +315,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
       <span><a href="../cli/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
-      <span><a href="../configuration/graph/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="../examples/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>

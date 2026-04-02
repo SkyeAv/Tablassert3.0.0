@@ -48,11 +48,23 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
                 </li>
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -697,7 +709,7 @@ sections:
 <tr>
 <td><code>qualifier</code></td>
 <td>String</td>
-<td>Biolink qualifier (e.g., <code>"species_context"</code>)</td>
+<td>Biolink qualifier (e.g., <code>"species_context_qualifier"</code>)</td>
 </tr>
 <tr>
 <td>(inherits NodeEncoding)</td>
@@ -708,7 +720,7 @@ sections:
 </table>
 <p><strong>Example:</strong></p>
 <pre><code class="language-yaml">qualifiers:
-  - qualifier: species_context
+  - qualifier: species_context_qualifier
     method: value
     encoding: NCBITaxon:9606
 </code></pre>

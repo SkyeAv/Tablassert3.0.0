@@ -48,11 +48,23 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
                 </li>
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -90,7 +102,7 @@
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#biobert-model">BioBERT Model</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#disk-caching">Disk Caching</a>
+    <li class="toctree-l3"><a class="reference internal" href="#model-caching">Model Caching</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#example-usage">Example Usage</a>
     </li>
@@ -196,7 +208,7 @@ or fuzz.partial_token_sort_ratio(original, preferred) &gt;= 20
 <p><strong>Example passes:</strong>
 - Original: <code>"breast ca"</code> → Preferred: <code>"breast cancer"</code> ✓
 - Original: <code>"T53"</code> → Preferred: <code>"tumor protein p53"</code> ✗ (goes to Stage 3)</p>
-<p><strong>Performance:</strong> O(n) string operations, cached via <code>@DISKCACHE.memoize()</code></p>
+<p><strong>Performance:</strong> O(n) string operations</p>
 <h4 id="stage-3-bert-semantic-similarity">Stage 3: BERT Semantic Similarity</h4>
 <p><strong>High confidence using BioBERT embeddings.</strong></p>
 <ol>
@@ -217,19 +229,14 @@ return similarity &gt;= 0.2
 <p><strong>Backend:</strong> ONNX Runtime (CPU)</p>
 <p><strong>Optimizations:</strong>
 - Graph optimization level: ALL
-- ONNX session caching
-- Disk cache for embeddings (~100MB LRU)</p>
+- ONNX session caching</p>
 <p>Lazy-loaded on first <code>BERT_audit()</code> call, then reused for subsequent calls.</p>
-<h3 id="disk-caching">Disk Caching</h3>
-<p>All expensive operations are cached to disk:</p>
-<pre><code class="language-python">@DISKCACHE.memoize()
-def fuzz_audit(...): ...
-
-@DISKCACHE.memoize()
-def BERT_audit(...): ...
+<h3 id="model-caching">Model Caching</h3>
+<p>BioBERT is lazy-loaded on first use and cached globally for the lifetime of the process:</p>
+<pre><code class="language-python"># ? Lazy-loads BioBERT once on first batch audit call, then caches globally
 </code></pre>
-<p><strong>Cache location:</strong> <code>./.cachassert</code> directory</p>
-<p><strong>Cache strategy:</strong> LRU eviction when size exceeds limit</p>
+<p><strong>Cache location:</strong> In-memory (global model cache)</p>
+<p><strong>Cache strategy:</strong> BioBERT model loaded once on first batch audit, then reused globally</p>
 <p><strong>Why caching matters:</strong>
 - Fuzzy matching: 100-1000x speedup on repeated strings
 - BERT inference: 10,000x speedup on repeated strings
@@ -309,7 +316,7 @@ Output: 990 rows (700 + 250 + 40)
 <h3 id="integration-with-pipeline">Integration with Pipeline</h3>
 <p>QC is applied after entity resolution:</p>
 <ol>
-<li><strong>Entity resolution</strong> (<code>version4()</code>) - Maps text to CURIEs</li>
+<li><strong>Entity resolution</strong> (<code>resolve()</code>) - Maps text to CURIEs</li>
 <li><strong>Quality control</strong> (<code>fullmap_audit()</code>) - Validates mappings</li>
 <li><strong>Export</strong> - Only validated mappings in final output</li>
 </ol>

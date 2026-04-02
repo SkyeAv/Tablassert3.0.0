@@ -48,11 +48,23 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
                 </li>
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -168,9 +180,9 @@
 <td>Paths to table configuration YAML files</td>
 </tr>
 <tr>
-<td><code>dbssert</code></td>
+<td><code>datassert</code></td>
 <td>Path</td>
-<td>Path to DuckDB entity resolution database</td>
+<td>Path to datassert directory containing DuckDB shards</td>
 </tr>
 </tbody>
 </table>
@@ -213,8 +225,8 @@
 - Provenance information
 - Edge annotations</p>
 <p>See <a href="../table/">Table Configuration</a> for details.</p>
-<p><strong><code>dbssert: path</code></strong></p>
-<p>Path to DuckDB database for entity resolution. This database contains:
+<p><strong><code>datassert: path</code></strong></p>
+<p>Path to the datassert directory for entity resolution. Tablassert opens 16 shard files from <code>datassert/data/{0..15}.duckdb</code>. This database contains:
 - Synonym mappings (text → CURIE)
 - Biolink categories
 - Taxonomic information
@@ -231,7 +243,7 @@
 <p>When provided, this is used when provenance specifies PMC publications.</p>
 <h2 id="path-resolution">Path Resolution</h2>
 <p>Paths can be:
-- <strong>Absolute:</strong> <code>/home/user/data/dbssert.duckdb</code>
+- <strong>Absolute:</strong> <code>/home/user/data/datassert</code>
 - <strong>Relative to graph config:</strong> <code>./tables/table1.yaml</code>
 - <strong>Relative to current directory:</strong> <code>../configs/table.yaml</code></p>
 <h2 id="minimal-example">Minimal Example</h2>
@@ -240,7 +252,7 @@ name: MY_GRAPH
 version: 1.0.0
 tables:
   - ./my-table.yaml
-dbssert: /data/dbssert.duckdb
+datassert: /data/datassert
 pubmed_db: /data/PubMed.db
 pmc_db: /data/PMCSuppCaptions.db
 </code></pre>
@@ -252,7 +264,7 @@ tables:
   - /configs/gene-disease-associations.yaml
   - /configs/drug-targets.yaml
   - /configs/protein-interactions.yaml
-dbssert: /databases/dbssert.duckdb
+datassert: /databases/datassert
 pubmed_db: /databases/PubMed.db
 pmc_db: /databases/PMCSuppCaptions.db
 </code></pre>
@@ -264,7 +276,7 @@ pmc_db: /databases/PMCSuppCaptions.db
 <li>Load table configuration</li>
 <li>Download source file (if URL specified)</li>
 <li>Apply transformations</li>
-<li>Resolve entities using <code>dbssert</code></li>
+<li>Resolve entities using <code>datassert</code></li>
 <li>Validate with QC pipeline</li>
 <li>Create subgraph parquet file</li>
 <li><strong>Aggregate subgraphs</strong> - Merge all parquet files</li>
@@ -286,7 +298,7 @@ name: MULTIOMICS_KG
 version: UNSTABLE
 tables:
   - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
-dbssert: /local_raid1/sgoetz/CODE/DBSSERT/dbssert.duckdb
+datassert: /local_raid1/sgoetz/CODE/DATASSERT/datassert
 pubmed_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
 pmc_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
 </code></pre>
@@ -300,7 +312,7 @@ pmc_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppC
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="../../tutorial/" class="btn btn-neutral float-left" title="Tutorial"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../../examples/" class="btn btn-neutral float-left" title="Use Case Gallery"><span class="icon icon-circle-arrow-left"></span> Previous</a>
         <a href="../table/" class="btn btn-neutral float-right" title="Table Config">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
@@ -324,7 +336,7 @@ pmc_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppC
   <span class="rst-current-version" data-toggle="rst-current-version">
     
     
-      <span><a href="../../tutorial/" style="color: #fcfcfc">&laquo; Previous</a></span>
+      <span><a href="../../examples/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
       <span><a href="../table/" style="color: #fcfcfc">Next &raquo;</a></span>

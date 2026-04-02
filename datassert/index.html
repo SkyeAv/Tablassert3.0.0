@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Datassert - Tablassert</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Datassert";
+        var mkdocs_page_input_path = "datassert.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Tablassert
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Datassert</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#structure">Structure</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#schema">Schema</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#usage-in-graph-config">Usage in Graph Config</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#programmatic-usage">Programmatic Usage</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../cli/">CLI Reference</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../examples/">Use Case Gallery</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/graph/">Graph Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/table/">Table Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/advanced-example/">Advanced Example</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/fullmap/">Entity Resolution</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/qc/">Quality Control</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/utils/">Utilities</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Tablassert</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Datassert</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="datassert">Datassert</h1>
+<p>Datassert is the entity-resolution database used by Tablassert. It contains biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, enabling <code>resolve()</code> to map free-text strings to standardized identifiers.</p>
+<h2 id="installation">Installation</h2>
+<pre><code class="language-bash">git clone https://github.com/SkyeAv/datassert
+</code></pre>
+<h2 id="structure">Structure</h2>
+<p>Datassert is split into 16 DuckDB shard files for parallel querying:</p>
+<pre><code>datassert/
+  data/
+    0.duckdb
+    1.duckdb
+    ...
+    15.duckdb
+</code></pre>
+<p>Terms are routed to shards deterministically via <code>xxhash64(term) % 16</code>, so a given string always hits the same shard.</p>
+<h3 id="schema">Schema</h3>
+<p>Each shard contains four tables:</p>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Key Columns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SYNONYMS</code></td>
+<td><code>SYNONYM</code>, <code>CURIE_ID</code>, <code>SOURCE_ID</code></td>
+<td>Text synonym → CURIE mapping</td>
+</tr>
+<tr>
+<td><code>CURIES</code></td>
+<td><code>CURIE_ID</code>, <code>CURIE</code>, <code>PREFERRED_NAME</code>, <code>TAXON_ID</code>, <code>CATEGORY_ID</code></td>
+<td>Canonical identifiers and preferred names</td>
+</tr>
+<tr>
+<td><code>CATEGORIES</code></td>
+<td><code>CATEGORY_ID</code>, <code>CATEGORY_NAME</code></td>
+<td>Biolink category names</td>
+</tr>
+<tr>
+<td><code>SOURCES</code></td>
+<td><code>SOURCE_ID</code>, <code>SOURCE_NAME</code>, <code>SOURCE_VERSION</code></td>
+<td>Source database and version provenance</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-in-graph-config">Usage in Graph Config</h2>
+<p>The <code>datassert:</code> field in a GC2 graph configuration points to the directory containing the shards. Tablassert opens all 16 shards at startup and passes the connections to <code>resolve()</code>.</p>
+<pre><code class="language-yaml"># graph-config.yaml (GC2)
+syntax: GC2
+name: my-graph
+version: &quot;1.0&quot;
+datassert: /path/to/datassert/   # directory containing data/0..15.duckdb
+tables:
+  - ./TABLE/my-table.yaml
+</code></pre>
+<h2 id="programmatic-usage">Programmatic Usage</h2>
+<p>When calling <code>resolve()</code> directly, open the shard connections yourself:</p>
+<pre><code class="language-python">import duckdb
+from tablassert.fullmap import resolve
+
+datassert_dir = &quot;/path/to/datassert&quot;
+conns = [
+    duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
+    for i in range(16)
+]
+</code></pre>
+<p>See <a href="../api/fullmap/">Entity Resolution</a> for the full <code>resolve()</code> API.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../docker/" class="btn btn-neutral float-left" title="Docker"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../cli/" class="btn btn-neutral float-right" title="CLI Reference">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../docker/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../cli/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

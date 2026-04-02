@@ -47,14 +47,20 @@
                 <li class="toctree-l1"><a class="reference internal" href="../installation/">Installation</a>
                 </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../datassert/">Datassert</a>
+                </li>
+              </ul>
               <ul class="current">
                 <li class="toctree-l1 current"><a class="reference internal current" href="#">CLI Reference</a>
     <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#build-knowledge-graph">build-knowledge-graph</a>
+    <li class="toctree-l2"><a class="reference internal" href="#version">version</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#synopsis">Synopsis</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#options">Options</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#example">Example</a>
     </li>
@@ -62,11 +68,11 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#verify-table-configuration-syntax">verify-table-configuration-syntax</a>
+    <li class="toctree-l2"><a class="reference internal" href="#build-knowledge-graph">build-knowledge-graph</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#synopsis_1">Synopsis</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#options_1">Options</a>
+    <li class="toctree-l3"><a class="reference internal" href="#options">Options</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#example_1">Example</a>
     </li>
@@ -74,8 +80,22 @@
     </li>
         </ul>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#verify-table-configuration-syntax">verify-table-configuration-syntax</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#synopsis_2">Synopsis</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#options_1">Options</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example_2">Example</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#description_2">Description</a>
+    </li>
+        </ul>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a>
         <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#check-version">Check Version</a>
+    </li>
     <li class="toctree-l3"><a class="reference internal" href="#build-knowledge-graph_1">Build Knowledge Graph</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#validate-table-configuration">Validate Table Configuration</a>
@@ -91,6 +111,10 @@
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -139,10 +163,21 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="cli-reference">CLI Reference</h1>
-<p>Tablassert provides two commands for building knowledge graphs and validating configuration files.</p>
+<p>Tablassert provides three commands.</p>
+<h2 id="version">version</h2>
+<p>Display the current Tablassert package version.</p>
+<h3 id="synopsis">Synopsis</h3>
+<pre><code class="language-bash">tablassert version
+</code></pre>
+<h3 id="example">Example</h3>
+<pre><code class="language-bash">tablassert version
+</code></pre>
+<h3 id="description">Description</h3>
+<p>Prints the installed Tablassert version to stdout and exits.</p>
+<hr />
 <h2 id="build-knowledge-graph">build-knowledge-graph</h2>
 <p>Build A KGX Compliant Knowledge Graph From A Graph Configuration File</p>
-<h3 id="synopsis">Synopsis</h3>
+<h3 id="synopsis_1">Synopsis</h3>
 <pre><code class="language-bash">tablassert build-knowledge-graph &lt;graph_configuration_file&gt;
 </code></pre>
 <h3 id="options">Options</h3>
@@ -164,11 +199,11 @@
 </tr>
 </tbody>
 </table>
-<h3 id="example">Example</h3>
+<h3 id="example_1">Example</h3>
 <pre><code class="language-bash">tablassert build-knowledge-graph /path/to/MOKGV6.yaml
 </code></pre>
-<h3 id="description">Description</h3>
-<p>This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through dbssert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.</p>
+<h3 id="description_1">Description</h3>
+<p>This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through datassert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.</p>
 <p>The process executes in parallel stages with rich progress bars showing:
 - Loading Tables
 - Extracting Sections
@@ -184,7 +219,7 @@
 <hr />
 <h2 id="verify-table-configuration-syntax">verify-table-configuration-syntax</h2>
 <p>Verify The Syntax Of A Declarative Table Configuration File</p>
-<h3 id="synopsis_1">Synopsis</h3>
+<h3 id="synopsis_2">Synopsis</h3>
 <pre><code class="language-bash">tablassert verify-table-configuration-syntax &lt;table_configuration_file&gt;
 </code></pre>
 <h3 id="options_1">Options</h3>
@@ -206,10 +241,10 @@
 </tr>
 </tbody>
 </table>
-<h3 id="example_1">Example</h3>
+<h3 id="example_2">Example</h3>
 <pre><code class="language-bash">tablassert verify-table-configuration-syntax /path/to/table-config.yaml
 </code></pre>
-<h3 id="description_1">Description</h3>
+<h3 id="description_2">Description</h3>
 <p>This command validates a TC3 YAML configuration file without running the full extraction pipeline. It loads the file, extracts sections, and validates each section against the schema using Pydantic models. The command exits with a non-zero status if schema errors are detected, making it useful for CI/CD pipelines and pre-commit hooks.</p>
 <p>Use this for:
 - Quick syntax validation during development
@@ -218,6 +253,9 @@
 <p>See <a href="../configuration/table/">Table Configuration</a> for details on the YAML schema.</p>
 <hr />
 <h2 id="examples">Examples</h2>
+<h3 id="check-version">Check Version</h3>
+<pre><code class="language-bash">tablassert version
+</code></pre>
 <h3 id="build-knowledge-graph_1">Build Knowledge Graph</h3>
 <pre><code class="language-bash">tablassert build-knowledge-graph my-graph.yaml
 </code></pre>
@@ -233,7 +271,7 @@
 <li><strong>Process executes:</strong></li>
 <li>Downloads files from URLs (if needed)</li>
 <li>Applies transformations to each table</li>
-<li>Resolves entities using dbssert</li>
+<li>Resolves entities using datassert</li>
 <li>Validates mappings with QC pipeline</li>
 <li>Aggregates subgraphs into NDJSON</li>
 </ol>
@@ -246,7 +284,7 @@
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="../installation/" class="btn btn-neutral float-left" title="Installation"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../datassert/" class="btn btn-neutral float-left" title="Datassert"><span class="icon icon-circle-arrow-left"></span> Previous</a>
         <a href="../tutorial/" class="btn btn-neutral float-right" title="Tutorial">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
@@ -270,7 +308,7 @@
   <span class="rst-current-version" data-toggle="rst-current-version">
     
     
-      <span><a href="../installation/" style="color: #fcfcfc">&laquo; Previous</a></span>
+      <span><a href="../datassert/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
       <span><a href="../tutorial/" style="color: #fcfcfc">Next &raquo;</a></span>

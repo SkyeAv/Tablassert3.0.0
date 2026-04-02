@@ -48,11 +48,23 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
                 </li>
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -84,6 +96,18 @@
     <li class="toctree-l2"><a class="reference internal" href="#output-example">Output Example</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#template-sections-example">Template + Sections Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#dual-column-mapping">Dual-Column Mapping</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#key-techniques_1">Key Techniques</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#template-sections">Template + Sections</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#key-techniques_2">Key Techniques</a>
+    </li>
+        </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
     </li>
@@ -339,6 +363,150 @@ sections:
 <p>This produces two sets of edges from one table:
 1. Positive correlations (rho &gt; 0)
 2. Negative correlations (rho &lt; 0)</p>
+<hr />
+<h2 id="dual-column-mapping">Dual-Column Mapping</h2>
+<p>This pattern maps both subject and object from columns — both nodes require entity resolution.</p>
+<p><strong>Use case:</strong> Correlation tables where each row links two biological entities (e.g., metabolite ↔ microbe).</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  source:
+    kind: excel
+    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
+    local: ./DATALAKE/AVUTHU1.xlsx
+    sheet: signif_metab_microb_corre
+    row_slice: [2, auto]
+
+  statement:
+    subject:
+      method: column
+      encoding: A  # Column A: metabolite names
+      remove:
+        - &quot;.*_&quot;    # Strip trailing underscore artifacts
+      prioritize:
+        - SmallMolecule
+        - ChemicalEntity
+
+    predicate: correlated_with
+
+    object:
+      method: column
+      encoding: B  # Column B: microbe names
+      prioritize:
+        - OrganismTaxon
+      regex:
+        - pattern: _
+          replacement: ' '   # &quot;Lactobacillus_rhamnosus&quot; → &quot;Lactobacillus rhamnosus&quot;
+
+    qualifiers:
+      - qualifier: p value
+        method: column
+        encoding: E
+
+  provenance:
+    repo: PMC
+    publication: PMC12345678
+    contributors:
+      - kind: curation
+        name: Skye Lane Goetz
+        date: 01 JAN 2025
+        organizations:
+          - Institute for Systems Biology
+
+  annotations:
+    - annotation: p value
+      method: column
+      encoding: E
+    - annotation: relationship strength
+      method: column
+      encoding: C
+</code></pre>
+<h3 id="key-techniques_1">Key Techniques</h3>
+<p><strong>Both nodes from columns:</strong> Setting <code>method: column</code> on both subject and object means both undergo entity resolution via <code>resolve()</code>. Each gets its own <code>prioritize</code> list to guide disambiguation.</p>
+<p><strong><code>remove</code> vs <code>regex</code>:</strong> <code>remove</code> filters out entire rows matching a pattern before resolution. <code>regex</code> transforms the column value in-place before resolution.</p>
+<hr />
+<h2 id="template-sections">Template + Sections</h2>
+<p>This pattern handles wide tables where each column encodes a different object (e.g., 24 metabolite columns for the same set of microbe rows). Sections inherit the template's <code>source</code>, <code>provenance</code>, and <code>subject</code>, overriding only the <code>object</code> and optionally <code>row_slice</code> per section.</p>
+<p><strong>Use case:</strong> Studies reporting microbe–metabolite associations across many metabolites, one column each.</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  source:
+    kind: excel
+    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
+    local: ./DATALAKE/BLANTON1.xlsx
+    sheet: Sheet1
+    row_slice: [2, auto]
+
+  statement:
+    subject:
+      method: column
+      encoding: A  # Microbe names
+      prioritize:
+        - OrganismTaxon
+      avoid:
+        - Gene
+      regex:
+        - pattern: &quot;\\[|\\]&quot;
+          replacement: &quot;&quot;    # Strip bracket annotations
+
+    predicate: correlated_with
+
+    object:
+      method: value
+      encoding: PLACEHOLDER  # Overridden per section
+
+  provenance:
+    repo: PMC
+    publication: PMC87654321
+    contributors:
+      - kind: curation
+        name: Skye Lane Goetz
+        date: 15 FEB 2025
+        organizations:
+          - Institute for Systems Biology
+
+sections:
+  # Each section targets one metabolite column
+
+  - statement:
+      object:
+        method: value
+        encoding: CHEBI:17196   # Glycine
+    source:
+      row_slice: [2, auto]
+    annotations:
+      - annotation: relationship strength
+        method: column
+        encoding: B
+
+  - statement:
+      object:
+        method: value
+        encoding: CHEBI:16977   # Alanine
+    source:
+      row_slice: [2, auto]
+    annotations:
+      - annotation: relationship strength
+        method: column
+        encoding: C
+
+  - statement:
+      object:
+        method: value
+        encoding: CHEBI:16414   # Valine
+    source:
+      row_slice: [2, auto]
+    annotations:
+      - annotation: relationship strength
+        method: column
+        encoding: D
+
+  # ... (pattern repeats for each metabolite column)
+</code></pre>
+<h3 id="key-techniques_2">Key Techniques</h3>
+<p><strong>Shared template, per-section overrides:</strong> The <code>source</code>, <code>provenance</code>, and <code>subject</code> are defined once in <code>template</code>. Each section only needs to declare what changes — the <code>object</code> CURIE and the annotation column.</p>
+<p><strong><code>row_slice</code> per section:</strong> When each metabolite occupies a different column range or row range, <code>row_slice</code> can be overridden per section independently of the template.</p>
+<p><strong>Scaling:</strong> This pattern keeps 24-metabolite configs from becoming 24 separate files. Add a section entry per metabolite column; everything else is inherited.</p>
+<hr />
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><strong><a href="../table/">Table Configuration Reference</a></strong> - Full field documentation</li>

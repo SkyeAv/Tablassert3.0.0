@@ -62,11 +62,23 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="cli/">CLI Reference</a>
                 </li>
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="examples/">Use Case Gallery</a>
                 </li>
               </ul>
               <p class="caption"><span class="caption-text">Configuration</span></p>
@@ -129,31 +141,30 @@
 <li><strong>Named Entity Recognition</strong>: Case-dependent, provenance-rich NER with taxonomic filtering</li>
 <li><strong>Quality Control</strong>: Three-stage validation (exact → fuzzy → BERT embeddings)</li>
 <li><strong>Biolink Compliance</strong>: Uses Biolink categories and predicates throughout</li>
-<li><strong>Performance</strong>: Parallel processing with disk caching for expensive operations</li>
+<li><strong>Performance</strong>: Lazy evaluation pipelines via Polars with DuckDB-accelerated entity resolution</li>
 <li><strong>Reproducible</strong>: UV-based development environment with deterministic builds</li>
 </ul>
 <h2 id="quick-start">Quick Start</h2>
-<pre><code class="language-bash"># Install from PyPI (UV)
+<pre><code class="language-bash"># Install from PyPI (UV) — minimal install
 uv tool install tablassert
 tablassert --help
 
-# Install from PyPI (pip)
+# Install from PyPI (pip) — minimal install
 pip install tablassert
 tablassert --help
 
 # Install runtime-compatible Polars build
 # (for CPUs without the required Polars instructions)
-uv tool install &quot;tablassert[rtcompat]&quot;
+uv tool install &quot;tablassert[rt]&quot;
 # or
 pip install &quot;tablassert[rtcompat]&quot;
-tablassert --help
 
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 </code></pre>
-<p><code>tablassert[rtcompat]</code> is defined in <code>pyproject.toml</code> and installs a runtime-compatible
-Polars dependency for systems without the default Polars CPU instruction support.</p>
+<p>All dependencies are included in the base install. An optional <code>rtcompat</code> (alias: <code>rt</code>) extra is available for CPUs that lack the default Polars instruction set.
+See <a href="installation/">Installation</a> for details.</p>
 <p>For development from source:</p>
 <pre><code class="language-bash">git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
@@ -167,6 +178,7 @@ uv run tablassert build-knowledge-graph &lt;config&gt;
 <li><strong><a href="installation/">Installation</a></strong> - Installation methods (PyPI, GitHub main, source development)</li>
 <li><strong><a href="cli/">CLI Reference</a></strong> - Command-line interface usage</li>
 <li><strong><a href="tutorial/">Tutorial</a></strong> - Step-by-step example with synthetic data</li>
+<li><strong><a href="examples/">Use Case Gallery</a></strong> - Real-world configuration patterns for common data types</li>
 <li><strong><a href="configuration/graph/">Configuration</a></strong> - Graph and table configuration reference</li>
 <li><strong><a href="api/fullmap/">API Reference</a></strong> - Core functions documentation</li>
 </ul>
@@ -226,5 +238,5 @@ uv run tablassert build-knowledge-graph &lt;config&gt;
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-03-26 03:15:29.810272+00:00
+Build Date UTC : 2026-04-02 03:22:58.657592+00:00
 -->

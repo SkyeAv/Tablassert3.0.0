@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Use Case Gallery - Tablassert</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Use Case Gallery";
+        var mkdocs_page_input_path = "examples.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Tablassert
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../cli/">CLI Reference</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Use Case Gallery</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#gene-disease-associations">Gene-Disease Associations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#drug-target-interactions">Drug-Target Interactions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#microbiome-metabolite-correlations">Microbiome-Metabolite Correlations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#multi-pathway-gene-mapping">Multi-Pathway Gene Mapping</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#conditional-filtering-with-reindex">Conditional Filtering with Reindex</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#null-handling-with-forward-fill">Null Handling with Forward Fill</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/graph/">Graph Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/table/">Table Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/advanced-example/">Advanced Example</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/fullmap/">Entity Resolution</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/qc/">Quality Control</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/utils/">Utilities</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Tablassert</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Use Case Gallery</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="use-case-gallery">Use Case Gallery</h1>
+<p>Real-world patterns for transforming tabular data into knowledge graphs with Tablassert. Each example shows a complete configuration with explanations.</p>
+<h2 id="gene-disease-associations">Gene-Disease Associations</h2>
+<p>Transform a gene-disease association table into KGX-compliant edges with statistical annotations.</p>
+<p><strong>Data:</strong> CSV with gene symbols, disease names, and p-values</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  status: alpha
+  source:
+    kind: text
+    local: ./gene-disease.csv
+    url: https://example.com/gene-disease.csv
+    row_slice: [1, auto]
+    delimiter: &quot;,&quot;
+  statement:
+    subject:
+      method: column
+      encoding: gene_symbol
+      prioritize:
+        - Gene
+      taxon: 9606
+    predicate: associated_with
+    object:
+      method: column
+      encoding: disease_name
+      prioritize:
+        - Disease
+  provenance:
+    repo: PMID
+    publication: PMID12345678
+    contributors:
+      - kind: curation
+        name: Your Name
+        date: 01 JAN 2026
+  annotations:
+    - annotation: p value
+      method: column
+      encoding: p_value
+</code></pre>
+<p><strong>Key techniques:</strong></p>
+<ul>
+<li><strong>Taxonomic filtering</strong> (<code>taxon: 9606</code>) restricts gene resolution to human genes</li>
+<li><strong>Category prioritization</strong> ensures genes resolve as <code>biolink:Gene</code> and diseases as <code>biolink:Disease</code></li>
+<li><strong>Column annotations</strong> attach per-row p-values to each edge</li>
+</ul>
+<hr />
+<h2 id="drug-target-interactions">Drug-Target Interactions</h2>
+<p>Extract drug-target relationships from a curated interaction database.</p>
+<p><strong>Data:</strong> TSV with drug names, target genes, and interaction types</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  status: alpha
+  source:
+    kind: text
+    local: ./drug-targets.tsv
+    url: https://example.com/drug-targets.tsv
+    row_slice: [1, auto]
+    delimiter: &quot;\t&quot;
+  statement:
+    subject:
+      method: column
+      encoding: drug_name
+      prioritize:
+        - ChemicalEntity
+        - SmallMolecule
+    predicate: interacts_with
+    object:
+      method: column
+      encoding: target_gene
+      prioritize:
+        - Gene
+        - Protein
+      taxon: 9606
+  provenance:
+    repo: PMID
+    publication: PMID98765432
+    contributors:
+      - kind: curation
+        name: Your Name
+        date: 15 FEB 2026
+  annotations:
+    - annotation: interaction type
+      method: column
+      encoding: interaction_type
+    - annotation: assay
+      method: value
+      encoding: &quot;binding assay&quot;
+</code></pre>
+<p><strong>Key techniques:</strong></p>
+<ul>
+<li><strong>Multiple prioritized categories</strong> (<code>ChemicalEntity</code>, <code>SmallMolecule</code>) give entity resolution fallback options</li>
+<li><strong>Fixed-value annotation</strong> (<code>method: value</code>) attaches the same assay description to all edges</li>
+<li><strong>TSV delimiter</strong> (<code>delimiter: "\t"</code>) handles tab-separated files</li>
+</ul>
+<hr />
+<h2 id="microbiome-metabolite-correlations">Microbiome-Metabolite Correlations</h2>
+<p>Extract microbe-metabolite correlations with taxonomic name cleaning.</p>
+<p><strong>Data:</strong> Excel with raw taxonomic names, correlation coefficients, and p-values</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  status: alpha
+  source:
+    kind: excel
+    local: ./microbiome-correlations.xlsx
+    url: https://example.com/microbiome-data.xlsx
+    sheet: correlations
+    row_slice: [2, auto]
+  statement:
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+        - OrganismTaxon
+      avoid:
+        - Gene
+      remove:
+        - &quot;^NA &quot;
+      regex:
+        - pattern: &quot;.*g__&quot;
+          replacement: &quot;&quot;
+        - pattern: &quot;;s__&quot;
+          replacement: &quot; &quot;
+        - pattern: &quot;sp&quot;
+          replacement: &quot;sp. &quot;
+    predicate: correlated_with
+    object:
+      method: value
+      encoding: CHEBI:41774
+  provenance:
+    repo: PMC
+    publication: PMC11708054
+    contributors:
+      - kind: curation
+        name: Your Name
+        date: 01 MAR 2026
+  annotations:
+    - annotation: p value
+      method: column
+      encoding: C
+    - annotation: relationship strength
+      method: column
+      encoding: B
+    - annotation: assertion method
+      method: value
+      encoding: &quot;Spearman correlation&quot;
+</code></pre>
+<p><strong>Key techniques:</strong></p>
+<ul>
+<li><strong>Regex pipeline</strong> cleans raw taxonomic strings (e.g., <code>d__Bacteria;p__Firmicutes;g__Lactobacillus</code> → <code>Lactobacillus</code>)</li>
+<li><strong>Avoid list</strong> (<code>avoid: [Gene]</code>) prevents organism names from resolving to gene entities</li>
+<li><strong>Fixed-value object</strong> (<code>method: value</code>) assigns the same metabolite CURIE to all rows</li>
+<li><strong>Excel source</strong> with sheet name and row slicing</li>
+</ul>
+<hr />
+<h2 id="multi-pathway-gene-mapping">Multi-Pathway Gene Mapping</h2>
+<p>Map genes to multiple pathways from a single source using sections.</p>
+<p><strong>Data:</strong> CSV with gene symbols and multiple pathway columns</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  source:
+    kind: text
+    local: ./gene-pathways.csv
+    url: https://example.com/gene-pathways.csv
+    row_slice: [1, auto]
+    delimiter: &quot;,&quot;
+  statement:
+    subject:
+      method: column
+      encoding: gene_symbol
+      prioritize:
+        - Gene
+      taxon: 9606
+    object:
+      method: value
+      encoding: PLACEHOLDER
+  provenance:
+    repo: PMID
+    publication: PMID11223344
+    contributors:
+      - kind: curation
+        name: Your Name
+        date: 01 APR 2026
+
+sections:
+  - statement:
+      predicate: participates_in
+      object:
+        method: column
+        encoding: kegg_pathway
+        prioritize:
+          - Pathway
+    annotations:
+      - annotation: pathway database
+        method: value
+        encoding: &quot;KEGG&quot;
+
+  - statement:
+      predicate: participates_in
+      object:
+        method: column
+        encoding: reactome_pathway
+        prioritize:
+          - Pathway
+    annotations:
+      - annotation: pathway database
+        method: value
+        encoding: &quot;Reactome&quot;
+</code></pre>
+<p><strong>Key techniques:</strong></p>
+<ul>
+<li><strong>Template + sections</strong> avoids repeating source and provenance for each pathway column</li>
+<li><strong>Section overrides</strong> — each section provides its own predicate and object while inheriting the shared subject and source</li>
+<li><strong>Per-section annotations</strong> tag edges with the pathway database source</li>
+</ul>
+<hr />
+<h2 id="conditional-filtering-with-reindex">Conditional Filtering with Reindex</h2>
+<p>Filter rows based on column values before entity resolution.</p>
+<p><strong>Data:</strong> CSV with gene-disease associations and significance thresholds</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  status: alpha
+  source:
+    kind: text
+    local: ./significant-associations.csv
+    url: https://example.com/associations.csv
+    row_slice: [1, auto]
+    delimiter: &quot;,&quot;
+    reindex:
+      - column: p_value
+        comparison: lt
+        comparator: 0.05
+      - column: sample_size
+        comparison: ge
+        comparator: 100
+  statement:
+    subject:
+      method: column
+      encoding: gene_symbol
+      prioritize:
+        - Gene
+      taxon: 9606
+    predicate: associated_with
+    object:
+      method: column
+      encoding: disease_name
+      prioritize:
+        - Disease
+  provenance:
+    repo: PMID
+    publication: PMID55667788
+    contributors:
+      - kind: curation
+        name: Your Name
+        date: 01 MAY 2026
+  annotations:
+    - annotation: p value
+      method: column
+      encoding: p_value
+    - annotation: sample size
+      method: column
+      encoding: sample_size
+</code></pre>
+<p><strong>Key techniques:</strong></p>
+<ul>
+<li><strong>Reindex filtering</strong> keeps only rows where <code>p_value &lt; 0.05</code> AND <code>sample_size &gt;= 100</code></li>
+<li><strong>Comparison operators</strong> — <code>lt</code> (less than), <code>ge</code> (greater or equal), <code>eq</code>, <code>ne</code>, <code>gt</code>, <code>le</code></li>
+<li><strong>Multiple reindex conditions</strong> are ANDed together</li>
+</ul>
+<hr />
+<h2 id="null-handling-with-forward-fill">Null Handling with Forward Fill</h2>
+<p>Process hierarchical data where parent values propagate down through empty cells.</p>
+<p><strong>Data:</strong> CSV with category headers followed by subcategory rows (gaps in category column)</p>
+<pre><code class="language-yaml">template:
+  syntax: TC3
+  status: alpha
+  source:
+    kind: text
+    local: ./hierarchical-data.csv
+    url: https://example.com/hierarchical.csv
+    row_slice: [1, auto]
+    delimiter: &quot;,&quot;
+  statement:
+    subject:
+      method: column
+      encoding: category
+      fill: forward
+      prioritize:
+        - ChemicalEntity
+    predicate: subclass_of
+    object:
+      method: column
+      encoding: subcategory
+      prioritize:
+        - ChemicalEntity
+  provenance:
+    repo: PMID
+    publication: PMID99887766
+    contributors:
+      - kind: curation
+        name: Your Name
+        date: 01 JUN 2026
+</code></pre>
+<p><strong>Key techniques:</strong></p>
+<ul>
+<li><strong>Forward fill</strong> (<code>fill: forward</code>) propagates the last non-null value downward, mapping subcategory rows to their parent category</li>
+<li><strong>Other fill strategies</strong> — <code>backward</code>, <code>min</code>, <code>max</code>, <code>mean</code>, <code>zero</code>, <code>one</code></li>
+</ul>
+<hr />
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><strong><a href="../tutorial/">Tutorial</a></strong> - Step-by-step walkthrough with synthetic data</li>
+<li><strong><a href="../configuration/table/">Table Configuration</a></strong> - Complete field reference</li>
+<li><strong><a href="../configuration/advanced-example/">Advanced Example</a></strong> - Real-world configuration with annotations</li>
+<li><strong><a href="../cli/">CLI Reference</a></strong> - Command-line usage</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../tutorial/" class="btn btn-neutral float-left" title="Tutorial"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../configuration/graph/" class="btn btn-neutral float-right" title="Graph Config">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../tutorial/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../configuration/graph/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
