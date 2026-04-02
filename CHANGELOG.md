@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.2.2 - 2026-04-01
+
+### Bug Fixes
+- Fixed Docker publish workflow failing due to mixed-case repository owner in image tags. Hardcoded lowercase `ghcr.io/skyeav/tablassert` and switched trigger to run after autotag completion.
+
+### Maintenance
+- Updated PyPI short description.
+
 ## 7.2.1 - 2026-04-01
 
 ### Maintenance
