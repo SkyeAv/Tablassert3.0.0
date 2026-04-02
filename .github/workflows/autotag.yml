@@ -9,6 +9,8 @@ on:
       - main
 permissions:
   contents: write
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   autotag:
     runs-on: ubuntu-latest

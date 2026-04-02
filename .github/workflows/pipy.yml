@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - pyproject.toml
 jobs:
   publish:
     runs-on: ubuntu-latest
