@@ -1,6 +1,6 @@
 [project]
 name = "tablassert"
-version = "7.2.0"
+version = "7.2.1"
 description = "Tablassert is a highly performant declarative knowledge graph backend designed to extract knowledge assertions from tabular data while exporting NCATS Translator-compliant Knowledge Graph Exchange (KGX) NDJSON."
 authors = [
     { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
@@ -28,6 +28,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Framework :: Pydantic",
     "Operating System :: OS Independent",
 ]
