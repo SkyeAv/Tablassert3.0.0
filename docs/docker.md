@@ -10,7 +10,7 @@ The image is based on `python:3.14-slim` with the Tablassert CLI as the entrypoi
 docker pull ghcr.io/skyeav/tablassert:latest
 ```
 
-Version-pinned tags match the git tag (e.g., `ghcr.io/skyeav/tablassert:v7.2.1`).
+Version-pinned tags match the git tag (e.g., `ghcr.io/skyeav/tablassert:v7.2.2`).
 
 ## Quick Start
 
@@ -87,4 +87,4 @@ docker run --rm \
 
 ## CI/CD Integration
 
-Images are built by `.github/workflows/docker.yml`, which triggers on tag pushes (after autotag and PyPI publish complete). Tags match the repository version tag (e.g., `v7.2.1`).
+Images are built by `.github/workflows/docker.yml`, which triggers on tag pushes (after autotag and PyPI publish complete). Tags match the repository version tag (e.g., `v7.2.2`).
