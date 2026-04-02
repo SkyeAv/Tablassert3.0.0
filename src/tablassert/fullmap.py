@@ -94,11 +94,13 @@ def query_builder(
     return base.format(priority_case=priority_case, avoid_filter=avoid_filter, taxon_filter=taxon_filter)
 
 
-def query_shard(conn: object, df: pl.DataFrame, query: str, column_context: bool) -> pl.DataFrame:
+def query_shard(conn: object, df: pl.DataFrame, query: str) -> pl.DataFrame:
     # ? Query A Single Shard Database For Distinct Terms
     conn.register("PARQUET", df.to_arrow())  # pyright: ignore
-    result: pl.DataFrame = conn.execute(query).pl()  # pyright: ignore
+    return conn.execute(query).pl()  # pyright: ignore
 
+
+def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFrame:
     sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
     descending: list[bool] = [False, False, False]
 
@@ -110,8 +112,7 @@ def query_shard(conn: object, df: pl.DataFrame, query: str, column_context: bool
         descending += [True]
 
     result = result.sort(sort_by, descending=descending)
-    result = result.unique(subset=["term"], keep="first")
-    return result
+    return result.unique(subset=["term"], keep="first")
 
 
 def query_distinct(
@@ -127,11 +128,9 @@ def query_distinct(
     shards: dict[tuple[str], pl.DataFrame] = (
         lf.sort("shard").collect().partition_by("shard", maintain_order=True, as_dict=True)
     )
-    query: str = query_builder(prioritize, avoid, taxon)
 
-    args: list[tuple[object, pl.DataFrame, str, bool]] = [
-        (conns[int(shard[0])], df, query, column_context) for shard, df in shards.items()
-    ]
+    query: str = query_builder(prioritize, avoid, taxon)
+    args: list[tuple[object, pl.DataFrame, str]] = [(conns[int(shard[0])], df, query) for shard, df in shards.items()]
 
     if len(args) == 0:
         return empty_matches(column_context)
@@ -141,7 +140,8 @@ def query_distinct(
     if len(results) == 0:
         return empty_matches(column_context)
 
-    return pl.concat(results, how="vertical")
+    result: pl.DataFrame = pl.concat(results, how="vertical")
+    return deduplicate_result(result, column_context)
 
 
 def log_unmatched(
