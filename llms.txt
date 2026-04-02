@@ -8,7 +8,7 @@ Current CLI behavior opens shard files at `datassert/data/{0..15}.duckdb`.
 
 ## Quickstart
 - [README](README.md): high-level overview, install snippets, and one-command graph build.
-- [Installation Guide](docs/installation.md): local/dev/tool/docker installation paths and optional extras.
+- [Installation Guide](docs/installation.md): local/dev/tool/docker installation paths. Only `rtcompat`/`rt` extras remain; all other deps are in core.
 - [CLI Reference](docs/cli.md): command syntax for building graphs and validating table configs.
 - [Tutorial](docs/tutorial.md): first end-to-end run from CSV input to KGX NDJSON output.
 
@@ -27,7 +27,7 @@ Current CLI behavior opens shard files at `datassert/data/{0..15}.duckdb`.
 
 ## Contributor Development
 - [Contributing Guide](CONTRIBUTING.md): setup, style conventions, checks, and PR expectations.
-- [Project Metadata](pyproject.toml): dependencies, optional extras, tooling config, and CLI entrypoint.
+- [Project Metadata](pyproject.toml): dependencies, tooling config, and CLI entrypoint. Only `rtcompat`/`rt` optional extras remain.
 - [Tests](tests/): pytest coverage and fixtures.
 - [MkDocs Configuration](mkdocs.yml): docs navigation and published pages.
 - [GitHub Workflows](.github/workflows/): release, docs, docker, and autotag automation.

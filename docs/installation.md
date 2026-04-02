@@ -45,61 +45,43 @@ This creates a virtual environment in `.venv/` and installs all dependencies. Th
 ### Method 2: Install from PyPI
 
 Recommended for most users who just need the CLI.
-Tablassert uses optional dependency groups so you only install what you need.
+All dependencies (ML, web, Excel support) are included in the base install.
 
 ```bash
-# Option A: Install from PyPI with UV (minimal install)
+# Option A: Install from PyPI with UV
 uv tool install tablassert
 
-# Option B: Install from PyPI with pip (minimal install)
+# Option B: Install from PyPI with pip
 pip install tablassert
 ```
 
 #### Optional Extras
 
-Tablassert defines the following optional dependency groups in `pyproject.toml`:
-
 | Extra | Description | Includes |
 |---|---|---|
-| `ml` | Machine learning / quality control | `sentence-transformers`, `onnxruntime`, `optimum-onnx`, `scikit-learn` |
-| `web` | Web-based file downloads | `playwright` |
-| `pyexcel` | Legacy Excel format support | `pyexcel` |
 | `rtcompat` | Runtime-compatible Polars build | `polars[rtcompat]` |
 | `rt` | Alias for `rtcompat` | Same as `rtcompat` |
-| `full` | All optional extras (no runtime compat) | `ml` + `web` + `pyexcel` |
-| `full-rt` | All optional extras including runtime compat | `full` + `rtcompat` |
 
 ```bash
-# Install with specific extras
-uv tool install "tablassert[ml]"
-uv tool install "tablassert[web]"
-uv tool install "tablassert[ml,web]"
-
-# Install everything (no runtime compat)
-uv tool install "tablassert[full]"
-
 # Install with runtime-compatible Polars
 # (for CPUs without the required Polars instructions)
 uv tool install "tablassert[rtcompat]"
 # or use the shorter alias
 uv tool install "tablassert[rt]"
 
-# Install everything including runtime-compatible Polars
-uv tool install "tablassert[full-rt]"
-
 # pip equivalents
-pip install "tablassert[full]"
-pip install "tablassert[full-rt]"
 pip install "tablassert[rtcompat]"
 ```
 
-# Tablassert CLI is now available
+Tablassert CLI is now available:
+
+```bash
 tablassert --help
 ```
 
 ### Method 3: Docker
 
-Pre-built Docker images are available from GitHub Container Registry for containerized usage without a local Python installation. The image includes all optional extras (`tablassert[full]`).
+Pre-built Docker images are available from GitHub Container Registry for containerized usage without a local Python installation.
 
 ```bash
 docker pull ghcr.io/skyeav/tablassert:latest

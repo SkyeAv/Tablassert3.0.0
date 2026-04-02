@@ -20,11 +20,9 @@ tablassert build-knowledge-graph config.yaml
 pip install tablassert
 ```
 
-Optional extras for additional functionality:
+All dependencies (ML, web, Excel support) are included in the base install. An optional extra is available for CPU compatibility:
 
 ```bash
-pip install "tablassert[ml]"        # sentence-transformers, onnxruntime, scikit-learn
-pip install "tablassert[full]"      # all optional dependencies
 pip install "tablassert[rtcompat]"  # Polars build for CPUs without required instructions
 ```
 

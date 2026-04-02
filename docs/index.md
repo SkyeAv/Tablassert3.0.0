@@ -30,27 +30,18 @@ tablassert --help
 pip install tablassert
 tablassert --help
 
-# Install with all optional extras
-uv tool install "tablassert[full]"
-# or
-pip install "tablassert[full]"
-
 # Install runtime-compatible Polars build
 # (for CPUs without the required Polars instructions)
 uv tool install "tablassert[rt]"
 # or
 pip install "tablassert[rtcompat]"
 
-# Install everything including runtime-compatible Polars
-uv tool install "tablassert[full-rt]"
-
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-Tablassert uses optional dependency groups to keep the base install lightweight.
-Available extras: `ml`, `web`, `pyexcel`, `rtcompat` (alias: `rt`), `full`, `full-rt`.
+All dependencies are included in the base install. An optional `rtcompat` (alias: `rt`) extra is available for CPUs that lack the default Polars instruction set.
 See [Installation](installation.md) for details.
 
 For development from source:

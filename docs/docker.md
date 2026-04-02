@@ -4,7 +4,7 @@ Tablassert publishes a pre-built Docker image to GitHub Container Registry (ghcr
 
 ## Image
 
-The image includes `tablassert[full]` — all optional extras (ML, web, pyexcel) — and is based on `python:3.14-slim` with the Tablassert CLI as the entrypoint.
+The image is based on `python:3.14-slim` with the Tablassert CLI as the entrypoint. All dependencies are included in the base install.
 
 ```bash
 docker pull ghcr.io/skyeav/tablassert:latest
@@ -45,17 +45,9 @@ docker run --rm \
   verify-table-configuration-syntax /data/table-config.yaml
 ```
 
-## Included Extras
+## Included Capabilities
 
-The image bundles all optional dependency groups from `pyproject.toml`:
-
-| Extra | Packages | Module | Purpose |
-|---|---|---|---|
-| `ml` | `sentence-transformers`, `onnxruntime`, `optimum-onnx`, `scikit-learn` | `src/tablassert/qc.py` | Quality control with BioBERT embeddings |
-| `web` | `playwright` | `src/tablassert/downloader.py` | Playwright-based file downloads with retries |
-| `pyexcel` | `pyexcel` | `src/tablassert/downloader.py` | Legacy `.xls` format support via `modernize_xls()` |
-
-This enables:
+All dependencies ship in the base install, so the Docker image includes:
 
 - **Quality control** — The QC pipeline in `src/tablassert/qc.py` runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (threshold >= 20), then BioBERT sentence embeddings with cosine similarity (threshold >= 0.2). The ONNX model is cached in `.onnxassert/` (line 26).
 - **Web downloads** — `src/tablassert/downloader.py` uses Playwright to download remote files with retry logic.

@@ -14,10 +14,11 @@ Datassert is split into 16 DuckDB shard files for parallel querying:
 
 ```
 datassert/
-  shard_00.duckdb
-  shard_01.duckdb
-  ...
-  shard_15.duckdb
+  data/
+    0.duckdb
+    1.duckdb
+    ...
+    15.duckdb
 ```
 
 Terms are routed to shards deterministically via `xxhash64(term) % 16`, so a given string always hits the same shard.
@@ -42,7 +43,7 @@ The `datassert:` field in a GC2 graph configuration points to the directory cont
 syntax: GC2
 name: my-graph
 version: "1.0"
-datassert: /path/to/datassert/   # directory containing shard_00..15.duckdb
+datassert: /path/to/datassert/   # directory containing data/0..15.duckdb
 tables:
   - ./TABLE/my-table.yaml
 ```
@@ -57,7 +58,7 @@ from tablassert.fullmap import resolve
 
 datassert_dir = "/path/to/datassert"
 conns = [
-    duckdb.connect(f"{datassert_dir}/shard_{i:02d}.duckdb", read_only=True)
+    duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
     for i in range(16)
 ]
 ```

@@ -32,14 +32,14 @@ All notable changes to this project are documented in this file.
 
 ### Changes
 - Updated package metadata for the 7.0.2 release.
-- Added optional `log` and `column_context` controls to `fullmap.version4()` for more configurable entity-resolution behavior.
+- Added optional `log` and `column_context` controls to `fullmap.resolve()` for more configurable entity-resolution behavior.
 
 ### Bug Fixes
 - Reworked entity-resolution querying to register terms directly in DuckDB instead of writing temporary parquet files, removing tempfile lifecycle issues in `fullmap` query execution.
 - Isolated unmatched-entity logging into a dedicated helper and gated it behind an explicit logging flag.
 
 ### Documentation
-- Updated API reference docs to match the current `version4()` function signature and behavior.
+- Updated API reference docs to match the current `resolve()` function signature and behavior.
 - Corrected QC documentation to reflect the implemented fuzzy/BERT validation pipeline.
 - Fixed documentation path typos for cache/store artifact directories.
 
@@ -65,7 +65,7 @@ All notable changes to this project are documented in this file.
 
 ### Breaking Changes
 - Nix is no longer supported for development and installation. Use UV-based installation instead.
-- Project now requires Python 3.13+ for compatibility with UV toolchain.
+- Project now requires Python 3.11+ for compatibility with UV toolchain.
 
 ### Documentation
 - Completely rewrote installation documentation to reflect UV-based development environment.

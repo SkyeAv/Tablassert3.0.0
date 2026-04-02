@@ -1,6 +1,28 @@
 # CLI Reference
 
-Tablassert provides two commands for building knowledge graphs and validating configuration files.
+Tablassert provides three commands.
+
+## version
+
+Display the current Tablassert package version.
+
+### Synopsis
+
+```bash
+tablassert version
+```
+
+### Example
+
+```bash
+tablassert version
+```
+
+### Description
+
+Prints the installed Tablassert version to stdout and exits.
+
+---
 
 ## build-knowledge-graph
 
@@ -82,6 +104,12 @@ See [Table Configuration](configuration/table.md) for details on the YAML schema
 ---
 
 ## Examples
+
+### Check Version
+
+```bash
+tablassert version
+```
 
 ### Build Knowledge Graph
 

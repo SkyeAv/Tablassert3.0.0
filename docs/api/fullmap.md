@@ -128,7 +128,7 @@ import polars as pl
 # Open all 16 shard connections
 datassert_dir = "/path/to/datassert"
 conns = [
-    duckdb.connect(f"{datassert_dir}/shard_{i:02d}.duckdb", read_only=True)
+    duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
     for i in range(16)
 ]
 
@@ -170,7 +170,7 @@ from tablassert.enums import Categories
 # Open all 16 shard connections
 datassert_dir = "/path/to/datassert"
 conns = [
-    duckdb.connect(f"{datassert_dir}/shard_{i:02d}.duckdb", read_only=True)
+    duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
     for i in range(16)
 ]
 

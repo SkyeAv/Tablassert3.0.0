@@ -6,8 +6,6 @@ Guidance for AI coding agents working in this repository.
 
 Tablassert is a Python package (>=3.11) for tabular data assertion, normalization, and quality control. It builds declarative knowledge graphs from tabular data, exporting NCATS Translator-compliant KGX NDJSON. Uses **Polars** DataFrames, **DuckDB** for entity resolution, and **ONNX/BioBERT** for quality control. CLI built with **Typer**. Models built with **Pydantic v2**.
 
-> **Note:** This file is listed in `.gitignore` and will not be tracked by git.
-
 ## Quick Reference
 
 | Task | Command |
@@ -54,7 +52,7 @@ tests/            # Test directory (at repo root)
 - `conftest.py` provides a `fixtures_path` fixture returning `Path(__file__).parent / "fixtures"`.
 - pytest configured via `pyproject.toml` `[tool.pytest.ini_options]` with `testpaths = ["tests"]`.
 - Test fixtures: `tests/fixtures/` contains YAML files for Section model tests.
-- Test modules: `test_enums.py`, `test_ingests.py`, `test_lib.py`, `test_models.py`, `test_nlp.py`, `test_utils.py`.
+- Test modules: `test_enums.py`, `test_fullmap.py`, `test_ingests.py`, `test_lib.py`, `test_models.py`, `test_nlp.py`, `test_utils.py`.
 
 ## Code Style
 
@@ -73,7 +71,7 @@ tests/            # Test directory (at repo root)
   ```
 - Lazy-loaded deps: `polars`, `duckdb`, `orjson`, `typer`, `xxhash`, `polars_hash`, `yaml`
 - Direct (non-lazy) heavy deps: `sqlite_utils`, `rapidfuzz`, `pydantic`, `loguru`, `yaml.CLoader`
-- Optional deps (in `[ml]`, `[web]`, `[pyexcel]` extras): `sentence_transformers`, `onnxruntime`, `sklearn`, `playwright`, `pyexcel` — lazy-loaded when present
+- Previously-optional deps now in core: `sentence_transformers`, `onnxruntime`, `sklearn`, `playwright`, `pyexcel` — lazy-loaded when present
 - Some modules mix direct and lazy imports for the same package (e.g., `ingests.py` does `from yaml import CLoader` directly, then lazy-loads `yaml` for `yaml.load()`)
 - Import order: standard library → blank line → third-party → blank line → local
 - Use `from __future__ import annotations` to enable deferred evaluation
@@ -153,13 +151,12 @@ All enums live in `enums.py` and extend `str, Enum`. Key enums: `Tokens`, `Repos
 ## Optional Dependency Groups
 
 Defined in `pyproject.toml` `[project.optional-dependencies]`:
-- `ml` — sentence-transformers, onnxruntime, optimum-onnx, scikit-learn
-- `web` — playwright
-- `pyexcel` — pyexcel
-- `full` — combines `ml`, `web`, `pyexcel`
-- `rt` / `full-rt` — includes polars rtcompat build
+- `rtcompat` — `polars[rtcompat]` (runtime-compatible Polars build for CPUs without required instructions)
+- `rt` — alias for `rtcompat`
 
-Install with: `uv sync --extra ml` or `pip install tablassert[full]`
+All other dependencies (ML, web, Excel) are now in core `dependencies`.
+
+Install with: `uv sync` or `pip install tablassert`
 
 ## CI Workflows
 

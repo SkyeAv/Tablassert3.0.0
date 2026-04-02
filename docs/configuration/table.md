@@ -398,13 +398,13 @@ Add context to edges (anatomical location, species, etc.).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `qualifier` | String | Biolink qualifier (e.g., `"species_context"`) |
+| `qualifier` | String | Biolink qualifier (e.g., `"species_context_qualifier"`) |
 | (inherits NodeEncoding) | | All NodeEncoding fields available |
 
 **Example:**
 ```yaml
 qualifiers:
-  - qualifier: species_context
+  - qualifier: species_context_qualifier
     method: value
     encoding: NCBITaxon:9606
 ```
