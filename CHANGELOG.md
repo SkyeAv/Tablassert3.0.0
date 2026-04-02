@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.2.1 - 2026-04-01
+
+### Maintenance
+- Improved PyPI trove classifiers. No API changes.
+
 ## 7.2.0 - 2026-03-31
 
 ### New Features
