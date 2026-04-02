@@ -24,13 +24,17 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Framework :: Pydantic",
     "Operating System :: OS Independent",
+    "Environment :: Console",
 ]
 requires-python = ">=3.11"
 dependencies = [
