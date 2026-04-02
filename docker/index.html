@@ -136,7 +136,7 @@
 <p>The image is based on <code>python:3.14-slim</code> with the Tablassert CLI as the entrypoint. All dependencies are included in the base install.</p>
 <pre><code class="language-bash">docker pull ghcr.io/skyeav/tablassert:latest
 </code></pre>
-<p>Version-pinned tags match the git tag (e.g., <code>ghcr.io/skyeav/tablassert:v7.2.0</code>).</p>
+<p>Version-pinned tags match the git tag (e.g., <code>ghcr.io/skyeav/tablassert:v7.2.1</code>).</p>
 <h2 id="quick-start">Quick Start</h2>
 <pre><code class="language-bash"># Show CLI help (default CMD)
 docker run --rm ghcr.io/skyeav/tablassert:latest
@@ -214,7 +214,7 @@ docker run --rm ghcr.io/skyeav/tablassert:latest version
 <li><strong>Text normalization</strong> — <code>src/tablassert/nlp.py</code> provides <code>level_one</code> (strip + lowercase) and <code>level_two</code> (regex-based cleanup).</li>
 </ul>
 <h2 id="cicd-integration">CI/CD Integration</h2>
-<p>Images are built by <code>.github/workflows/docker.yml</code>, which triggers on tag pushes (after autotag and PyPI publish complete). Tags match the repository version tag (e.g., <code>v7.2.0</code>).</p>
+<p>Images are built by <code>.github/workflows/docker.yml</code>, which triggers on tag pushes (after autotag and PyPI publish complete). Tags match the repository version tag (e.g., <code>v7.2.1</code>).</p>
               
             </div>
           </div><footer>
