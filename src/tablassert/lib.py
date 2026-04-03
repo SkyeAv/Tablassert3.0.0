@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 import operator
+from collections.abc import Iterable
+from contextlib import ExitStack
 from functools import reduce
 from operator import add, eq, le
 from os.path import basename
@@ -13,11 +15,11 @@ from pydantic import Field, NonNegativeInt, PositiveInt
 from sqlite_utils import Database
 
 from tablassert.downloader import from_url
-from tablassert.enums import EncodingMethods, Files, Tokens
-from tablassert.fullmap import resolve
+from tablassert.enums import Categories, EncodingMethods, Files, Tokens
+from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import logger
-from tablassert.nlp import level_one, level_two
 from tablassert.models import Encoding, NodeEncoding, Section
+from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
 from tablassert.utils import namespace_uuid
 
@@ -475,3 +477,30 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
 
     dedup_stream(e, is_edges=True)
     dedup_stream(n, is_edges=False)
+
+
+def resolve_many(
+    col: str,
+    entities: Iterable[str],
+    datassert: Path,
+    taxon: Optional[str] = None,
+    prioritize: Optional[list[Categories]] = None,
+    avoid: Optional[list[Categories]] = None,
+    column_context: bool = True,
+) -> dict[str, list[str]]:
+    series: pl.Series = pl.Series(col, entities)
+    lf: pl.LazyFrame = series.to_frame().lazy()
+
+    lf = level_one(lf, col)
+    lf = level_two(lf, col)
+
+    with ExitStack() as stack:
+        conns: list[object] = [
+            stack.enter_context(duckdb.connect(datassert / "data" / f"{x}.duckdb", read_only=True))
+            for x in range(SHARDS)
+        ]
+
+        lf = resolve(lf, col, conns, taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
+
+    df: pl.DataFrame = lf.collect()
+    return df.to_dict(as_series=False)

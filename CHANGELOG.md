@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.3.0 - 2026-04-03
+
+### New Features
+- Added `resolve_many()` to `lib` module — a standalone batch entity resolution function that resolves an iterable of text strings to CURIEs without requiring manual LazyFrame setup, NLP preprocessing, or DuckDB connection management.
+
+### Documentation
+- Added detailed API reference page for `resolve_many()` covering function signature, parameters, return value, usage examples, and integration notes.
+
 ## 7.2.2 - 2026-04-01
 
 ### Bug Fixes
