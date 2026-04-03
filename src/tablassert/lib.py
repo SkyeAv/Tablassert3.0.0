@@ -487,10 +487,11 @@ def resolve_many(
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
     column_context: bool = True,
-) -> dict[str, list[str]]:
+) -> list[dict[str, Any]]:
     series: pl.Series = pl.Series(col, entities)
     lf: pl.LazyFrame = series.to_frame().lazy()
 
+    lf = column(lf, add("original ", col), col)
     lf = level_one(lf, col)
     lf = level_two(lf, col)
 
@@ -503,4 +504,4 @@ def resolve_many(
         lf = resolve(lf, col, conns, taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
 
     df: pl.DataFrame = lf.collect()
-    return df.to_dict(as_series=False)
+    return df.to_dicts()
