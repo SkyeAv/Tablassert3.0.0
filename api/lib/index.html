@@ -165,7 +165,7 @@
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
     column_context: bool = True,
-) -&gt; dict[str, list[str]]
+) -&gt; list[dict[str, Any]]
 </code></pre>
 <h3 id="parameters">Parameters</h3>
 <p><strong><code>col: str</code></strong></p>
@@ -195,8 +195,8 @@
 <p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the resolution query adds a category frequency score and prefers the category that appears most frequently across all terms in the batch. When <code>False</code>, frequency-based tie-breaking is disabled.</p>
 <p>This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.</p>
 <h3 id="return-value">Return Value</h3>
-<p>Returns a <code>dict[str, list[str]]</code> where each key is a column name and each value is a list of resolved values. The dictionary is produced by calling <code>polars.DataFrame.to_dict(as_series=False)</code> on the collected resolution output.</p>
-<p>The returned dictionary contains the following keys (where <code>{col}</code> is the value of the <code>col</code> parameter):</p>
+<p>Returns a <code>list[dict[str, Any]]</code> — one dictionary per resolved entity. The list is produced by calling <code>polars.DataFrame.to_dicts()</code> on the collected resolution output.</p>
+<p>Each dictionary contains the following keys (where <code>{col}</code> is the value of the <code>col</code> parameter):</p>
 <table>
 <thead>
 <tr>
@@ -206,6 +206,11 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>original {col}</code></td>
+<td>Original input text before normalization</td>
+<td><code>"TP53"</code></td>
+</tr>
 <tr>
 <td><code>{col}</code></td>
 <td>CURIE identifier</td>
@@ -243,7 +248,7 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Important:</strong> Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by <code>resolve()</code>. The returned lists may therefore be shorter than the input iterable.</p>
+<p><strong>Important:</strong> Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by <code>resolve()</code>. The returned list may therefore be shorter than the input iterable.</p>
 <h3 id="pipeline-internals">Pipeline Internals</h3>
 <p><code>resolve_many()</code> executes the following steps internally:</p>
 <ol>
@@ -260,18 +265,19 @@
 <p><strong>Entity resolution</strong> — Delegates to <code>fullmap.resolve()</code> which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.</p>
 </li>
 <li>
-<p><strong>Collection and conversion</strong> — Collects the lazy result into an eager <code>pl.DataFrame</code> and converts to a Python dictionary via <code>to_dict(as_series=False)</code>.</p>
+<p><strong>Collection and conversion</strong> — Collects the lazy result into an eager <code>pl.DataFrame</code> and converts to a list of row dictionaries via <code>to_dicts()</code>.</p>
 </li>
 </ol>
 <h3 id="example-usage">Example Usage</h3>
 <h4 id="basic-gene-resolution">Basic Gene Resolution</h4>
 <pre><code class="language-python">from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 from tablassert.enums import Categories
 
 datassert: Path = Path(&quot;/path/to/datassert&quot;)
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col=&quot;gene&quot;,
     entities=[&quot;TP53&quot;, &quot;BRCA1&quot;, &quot;EGFR&quot;, &quot;KRAS&quot;],
     datassert=datassert,
@@ -279,35 +285,35 @@ result: dict[str, list[str]] = resolve_many(
     prioritize=[Categories.Gene],
 )
 
-# result[&quot;gene&quot;]          → [&quot;HGNC:11998&quot;, &quot;HGNC:1100&quot;, ...]
-# result[&quot;gene name&quot;]     → [&quot;TP53&quot;, &quot;BRCA1&quot;, ...]
-# result[&quot;gene category&quot;] → [&quot;biolink:Gene&quot;, &quot;biolink:Gene&quot;, ...]
+# result[0] → {&quot;original gene&quot;: &quot;TP53&quot;, &quot;gene&quot;: &quot;HGNC:11998&quot;, &quot;gene name&quot;: &quot;TP53&quot;, ...}
+# result[1] → {&quot;original gene&quot;: &quot;BRCA1&quot;, &quot;gene&quot;: &quot;HGNC:1100&quot;, &quot;gene name&quot;: &quot;BRCA1&quot;, ...}
 </code></pre>
 <h4 id="disease-resolution-with-category-avoidance">Disease Resolution With Category Avoidance</h4>
 <pre><code class="language-python">from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 from tablassert.enums import Categories
 
 datassert: Path = Path(&quot;/path/to/datassert&quot;)
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col=&quot;disease&quot;,
     entities=[&quot;diabetes mellitus&quot;, &quot;breast cancer&quot;, &quot;alzheimer disease&quot;],
     datassert=datassert,
     avoid=[Categories.Gene, Categories.Protein],
 )
 
-# result[&quot;disease&quot;]          → [&quot;MONDO:0005015&quot;, ...]
-# result[&quot;disease name&quot;]     → [&quot;diabetes mellitus&quot;, ...]
-# result[&quot;disease category&quot;] → [&quot;biolink:Disease&quot;, ...]
+# result[0] → {&quot;original disease&quot;: &quot;diabetes mellitus&quot;, &quot;disease&quot;: &quot;MONDO:0005015&quot;, ...}
+# result[1] → {&quot;original disease&quot;: &quot;breast cancer&quot;, &quot;disease name&quot;: &quot;breast cancer&quot;, ...}
 </code></pre>
 <h4 id="chemical-resolution-without-column-context">Chemical Resolution Without Column Context</h4>
 <pre><code class="language-python">from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 
 datassert: Path = Path(&quot;/path/to/datassert&quot;)
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col=&quot;chemical&quot;,
     entities=[&quot;aspirin&quot;, &quot;metformin&quot;, &quot;ibuprofen&quot;],
     datassert=datassert,
@@ -317,11 +323,12 @@ result: dict[str, list[str]] = resolve_many(
 <h4 id="consuming-results">Consuming Results</h4>
 <pre><code class="language-python">import polars as pl
 from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 
 datassert: Path = Path(&quot;/path/to/datassert&quot;)
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col=&quot;gene&quot;,
     entities=[&quot;TP53&quot;, &quot;BRCA1&quot;],
     datassert=datassert,
@@ -331,9 +338,9 @@ result: dict[str, list[str]] = resolve_many(
 # Convert back to a Polars DataFrame
 df: pl.DataFrame = pl.DataFrame(result)
 
-# Or iterate over resolved pairs
-for curie, name in zip(result[&quot;gene&quot;], result[&quot;gene name&quot;]):
-    print(f&quot;{name} → {curie}&quot;)
+# Or iterate over resolved rows
+for row in result:
+    print(f&quot;{row['gene name']} → {row['gene']}&quot;)
 </code></pre>
 <h3 id="comparison-with-resolve">Comparison With resolve()</h3>
 <table>
@@ -367,7 +374,7 @@ for curie, name in zip(result[&quot;gene&quot;], result[&quot;gene name&quot;]):
 </tr>
 <tr>
 <td><strong>Output</strong></td>
-<td><code>dict[str, list[str]]</code></td>
+<td><code>list[dict[str, Any]]</code></td>
 <td><code>pl.LazyFrame</code></td>
 </tr>
 <tr>
