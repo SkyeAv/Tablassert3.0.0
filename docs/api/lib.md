@@ -19,7 +19,7 @@ def resolve_many(
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
     column_context: bool = True,
-) -> dict[str, list[str]]
+) -> list[dict[str, Any]]
 ```
 
 ### Parameters
@@ -73,12 +73,13 @@ This is useful when resolving a column of related entities (e.g., all genes) —
 
 ### Return Value
 
-Returns a `dict[str, list[str]]` where each key is a column name and each value is a list of resolved values. The dictionary is produced by calling `polars.DataFrame.to_dict(as_series=False)` on the collected resolution output.
+Returns a `list[dict[str, Any]]` — one dictionary per resolved entity. The list is produced by calling `polars.DataFrame.to_dicts()` on the collected resolution output.
 
-The returned dictionary contains the following keys (where `{col}` is the value of the `col` parameter):
+Each dictionary contains the following keys (where `{col}` is the value of the `col` parameter):
 
 | Key | Description | Example Value |
 |-----|-------------|---------------|
+| `original {col}` | Original input text before normalization | `"TP53"` |
 | `{col}` | CURIE identifier | `"HGNC:11998"` |
 | `{col} name` | Preferred entity name | `"TP53"` |
 | `{col} category` | Biolink category (prefixed) | `"biolink:Gene"` |
@@ -87,7 +88,7 @@ The returned dictionary contains the following keys (where `{col}` is the value 
 | `{col} source version` | Database version | `"2025-01"` |
 | `{col} nlp level` | NLP processing level used for match | `0` or `1` |
 
-**Important:** Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by `resolve()`. The returned lists may therefore be shorter than the input iterable.
+**Important:** Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by `resolve()`. The returned list may therefore be shorter than the input iterable.
 
 ### Pipeline Internals
 
@@ -101,7 +102,7 @@ The returned dictionary contains the following keys (where `{col}` is the value 
 
 4. **Entity resolution** — Delegates to `fullmap.resolve()` which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.
 
-5. **Collection and conversion** — Collects the lazy result into an eager `pl.DataFrame` and converts to a Python dictionary via `to_dict(as_series=False)`.
+5. **Collection and conversion** — Collects the lazy result into an eager `pl.DataFrame` and converts to a list of row dictionaries via `to_dicts()`.
 
 ### Example Usage
 
@@ -109,12 +110,13 @@ The returned dictionary contains the following keys (where `{col}` is the value 
 
 ```python
 from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 from tablassert.enums import Categories
 
 datassert: Path = Path("/path/to/datassert")
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col="gene",
     entities=["TP53", "BRCA1", "EGFR", "KRAS"],
     datassert=datassert,
@@ -122,41 +124,41 @@ result: dict[str, list[str]] = resolve_many(
     prioritize=[Categories.Gene],
 )
 
-# result["gene"]          → ["HGNC:11998", "HGNC:1100", ...]
-# result["gene name"]     → ["TP53", "BRCA1", ...]
-# result["gene category"] → ["biolink:Gene", "biolink:Gene", ...]
+# result[0] → {"original gene": "TP53", "gene": "HGNC:11998", "gene name": "TP53", ...}
+# result[1] → {"original gene": "BRCA1", "gene": "HGNC:1100", "gene name": "BRCA1", ...}
 ```
 
 #### Disease Resolution With Category Avoidance
 
 ```python
 from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 from tablassert.enums import Categories
 
 datassert: Path = Path("/path/to/datassert")
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col="disease",
     entities=["diabetes mellitus", "breast cancer", "alzheimer disease"],
     datassert=datassert,
     avoid=[Categories.Gene, Categories.Protein],
 )
 
-# result["disease"]          → ["MONDO:0005015", ...]
-# result["disease name"]     → ["diabetes mellitus", ...]
-# result["disease category"] → ["biolink:Disease", ...]
+# result[0] → {"original disease": "diabetes mellitus", "disease": "MONDO:0005015", ...}
+# result[1] → {"original disease": "breast cancer", "disease name": "breast cancer", ...}
 ```
 
 #### Chemical Resolution Without Column Context
 
 ```python
 from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 
 datassert: Path = Path("/path/to/datassert")
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col="chemical",
     entities=["aspirin", "metformin", "ibuprofen"],
     datassert=datassert,
@@ -169,11 +171,12 @@ result: dict[str, list[str]] = resolve_many(
 ```python
 import polars as pl
 from pathlib import Path
+from typing import Any
 from tablassert.lib import resolve_many
 
 datassert: Path = Path("/path/to/datassert")
 
-result: dict[str, list[str]] = resolve_many(
+result: list[dict[str, Any]] = resolve_many(
     col="gene",
     entities=["TP53", "BRCA1"],
     datassert=datassert,
@@ -183,9 +186,9 @@ result: dict[str, list[str]] = resolve_many(
 # Convert back to a Polars DataFrame
 df: pl.DataFrame = pl.DataFrame(result)
 
-# Or iterate over resolved pairs
-for curie, name in zip(result["gene"], result["gene name"]):
-    print(f"{name} → {curie}")
+# Or iterate over resolved rows
+for row in result:
+    print(f"{row['gene name']} → {row['gene']}")
 ```
 
 ### Comparison With resolve()
@@ -196,7 +199,7 @@ for curie, name in zip(result["gene"], result["gene name"]):
 | **Input** | Plain iterable of strings | Pre-normalized `pl.LazyFrame` |
 | **NLP** | Applied automatically | Must be applied upstream |
 | **Connections** | Managed internally via `ExitStack` | Must be opened externally |
-| **Output** | `dict[str, list[str]]` | `pl.LazyFrame` |
+| **Output** | `list[dict[str, Any]]` | `pl.LazyFrame` |
 | **Logging** | Uses default (`log=True`) | Configurable |
 | **Context params** | Not exposed (`section_hash`, `config_file`, `tag`) | Fully configurable |
 | **Use case** | Standalone batch lookups, scripting, notebooks | Internal pipeline integration |

@@ -41,6 +41,20 @@ docker run --rm \
 
 </details>
 
+## Quick Demo
+
+```bash
+# Build a knowledge graph from a YAML configuration
+$ tablassert build-knowledge-graph graph-config.yaml
+⠋ Loading table configurations...
+⠋ Resolving entities across 16 DuckDB shards...
+⠋ Compiling subgraphs...
+⠋ Deduplicating nodes and edges...
+✓ Done — wrote nodes.ndjson and edges.ndjson to .storassert/
+```
+
+Define your entities and relationships in YAML, point tablassert at your data, and get NCATS Translator-compliant KGX NDJSON out the other side — no code required.
+
 ## Key Features
 
 - **Declarative Configuration** — YAML-based, no code required

@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.3.1 - 2026-04-03
+
+### Changes
+- Changed `resolve_many()` return type from `dict[str, list[str]]` to `list[dict[str, Any]]` — each resolved entity is now a row dictionary, produced via `to_dicts()`.
+- `resolve_many()` now preserves the original input text in an `original {col}` key on each result row.
+
+### Documentation
+- Updated `resolve_many()` API reference to match the current function signature, return type, and output format.
+
 ## 7.3.0 - 2026-04-03
 
 ### New Features
