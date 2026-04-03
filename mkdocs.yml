@@ -14,6 +14,7 @@ nav:
     - Advanced Example: configuration/advanced-example.md
   - API Reference:
     - Entity Resolution: api/fullmap.md
+    - Batch Resolution: api/lib.md
     - Quality Control: api/qc.md
     - Utilities: api/utils.md
   - Changelog: ../CHANGELOG.md
