@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Batch Resolution - Tablassert</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Batch Resolution";
+        var mkdocs_page_input_path = "api/lib.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Tablassert
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/graph/">Graph Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/table/">Table Config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/advanced-example/">Advanced Example</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../fullmap/">Entity Resolution</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Batch Resolution</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#resolve_many">resolve_many()</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#function-signature">Function Signature</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#return-value">Return Value</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#pipeline-internals">Pipeline Internals</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example-usage">Example Usage</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#basic-gene-resolution">Basic Gene Resolution</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#disease-resolution-with-category-avoidance">Disease Resolution With Category Avoidance</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#chemical-resolution-without-column-context">Chemical Resolution Without Column Context</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#consuming-results">Consuming Results</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#comparison-with-resolve">Comparison With resolve()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#nlp-processing">NLP Processing</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#error-handling">Error Handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#integration">Integration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../qc/">Quality Control</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">Utilities</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="../../../CHANGELOG.md">Changelog</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Tablassert</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">Batch Resolution</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="batch-resolution-lib">Batch Resolution (lib)</h1>
+<p>The <code>lib</code> module exposes <code>resolve_many()</code>, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction, NLP preprocessing, or DuckDB shard management.</p>
+<p>It wraps the lower-level <a href="../fullmap/"><code>resolve()</code></a> pipeline — applying <code>level_one</code> and <code>level_two</code> normalization, opening all 16 DuckDB shard connections, executing entity resolution, and returning results as a plain Python dictionary.</p>
+<h2 id="resolve_many">resolve_many()</h2>
+<p>Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the datassert database, then returns resolved CURIEs and metadata as a dictionary of lists.</p>
+<h3 id="function-signature">Function Signature</h3>
+<pre><code class="language-python">def resolve_many(
+    col: str,
+    entities: Iterable[str],
+    datassert: Path,
+    taxon: Optional[str] = None,
+    prioritize: Optional[list[Categories]] = None,
+    avoid: Optional[list[Categories]] = None,
+    column_context: bool = True,
+) -&gt; dict[str, list[str]]
+</code></pre>
+<h3 id="parameters">Parameters</h3>
+<p><strong><code>col: str</code></strong></p>
+<p>Column name used internally to label the Polars Series and DataFrame columns during resolution. This name propagates through the NLP and resolution pipeline and determines the keys in the returned dictionary.</p>
+<p>For example, if <code>col="gene"</code>, the returned dictionary will contain keys like <code>"gene"</code>, <code>"gene name"</code>, <code>"gene category"</code>, etc.</p>
+<p><strong><code>entities: Iterable[str]</code></strong></p>
+<p>An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the datassert synonym database. Accepts any iterable — lists, tuples, generators, sets, etc.</p>
+<p>Examples: <code>["TP53", "BRCA1", "EGFR"]</code>, <code>("aspirin", "ibuprofen")</code>, or a generator expression.</p>
+<p><strong><code>datassert: Path</code></strong></p>
+<p>Filesystem path to the root of the datassert database directory. The function expects a <code>data/</code> subdirectory containing 16 DuckDB shard files (<code>0.duckdb</code> through <code>15.duckdb</code>).</p>
+<p>Each shard contains:
+- Synonym mappings (text → CURIE)
+- Preferred entity names
+- Biolink categories
+- NCBI Taxon IDs
+- Source databases and versions</p>
+<p><strong><code>taxon: Optional[str]</code> (default: <code>None</code>)</strong></p>
+<p>Optional NCBI Taxon ID for filtering results to a specific organism.</p>
+<p>Example: <code>"9606"</code> restricts matches to human-specific entities. When <code>None</code>, no taxon filtering is applied and matches from all organisms are returned.</p>
+<p><strong><code>prioritize: Optional[list[Categories]]</code> (default: <code>None</code>)</strong></p>
+<p>Optional list of Biolink categories to prefer when multiple matches exist for the same input term. Categories listed here receive higher ranking scores during resolution.</p>
+<p>Example: <code>[Categories.Gene, Categories.Protein]</code> prefers gene and protein mappings over other categories like diseases or chemicals.</p>
+<p><strong><code>avoid: Optional[list[Categories]]</code> (default: <code>None</code>)</strong></p>
+<p>Optional list of Biolink categories to exclude from results entirely. Any match belonging to an avoided category is filtered out before ranking.</p>
+<p>Example: <code>[Categories.Gene]</code> prevents gene mappings from appearing in the output, even if they would otherwise be the best match.</p>
+<p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
+<p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the resolution query adds a category frequency score and prefers the category that appears most frequently across all terms in the batch. When <code>False</code>, frequency-based tie-breaking is disabled.</p>
+<p>This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.</p>
+<h3 id="return-value">Return Value</h3>
+<p>Returns a <code>dict[str, list[str]]</code> where each key is a column name and each value is a list of resolved values. The dictionary is produced by calling <code>polars.DataFrame.to_dict(as_series=False)</code> on the collected resolution output.</p>
+<p>The returned dictionary contains the following keys (where <code>{col}</code> is the value of the <code>col</code> parameter):</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Description</th>
+<th>Example Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{col}</code></td>
+<td>CURIE identifier</td>
+<td><code>"HGNC:11998"</code></td>
+</tr>
+<tr>
+<td><code>{col} name</code></td>
+<td>Preferred entity name</td>
+<td><code>"TP53"</code></td>
+</tr>
+<tr>
+<td><code>{col} category</code></td>
+<td>Biolink category (prefixed)</td>
+<td><code>"biolink:Gene"</code></td>
+</tr>
+<tr>
+<td><code>{col} taxon</code></td>
+<td>NCBI Taxon ID (prefixed)</td>
+<td><code>"NCBITaxon:9606"</code></td>
+</tr>
+<tr>
+<td><code>{col} source</code></td>
+<td>Source database</td>
+<td><code>"HGNC"</code></td>
+</tr>
+<tr>
+<td><code>{col} source version</code></td>
+<td>Database version</td>
+<td><code>"2025-01"</code></td>
+</tr>
+<tr>
+<td><code>{col} nlp level</code></td>
+<td>NLP processing level used for match</td>
+<td><code>0</code> or <code>1</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Important:</strong> Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by <code>resolve()</code>. The returned lists may therefore be shorter than the input iterable.</p>
+<h3 id="pipeline-internals">Pipeline Internals</h3>
+<p><code>resolve_many()</code> executes the following steps internally:</p>
+<ol>
+<li>
+<p><strong>Series construction</strong> — Wraps the input iterable in a <code>pl.Series</code> with the given column name, then converts to a single-column <code>pl.LazyFrame</code>.</p>
+</li>
+<li>
+<p><strong>NLP normalization</strong> — Applies <code>level_one()</code> (whitespace stripping + lowercasing) and <code>level_two()</code> (non-word character removal via <code>\W+</code>) to produce the two normalized columns required by <code>resolve()</code>.</p>
+</li>
+<li>
+<p><strong>DuckDB connection management</strong> — Opens all 16 shard connections inside a <code>contextlib.ExitStack</code>, ensuring every connection is properly closed when resolution completes or if an error occurs.</p>
+</li>
+<li>
+<p><strong>Entity resolution</strong> — Delegates to <code>fullmap.resolve()</code> which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.</p>
+</li>
+<li>
+<p><strong>Collection and conversion</strong> — Collects the lazy result into an eager <code>pl.DataFrame</code> and converts to a Python dictionary via <code>to_dict(as_series=False)</code>.</p>
+</li>
+</ol>
+<h3 id="example-usage">Example Usage</h3>
+<h4 id="basic-gene-resolution">Basic Gene Resolution</h4>
+<pre><code class="language-python">from pathlib import Path
+from tablassert.lib import resolve_many
+from tablassert.enums import Categories
+
+datassert: Path = Path(&quot;/path/to/datassert&quot;)
+
+result: dict[str, list[str]] = resolve_many(
+    col=&quot;gene&quot;,
+    entities=[&quot;TP53&quot;, &quot;BRCA1&quot;, &quot;EGFR&quot;, &quot;KRAS&quot;],
+    datassert=datassert,
+    taxon=&quot;9606&quot;,
+    prioritize=[Categories.Gene],
+)
+
+# result[&quot;gene&quot;]          → [&quot;HGNC:11998&quot;, &quot;HGNC:1100&quot;, ...]
+# result[&quot;gene name&quot;]     → [&quot;TP53&quot;, &quot;BRCA1&quot;, ...]
+# result[&quot;gene category&quot;] → [&quot;biolink:Gene&quot;, &quot;biolink:Gene&quot;, ...]
+</code></pre>
+<h4 id="disease-resolution-with-category-avoidance">Disease Resolution With Category Avoidance</h4>
+<pre><code class="language-python">from pathlib import Path
+from tablassert.lib import resolve_many
+from tablassert.enums import Categories
+
+datassert: Path = Path(&quot;/path/to/datassert&quot;)
+
+result: dict[str, list[str]] = resolve_many(
+    col=&quot;disease&quot;,
+    entities=[&quot;diabetes mellitus&quot;, &quot;breast cancer&quot;, &quot;alzheimer disease&quot;],
+    datassert=datassert,
+    avoid=[Categories.Gene, Categories.Protein],
+)
+
+# result[&quot;disease&quot;]          → [&quot;MONDO:0005015&quot;, ...]
+# result[&quot;disease name&quot;]     → [&quot;diabetes mellitus&quot;, ...]
+# result[&quot;disease category&quot;] → [&quot;biolink:Disease&quot;, ...]
+</code></pre>
+<h4 id="chemical-resolution-without-column-context">Chemical Resolution Without Column Context</h4>
+<pre><code class="language-python">from pathlib import Path
+from tablassert.lib import resolve_many
+
+datassert: Path = Path(&quot;/path/to/datassert&quot;)
+
+result: dict[str, list[str]] = resolve_many(
+    col=&quot;chemical&quot;,
+    entities=[&quot;aspirin&quot;, &quot;metformin&quot;, &quot;ibuprofen&quot;],
+    datassert=datassert,
+    column_context=False,
+)
+</code></pre>
+<h4 id="consuming-results">Consuming Results</h4>
+<pre><code class="language-python">import polars as pl
+from pathlib import Path
+from tablassert.lib import resolve_many
+
+datassert: Path = Path(&quot;/path/to/datassert&quot;)
+
+result: dict[str, list[str]] = resolve_many(
+    col=&quot;gene&quot;,
+    entities=[&quot;TP53&quot;, &quot;BRCA1&quot;],
+    datassert=datassert,
+    taxon=&quot;9606&quot;,
+)
+
+# Convert back to a Polars DataFrame
+df: pl.DataFrame = pl.DataFrame(result)
+
+# Or iterate over resolved pairs
+for curie, name in zip(result[&quot;gene&quot;], result[&quot;gene name&quot;]):
+    print(f&quot;{name} → {curie}&quot;)
+</code></pre>
+<h3 id="comparison-with-resolve">Comparison With resolve()</h3>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th><code>resolve_many()</code></th>
+<th><code>resolve()</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Module</strong></td>
+<td><code>tablassert.lib</code></td>
+<td><code>tablassert.fullmap</code></td>
+</tr>
+<tr>
+<td><strong>Input</strong></td>
+<td>Plain iterable of strings</td>
+<td>Pre-normalized <code>pl.LazyFrame</code></td>
+</tr>
+<tr>
+<td><strong>NLP</strong></td>
+<td>Applied automatically</td>
+<td>Must be applied upstream</td>
+</tr>
+<tr>
+<td><strong>Connections</strong></td>
+<td>Managed internally via <code>ExitStack</code></td>
+<td>Must be opened externally</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td><code>dict[str, list[str]]</code></td>
+<td><code>pl.LazyFrame</code></td>
+</tr>
+<tr>
+<td><strong>Logging</strong></td>
+<td>Uses default (<code>log=True</code>)</td>
+<td>Configurable</td>
+</tr>
+<tr>
+<td><strong>Context params</strong></td>
+<td>Not exposed (<code>section_hash</code>, <code>config_file</code>, <code>tag</code>)</td>
+<td>Fully configurable</td>
+</tr>
+<tr>
+<td><strong>Use case</strong></td>
+<td>Standalone batch lookups, scripting, notebooks</td>
+<td>Internal pipeline integration</td>
+</tr>
+</tbody>
+</table>
+<p><code>resolve_many()</code> is designed for ad-hoc and programmatic use — scripts, notebooks, and one-off lookups. For pipeline integration where you need full control over logging, context metadata, and lazy evaluation, use <code>resolve()</code> directly.</p>
+<h3 id="nlp-processing">NLP Processing</h3>
+<p><code>resolve_many()</code> applies both NLP normalization levels before resolution:</p>
+<p><strong>Level one</strong> — <code>level_one(lf, col)</code>:
+- Strips leading/trailing whitespace
+- Converts to lowercase
+- Output column: <code>{col}</code> (overwrites the original)</p>
+<p><strong>Level two</strong> — <code>level_two(lf, col)</code>:
+- Removes all non-word characters (<code>\W+</code> → <code>""</code>) from the level-one result
+- Output column: <code>{col} two</code></p>
+<p>Both levels are queried during resolution. Level one (exact case-insensitive match) is preferred; level two is used as a fallback for terms with punctuation or special characters.</p>
+<h3 id="error-handling">Error Handling</h3>
+<ul>
+<li>If the <code>datassert</code> path does not contain the expected shard files, <code>duckdb.connect()</code> will raise an <code>IOException</code>.</li>
+<li>If <code>entities</code> is empty, the function returns a dictionary with empty lists for all output columns.</li>
+<li>The <code>ExitStack</code> ensures all 16 DuckDB connections are closed even if resolution raises an exception.</li>
+<li>Unresolved entities are silently filtered from the output (logged at INFO level by default via <code>resolve()</code>).</li>
+</ul>
+<h2 id="integration">Integration</h2>
+<p><code>resolve_many()</code> is a self-contained entry point. It does not require any prior setup beyond having a datassert database available. For full pipeline builds, use the CLI (<code>tablassert build-knowledge-graph</code>) which orchestrates resolution through the <code>Tcode</code> class.</p>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><strong><a href="../fullmap/">Entity Resolution</a></strong> — Lower-level <code>resolve()</code> function details</li>
+<li><strong><a href="../qc/">Quality Control</a></strong> — Multi-stage validation of resolved entities</li>
+<li><strong><a href="../../configuration/table/">Configuration</a></strong> — YAML-driven entity resolution settings</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../fullmap/" class="btn btn-neutral float-left" title="Entity Resolution"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../qc/" class="btn btn-neutral float-right" title="Quality Control">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../fullmap/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../qc/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
