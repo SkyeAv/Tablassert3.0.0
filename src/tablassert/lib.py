@@ -491,6 +491,7 @@ def resolve_many(
     series: pl.Series = pl.Series(col, entities)
     lf: pl.LazyFrame = series.to_frame().lazy()
 
+    lf = column(lf, add("original ", col), col)
     lf = level_one(lf, col)
     lf = level_two(lf, col)
 
