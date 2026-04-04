@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.3.2 - 2026-04-03
+
+### Maintenance
+- Updated dependencies. No API changes.
+
 ## 7.3.1 - 2026-04-03
 
 ### Changes
