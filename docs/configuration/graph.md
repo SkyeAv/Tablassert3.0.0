@@ -60,11 +60,13 @@ See [Table Configuration](table.md) for details.
 
 **`datassert: path`**
 
-Path to the datassert directory for entity resolution. Tablassert opens 16 shard files from `datassert/data/{0..15}.duckdb`. This database contains:
+Path to the [datassert](../datassert.md) directory for entity resolution. Tablassert opens 12 shard files from `datassert/data/{0..11}.duckdb`. This database contains:
 - Synonym mappings (text → CURIE)
 - Biolink categories
 - Taxonomic information
 - Source provenance (which database provided the mapping)
+
+See [Datassert](../datassert.md) for installation, build commands, and database schema.
 
 **`pubmed_db: path`**
 
@@ -165,4 +167,5 @@ This processes a single table configuration (ALAMV6.yaml) into a knowledge graph
 ## Next Steps
 
 - **[Table Configuration](table.md)** - Learn how to define table transformations
+- **[Datassert](../datassert.md)** - Entity-resolution database installation and build
 - **[Tutorial](../tutorial.md)** - Complete example walkthrough

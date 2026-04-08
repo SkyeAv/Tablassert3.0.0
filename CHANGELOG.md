@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.3.3 - 2026-04-08
+
+### Bug Fixes
+- Changed datassert shard count from 16 to 12 (`SHARDS` constant in `fullmap.py`) to correspond to the updated datassert database layout.
+
+### Documentation
+- Updated all shard count references across documentation and examples to reflect the new 12-shard datassert layout.
+
 ## 7.3.2 - 2026-04-03
 
 ### Maintenance
