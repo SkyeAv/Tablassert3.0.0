@@ -16,7 +16,7 @@ else:
     plh = Lazy.load("polars_hash")
 
 
-SHARDS: int = 16
+SHARDS: int = 12
 
 
 def empty_matches(column_context: bool) -> pl.DataFrame:
