@@ -42,10 +42,10 @@ def empty_matches(column_context: bool) -> pl.DataFrame:
 def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFrame:
     # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
     t1: pl.LazyFrame = lf.select(pl.col(l1).alias(col)).unique()
-    t1 = t1.with_columns(pl.lit(0).alias("nlp level"))
+    t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
     t2: pl.LazyFrame = lf.select(pl.col(l2).alias(col)).unique()
-    t2 = t2.with_columns(pl.lit(1).alias("nlp level"))
+    t2 = t2.with_columns(pl.lit(2).alias("nlp level"))
 
     terms: pl.LazyFrame = pl.concat([t1, t2]).unique(subset=[col], keep="first")
 
