@@ -2,11 +2,11 @@
 
 The `lib` module exposes `resolve_many()`, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction, NLP preprocessing, or DuckDB shard management.
 
-It wraps the lower-level [`resolve()`](fullmap.md) pipeline — applying `level_one` and `level_two` normalization, opening all 12 DuckDB shard connections, executing entity resolution, and returning results as a plain Python dictionary.
+It wraps the lower-level [`resolve()`](fullmap.md) pipeline — applying `level_one` and `level_two` normalization, opening all 10 DuckDB shard connections, executing entity resolution, and returning results as a plain Python list of row dictionaries.
 
 ## resolve_many()
 
-Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the datassert database, then returns resolved CURIEs and metadata as a dictionary of lists.
+Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the datassert database, then returns resolved CURIEs and metadata as a list of row dictionaries.
 
 ### Function Signature
 
@@ -26,9 +26,9 @@ def resolve_many(
 
 **`col: str`**
 
-Column name used internally to label the Polars Series and DataFrame columns during resolution. This name propagates through the NLP and resolution pipeline and determines the keys in the returned dictionary.
+Column name used internally to label the Polars Series and DataFrame columns during resolution. This name propagates through the NLP and resolution pipeline and determines the keys in each returned row dictionary.
 
-For example, if `col="gene"`, the returned dictionary will contain keys like `"gene"`, `"gene name"`, `"gene category"`, etc.
+For example, if `col="gene"`, each returned row dictionary will contain keys like `"gene"`, `"gene name"`, `"gene category"`, etc.
 
 **`entities: Iterable[str]`**
 
@@ -38,7 +38,7 @@ Examples: `["TP53", "BRCA1", "EGFR"]`, `("aspirin", "ibuprofen")`, or a generato
 
 **`datassert: Path`**
 
-Filesystem path to the root of the datassert database directory. The function expects a `data/` subdirectory containing 12 DuckDB shard files (`0.duckdb` through `11.duckdb`).
+Filesystem path to the root of the datassert database directory. The function expects a `data/` subdirectory containing 10 DuckDB shard files (`0.duckdb` through `9.duckdb`).
 
 Each shard contains:
 - Synonym mappings (text → CURIE)
@@ -86,7 +86,7 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 | `{col} taxon` | NCBI Taxon ID (prefixed) | `"NCBITaxon:9606"` |
 | `{col} source` | Source database | `"HGNC"` |
 | `{col} source version` | Database version | `"2025-01"` |
-| `{col} nlp level` | NLP processing level used for match | `0` or `1` |
+| `{col} nlp level` | NLP processing level used for match | `1` or `2` |
 
 **Important:** Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by `resolve()`. The returned list may therefore be shorter than the input iterable.
 
@@ -98,7 +98,7 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 2. **NLP normalization** — Applies `level_one()` (whitespace stripping + lowercasing) and `level_two()` (non-word character removal via `\W+`) to produce the two normalized columns required by `resolve()`.
 
-3. **DuckDB connection management** — Opens all 12 shard connections inside a `contextlib.ExitStack`, ensuring every connection is properly closed when resolution completes or if an error occurs.
+3. **DuckDB connection management** — Opens all 10 shard connections inside a `contextlib.ExitStack`, ensuring every connection is properly closed when resolution completes or if an error occurs.
 
 4. **Entity resolution** — Delegates to `fullmap.resolve()` which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.
 
@@ -224,8 +224,8 @@ Both levels are queried during resolution. Level one (exact case-insensitive mat
 ### Error Handling
 
 - If the `datassert` path does not contain the expected shard files, `duckdb.connect()` will raise an `IOException`.
-- If `entities` is empty, the function returns a dictionary with empty lists for all output columns.
-- The `ExitStack` ensures all 12 DuckDB connections are closed even if resolution raises an exception.
+- If `entities` is empty, the function returns `[]`.
+- The `ExitStack` ensures all 10 DuckDB connections are closed even if resolution raises an exception.
 - Unresolved entities are silently filtered from the output (logged at INFO level by default via `resolve()`).
 
 ## Integration

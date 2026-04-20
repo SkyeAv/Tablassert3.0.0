@@ -68,7 +68,7 @@ template:
         - Disease
   provenance:
     repo: PMID
-    publication: PMID12345678
+    publication: 12345678
     contributors:
       - kind: curation
         name: Tutorial Example

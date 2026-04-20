@@ -36,7 +36,7 @@ Column name containing text strings to resolve.
 
 **`conns: list[object]`**
 
-List of 12 DuckDB shard connections to the datassert database.
+List of 10 DuckDB shard connections to the datassert database.
 
 Each shard contains:
 - Synonym mappings (text → CURIE)
@@ -97,7 +97,7 @@ Returns a Polars LazyFrame with these columns added:
 | `{col} taxon` | NCBI Taxon ID | `"NCBITaxon:9606"` |
 | `{col} source` | Source database | `"HGNC"` |
 | `{col} source version` | Database version | `"2025-01"` |
-| `{col} nlp level` | NLP processing level | `0` or `1` |
+| `{col} nlp level` | NLP processing level | `1` or `2` |
 
 ### DuckDB Query
 
@@ -125,11 +125,11 @@ from tablassert.enums import Categories
 import duckdb
 import polars as pl
 
-# Open all 12 shard connections
+# Open all 10 shard connections
 datassert_dir = "/path/to/datassert"
 conns = [
     duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
-    for i in range(12)
+    for i in range(10)
 ]
 
 # LazyFrame with data to resolve
@@ -167,11 +167,11 @@ from tablassert.fullmap import resolve
 from tablassert.nlp import level_one, level_two
 from tablassert.enums import Categories
 
-# Open all 12 shard connections
+# Open all 10 shard connections
 datassert_dir = "/path/to/datassert"
 conns = [
     duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
-    for i in range(12)
+    for i in range(10)
 ]
 
 # Map a list of gene symbols to CURIEs

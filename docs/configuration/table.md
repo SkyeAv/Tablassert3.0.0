@@ -100,7 +100,7 @@ template:
 ```yaml
 template:
   source: {kind: excel, local: data.xlsx}
-  provenance: {publication: PMC123}
+  provenance: {repo: PMC, publication: 123}
 
 sections:
   - statement: {predicate: treats}
@@ -111,7 +111,7 @@ sections:
 ```yaml
 template:
   source: {kind: text, local: data.csv}
-  provenance: {publication: PMID456}
+  provenance: {repo: PMID, publication: 456}
   statement:
     subject: {encoding: gene_symbol}
 
@@ -416,7 +416,7 @@ Required metadata about data source.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `repo` | String | Yes | Repository: `"PMC"`, `"PMID"` |
-| `publication` | String | Yes | Identifier (e.g., `"PMC11708054"`, `"PMID123"`) |
+| `publication` | String | Yes | Repository-local identifier appended to `repo:` (e.g., `"11708054"`, `"123"`) |
 | `contributors` | List[Contributor] | Yes | Curation information |
 
 **Contributor fields:**
@@ -433,7 +433,7 @@ Required metadata about data source.
 ```yaml
 provenance:
   repo: PMC
-  publication: PMC11708054
+  publication: 11708054
   contributors:
     - kind: curation
       name: Skye Lane Goetz
@@ -498,7 +498,7 @@ template:
 
   provenance:
     repo: PMID
-    publication: PMID12345678
+    publication: 12345678
     contributors:
       - kind: curation
         name: Example User

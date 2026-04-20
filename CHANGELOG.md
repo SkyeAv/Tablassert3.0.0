@@ -5,10 +5,11 @@ All notable changes to this project are documented in this file.
 ## 7.3.3 - 2026-04-08
 
 ### Bug Fixes
-- Changed datassert shard count from 16 to 12 (`SHARDS` constant in `fullmap.py`) to correspond to the updated datassert database layout.
+- Changed datassert shard count to 10 (`SHARDS` constant in `fullmap.py`) to correspond to the current datassert database layout.
 
 ### Documentation
-- Updated all shard count references across documentation and examples to reflect the new 12-shard datassert layout.
+- Updated shard count references across documentation and examples to reflect the current 10-shard datassert layout.
+- Corrected provenance examples so `repo` carries the namespace prefix and `publication` carries the repository-local identifier.
 
 ## 7.3.2 - 2026-04-03
 

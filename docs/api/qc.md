@@ -82,7 +82,7 @@ Two fuzzy matching algorithms:
 1. **Ratio:** Overall string similarity
 2. **Partial token sort ratio:** Combined token/subsequence matching
 
-**Threshold:** Default 20% similarity (configurable)
+**Threshold:** 20% similarity
 
 ```python
 fuzz.ratio(original, preferred) >= 20
@@ -125,7 +125,7 @@ return similarity >= 0.2
 - Graph optimization level: ALL
 - ONNX session caching
 
-Lazy-loaded on first `BERT_audit()` call, then reused for subsequent calls.
+Lazy-loaded on first `fullmap_audit()` call that reaches the embedding stage, then reused for subsequent calls.
 
 ### Model Caching
 
@@ -135,7 +135,7 @@ BioBERT is lazy-loaded on first use and cached globally for the lifetime of the 
 # ? Lazy-loads BioBERT once on first batch audit call, then caches globally
 ```
 
-**Cache location:** In-memory (global model cache)
+**Cache location:** Downloaded model files are cached on disk in `.onnxassert/`, and the loaded model object is cached in memory for the lifetime of the process.
 
 **Cache strategy:** BioBERT model loaded once on first batch audit, then reused globally
 

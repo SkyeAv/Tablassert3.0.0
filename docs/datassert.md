@@ -33,7 +33,7 @@ The build command automatically downloads BABEL exports from RENCI (`https://sta
 1. **Download** — BABEL class and synonym files are downloaded from RENCI and split into LZ4-compressed NDJSON chunks under `./datassert/downloads/`.
 2. **Lookup** — Class files (`*.ndjson.lz4`) are read to build an in-memory equivalent-identifier lookup.
 3. **Parquet Staging** — Synonym files are processed with the lookup, quality-controlled, and written as sharded Parquet files to `./datassert/parquets/`.
-4. **DuckDB Generation** — Parquet files are loaded into 12 sharded DuckDB databases under `./datassert/data/`.
+4. **DuckDB Generation** — Parquet files are loaded into 10 sharded DuckDB databases under `./datassert/data/`.
 
 ### Examples
 
@@ -57,11 +57,11 @@ datassert build --use-existing-parquets
 
 ## Output Artifacts
 
-- 12 sharded DuckDB databases are written to `./datassert/data/{0..11}.duckdb`.
+- 10 sharded DuckDB databases are written to `./datassert/data/{0..9}.duckdb`.
 - Each shard contains `SOURCES`, `CATEGORIES`, `CURIES`, and `SYNONYMS` tables, deduplicated, sorted, and indexed for query performance.
-- Staging Parquet files are written to `./datassert/parquets/{0..11}/`.
+- Staging Parquet files are written to `./datassert/parquets/{0..9}/`.
 
-Terms are routed to shards deterministically via `xxhash64(term) % 12`, so a given string always hits the same shard.
+Terms are routed to shards deterministically via `xxhash64(term) % 10`, so a given string always hits the same shard.
 
 ### Schema
 
@@ -76,14 +76,14 @@ Each shard contains four tables:
 
 ## Usage in Graph Config
 
-The `datassert:` field in a GC2 graph configuration points to the directory containing the shards. Tablassert opens all 12 shards at startup and passes the connections to `resolve()`.
+The `datassert:` field in a GC2 graph configuration points to the directory containing the shards. Tablassert opens all 10 shards at startup and passes the connections to `resolve()`.
 
 ```yaml
 # graph-config.yaml (GC2)
 syntax: GC2
 name: my-graph
 version: "1.0"
-datassert: /path/to/datassert/   # directory containing data/0..11.duckdb
+datassert: /path/to/datassert/   # directory containing data/0..9.duckdb
 tables:
   - ./TABLE/my-table.yaml
 ```
@@ -99,7 +99,7 @@ from tablassert.fullmap import resolve
 datassert_dir = "/path/to/datassert"
 conns = [
     duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
-    for i in range(12)
+    for i in range(10)
 ]
 ```
 
