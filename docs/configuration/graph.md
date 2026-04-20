@@ -60,7 +60,7 @@ See [Table Configuration](table.md) for details.
 
 **`datassert: path`**
 
-Path to the [datassert](../datassert.md) directory for entity resolution. Tablassert opens 12 shard files from `datassert/data/{0..11}.duckdb`. This database contains:
+Path to the [datassert](../datassert.md) directory for entity resolution. Tablassert opens 10 shard files from `datassert/data/{0..9}.duckdb`. This database contains:
 - Synonym mappings (text → CURIE)
 - Biolink categories
 - Taxonomic information

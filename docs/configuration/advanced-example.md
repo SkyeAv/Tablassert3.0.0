@@ -66,7 +66,7 @@ template:
   # Provenance: Publication and curation info
   provenance:
     repo: PMC
-    publication: PMC11708054
+    publication: 11708054
     contributors:
       - kind: curation
         name: Skye Lane Goetz
@@ -297,7 +297,7 @@ template:
 
   provenance:
     repo: PMC
-    publication: PMC12345678
+    publication: 12345678
     contributors:
       - kind: curation
         name: Skye Lane Goetz
@@ -358,7 +358,7 @@ template:
 
   provenance:
     repo: PMC
-    publication: PMC87654321
+    publication: 87654321
     contributors:
       - kind: curation
         name: Skye Lane Goetz

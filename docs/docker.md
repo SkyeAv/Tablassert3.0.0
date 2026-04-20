@@ -81,8 +81,8 @@ docker run --rm \
 
 - **Datassert path** — The graph configuration YAML specifies the `datassert` path for the entity-resolution database. Ensure it is accessible inside the container.
 - **Multiprocessing** — `src/tablassert/cli.py:63` uses `multiprocessing.Pool` for parallel table loading and section extraction.
-- **DuckDB connections** — An `ExitStack` at `src/tablassert/cli.py:81` opens read-only connections to all 12 Datassert DuckDB shards concurrently.
-- **Entity resolution** — The `fullmap` module (`src/tablassert/fullmap.py`) shards terms across 12 DuckDB shards (`SHARDS = 12`) using xxhash64.
+- **DuckDB connections** — An `ExitStack` at `src/tablassert/cli.py:81` opens read-only connections to all 10 Datassert DuckDB shards concurrently.
+- **Entity resolution** — The `fullmap` module (`src/tablassert/fullmap.py`) shards terms across 10 DuckDB shards (`SHARDS = 10`) using xxhash64.
 - **Text normalization** — `src/tablassert/nlp.py` provides `level_one` (strip + lowercase) and `level_two` (regex-based cleanup).
 
 ## CI/CD Integration

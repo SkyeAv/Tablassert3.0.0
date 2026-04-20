@@ -33,7 +33,7 @@ template:
         - Disease
   provenance:
     repo: PMID
-    publication: PMID12345678
+    publication: 12345678
     contributors:
       - kind: curation
         name: Your Name
@@ -85,7 +85,7 @@ template:
       taxon: 9606
   provenance:
     repo: PMID
-    publication: PMID98765432
+    publication: 98765432
     contributors:
       - kind: curation
         name: Your Name
@@ -146,7 +146,7 @@ template:
       encoding: CHEBI:41774
   provenance:
     repo: PMC
-    publication: PMC11708054
+    publication: 11708054
     contributors:
       - kind: curation
         name: Your Name
@@ -199,7 +199,7 @@ template:
       encoding: PLACEHOLDER
   provenance:
     repo: PMID
-    publication: PMID11223344
+    publication: 11223344
     contributors:
       - kind: curation
         name: Your Name
@@ -277,7 +277,7 @@ template:
         - Disease
   provenance:
     repo: PMID
-    publication: PMID55667788
+    publication: 55667788
     contributors:
       - kind: curation
         name: Your Name
@@ -330,7 +330,7 @@ template:
         - ChemicalEntity
   provenance:
     repo: PMID
-    publication: PMID99887766
+    publication: 99887766
     contributors:
       - kind: curation
         name: Your Name

@@ -17,4 +17,4 @@ nav:
     - Batch Resolution: api/lib.md
     - Quality Control: api/qc.md
     - Utilities: api/utils.md
-  - Changelog: ../CHANGELOG.md
+  - Changelog: changelog.md
