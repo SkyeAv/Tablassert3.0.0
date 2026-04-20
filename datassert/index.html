@@ -56,7 +56,19 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#structure">Structure</a>
+    <li class="toctree-l2"><a class="reference internal" href="#build-command">Build Command</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#flags">Flags</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#data-pipeline">Data Pipeline</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#examples">Examples</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#runtime-behavior">Runtime Behavior</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#output-artifacts">Output Artifacts</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#schema">Schema</a>
     </li>
@@ -129,20 +141,75 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="datassert">Datassert</h1>
-<p>Datassert is the entity-resolution database used by Tablassert. It contains biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, enabling <code>resolve()</code> to map free-text strings to standardized identifiers.</p>
+<p>Datassert is a high-performance CLI for building a DuckDB-backed assertion store from NCATS Translator BABEL export files, with a focus on fast local builds and simple command-driven workflows. It produces the entity-resolution database used by Tablassert, containing biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, enabling <code>resolve()</code> to map free-text strings to standardized identifiers.</p>
 <h2 id="installation">Installation</h2>
-<pre><code class="language-bash">git clone https://github.com/SkyeAv/datassert
+<pre><code class="language-bash"># Install CLI from GitHub
+go install github.com/SkyeAv/datassert@latest
+
+# Verify install
+datassert --help
 </code></pre>
-<h2 id="structure">Structure</h2>
-<p>Datassert is split into 16 DuckDB shard files for parallel querying:</p>
-<pre><code>datassert/
-  data/
-    0.duckdb
-    1.duckdb
-    ...
-    15.duckdb
+<h2 id="build-command">Build Command</h2>
+<pre><code class="language-bash"># Build a Datassert database (downloads BABEL data automatically)
+datassert build
 </code></pre>
-<p>Terms are routed to shards deterministically via <code>xxhash64(term) % 16</code>, so a given string always hits the same shard.</p>
+<p>The build command automatically downloads BABEL exports from RENCI (<code>https://stars.renci.org/var/babel_outputs</code>), processes them, and produces sharded DuckDB databases.</p>
+<h3 id="flags">Flags</h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--skip-downloads</code> / <code>-s</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Skip the BABEL download phase (use previously downloaded files)</td>
+</tr>
+<tr>
+<td><code>--use-existing-parquets</code> / <code>-p</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Use existing Parquet files to rebuild DuckDB databases</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data-pipeline">Data Pipeline</h3>
+<ol>
+<li><strong>Download</strong> — BABEL class and synonym files are downloaded from RENCI and split into LZ4-compressed NDJSON chunks under <code>./datassert/downloads/</code>.</li>
+<li><strong>Lookup</strong> — Class files (<code>*.ndjson.lz4</code>) are read to build an in-memory equivalent-identifier lookup.</li>
+<li><strong>Parquet Staging</strong> — Synonym files are processed with the lookup, quality-controlled, and written as sharded Parquet files to <code>./datassert/parquets/</code>.</li>
+<li><strong>DuckDB Generation</strong> — Parquet files are loaded into 12 sharded DuckDB databases under <code>./datassert/data/</code>.</li>
+</ol>
+<h3 id="examples">Examples</h3>
+<pre><code class="language-bash"># Full build (download, process, and generate databases)
+datassert build
+
+# Skip downloads if BABEL files were already fetched
+datassert build --skip-downloads
+
+# Rebuild DuckDB databases from existing Parquet files
+datassert build --use-existing-parquets
+</code></pre>
+<h3 id="runtime-behavior">Runtime Behavior</h3>
+<ul>
+<li>Displays progress bars for download, class lookup, synonym processing, and DuckDB build phases.</li>
+<li>Uses 90% of available CPUs for concurrent processing.</li>
+<li>Downloads are retried up to 3 times on failure with a 10-second backoff.</li>
+<li>All working files are stored under <code>./datassert/</code>.</li>
+</ul>
+<h2 id="output-artifacts">Output Artifacts</h2>
+<ul>
+<li>12 sharded DuckDB databases are written to <code>./datassert/data/{0..11}.duckdb</code>.</li>
+<li>Each shard contains <code>SOURCES</code>, <code>CATEGORIES</code>, <code>CURIES</code>, and <code>SYNONYMS</code> tables, deduplicated, sorted, and indexed for query performance.</li>
+<li>Staging Parquet files are written to <code>./datassert/parquets/{0..11}/</code>.</li>
+</ul>
+<p>Terms are routed to shards deterministically via <code>xxhash64(term) % 12</code>, so a given string always hits the same shard.</p>
 <h3 id="schema">Schema</h3>
 <p>Each shard contains four tables:</p>
 <table>
@@ -177,12 +244,12 @@
 </tbody>
 </table>
 <h2 id="usage-in-graph-config">Usage in Graph Config</h2>
-<p>The <code>datassert:</code> field in a GC2 graph configuration points to the directory containing the shards. Tablassert opens all 16 shards at startup and passes the connections to <code>resolve()</code>.</p>
+<p>The <code>datassert:</code> field in a GC2 graph configuration points to the directory containing the shards. Tablassert opens all 12 shards at startup and passes the connections to <code>resolve()</code>.</p>
 <pre><code class="language-yaml"># graph-config.yaml (GC2)
 syntax: GC2
 name: my-graph
 version: &quot;1.0&quot;
-datassert: /path/to/datassert/   # directory containing data/0..15.duckdb
+datassert: /path/to/datassert/   # directory containing data/0..11.duckdb
 tables:
   - ./TABLE/my-table.yaml
 </code></pre>
@@ -194,7 +261,7 @@ from tablassert.fullmap import resolve
 datassert_dir = &quot;/path/to/datassert&quot;
 conns = [
     duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
-    for i in range(16)
+    for i in range(12)
 ]
 </code></pre>
 <p>See <a href="../api/fullmap/">Entity Resolution</a> for the full <code>resolve()</code> API.</p>

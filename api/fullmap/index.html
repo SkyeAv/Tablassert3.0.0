@@ -168,7 +168,7 @@
 <p><strong><code>col: str</code></strong></p>
 <p>Column name containing text strings to resolve.</p>
 <p><strong><code>conns: list[object]</code></strong></p>
-<p>List of 16 DuckDB shard connections to the datassert database.</p>
+<p>List of 12 DuckDB shard connections to the datassert database.</p>
 <p>Each shard contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
@@ -276,11 +276,11 @@ from tablassert.enums import Categories
 import duckdb
 import polars as pl
 
-# Open all 16 shard connections
+# Open all 12 shard connections
 datassert_dir = &quot;/path/to/datassert&quot;
 conns = [
     duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
-    for i in range(16)
+    for i in range(12)
 ]
 
 # LazyFrame with data to resolve
@@ -314,11 +314,11 @@ from tablassert.fullmap import resolve
 from tablassert.nlp import level_one, level_two
 from tablassert.enums import Categories
 
-# Open all 16 shard connections
+# Open all 12 shard connections
 datassert_dir = &quot;/path/to/datassert&quot;
 conns = [
     duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
-    for i in range(16)
+    for i in range(12)
 ]
 
 # Map a list of gene symbols to CURIEs
