@@ -20,15 +20,12 @@ cd Tablassert
 uv sync
 ```
 
-### Optional Dependency Groups
+### Optional Extras
 
-Some features require optional dependencies:
+All ML, web, and Excel dependencies are included in the core install. The only optional extra is a runtime-compatible Polars build for CPUs without required instructions:
 
 ```bash
-uv sync --extra ml        # sentence-transformers, onnxruntime, scikit-learn
-uv sync --extra web        # playwright
-uv sync --extra pyexcel    # pyexcel
-uv sync --extra full       # all optional deps
+uv sync --extra rtcompat   # polars[rtcompat]
 ```
 
 ## Development Workflow

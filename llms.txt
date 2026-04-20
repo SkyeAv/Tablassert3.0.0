@@ -4,7 +4,7 @@
 This file is for two audiences: (1) YAML configuration authors and (2) package contributors.
 When source code and prose docs disagree, treat `src/tablassert/models.py` and `src/tablassert/cli.py` as the current authority.
 If you encounter older configurations, migrate `dbssert` to `datassert` (directory path).
-Current CLI behavior opens shard files at `datassert/data/{0..15}.duckdb`.
+Current CLI behavior opens shard files at `datassert/data/{0..11}.duckdb`.
 
 ## Quickstart
 - [README](README.md): high-level overview, install snippets, and one-command graph build.

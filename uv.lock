@@ -2211,7 +2211,7 @@ wheels = [
 
 [[package]]
 name = "tablassert"
-version = "7.3.0"
+version = "7.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
@@ -2276,7 +2276,7 @@ requires-dist = [
     { name = "sentence-transformers", specifier = ">=5.3.0" },
     { name = "sqlite-utils", specifier = ">=3.39" },
     { name = "tablassert", extras = ["rtcompat"], marker = "extra == 'rt'" },
-    { name = "typer", specifier = ">=0.24.1" },
+    { name = "typer", specifier = ">=0.21.2" },
     { name = "xxhash", specifier = ">=3.6.0" },
 ]
 provides-extras = ["rtcompat", "rt"]

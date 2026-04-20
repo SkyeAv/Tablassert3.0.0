@@ -35,7 +35,7 @@ src/tablassert/
   lib.py          # Core logic: encodings, data loading, Tcode(Section) class
   models.py       # Pydantic v2 models (TablaBase base class)
   enums.py        # str, Enum subclasses (Tokens, Repositories, Comparisons, etc.)
-  fullmap.py      # NER / entity resolution (DuckDB, 16 shards)
+  fullmap.py      # NER / entity resolution (DuckDB, 12 shards)
   qc.py           # Quality control (ONNX/BioBERT, sentence_transformers)
   nlp.py          # Text normalization (level_one: strip+lowercase, level_two: regex)
   ingests.py      # YAML ingestion: from_yaml(), to_sections(), fastmerge()

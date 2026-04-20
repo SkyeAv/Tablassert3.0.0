@@ -16,7 +16,7 @@ else:
     plh = Lazy.load("polars_hash")
 
 
-SHARDS: int = 16
+SHARDS: int = 10
 
 
 def empty_matches(column_context: bool) -> pl.DataFrame:
@@ -39,15 +39,15 @@ def empty_matches(column_context: bool) -> pl.DataFrame:
     return pl.DataFrame(schema=schema)  # pyright: ignore
 
 
-def distinct(lf: pl.LazyFrame, l0: str, l1: str, col: str = "term") -> pl.LazyFrame:
+def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFrame:
     # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
-    t0: pl.LazyFrame = lf.select(pl.col(l0).alias(col)).unique()
-    t0 = t0.with_columns(pl.lit(0).alias("nlp level"))
-
     t1: pl.LazyFrame = lf.select(pl.col(l1).alias(col)).unique()
     t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
 
-    terms: pl.LazyFrame = pl.concat([t0, t1]).unique(subset=[col], keep="first")
+    t2: pl.LazyFrame = lf.select(pl.col(l2).alias(col)).unique()
+    t2 = t2.with_columns(pl.lit(2).alias("nlp level"))
+
+    terms: pl.LazyFrame = pl.concat([t1, t2]).unique(subset=[col], keep="first")
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
     terms = terms.filter(~pl.col(col).str.contains(bad))
@@ -172,10 +172,10 @@ def resolve(
     tag: str = " two",
 ) -> pl.LazyFrame:
     # ? Case Dependant, Provenance Rich Name Entity Recognition
-    l0: str = col
-    l1: str = add(l0, tag)
+    l1: str = col
+    l2: str = add(l1, tag)
 
-    terms: pl.LazyFrame = distinct(lf, l0, l1)
+    terms: pl.LazyFrame = distinct(lf, l1, l2)
     matches: pl.DataFrame = query_distinct(terms, conns, taxon, prioritize, avoid, column_context)
 
     if log:
@@ -184,45 +184,45 @@ def resolve(
     # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
     df: pl.DataFrame = lf.collect()
     result: pl.DataFrame = df.join(
-        matches.filter(pl.col("NLP_LEVEL").eq(0)), left_on=l0, right_on="term", how="left", suffix=" l0"
+        matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix=" l1"
     )
 
-    l1_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(1))
-    result = result.join(l1_matches, left_on=l1, right_on="term", how="left", suffix=" l1")
+    l2_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(2))
+    result = result.join(l2_matches, left_on=l2, right_on="term", how="left", suffix=" l2")
 
     result = result.with_columns(
         [
-            pl.when(pl.col("CURIE").is_not_null()).then(pl.col("CURIE")).otherwise(pl.col("CURIE l1")).alias(col),
+            pl.when(pl.col("CURIE").is_not_null()).then(pl.col("CURIE")).otherwise(pl.col("CURIE l2")).alias(col),
             pl.when(pl.col("PREFERRED_NAME").is_not_null())
             .then(pl.col("PREFERRED_NAME"))
-            .otherwise(pl.col("PREFERRED_NAME l1"))
+            .otherwise(pl.col("PREFERRED_NAME l2"))
             .alias(add(col, " name")),
             pl.when(pl.col("CATEGORY_NAME").is_not_null())
             .then(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME")))
-            .otherwise(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME l1")))
+            .otherwise(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME l2")))
             .alias(add(col, " category")),
             pl.when(pl.col("TAXON_ID").is_not_null())
             .then(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID").cast(pl.String)))
-            .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID l1").cast(pl.String)))
+            .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID l2").cast(pl.String)))
             .alias(add(col, " taxon")),
             pl.when(pl.col("SOURCE_NAME").is_not_null())
             .then(pl.col("SOURCE_NAME"))
-            .otherwise(pl.col("SOURCE_NAME l1"))
+            .otherwise(pl.col("SOURCE_NAME l2"))
             .alias(add(col, " source")),
             pl.when(pl.col("SOURCE_VERSION").is_not_null())
             .then(pl.col("SOURCE_VERSION"))
-            .otherwise(pl.col("SOURCE_VERSION l1"))
+            .otherwise(pl.col("SOURCE_VERSION l2"))
             .alias(add(col, " source version")),
             pl.when(pl.col("NLP_LEVEL").is_not_null())
             .then(pl.col("NLP_LEVEL"))
-            .otherwise(pl.col("NLP_LEVEL l1"))
+            .otherwise(pl.col("NLP_LEVEL l2"))
             .alias(add(col, " nlp level")),
         ]
     )
 
     result = result.select(
         pl.exclude(
-            r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l1)?$"
+            r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l2)?$"
         )
     )
     result = result.select(pl.exclude(add(col, " two")))
