@@ -150,7 +150,7 @@
                   </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="" href="../../../CHANGELOG.md">Changelog</a>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Changelog</a>
                 </li>
               </ul>
       </div>
@@ -253,7 +253,7 @@ sections:
 <p><strong>Multiple predicates, same source:</strong></p>
 <pre><code class="language-yaml">template:
   source: {kind: excel, local: data.xlsx}
-  provenance: {publication: PMC123}
+  provenance: {repo: PMC, publication: 123}
 
 sections:
   - statement: {predicate: treats}
@@ -262,7 +262,7 @@ sections:
 <p><strong>Multiple columns, shared provenance:</strong></p>
 <pre><code class="language-yaml">template:
   source: {kind: text, local: data.csv}
-  provenance: {publication: PMID456}
+  provenance: {repo: PMID, publication: 456}
   statement:
     subject: {encoding: gene_symbol}
 
@@ -748,7 +748,7 @@ sections:
 <td><code>publication</code></td>
 <td>String</td>
 <td>Yes</td>
-<td>Identifier (e.g., <code>"PMC11708054"</code>, <code>"PMID123"</code>)</td>
+<td>Repository-local identifier appended to <code>repo:</code> (e.g., <code>"11708054"</code>, <code>"123"</code>)</td>
 </tr>
 <tr>
 <td><code>contributors</code></td>
@@ -804,7 +804,7 @@ sections:
 <p><strong>Example:</strong></p>
 <pre><code class="language-yaml">provenance:
   repo: PMC
-  publication: PMC11708054
+  publication: 11708054
   contributors:
     - kind: curation
       name: Skye Lane Goetz
@@ -877,7 +877,7 @@ sections:
 
   provenance:
     repo: PMID
-    publication: PMID12345678
+    publication: 12345678
     contributors:
       - kind: curation
         name: Example User

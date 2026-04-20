@@ -116,7 +116,7 @@
                   </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="" href="../../../CHANGELOG.md">Changelog</a>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Changelog</a>
                 </li>
               </ul>
       </div>
@@ -168,7 +168,7 @@
 <p><strong><code>col: str</code></strong></p>
 <p>Column name containing text strings to resolve.</p>
 <p><strong><code>conns: list[object]</code></strong></p>
-<p>List of 12 DuckDB shard connections to the datassert database.</p>
+<p>List of 10 DuckDB shard connections to the datassert database.</p>
 <p>Each shard contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
@@ -240,7 +240,7 @@
 <tr>
 <td><code>{col} nlp level</code></td>
 <td>NLP processing level</td>
-<td><code>0</code> or <code>1</code></td>
+<td><code>1</code> or <code>2</code></td>
 </tr>
 </tbody>
 </table>
@@ -276,11 +276,11 @@ from tablassert.enums import Categories
 import duckdb
 import polars as pl
 
-# Open all 12 shard connections
+# Open all 10 shard connections
 datassert_dir = &quot;/path/to/datassert&quot;
 conns = [
     duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
-    for i in range(12)
+    for i in range(10)
 ]
 
 # LazyFrame with data to resolve
@@ -314,11 +314,11 @@ from tablassert.fullmap import resolve
 from tablassert.nlp import level_one, level_two
 from tablassert.enums import Categories
 
-# Open all 12 shard connections
+# Open all 10 shard connections
 datassert_dir = &quot;/path/to/datassert&quot;
 conns = [
     duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
-    for i in range(12)
+    for i in range(10)
 ]
 
 # Map a list of gene symbols to CURIEs

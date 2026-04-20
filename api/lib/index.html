@@ -124,7 +124,7 @@
                   </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="" href="../../../CHANGELOG.md">Changelog</a>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Changelog</a>
                 </li>
               </ul>
       </div>
@@ -153,9 +153,9 @@
               
                 <h1 id="batch-resolution-lib">Batch Resolution (lib)</h1>
 <p>The <code>lib</code> module exposes <code>resolve_many()</code>, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction, NLP preprocessing, or DuckDB shard management.</p>
-<p>It wraps the lower-level <a href="../fullmap/"><code>resolve()</code></a> pipeline — applying <code>level_one</code> and <code>level_two</code> normalization, opening all 12 DuckDB shard connections, executing entity resolution, and returning results as a plain Python dictionary.</p>
+<p>It wraps the lower-level <a href="../fullmap/"><code>resolve()</code></a> pipeline — applying <code>level_one</code> and <code>level_two</code> normalization, opening all 10 DuckDB shard connections, executing entity resolution, and returning results as a plain Python list of row dictionaries.</p>
 <h2 id="resolve_many">resolve_many()</h2>
-<p>Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the datassert database, then returns resolved CURIEs and metadata as a dictionary of lists.</p>
+<p>Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the datassert database, then returns resolved CURIEs and metadata as a list of row dictionaries.</p>
 <h3 id="function-signature">Function Signature</h3>
 <pre><code class="language-python">def resolve_many(
     col: str,
@@ -169,13 +169,13 @@
 </code></pre>
 <h3 id="parameters">Parameters</h3>
 <p><strong><code>col: str</code></strong></p>
-<p>Column name used internally to label the Polars Series and DataFrame columns during resolution. This name propagates through the NLP and resolution pipeline and determines the keys in the returned dictionary.</p>
-<p>For example, if <code>col="gene"</code>, the returned dictionary will contain keys like <code>"gene"</code>, <code>"gene name"</code>, <code>"gene category"</code>, etc.</p>
+<p>Column name used internally to label the Polars Series and DataFrame columns during resolution. This name propagates through the NLP and resolution pipeline and determines the keys in each returned row dictionary.</p>
+<p>For example, if <code>col="gene"</code>, each returned row dictionary will contain keys like <code>"gene"</code>, <code>"gene name"</code>, <code>"gene category"</code>, etc.</p>
 <p><strong><code>entities: Iterable[str]</code></strong></p>
 <p>An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the datassert synonym database. Accepts any iterable — lists, tuples, generators, sets, etc.</p>
 <p>Examples: <code>["TP53", "BRCA1", "EGFR"]</code>, <code>("aspirin", "ibuprofen")</code>, or a generator expression.</p>
 <p><strong><code>datassert: Path</code></strong></p>
-<p>Filesystem path to the root of the datassert database directory. The function expects a <code>data/</code> subdirectory containing 12 DuckDB shard files (<code>0.duckdb</code> through <code>11.duckdb</code>).</p>
+<p>Filesystem path to the root of the datassert database directory. The function expects a <code>data/</code> subdirectory containing 10 DuckDB shard files (<code>0.duckdb</code> through <code>9.duckdb</code>).</p>
 <p>Each shard contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
@@ -244,7 +244,7 @@
 <tr>
 <td><code>{col} nlp level</code></td>
 <td>NLP processing level used for match</td>
-<td><code>0</code> or <code>1</code></td>
+<td><code>1</code> or <code>2</code></td>
 </tr>
 </tbody>
 </table>
@@ -259,7 +259,7 @@
 <p><strong>NLP normalization</strong> — Applies <code>level_one()</code> (whitespace stripping + lowercasing) and <code>level_two()</code> (non-word character removal via <code>\W+</code>) to produce the two normalized columns required by <code>resolve()</code>.</p>
 </li>
 <li>
-<p><strong>DuckDB connection management</strong> — Opens all 12 shard connections inside a <code>contextlib.ExitStack</code>, ensuring every connection is properly closed when resolution completes or if an error occurs.</p>
+<p><strong>DuckDB connection management</strong> — Opens all 10 shard connections inside a <code>contextlib.ExitStack</code>, ensuring every connection is properly closed when resolution completes or if an error occurs.</p>
 </li>
 <li>
 <p><strong>Entity resolution</strong> — Delegates to <code>fullmap.resolve()</code> which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.</p>
@@ -408,8 +408,8 @@ for row in result:
 <h3 id="error-handling">Error Handling</h3>
 <ul>
 <li>If the <code>datassert</code> path does not contain the expected shard files, <code>duckdb.connect()</code> will raise an <code>IOException</code>.</li>
-<li>If <code>entities</code> is empty, the function returns a dictionary with empty lists for all output columns.</li>
-<li>The <code>ExitStack</code> ensures all 12 DuckDB connections are closed even if resolution raises an exception.</li>
+<li>If <code>entities</code> is empty, the function returns <code>[]</code>.</li>
+<li>The <code>ExitStack</code> ensures all 10 DuckDB connections are closed even if resolution raises an exception.</li>
 <li>Unresolved entities are silently filtered from the output (logged at INFO level by default via <code>resolve()</code>).</li>
 </ul>
 <h2 id="integration">Integration</h2>

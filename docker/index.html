@@ -106,7 +106,7 @@
                   </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="" href="../../CHANGELOG.md">Changelog</a>
+                <li class="toctree-l1"><a class="reference internal" href="../changelog/">Changelog</a>
                 </li>
               </ul>
       </div>
@@ -211,8 +211,8 @@ docker run --rm ghcr.io/skyeav/tablassert:latest version
 <ul>
 <li><strong>Datassert path</strong> — The graph configuration YAML specifies the <code>datassert</code> path for the entity-resolution database. Ensure it is accessible inside the container.</li>
 <li><strong>Multiprocessing</strong> — <code>src/tablassert/cli.py:63</code> uses <code>multiprocessing.Pool</code> for parallel table loading and section extraction.</li>
-<li><strong>DuckDB connections</strong> — An <code>ExitStack</code> at <code>src/tablassert/cli.py:81</code> opens read-only connections to all 12 Datassert DuckDB shards concurrently.</li>
-<li><strong>Entity resolution</strong> — The <code>fullmap</code> module (<code>src/tablassert/fullmap.py</code>) shards terms across 12 DuckDB shards (<code>SHARDS = 12</code>) using xxhash64.</li>
+<li><strong>DuckDB connections</strong> — An <code>ExitStack</code> at <code>src/tablassert/cli.py:81</code> opens read-only connections to all 10 Datassert DuckDB shards concurrently.</li>
+<li><strong>Entity resolution</strong> — The <code>fullmap</code> module (<code>src/tablassert/fullmap.py</code>) shards terms across 10 DuckDB shards (<code>SHARDS = 10</code>) using xxhash64.</li>
 <li><strong>Text normalization</strong> — <code>src/tablassert/nlp.py</code> provides <code>level_one</code> (strip + lowercase) and <code>level_two</code> (regex-based cleanup).</li>
 </ul>
 <h2 id="cicd-integration">CI/CD Integration</h2>

@@ -126,7 +126,7 @@
                   </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="" href="../../../CHANGELOG.md">Changelog</a>
+                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Changelog</a>
                 </li>
               </ul>
       </div>
@@ -203,7 +203,7 @@
 <p>Two fuzzy matching algorithms:
 1. <strong>Ratio:</strong> Overall string similarity
 2. <strong>Partial token sort ratio:</strong> Combined token/subsequence matching</p>
-<p><strong>Threshold:</strong> Default 20% similarity (configurable)</p>
+<p><strong>Threshold:</strong> 20% similarity</p>
 <pre><code class="language-python">fuzz.ratio(original, preferred) &gt;= 20
 or fuzz.partial_token_sort_ratio(original, preferred) &gt;= 20
 </code></pre>
@@ -232,12 +232,12 @@ return similarity &gt;= 0.2
 <p><strong>Optimizations:</strong>
 - Graph optimization level: ALL
 - ONNX session caching</p>
-<p>Lazy-loaded on first <code>BERT_audit()</code> call, then reused for subsequent calls.</p>
+<p>Lazy-loaded on first <code>fullmap_audit()</code> call that reaches the embedding stage, then reused for subsequent calls.</p>
 <h3 id="model-caching">Model Caching</h3>
 <p>BioBERT is lazy-loaded on first use and cached globally for the lifetime of the process:</p>
 <pre><code class="language-python"># ? Lazy-loads BioBERT once on first batch audit call, then caches globally
 </code></pre>
-<p><strong>Cache location:</strong> In-memory (global model cache)</p>
+<p><strong>Cache location:</strong> Downloaded model files are cached on disk in <code>.onnxassert/</code>, and the loaded model object is cached in memory for the lifetime of the process.</p>
 <p><strong>Cache strategy:</strong> BioBERT model loaded once on first batch audit, then reused globally</p>
 <p><strong>Why caching matters:</strong>
 - Fuzzy matching: 100-1000x speedup on repeated strings
