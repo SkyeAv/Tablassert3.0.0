@@ -29,13 +29,24 @@ def from_url(website: str, p: Path, timeout: int = 60_000, retries: int = 3) -> 
         try:
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
-                page = browser.new_page()
-                page.goto(website, wait_until="networkidle", timeout=timeout)
+                context = browser.new_context(accept_downloads=True)
+
+                page = context.new_page()
                 with page.expect_download(timeout=timeout) as info:
-                    download = info.value
-                    download.save_as(p)
+                    try:
+                        page.goto(website, wait_until="load", timeout=timeout)
+                    except Exception as e:
+                        if "net::ERR_ABORTED" not in str(e):
+                            raise
+
+                download = info.value
+                download.save_as(p)
+
+                context.close()
                 browser.close()
+
             return p
+
         except Exception as e:
             last = e
             if attempt < retries - 1:
