@@ -275,10 +275,14 @@
     - annotation: assertion method
       method: value
       encoding: &quot;Spearman correlation&quot;
+    # Freetext catch-all for context that doesn't fit a structured field.
+    - annotation: miscellaneous notes
+      method: value
+      encoding: &quot;FDR-corrected; samples pooled across two cohorts&quot;
 </code></pre>
 <p><strong>Key techniques:</strong></p>
 <ul>
-<li><strong>Regex pipeline</strong> cleans raw taxonomic strings (e.g., <code>d__Bacteria;p__Firmicutes;g__Lactobacillus</code> → <code>Lactobacillus</code>)</li>
+<li><strong>Regex pipeline</strong> cleans raw taxonomic strings (e.g., <code>d__Bacteria;p__Firmicutes;g__Lactobacillus</code> → <code>Lactobacillus</code>). Patterns must be Polars <code>str.replace_all()</code>-compatible — no capturing groups (<code>(...)</code> / <code>\1</code>) and no lookarounds (<code>(?=...)</code>, <code>(?&lt;=...)</code>, <code>(?!...)</code>, <code>(?&lt;!...)</code>). Chain several simple substitutions instead.</li>
 <li><strong>Avoid list</strong> (<code>avoid: [Gene]</code>) prevents organism names from resolving to gene entities</li>
 <li><strong>Fixed-value object</strong> (<code>method: value</code>) assigns the same metabolite CURIE to all rows</li>
 <li><strong>Excel source</strong> with sheet name and row slicing</li>

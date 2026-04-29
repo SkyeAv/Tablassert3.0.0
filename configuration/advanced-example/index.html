@@ -250,11 +250,16 @@
       method: value
       encoding: Spearman correlation
 
-    # Descriptive note
+    # Freetext catch-all — anything that doesn't map cleanly to a structured
+    # annotation (study design caveats, non-standard units, qualitative
+    # observations) belongs here rather than being dropped.
     - annotation: miscellaneous notes
       method: value
       encoding: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction
 </code></pre>
+<blockquote>
+<p><strong><code>miscellaneous notes</code> is a freetext escape hatch.</strong> Use it whenever the source carries context you can't otherwise cleanly encode — assay variants, post-hoc qualifiers, "values are log-transformed", etc. It accepts <code>method: value</code> for a constant note across the whole table or <code>method: column</code> to pull per-row notes from the source.</p>
+</blockquote>
 <h2 id="key-techniques">Key Techniques</h2>
 <h3 id="excel-column-references">Excel Column References</h3>
 <p>Excel columns are referenced by letter:
@@ -278,6 +283,9 @@
   replacement: &quot;sp. &quot;
 </code></pre>
 <p><code>"Lactobacillus sp"</code> → <code>"Lactobacillus sp. "</code></p>
+<blockquote>
+<p><strong>Regex constraint:</strong> Each <code>pattern</code> is handed to Polars <code>str.replace_all()</code> (Rust <code>regex</code> crate). <strong>Capturing groups (<code>(...)</code> / <code>\1</code>) and lookarounds (<code>(?=...)</code>, <code>(?&lt;=...)</code>, <code>(?!...)</code>, <code>(?&lt;!...)</code>) are not allowed</strong> and will fail validation. Express transformations as a sequence of simple anchored / character-class substitutions instead — the pipeline above is a deliberate three-step chain because no single capturing-group pattern is permitted. If the transformation can't be expressed without those features, capture the leftover context in a <code>miscellaneous notes</code> annotation rather than fighting the regex engine.</p>
+</blockquote>
 <h3 id="taxonomic-filtering">Taxonomic Filtering</h3>
 <p>Prevent incorrect entity resolution:</p>
 <pre><code class="language-yaml">prioritize:

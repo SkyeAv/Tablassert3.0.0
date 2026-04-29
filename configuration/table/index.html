@@ -656,12 +656,16 @@ sections:
       replacement: &quot; &quot;  # Replace species separator
 </code></pre>
 <p>Executed in order.</p>
+<blockquote>
+<p><strong>Regex dialect:</strong> Patterns are passed directly to Polars <code>str.replace_all()</code>, which uses the Rust <a href="https://docs.rs/regex/"><code>regex</code></a> crate. Only features supported by that engine work — in particular, <strong>capturing groups (<code>(...)</code>, <code>\1</code>) and lookarounds (<code>(?=...)</code>, <code>(?&lt;=...)</code>, <code>(?!...)</code>, <code>(?&lt;!...)</code> are not supported</strong> and will raise an error at parse time. Stick to character classes, anchors (<code>^</code>, <code>$</code>), quantifiers, alternation (<code>a|b</code>), and non-capturing groups (<code>(?:...)</code>) if grouping is needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a <code>miscellaneous notes</code> annotation instead.</p>
+</blockquote>
 <p><strong><code>remove: list[string]</code></strong> - Filter out specific strings</p>
 <pre><code class="language-yaml">subject:
   encoding: A
   remove:
     - &quot;^NA &quot;  # Remove rows starting with &quot;NA &quot;
 </code></pre>
+<p>Same regex constraints apply as the <code>regex</code> field — Polars-compatible patterns only, no capturing groups or lookarounds.</p>
 <p><strong><code>prefix</code> / <code>suffix</code></strong> - Add text</p>
 <pre><code class="language-yaml">object:
   encoding: identifier
@@ -850,7 +854,16 @@ sections:
   - annotation: multiple testing correction method
     method: value
     encoding: &quot;Benjamini Hochberg&quot;
+
+  # Freetext catch-all for context that doesn't fit a structured field —
+  # study caveats, units, post-hoc notes, anything you'd otherwise lose.
+  - annotation: miscellaneous notes
+    method: value
+    encoding: &quot;Values are log2 fold-change relative to vehicle control; n=3 biological replicates per arm&quot;
 </code></pre>
+<blockquote>
+<p><strong>Tip:</strong> When source data carries information that can't be cleanly mapped to a structured annotation (assay-specific caveats, non-standard units, qualitative observations), add a <code>miscellaneous notes</code> annotation rather than forcing it into another field or dropping it. It accepts both <code>method: value</code> (one note for the whole table) and <code>method: column</code> (per-row notes from the source).</p>
+</blockquote>
 <h2 id="complete-example">Complete Example</h2>
 <p>Minimal table configuration:</p>
 <pre><code class="language-yaml">template:

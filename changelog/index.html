@@ -92,7 +92,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#733-2026-04-08">7.3.3 - 2026-04-08</a>
+    <li class="toctree-l3"><a class="reference internal" href="#734-2026-04-28">7.3.4 - 2026-04-28</a>
     </li>
         </ul>
     </li>
@@ -125,11 +125,11 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h3 id="733-2026-04-08">7.3.3 - 2026-04-08</h3>
+<h3 id="734-2026-04-28">7.3.4 - 2026-04-28</h3>
 <ul>
-<li>Datassert shard usage is documented as the current 10-shard layout used by <code>tablassert</code>.</li>
-<li>Provenance examples now match the runtime behavior: <code>repo</code> provides the namespace prefix and <code>publication</code> provides the repository-local identifier.</li>
-<li>API and runtime docs now reflect the current <code>resolve_many()</code> return shape and entity-resolution metadata.</li>
+<li><code>downloader.from_url()</code> now handles URLs that respond with an immediate download instead of a navigable page — the Playwright session uses a download-aware browser context and tolerates the expected <code>net::ERR_ABORTED</code> navigation error.</li>
+<li>Table configuration docs now describe <code>miscellaneous notes</code> as a freetext catch-all annotation for source context that doesn't map cleanly to a structured field.</li>
+<li>Regex transform documentation now spells out the Polars <code>str.replace_all()</code> constraints — no capturing groups or lookarounds — so authors know to chain simple substitutions or fall back to <code>miscellaneous notes</code>.</li>
 </ul>
 <p>For older releases and the full project history, open the root <code>CHANGELOG.md</code> in the repository.</p>
               
