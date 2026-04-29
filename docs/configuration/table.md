@@ -420,7 +420,7 @@ Required metadata about data source.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `repo` | String | No | Repository. Defaults to `"PMC"`; allowed values are `"PMC"`, `"PMID"`. |
-| `publication` | String | Yes | Repository-local identifier appended to `repo:` (e.g., `"11708054"`, `"123"`) |
+| `publication` | String | Yes | Repository-local identifier appended to `repo:` (e.g., `"11708054"`, `"123"`). When `repo` is `"PMC"`, the value **must** start with `PMC` followed by digits (e.g., `"PMC11708054"`, `"PMC123"`). |
 | `contributors` | List[Contributor] | Yes | Curation information |
 
 **Contributor fields:**

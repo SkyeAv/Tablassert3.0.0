@@ -4,10 +4,10 @@ The canonical release history lives in the repository root at [`CHANGELOG.md`](h
 
 ## Current Release Notes
 
-## 7.3.5 - 2026-04-29
+## 7.3.6 - 2026-04-29
 
 ### Documentation
 
-- The table-configuration reference now matches the strict runtime schema and merge behavior, including field defaults, requiredness, accepted enum values, zero-based row indexing, and valid column-reference examples.
+- Documented that `publication` must start with `PMC` followed by digits when `repo` is `"PMC"`.
 
 For older releases and the full project history, open the root `CHANGELOG.md` in the repository.
