@@ -33,7 +33,9 @@ class TablaBase(BaseModel):
 
 
 class Reindex(TablaBase):
-    column: str = Field(..., description="Source column letters used for row filtering.", examples=["A", "AA"])
+    column: str = Field(
+        ..., pattern=r"^[A-Z]{1,3}$", description="Source column letters used for row filtering.", examples=["A", "AA"]
+    )
     comparison: Comparisons = Field(
         Comparisons.NE,
         description="Comparison operator used in reindex filtering.",
