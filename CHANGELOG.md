@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.3.4 - 2026-04-28
+
+### Bug Fixes
+- Fixed `downloader.from_url()` failing on URLs that trigger an immediate download. The Playwright session now opens a browser context with `accept_downloads=True`, wraps `page.goto()` inside `page.expect_download()`, and tolerates the expected `net::ERR_ABORTED` navigation error that fires when the response is a download rather than a page.
+
+### Documentation
+- Documented `miscellaneous notes` as a freetext catch-all annotation in the table configuration and advanced-example pages — used for assay caveats, non-standard units, and qualitative observations that don't map cleanly to a structured field. Supports both `method: value` (constant) and `method: column` (per-row).
+- Documented Polars regex constraints for the `regex` and `remove` transforms: patterns are passed to Polars `str.replace_all()` (Rust `regex` crate), so capturing groups (`(...)` / `\1`) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not supported and will raise at parse time. Chain simple substitutions instead, or capture residual context in a `miscellaneous notes` annotation.
+
 ## 7.3.3 - 2026-04-08
 
 ### Bug Fixes
