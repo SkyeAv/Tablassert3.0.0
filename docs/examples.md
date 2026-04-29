@@ -161,11 +161,15 @@ template:
     - annotation: assertion method
       method: value
       encoding: "Spearman correlation"
+    # Freetext catch-all for context that doesn't fit a structured field.
+    - annotation: miscellaneous notes
+      method: value
+      encoding: "FDR-corrected; samples pooled across two cohorts"
 ```
 
 **Key techniques:**
 
-- **Regex pipeline** cleans raw taxonomic strings (e.g., `d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`)
+- **Regex pipeline** cleans raw taxonomic strings (e.g., `d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`). Patterns must be Polars `str.replace_all()`-compatible — no capturing groups (`(...)` / `\1`) and no lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`). Chain several simple substitutions instead.
 - **Avoid list** (`avoid: [Gene]`) prevents organism names from resolving to gene entities
 - **Fixed-value object** (`method: value`) assigns the same metabolite CURIE to all rows
 - **Excel source** with sheet name and row slicing

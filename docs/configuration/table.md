@@ -330,6 +330,8 @@ subject:
 
 Executed in order.
 
+> **Regex dialect:** Patterns are passed directly to Polars `str.replace_all()`, which uses the Rust [`regex`](https://docs.rs/regex/) crate. Only features supported by that engine work — in particular, **capturing groups (`(...)`, `\1`) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)` are not supported** and will raise an error at parse time. Stick to character classes, anchors (`^`, `$`), quantifiers, alternation (`a|b`), and non-capturing groups (`(?:...)`) if grouping is needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a `miscellaneous notes` annotation instead.
+
 **`remove: list[string]`** - Filter out specific strings
 
 ```yaml
@@ -338,6 +340,8 @@ subject:
   remove:
     - "^NA "  # Remove rows starting with "NA "
 ```
+
+Same regex constraints apply as the `regex` field — Polars-compatible patterns only, no capturing groups or lookarounds.
 
 **`prefix` / `suffix`** - Add text
 
@@ -467,7 +471,15 @@ annotations:
   - annotation: multiple testing correction method
     method: value
     encoding: "Benjamini Hochberg"
+
+  # Freetext catch-all for context that doesn't fit a structured field —
+  # study caveats, units, post-hoc notes, anything you'd otherwise lose.
+  - annotation: miscellaneous notes
+    method: value
+    encoding: "Values are log2 fold-change relative to vehicle control; n=3 biological replicates per arm"
 ```
+
+> **Tip:** When source data carries information that can't be cleanly mapped to a structured annotation (assay-specific caveats, non-standard units, qualitative observations), add a `miscellaneous notes` annotation rather than forcing it into another field or dropping it. It accepts both `method: value` (one note for the whole table) and `method: column` (per-row notes from the source).
 
 ## Complete Example
 

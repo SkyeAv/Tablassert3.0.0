@@ -103,11 +103,15 @@ template:
       method: value
       encoding: Spearman correlation
 
-    # Descriptive note
+    # Freetext catch-all — anything that doesn't map cleanly to a structured
+    # annotation (study design caveats, non-standard units, qualitative
+    # observations) belongs here rather than being dropped.
     - annotation: miscellaneous notes
       method: value
       encoding: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction
 ```
+
+> **`miscellaneous notes` is a freetext escape hatch.** Use it whenever the source carries context you can't otherwise cleanly encode — assay variants, post-hoc qualifiers, "values are log-transformed", etc. It accepts `method: value` for a constant note across the whole table or `method: column` to pull per-row notes from the source.
 
 ## Key Techniques
 
@@ -142,6 +146,8 @@ The subject field uses three regex transformations in sequence:
   replacement: "sp. "
 ```
 `"Lactobacillus sp"` → `"Lactobacillus sp. "`
+
+> **Regex constraint:** Each `pattern` is handed to Polars `str.replace_all()` (Rust `regex` crate). **Capturing groups (`(...)` / `\1`) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not allowed** and will fail validation. Express transformations as a sequence of simple anchored / character-class substitutions instead — the pipeline above is a deliberate three-step chain because no single capturing-group pattern is permitted. If the transformation can't be expressed without those features, capture the leftover context in a `miscellaneous notes` annotation rather than fighting the regex engine.
 
 ### Taxonomic Filtering
 
