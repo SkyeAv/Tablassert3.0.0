@@ -205,14 +205,14 @@
 
 sections:
   - statement:  # Section 1: Gene-Disease
-      subject: {encoding: gene_column}
+      subject: {method: column, encoding: A}
       predicate: associated_with
-      object: {encoding: disease_column}
+      object: {method: column, encoding: B}
 
   - statement:  # Section 2: Gene-Pathway
-      subject: {encoding: gene_column}
+      subject: {method: column, encoding: A}
       predicate: participates_in
-      object: {encoding: pathway_column}
+      object: {method: column, encoding: C}
 </code></pre>
 <h3 id="merge-behavior-fastmerge">Merge Behavior (fastmerge)</h3>
 <p>Sections inherit from template and override specific fields:</p>
@@ -247,13 +247,13 @@ sections:
 <h3 id="use-cases">Use Cases</h3>
 <p><strong>Single output:</strong> Template only</p>
 <pre><code class="language-yaml">template:
-  source: {kind: text, local: data.csv}
+  source: {kind: text, local: data.csv, url: https://example.com/data.csv}
   statement: {...}
 </code></pre>
 <p><strong>Multiple predicates, same source:</strong></p>
 <pre><code class="language-yaml">template:
-  source: {kind: excel, local: data.xlsx}
-  provenance: {repo: PMC, publication: 123}
+  source: {kind: excel, local: data.xlsx, url: https://example.com/data.xlsx}
+  provenance: {repo: PMC, publication: 123, contributors: [{name: Example User, date: 27 JAN 2026}]}
 
 sections:
   - statement: {predicate: treats}
@@ -261,14 +261,14 @@ sections:
 </code></pre>
 <p><strong>Multiple columns, shared provenance:</strong></p>
 <pre><code class="language-yaml">template:
-  source: {kind: text, local: data.csv}
-  provenance: {repo: PMID, publication: 456}
+  source: {kind: text, local: data.csv, url: https://example.com/data.csv}
+  provenance: {repo: PMID, publication: 456, contributors: [{name: Example User, date: 27 JAN 2026}]}
   statement:
-    subject: {encoding: gene_symbol}
+    subject: {method: column, encoding: A}
 
 sections:
-  - statement: {object: {encoding: column_A}}
-  - statement: {object: {encoding: column_B}}
+  - statement: {object: {method: column, encoding: B}}
+  - statement: {object: {method: column, encoding: C}}
 </code></pre>
 <h2 id="configuration-schema">Configuration Schema</h2>
 <h3 id="template-metadata">Template Metadata</h3>
@@ -285,14 +285,14 @@ sections:
 <tr>
 <td><code>syntax</code></td>
 <td>String</td>
-<td>Yes</td>
-<td>Configuration version (must be <code>"TC3"</code>)</td>
+<td>No</td>
+<td>Configuration version. Defaults to <code>"TC3"</code>.</td>
 </tr>
 <tr>
 <td><code>status</code></td>
 <td>String</td>
 <td>No</td>
-<td>Development status: <code>"alpha"</code>, <code>"beta"</code>, <code>"primetime"</code></td>
+<td>Development status. Defaults to <code>"alpha"</code>; allowed values are <code>"alpha"</code>, <code>"beta"</code>, <code>"primetime"</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -312,8 +312,8 @@ sections:
 <tr>
 <td><code>kind</code></td>
 <td>String</td>
-<td>Yes</td>
-<td>Must be <code>"excel"</code></td>
+<td>No</td>
+<td>Source kind. Model default is <code>"excel"</code>, but specify it explicitly in configs.</td>
 </tr>
 <tr>
 <td><code>local</code></td>
@@ -331,19 +331,19 @@ sections:
 <td><code>sheet</code></td>
 <td>String</td>
 <td>No</td>
-<td>Sheet name (default: <code>"Sheet1"</code>)</td>
+<td>Sheet name. Defaults to <code>"Sheet1"</code>.</td>
 </tr>
 <tr>
 <td><code>row_slice</code></td>
 <td>List[Int|"auto"]</td>
 <td>No</td>
-<td>Row range: <code>[start, end]</code> or <code>[start, "auto"]</code></td>
+<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>.</td>
 </tr>
 <tr>
 <td><code>rows</code></td>
 <td>List[Int]</td>
 <td>No</td>
-<td>Specific rows to include</td>
+<td>Zero-based row indices to keep after any <code>row_slice</code> crop.</td>
 </tr>
 <tr>
 <td><code>reindex</code></td>
@@ -360,7 +360,7 @@ sections:
   url: https://example.com/data.xlsx
   sheet: &quot;Sheet1&quot;
   row_slice:
-    - 2  # Start at row 2 (skip header)
+    - 1  # Start at the second physical row
     - auto  # Read to end
 </code></pre>
 <h4 id="text-source-csvtsv">Text Source (CSV/TSV)</h4>
@@ -377,8 +377,8 @@ sections:
 <tr>
 <td><code>kind</code></td>
 <td>String</td>
-<td>Yes</td>
-<td>Must be <code>"text"</code></td>
+<td>No</td>
+<td>Source kind. Model default is <code>"text"</code>, but specify it explicitly in configs.</td>
 </tr>
 <tr>
 <td><code>local</code></td>
@@ -396,19 +396,19 @@ sections:
 <td><code>delimiter</code></td>
 <td>String</td>
 <td>No</td>
-<td>Column delimiter (default: <code>","</code>)</td>
+<td>Field delimiter. Defaults to <code>","</code>.</td>
 </tr>
 <tr>
 <td><code>row_slice</code></td>
 <td>List[Int|"auto"]</td>
 <td>No</td>
-<td>Row range</td>
+<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>.</td>
 </tr>
 <tr>
 <td><code>rows</code></td>
 <td>List[Int]</td>
 <td>No</td>
-<td>Specific rows</td>
+<td>Zero-based row indices to keep after any <code>row_slice</code> crop.</td>
 </tr>
 <tr>
 <td><code>reindex</code></td>
@@ -442,12 +442,12 @@ sections:
 <tr>
 <td><code>column</code></td>
 <td>String</td>
-<td>Column name to evaluate</td>
+<td>Source column letters to evaluate (<code>A</code>-<code>ZZZ</code>)</td>
 </tr>
 <tr>
 <td><code>comparison</code></td>
 <td>String</td>
-<td>Operator: <code>"eq"</code>, <code>"ne"</code>, <code>"lt"</code>, <code>"le"</code>, <code>"gt"</code>, <code>"ge"</code></td>
+<td>Operator. Defaults to <code>"ne"</code>; allowed values are <code>"eq"</code>, <code>"ne"</code>, <code>"lt"</code>, <code>"le"</code>, <code>"gt"</code>, <code>"ge"</code>.</td>
 </tr>
 <tr>
 <td><code>comparator</code></td>
@@ -458,9 +458,9 @@ sections:
 </table>
 <p><strong>Example:</strong></p>
 <pre><code class="language-yaml">reindex:
-  - column: p_value
+  - column: C
     comparison: lt
-    comparator: 0.05  # Keep rows where p_value &lt; 0.05
+    comparator: 0.05  # Keep rows where column C &lt; 0.05
 </code></pre>
 <h3 id="statement-triple-definition">Statement (Triple Definition)</h3>
 <p>Defines subject-predicate-object relationships.</p>
@@ -483,8 +483,8 @@ sections:
 <tr>
 <td><code>predicate</code></td>
 <td>String</td>
-<td>Yes</td>
-<td>Biolink predicate (e.g., <code>"associated_with"</code>)</td>
+<td>No</td>
+<td>Biolink predicate. Defaults to <code>"related_to"</code>.</td>
 </tr>
 <tr>
 <td><code>object</code></td>
@@ -504,12 +504,12 @@ sections:
 <pre><code class="language-yaml">statement:
   subject:
     method: column
-    encoding: gene_symbol
+    encoding: A
     prioritize: [Gene]
   predicate: treats
   object:
     method: column
-    encoding: disease_name
+    encoding: B
     prioritize: [Disease]
 </code></pre>
 <h3 id="nodeencoding">NodeEncoding</h3>
@@ -527,14 +527,14 @@ sections:
 <tr>
 <td><code>method</code></td>
 <td>String</td>
-<td>Yes</td>
-<td><code>"value"</code> (literal) or <code>"column"</code> (column reference)</td>
+<td>No</td>
+<td><code>"value"</code> (literal) or <code>"column"</code> (source column letters). Defaults to <code>"value"</code>.</td>
 </tr>
 <tr>
 <td><code>encoding</code></td>
 <td>String|Int|Float</td>
 <td>Yes</td>
-<td>Literal value or column name</td>
+<td>Literal value or source column letters, depending on <code>method</code></td>
 </tr>
 <tr>
 <td><code>taxon</code></td>
@@ -546,13 +546,13 @@ sections:
 <td><code>prioritize</code></td>
 <td>List[String]</td>
 <td>No</td>
-<td>Preferred Biolink categories</td>
+<td>Preferred Biolink categories (must be valid <code>Categories</code> enum values such as <code>Gene</code>, <code>Protein</code>)</td>
 </tr>
 <tr>
 <td><code>avoid</code></td>
 <td>List[String]</td>
 <td>No</td>
-<td>Excluded Biolink categories</td>
+<td>Excluded Biolink categories (must be valid <code>Categories</code> enum values)</td>
 </tr>
 <tr>
 <td><code>regex</code></td>
@@ -604,23 +604,21 @@ sections:
   method: value
   encoding: CHEBI:41774  # All rows get this CURIE
 </code></pre>
-<p><strong><code>method: column</code></strong> - Reference a column</p>
-<p>Excel columns use letters converted to <code>column_N</code>:
-- Column A → <code>column_1</code> or just <code>"A"</code>
-- Column B → <code>column_2</code> or just <code>"B"</code></p>
+<p><strong><code>method: column</code></strong> - Reference a source column</p>
+<p>Source files are read without headers, so column references are Excel-style letters:
+- Column A -&gt; <code>"A"</code>
+- Column B -&gt; <code>"B"</code>
+- Column AA -&gt; <code>"AA"</code></p>
 <pre><code class="language-yaml">subject:
   method: column
   encoding: A  # Read from column A
 </code></pre>
-<p>CSV/TSV columns use header names:</p>
-<pre><code class="language-yaml">subject:
-  method: column
-  encoding: gene_symbol  # Read from &quot;gene_symbol&quot; column
-</code></pre>
+<p>At runtime those letters are converted internally to Polars column names such as <code>column_1</code>, but those internal names are not valid configuration values.</p>
 <h4 id="taxonomic-filtering">Taxonomic Filtering</h4>
 <p><strong><code>taxon: int</code></strong> - Filter entities by organism</p>
 <pre><code class="language-yaml">subject:
-  encoding: gene_column
+  method: column
+  encoding: A
   taxon: 9606  # Only human genes (Homo sapiens)
 </code></pre>
 <p>Common taxon IDs:
@@ -638,7 +636,8 @@ sections:
 <p>If "TP53" maps to both Gene and Protein, prefer Gene.</p>
 <p><strong><code>avoid: list[category]</code></strong> - Exclude specific categories</p>
 <pre><code class="language-yaml">subject:
-  encoding: organism_name
+  method: column
+  encoding: A
   prioritize:
     - OrganismTaxon
   avoid:
@@ -682,19 +681,21 @@ sections:
 - <code>"zero"</code> - Fill with 0
 - <code>"one"</code> - Fill with 1</p>
 <pre><code class="language-yaml">subject:
-  encoding: gene_symbol
+  method: column
+  encoding: A
   fill: forward  # Propagate values down through null rows
 </code></pre>
 <pre><code class="language-yaml">annotations:
   - annotation: expression_level
     method: column
-    encoding: expression
+    encoding: C
     fill: mean  # Replace nulls with column average
 </code></pre>
 <h4 id="multi-value-handling">Multi-Value Handling</h4>
 <p><strong><code>explode_by: string</code></strong> - Split delimited values into multiple rows</p>
 <pre><code class="language-yaml">object:
-  encoding: pathway_list
+  method: column
+  encoding: B
   explode_by: &quot;;&quot;  # &quot;P1;P2;P3&quot; → 3 separate edges
 </code></pre>
 <h4 id="mathematical-transformations">Mathematical Transformations</h4>
@@ -715,7 +716,7 @@ sections:
 <tr>
 <td><code>qualifier</code></td>
 <td>String</td>
-<td>Biolink qualifier (e.g., <code>"species_context_qualifier"</code>)</td>
+<td>Biolink qualifier from the <code>Qualifiers</code> enum (e.g., <code>"species_context_qualifier"</code>)</td>
 </tr>
 <tr>
 <td>(inherits NodeEncoding)</td>
@@ -745,8 +746,8 @@ sections:
 <tr>
 <td><code>repo</code></td>
 <td>String</td>
-<td>Yes</td>
-<td>Repository: <code>"PMC"</code>, <code>"PMID"</code></td>
+<td>No</td>
+<td>Repository. Defaults to <code>"PMC"</code>; allowed values are <code>"PMC"</code>, <code>"PMID"</code>.</td>
 </tr>
 <tr>
 <td><code>publication</code></td>
@@ -776,8 +777,8 @@ sections:
 <tr>
 <td><code>kind</code></td>
 <td>String</td>
-<td>Yes</td>
-<td><code>"curation"</code>, <code>"validation"</code>, <code>"tool"</code></td>
+<td>No</td>
+<td>Contributor role. Defaults to <code>"curation"</code>; allowed values are <code>"curation"</code>, <code>"validation"</code>, <code>"tool"</code>.</td>
 </tr>
 <tr>
 <td><code>name</code></td>
@@ -880,12 +881,12 @@ sections:
   statement:
     subject:
       method: column
-      encoding: gene
+      encoding: A
       prioritize: [Gene]
     predicate: associated_with
     object:
       method: column
-      encoding: disease
+      encoding: B
       prioritize: [Disease]
 
   provenance:
@@ -899,7 +900,7 @@ sections:
   annotations:
     - annotation: p value
       method: column
-      encoding: p_val
+      encoding: C
 </code></pre>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
