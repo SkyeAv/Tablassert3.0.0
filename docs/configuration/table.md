@@ -39,14 +39,14 @@ template:
 
 sections:
   - statement:  # Section 1: Gene-Disease
-      subject: {encoding: gene_column}
+      subject: {method: column, encoding: A}
       predicate: associated_with
-      object: {encoding: disease_column}
+      object: {method: column, encoding: B}
 
   - statement:  # Section 2: Gene-Pathway
-      subject: {encoding: gene_column}
+      subject: {method: column, encoding: A}
       predicate: participates_in
-      object: {encoding: pathway_column}
+      object: {method: column, encoding: C}
 ```
 
 ### Merge Behavior (fastmerge)
@@ -92,15 +92,15 @@ sections:
 **Single output:** Template only
 ```yaml
 template:
-  source: {kind: text, local: data.csv}
+  source: {kind: text, local: data.csv, url: https://example.com/data.csv}
   statement: {...}
 ```
 
 **Multiple predicates, same source:**
 ```yaml
 template:
-  source: {kind: excel, local: data.xlsx}
-  provenance: {repo: PMC, publication: 123}
+  source: {kind: excel, local: data.xlsx, url: https://example.com/data.xlsx}
+  provenance: {repo: PMC, publication: 123, contributors: [{name: Example User, date: 27 JAN 2026}]}
 
 sections:
   - statement: {predicate: treats}
@@ -110,14 +110,14 @@ sections:
 **Multiple columns, shared provenance:**
 ```yaml
 template:
-  source: {kind: text, local: data.csv}
-  provenance: {repo: PMID, publication: 456}
+  source: {kind: text, local: data.csv, url: https://example.com/data.csv}
+  provenance: {repo: PMID, publication: 456, contributors: [{name: Example User, date: 27 JAN 2026}]}
   statement:
-    subject: {encoding: gene_symbol}
+    subject: {method: column, encoding: A}
 
 sections:
-  - statement: {object: {encoding: column_A}}
-  - statement: {object: {encoding: column_B}}
+  - statement: {object: {method: column, encoding: B}}
+  - statement: {object: {method: column, encoding: C}}
 ```
 
 ## Configuration Schema
@@ -126,8 +126,8 @@ sections:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `syntax` | String | Yes | Configuration version (must be `"TC3"`) |
-| `status` | String | No | Development status: `"alpha"`, `"beta"`, `"primetime"` |
+| `syntax` | String | No | Configuration version. Defaults to `"TC3"`. |
+| `status` | String | No | Development status. Defaults to `"alpha"`; allowed values are `"alpha"`, `"beta"`, `"primetime"`. |
 
 ### Source
 
@@ -137,12 +137,12 @@ Defines the data file location and format.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `kind` | String | Yes | Must be `"excel"` |
+| `kind` | String | No | Source kind. Model default is `"excel"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path for caching |
 | `url` | URL | Yes | Download URL (HTTP/HTTPS) |
-| `sheet` | String | No | Sheet name (default: `"Sheet1"`) |
-| `row_slice` | List[Int\|"auto"] | No | Row range: `[start, end]` or `[start, "auto"]` |
-| `rows` | List[Int] | No | Specific rows to include |
+| `sheet` | String | No | Sheet name. Defaults to `"Sheet1"`. |
+| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. |
+| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. |
 | `reindex` | List[Reindex] | No | Conditional row filtering |
 
 **Example:**
@@ -153,7 +153,7 @@ source:
   url: https://example.com/data.xlsx
   sheet: "Sheet1"
   row_slice:
-    - 2  # Start at row 2 (skip header)
+    - 1  # Start at the second physical row
     - auto  # Read to end
 ```
 
@@ -161,12 +161,12 @@ source:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `kind` | String | Yes | Must be `"text"` |
+| `kind` | String | No | Source kind. Model default is `"text"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path for caching |
 | `url` | URL | Yes | Download URL |
-| `delimiter` | String | No | Column delimiter (default: `","`) |
-| `row_slice` | List[Int\|"auto"] | No | Row range |
-| `rows` | List[Int] | No | Specific rows |
+| `delimiter` | String | No | Field delimiter. Defaults to `","`. |
+| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. |
+| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. |
 | `reindex` | List[Reindex] | No | Conditional filtering |
 
 **Example:**
@@ -187,16 +187,16 @@ Filter rows based on column values.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `column` | String | Column name to evaluate |
-| `comparison` | String | Operator: `"eq"`, `"ne"`, `"lt"`, `"le"`, `"gt"`, `"ge"` |
+| `column` | String | Source column letters to evaluate (`A`-`ZZZ`) |
+| `comparison` | String | Operator. Defaults to `"ne"`; allowed values are `"eq"`, `"ne"`, `"lt"`, `"le"`, `"gt"`, `"ge"`. |
 | `comparator` | String\|Int\|Float | Value to compare against |
 
 **Example:**
 ```yaml
 reindex:
-  - column: p_value
+  - column: C
     comparison: lt
-    comparator: 0.05  # Keep rows where p_value < 0.05
+    comparator: 0.05  # Keep rows where column C < 0.05
 ```
 
 ### Statement (Triple Definition)
@@ -206,7 +206,7 @@ Defines subject-predicate-object relationships.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `subject` | NodeEncoding | Yes | Subject entity configuration |
-| `predicate` | String | Yes | Biolink predicate (e.g., `"associated_with"`) |
+| `predicate` | String | No | Biolink predicate. Defaults to `"related_to"`. |
 | `object` | NodeEncoding | Yes | Object entity configuration |
 | `qualifiers` | List[Qualifier] | No | Edge qualifiers (context) |
 
@@ -215,12 +215,12 @@ Defines subject-predicate-object relationships.
 statement:
   subject:
     method: column
-    encoding: gene_symbol
+    encoding: A
     prioritize: [Gene]
   predicate: treats
   object:
     method: column
-    encoding: disease_name
+    encoding: B
     prioritize: [Disease]
 ```
 
@@ -230,11 +230,11 @@ Defines how to extract and resolve entities.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `method` | String | Yes | `"value"` (literal) or `"column"` (column reference) |
-| `encoding` | String\|Int\|Float | Yes | Literal value or column name |
+| `method` | String | No | `"value"` (literal) or `"column"` (source column letters). Defaults to `"value"`. |
+| `encoding` | String\|Int\|Float | Yes | Literal value or source column letters, depending on `method` |
 | `taxon` | Int | No | NCBI Taxon ID for filtering (e.g., `9606` for human) |
-| `prioritize` | List[String] | No | Preferred Biolink categories |
-| `avoid` | List[String] | No | Excluded Biolink categories |
+| `prioritize` | List[String] | No | Preferred Biolink categories (must be valid `Categories` enum values such as `Gene`, `Protein`) |
+| `avoid` | List[String] | No | Excluded Biolink categories (must be valid `Categories` enum values) |
 | `regex` | List[Regex] | No | Pattern replacements |
 | `fill` | String | No | Null-filling strategy: `"forward"`, `"backward"`, `"min"`, `"max"`, `"mean"`, `"zero"`, `"one"` |
 | `remove` | List[String] | No | Strings to filter out |
@@ -253,11 +253,12 @@ subject:
   encoding: CHEBI:41774  # All rows get this CURIE
 ```
 
-**`method: column`** - Reference a column
+**`method: column`** - Reference a source column
 
-Excel columns use letters converted to `column_N`:
-- Column A → `column_1` or just `"A"`
-- Column B → `column_2` or just `"B"`
+Source files are read without headers, so column references are Excel-style letters:
+- Column A -> `"A"`
+- Column B -> `"B"`
+- Column AA -> `"AA"`
 
 ```yaml
 subject:
@@ -265,12 +266,7 @@ subject:
   encoding: A  # Read from column A
 ```
 
-CSV/TSV columns use header names:
-```yaml
-subject:
-  method: column
-  encoding: gene_symbol  # Read from "gene_symbol" column
-```
+At runtime those letters are converted internally to Polars column names such as `column_1`, but those internal names are not valid configuration values.
 
 #### Taxonomic Filtering
 
@@ -278,7 +274,8 @@ subject:
 
 ```yaml
 subject:
-  encoding: gene_column
+  method: column
+  encoding: A
   taxon: 9606  # Only human genes (Homo sapiens)
 ```
 
@@ -305,7 +302,8 @@ If "TP53" maps to both Gene and Protein, prefer Gene.
 
 ```yaml
 subject:
-  encoding: organism_name
+  method: column
+  encoding: A
   prioritize:
     - OrganismTaxon
   avoid:
@@ -366,7 +364,8 @@ Available strategies:
 
 ```yaml
 subject:
-  encoding: gene_symbol
+  method: column
+  encoding: A
   fill: forward  # Propagate values down through null rows
 ```
 
@@ -374,7 +373,7 @@ subject:
 annotations:
   - annotation: expression_level
     method: column
-    encoding: expression
+    encoding: C
     fill: mean  # Replace nulls with column average
 ```
 
@@ -384,7 +383,8 @@ annotations:
 
 ```yaml
 object:
-  encoding: pathway_list
+  method: column
+  encoding: B
   explode_by: ";"  # "P1;P2;P3" → 3 separate edges
 ```
 
@@ -402,7 +402,7 @@ Add context to edges (anatomical location, species, etc.).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `qualifier` | String | Biolink qualifier (e.g., `"species_context_qualifier"`) |
+| `qualifier` | String | Biolink qualifier from the `Qualifiers` enum (e.g., `"species_context_qualifier"`) |
 | (inherits NodeEncoding) | | All NodeEncoding fields available |
 
 **Example:**
@@ -419,7 +419,7 @@ Required metadata about data source.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `repo` | String | Yes | Repository: `"PMC"`, `"PMID"` |
+| `repo` | String | No | Repository. Defaults to `"PMC"`; allowed values are `"PMC"`, `"PMID"`. |
 | `publication` | String | Yes | Repository-local identifier appended to `repo:` (e.g., `"11708054"`, `"123"`) |
 | `contributors` | List[Contributor] | Yes | Curation information |
 
@@ -427,7 +427,7 @@ Required metadata about data source.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `kind` | String | Yes | `"curation"`, `"validation"`, `"tool"` |
+| `kind` | String | No | Contributor role. Defaults to `"curation"`; allowed values are `"curation"`, `"validation"`, `"tool"`. |
 | `name` | String | Yes | Contributor name |
 | `date` | String | Yes | Date (free format) |
 | `organizations` | List[String] | No | Affiliations |
@@ -500,12 +500,12 @@ template:
   statement:
     subject:
       method: column
-      encoding: gene
+      encoding: A
       prioritize: [Gene]
     predicate: associated_with
     object:
       method: column
-      encoding: disease
+      encoding: B
       prioritize: [Disease]
 
   provenance:
@@ -519,7 +519,7 @@ template:
   annotations:
     - annotation: p value
       method: column
-      encoding: p_val
+      encoding: C
 ```
 
 ## Next Steps

@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.3.5 - 2026-04-29
+
+### Documentation
+- Tightened the table-configuration reference so field requirements, defaults, accepted enum values, row indexing, and column-reference examples match the strict `Section` schema and section-merging behavior implemented in `models.py`, `ingests.py`, and the runtime loader.
+
 ## 7.3.4 - 2026-04-28
 
 ### Bug Fixes
