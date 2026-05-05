@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 from tablassert.fullmap import SHARDS
 from tablassert.ingests import from_yaml, to_sections
 from tablassert.lib import Tcode, compile_graph, compile_subgraph
-from tablassert.models import Graph, Section
+from tablassert.models import Graph
 from tablassert.utils import STORE, mkhash
 
 if TYPE_CHECKING:
@@ -171,7 +171,7 @@ def verify_table_configuration_syntax(
 
         # ? Extract Sections
         t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
-        sections: list[dict[str, Any]] = to_sections(r)  # pyright: ignore
+        sections: list[dict[str, Any]] = to_sections(r, table_configuration_file)  # pyright: ignore
         n: int = len(sections)
         PROGRESS.update(t2, total=1, completed=1)
 
@@ -182,7 +182,7 @@ def verify_table_configuration_syntax(
             inflight.add(idx, table_configuration_file.name, h)
             live.update(render())
             try:
-                Section.model_validate(s)
+                Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet")})
             except ValidationError as e:
                 raise RuntimeError(
                     f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {e}"
