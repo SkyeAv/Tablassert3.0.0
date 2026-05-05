@@ -1,6 +1,6 @@
 [project]
 name = "tablassert"
-version = "7.3.6"
+version = "7.4.0"
 description = "Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in."
 authors = [
     { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
@@ -40,6 +40,7 @@ requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.5.0",
     "fastexcel>=0.19.0",
+    "httpx>=0.28.1",
     "lazy-loader>=0.5",
     "loguru>=0.7.3",
     "onnxruntime>=1.24.4",
@@ -95,6 +96,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["network: requires internet"]
 
 [tool.ruff]
 line-length = 120

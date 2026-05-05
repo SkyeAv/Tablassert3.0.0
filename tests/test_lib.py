@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from tablassert.lib import idxname, label_edge, strip_nulls
+from tablassert.ingests import from_yaml
+from tablassert.lib import Tcode, idxname, label_edge, strip_nulls
 
 
 # ? idxname Converts Single Letter Columns
@@ -116,3 +118,23 @@ def test_label_edge_different_data() -> None:
     result1: dict = label_edge(r1)  # pyright: ignore
     result2: dict = label_edge(r2)  # pyright: ignore
     assert result1["uuid"] != result2["uuid"]
+
+
+# ? Tcode collect Threads Downloader Context Into from_url
+def test_tcode_collect_threads_download_context(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    first_op: tuple[Any, tuple[Any]] = collected[0]
+
+    assert first_op[0].__name__ == "from_url"
+    assert first_op[1] == (
+        "https://example.com/test.tsv",
+        Path("test.tsv"),
+        "minimal_section.yaml",
+        "sectionhash",
+    )

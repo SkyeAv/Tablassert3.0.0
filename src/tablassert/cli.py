@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import lazy_loader as Lazy
+from pydantic import ValidationError
 
 from tablassert.fullmap import SHARDS
 from tablassert.ingests import from_yaml, to_sections
@@ -22,7 +23,10 @@ else:
     duckdb = Lazy.load("duckdb")
     typer = Lazy.load("typer")
 
+from rich.console import Group
+from rich.live import Live
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
 
 CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 PROGRESS: Progress = Progress(
@@ -47,6 +51,27 @@ def track(task_id: Any, iterable: Any) -> Any:
         PROGRESS.advance(task_id)
 
 
+class InFlight:
+    # ? Tracks Sections Currently Being Processed For The Live Panel
+    def __init__(self: InFlight) -> None:
+        self.items: dict[int, tuple[str, str]] = {}
+
+    def add(self: InFlight, number: int, config: str, section_hash: str) -> None:
+        self.items[number] = (config, section_hash)
+
+    def remove(self: InFlight, number: int) -> None:
+        self.items.pop(number, None)
+
+    def render(self: InFlight) -> Table:
+        t: Table = Table(title="In-Flight Sections", expand=True)
+        t.add_column("IDX", justify="right")
+        t.add_column("CONFIG")
+        t.add_column("HASH")
+        for number, (config, h) in sorted(self.items.items()):
+            t.add_row(str(number), config, h)
+        return t
+
+
 @CLI.command()
 def build_knowledge_graph(
     graph_configuration_file: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs"),
@@ -55,9 +80,19 @@ def build_knowledge_graph(
     # TODO: Make MeSH A Node (Micro Version)
     # TODO: Add FullMap Column Context Flag"
     r: object = from_yaml(graph_configuration_file)
-    g: Graph = Graph.model_validate(r)
+    try:
+        g: Graph = Graph.model_validate(r)
+    except ValidationError as e:
+        raise RuntimeError(
+            f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | KIND: graph | PYDANTIC: {e}"
+        ) from e
 
-    with PROGRESS:
+    inflight: InFlight = InFlight()
+
+    def render() -> Group:
+        return Group(PROGRESS, inflight.render())
+
+    with Live(render(), refresh_per_second=4) as live:
         # ? Load Tables
         t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
         with Pool() as pool:
@@ -74,10 +109,15 @@ def build_knowledge_graph(
 
         # ? Build Tcodes
         t3: Any = PROGRESS.add_task("Building TCode...", total=n)
-        tcode: list[Tcode] = [
-            Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")})
-            for idx, s in track(t3, enumerate(sections, start=1))
-        ]
+        tcode: list[Tcode] = []
+        for idx, s in track(t3, enumerate(sections, start=1)):
+            try:
+                tcode.append(Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")}))
+            except ValidationError as e:
+                raise RuntimeError(
+                    f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | IDX: {idx} | HASH: {mkhash(s)} | PYDANTIC: {e}"
+                ) from e
+
         with ExitStack() as stack:
             conns: list[object] = [
                 stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True))
@@ -85,13 +125,25 @@ def build_knowledge_graph(
             ]
             # ? Collect Instructions
             t4: Any = PROGRESS.add_task("Collecting Instructions...", total=n)
-            instructions: list[Any] = [x.collect(conns, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)]  # pyright: ignore
+            instructions: list[Any] = []
+            for x in tcode:
+                inflight.add(x.number, x.config.name, x.store.stem)
+                live.update(render())
+                instructions.append(x.collect(conns, g.pubmed_db, g.pmc_db))  # pyright: ignore
+                inflight.remove(x.number)
+                PROGRESS.advance(t4)
+                live.update(render())
 
             # ? Build Subgraphs
             t5: Any = PROGRESS.add_task("Building Subgraphs...", total=n)
-            subgraphs: list[Path] = [
-                op if isinstance(op, Path) else compile_subgraph(op) for op in track(t5, instructions)
-            ]  # pyright: ignore
+            subgraphs: list[Path] = []
+            for x, op in zip(tcode, instructions):
+                inflight.add(x.number, x.config.name, x.store.stem)
+                live.update(render())
+                subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op))
+                inflight.remove(x.number)
+                PROGRESS.advance(t5)
+                live.update(render())
 
         # ? Compile Graph
         t6: Any = PROGRESS.add_task("Compiling Graph...", total=None)
@@ -99,6 +151,7 @@ def build_knowledge_graph(
         PROGRESS.update(t6, total=1, completed=1)
 
         PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)
+        live.update(render())
 
 
 @CLI.command()
@@ -120,8 +173,13 @@ def verify_table_configuration_syntax(
 
         # ? Validating Section Syntax
         t3: Any = PROGRESS.add_task("Validating Section Syntax...", total=n)
-        for s in track(t3, sections):
-            Section.model_validate(s)
+        for idx, s in track(t3, enumerate(sections, start=1)):
+            try:
+                Section.model_validate(s)
+            except ValidationError as e:
+                raise RuntimeError(
+                    f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {mkhash(s)} | PYDANTIC: {e}"
+                ) from e
             PROGRESS.update(t3, total=1, completed=1)
 
         PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)

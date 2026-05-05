@@ -312,7 +312,7 @@ class Tcode(Section):
         else:
             # * Returns A List Of: (Function, (Arguments))
             tcode: Optional[list[Any]] = [
-                (from_url, (str(self.source.url), self.source.local)),
+                (from_url, (str(self.source.url), self.source.local, self.config.name, self.store.stem)),
                 (csv, (self.source.delimiter,)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
                 (excel, (self.source.sheet,)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (idx, ()),
