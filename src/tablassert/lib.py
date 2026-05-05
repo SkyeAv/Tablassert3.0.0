@@ -266,6 +266,7 @@ class Tcode(Section):
     number: PositiveInt = Field(...)
     config: Path = Field(...)
     store: Path = Field(...)
+    log: bool = Field(False)
     qc: bool = Field(False)
 
     def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
@@ -289,7 +290,7 @@ class Tcode(Section):
             (column, (add("original ", col), col)),
             (level_one, (col,)),
             (level_two, (col,)),
-            (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
+            (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, self.log, self.store.stem, self.config.name, True)),
             (fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) if self.qc else None,
         ]
         return add(encoding, node)

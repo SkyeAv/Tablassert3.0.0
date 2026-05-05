@@ -204,6 +204,7 @@ class Graph(TablaBase):
     syntax: Syntaxes = Field(Syntaxes.GC2, description="Graph configuration syntax version.")
     name: str = Field(..., description="Graph name written into output metadata.")
     version: str = Field(..., description="Graph version label.")
+    log: bool = Field(False, description="Whether to log unmatched entities and audit details during graph builds.")
     qc: bool = Field(False, description="Whether to run the QC audit stage during graph builds.")
     tables: list[Path] = Field(
         ..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]]

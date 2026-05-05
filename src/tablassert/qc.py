@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version as get_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_version
 from operator import add, eq
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional
@@ -44,17 +45,17 @@ def get_qc_provider(provider: Optional[Literal["cpu", "cuda"]] = None) -> tuple[
     if provider == "cpu":
         if has_cpu or has_cuda:
             return CPU_PROVIDER, None
-        raise RuntimeError("QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
+        raise RuntimeError("03 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
 
     if provider == "cuda":
         if not has_cuda:
             raise RuntimeError(
-                "QC requested CUDA runtime but onnxruntime-gpu is not installed. Install tablassert[qc-cuda]."
+                "04 | QC requested CUDA runtime but onnxruntime-gpu is not installed. Install tablassert[qc-cuda]."
             )
         available: list[str] = ort.get_available_providers()  # pyright: ignore
         if CUDA_PROVIDER not in available:
             raise RuntimeError(
-                "QC requested CUDA runtime but CUDAExecutionProvider is unavailable. Verify the CUDA/cuDNN environment for tablassert[qc-cuda]."
+                "05 | QC requested CUDA runtime but CUDAExecutionProvider is unavailable. Verify the CUDA/cuDNN environment for tablassert[qc-cuda]."
             )
         return CUDA_PROVIDER, {"device_id": 0}
 
@@ -62,14 +63,14 @@ def get_qc_provider(provider: Optional[Literal["cpu", "cuda"]] = None) -> tuple[
         available = ort.get_available_providers()  # pyright: ignore
         if CUDA_PROVIDER not in available:
             raise RuntimeError(
-                "Detected onnxruntime-gpu but CUDAExecutionProvider is unavailable. Tablassert will not fall back to CPU from qc-cuda. Install tablassert[qc] or fix the CUDA/cuDNN environment."
+                "06 | Detected onnxruntime-gpu but CUDAExecutionProvider is unavailable. Tablassert will not fall back to CPU from qc-cuda. Install tablassert[qc] or fix the CUDA/cuDNN environment."
             )
         return CUDA_PROVIDER, {"device_id": 0}
 
     if has_cpu:
         return CPU_PROVIDER, None
 
-    raise RuntimeError("QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
+    raise RuntimeError("07 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
 
 
 def get_biobert(provider: Optional[Literal["cpu", "cuda"]] = None) -> object:

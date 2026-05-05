@@ -116,12 +116,12 @@ def looks_like_challenge(sample: bytes) -> bool:
 
 def reject_download(p: Path, reason: str) -> None:
     cleanup(p)
-    raise DownloadValidationError(reason)
+    raise DownloadValidationError(f"10 | {reason}")
 
 
 def validate_download(p: Path, receipt: Optional[DownloadReceipt] = None) -> None:
     if not p.is_file():
-        raise DownloadValidationError(f"missing artifact at {p}")
+        raise DownloadValidationError(f"11 | missing artifact at {p}")
 
     size: int = p.stat().st_size
     if size == 0:
