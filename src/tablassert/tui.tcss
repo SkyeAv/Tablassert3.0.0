@@ -1,0 +1,81 @@
+TablassertApp {
+    layout: vertical;
+    layers: header body footer;
+}
+
+TablassertApp > Header {
+    layer: header;
+}
+
+#main-body {
+    height: 1fr;
+    layer: body;
+}
+
+#left-column {
+    width: 1fr;
+    border: round $primary;
+    background: $surface;
+    scrollbar-gutter: stable;
+    overflow-y: auto;
+}
+
+#right-column {
+    width: 1fr;
+    border: round $primary;
+    background: $surface;
+    scrollbar-gutter: stable;
+    overflow-y: auto;
+}
+
+StageProgress {
+    height: auto;
+    padding: 0 1;
+}
+
+StageProgress > Label {
+    text-style: bold;
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+StageProgress > ProgressBar {
+    margin-top: 1;
+}
+
+SectionDetails {
+    height: auto;
+    padding: 0 1;
+    margin-top: 1;
+    border: round $primary;
+    background: $surface;
+}
+
+SectionDetails > .title {
+    text-style: bold;
+    background: $primary;
+    color: $text;
+    width: 100%;
+    content-align: center middle;
+}
+
+SectionDetails > #section-content {
+    padding: 1 1 0 1;
+}
+
+LogPanel {
+    height: 1fr;
+    border: round $primary;
+    scrollbar-gutter: stable;
+    background: $surface;
+    padding: 0 1;
+}
+
+StatsFooter {
+    dock: bottom;
+    height: 1;
+    background: $primary;
+    color: $text;
+    content-align: center middle;
+    text-style: bold;
+}
