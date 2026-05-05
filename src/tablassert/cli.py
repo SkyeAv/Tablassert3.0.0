@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING, Any
 import cyclopts
 import lazy_loader as Lazy
 
+from tablassert.log import logger
+
 if TYPE_CHECKING:
     import duckdb
-    import loguru
     import pydantic
 
     from tablassert.lib import Tcode  # noqa: F401
@@ -21,7 +22,6 @@ if TYPE_CHECKING:
 else:
     duckdb = Lazy.load("duckdb")
     pydantic = Lazy.load("pydantic")
-    loguru = Lazy.load("loguru")
 
 APP: cyclopts.App = cyclopts.App(
     version=f"tablassert {get_version('tablassert')}",
@@ -102,7 +102,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
     compile_graph(subgraphs, g.name, g.version)
     advance(f"NAME: {g.name} | VERSION: {g.version}")
 
-    loguru.logger.info(f"BUILD DONE | SECTIONS: {n} | NAME: {g.name} | VERSION: {g.version}")
+    logger.info(f"BUILD DONE | SECTIONS: {n} | NAME: {g.name} | VERSION: {g.version}")
 
 
 def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgress") -> None:
@@ -134,19 +134,19 @@ def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgres
             ) from e
         advance(f"#{idx} | HASH: {h}")
 
-    loguru.logger.info(f"VALIDATE DONE | SECTIONS: {n} | CONFIG: {table_configuration_file.name}")
+    logger.info(f"VALIDATE DONE | SECTIONS: {n} | CONFIG: {table_configuration_file.name}")
 
 
 def run(stages: int, fn: Any, arg: Path) -> None:
-    from tablassert.log import LOG_FORMAT
+    from tablassert.log import LOG_FORMAT, logger
     from tablassert.progress import PipelineProgress
 
     with PipelineProgress(total_stages=stages) as progress:
-        sink_id: int = loguru.logger.add(progress.log_sink, level="INFO", format=LOG_FORMAT)
+        sink_id: int = logger.add(progress.log_sink, level="INFO", format=LOG_FORMAT)
         try:
             fn(arg, progress)
         finally:
-            loguru.logger.remove(sink_id)
+            logger.remove(sink_id)
 
 
 @APP.command
