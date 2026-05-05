@@ -159,7 +159,12 @@ def verify_table_configuration_syntax(
     table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs"),
 ) -> None:
     """Verify The Syntax Of A Declarative Table Configuration File"""
-    with PROGRESS:
+    inflight: InFlight = InFlight()
+
+    def render() -> Group:
+        return Group(PROGRESS, inflight.render())
+
+    with Live(render(), refresh_per_second=4) as live:
         # ? Load Tables
         t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
         r: object = from_yaml(table_configuration_file)
@@ -173,13 +178,19 @@ def verify_table_configuration_syntax(
 
         # ? Validating Section Syntax
         t3: Any = PROGRESS.add_task("Validating Section Syntax...", total=n)
-        for idx, s in track(t3, enumerate(sections, start=1)):
+        for idx, s in enumerate(sections, start=1):
+            h: str = mkhash(s)
+            inflight.add(idx, table_configuration_file.name, h)
+            live.update(render())
             try:
                 Section.model_validate(s)
             except ValidationError as e:
                 raise RuntimeError(
-                    f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {mkhash(s)} | PYDANTIC: {e}"
+                    f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {e}"
                 ) from e
-            PROGRESS.update(t3, total=1, completed=1)
+            inflight.remove(idx)
+            PROGRESS.advance(t3)
+            live.update(render())
 
         PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)
+        live.update(render())
