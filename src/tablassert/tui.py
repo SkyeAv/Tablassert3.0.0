@@ -23,19 +23,22 @@ class StageProgress(Static):
         yield ProgressBar(total=self.total, show_eta=False)
 
     def watch_stage(self: StageProgress, stage: str) -> None:
-        label: Optional[Label] = self.query_one(Label)
-        if label is not None:
-            label.update(stage)
+        if not self.is_mounted:
+            return
+        label: Label = self.query_one(Label)
+        label.update(stage)
 
     def watch_total(self: StageProgress, total: float) -> None:
-        bar: Optional[ProgressBar] = self.query_one(ProgressBar)
-        if bar is not None:
-            bar.total = total
+        if not self.is_mounted:
+            return
+        bar: ProgressBar = self.query_one(ProgressBar)
+        bar.total = total
 
     def watch_progress(self: StageProgress, progress: float) -> None:
-        bar: Optional[ProgressBar] = self.query_one(ProgressBar)
-        if bar is not None:
-            bar.update(progress=progress)
+        if not self.is_mounted:
+            return
+        bar: ProgressBar = self.query_one(ProgressBar)
+        bar.update(progress=progress)
 
 
 class SectionDetails(Static):
@@ -46,9 +49,10 @@ class SectionDetails(Static):
         yield Static(self.section_info, id="section-content")
 
     def watch_section_info(self: SectionDetails, info: str) -> None:
-        content: Optional[Static] = self.query_one("#section-content", Static)
-        if content is not None:
-            content.update(info)
+        if not self.is_mounted:
+            return
+        content: Static = self.query_one("#section-content", Static)
+        content.update(info)
 
 
 class LogPanel(RichLog):
@@ -73,6 +77,14 @@ class TablassertApp(App[None]):
     section_info: reactive[str] = reactive("")
     stats: reactive[str] = reactive("")
 
+    def __init__(self: TablassertApp, worker_func: Optional[Any] = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.worker_func = worker_func
+
+    def on_mount(self: TablassertApp) -> None:
+        if self.worker_func is not None:
+            self.run_worker(self.worker_func, thread=True)
+
     def compose(self: TablassertApp) -> ComposeResult:
         yield Header()
         with Horizontal(id="main-body"):
@@ -84,31 +96,37 @@ class TablassertApp(App[None]):
         yield StatsFooter(id="stats-footer")
 
     def watch_stage(self: TablassertApp, stage: str) -> None:
-        sp: Optional[StageProgress] = self.query_one("#stage-progress", StageProgress)
-        if sp is not None:
-            sp.stage = stage
+        if not self.is_mounted:
+            return
+        sp: StageProgress = self.query_one("#stage-progress", StageProgress)
+        sp.stage = stage
 
     def watch_progress(self: TablassertApp, progress: float) -> None:
-        sp: Optional[StageProgress] = self.query_one("#stage-progress", StageProgress)
-        if sp is not None:
-            sp.progress = progress
+        if not self.is_mounted:
+            return
+        sp: StageProgress = self.query_one("#stage-progress", StageProgress)
+        sp.progress = progress
 
     def watch_total(self: TablassertApp, total: float) -> None:
-        sp: Optional[StageProgress] = self.query_one("#stage-progress", StageProgress)
-        if sp is not None:
-            sp.total = total
+        if not self.is_mounted:
+            return
+        sp: StageProgress = self.query_one("#stage-progress", StageProgress)
+        sp.total = total
 
     def watch_section_info(self: TablassertApp, info: str) -> None:
-        sd: Optional[SectionDetails] = self.query_one("#section-details", SectionDetails)
-        if sd is not None:
-            sd.section_info = info
+        if not self.is_mounted:
+            return
+        sd: SectionDetails = self.query_one("#section-details", SectionDetails)
+        sd.section_info = info
 
     def watch_stats(self: TablassertApp, stats: str) -> None:
-        sf: Optional[StatsFooter] = self.query_one("#stats-footer", StatsFooter)
-        if sf is not None:
-            sf.stats = stats
+        if not self.is_mounted:
+            return
+        sf: StatsFooter = self.query_one("#stats-footer", StatsFooter)
+        sf.stats = stats
 
     def write_log(self: TablassertApp, message: str) -> None:
-        lp: Optional[LogPanel] = self.query_one("#log-panel", LogPanel)
-        if lp is not None:
-            lp.write(message)
+        if not self.is_mounted:
+            return
+        lp: LogPanel = self.query_one("#log-panel", LogPanel)
+        lp.write(message)

@@ -103,6 +103,7 @@ markers = ["network: requires internet"]
 line-length = 120
 indent-width = 4
 target-version = "py311"
+exclude = ["*.tcss"]
 
 [tool.ruff.format]
 quote-style = "double"

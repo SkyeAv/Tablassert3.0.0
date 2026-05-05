@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
-from functools import partial
 from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
@@ -172,12 +171,18 @@ def validate_pipeline(table_configuration_file: Path, app: TablassertApp) -> Non
 
 @APP.command
 def build(graph_configuration_file: Path) -> None:
+    """Build a knowledge graph from a YAML configuration file."""
     global APP_REF
+
     TUI: TablassertApp = TablassertApp()
     APP_REF = TUI
+
+    def worker() -> None:
+        build_pipeline(graph_configuration_file, TUI)
+
+    TUI.worker_func = worker
     sink_id: int = logger.add(log_sink, level="INFO", format="{time:HH:mm:ss} | {level} | {message}")
     try:
-        TUI.run_worker(partial(build_pipeline, graph_configuration_file, TUI), thread=True)
         TUI.run()
     finally:
         logger.remove(sink_id)
@@ -186,12 +191,18 @@ def build(graph_configuration_file: Path) -> None:
 
 @APP.command
 def validate(table_configuration_file: Path) -> None:
+    """Validate section syntax from a YAML configuration file."""
     global APP_REF
+
     TUI: TablassertApp = TablassertApp()
     APP_REF = TUI
+
+    def worker() -> None:
+        validate_pipeline(table_configuration_file, TUI)
+
+    TUI.worker_func = worker
     sink_id: int = logger.add(log_sink, level="INFO", format="{time:HH:mm:ss} | {level} | {message}")
     try:
-        TUI.run_worker(partial(validate_pipeline, table_configuration_file, TUI), thread=True)
         TUI.run()
     finally:
         logger.remove(sink_id)
