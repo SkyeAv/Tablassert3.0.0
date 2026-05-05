@@ -40,12 +40,12 @@ uv sync
 uv run tablassert --help
 ```
 
-This creates a virtual environment in `.venv/` and installs all dependencies. The `tablassert` command is available through `uv run`.
+This creates a virtual environment in `.venv/` and installs the base dependencies. The `tablassert` command is available through `uv run`.
 
 ### Method 2: Install from PyPI
 
 Recommended for most users who just need the CLI.
-All dependencies (ML, web, Excel support) are included in the base install.
+Base install includes web and Excel support. QC runtime support is opt-in.
 
 ```bash
 # Option A: Install from PyPI with UV
@@ -59,19 +59,28 @@ pip install tablassert
 
 | Extra | Description | Includes |
 |---|---|---|
-| `rtcompat` | Runtime-compatible Polars build | `polars[rtcompat]` |
-| `rt` | Alias for `rtcompat` | Same as `rtcompat` |
+| `rt` | Runtime-compatible Polars build | `polars[rtcompat]` |
+| `qc` | CPU QC runtime | `onnxruntime` |
+| `qc-cuda` | CUDA QC runtime | `onnxruntime-gpu` |
 
 ```bash
 # Install with runtime-compatible Polars
 # (for CPUs without the required Polars instructions)
-uv tool install "tablassert[rtcompat]"
-# or use the shorter alias
 uv tool install "tablassert[rt]"
 
 # pip equivalents
-pip install "tablassert[rtcompat]"
+pip install "tablassert[rt]"
+
+# Install CPU QC runtime
+uv tool install "tablassert[qc]"
+pip install "tablassert[qc]"
+
+# Install CUDA QC runtime
+uv tool install "tablassert[qc-cuda]"
+pip install "tablassert[qc-cuda]"
 ```
+
+The `qc` and `qc-cuda` extras are intended as separate install choices. `qc-cuda` targets a single NVIDIA GPU on `device_id=0` and hard-fails if `CUDAExecutionProvider` is unavailable at runtime.
 
 Tablassert CLI is now available:
 
@@ -142,6 +151,12 @@ For contributing to Tablassert or running tests, follow these additional steps:
 # Install development dependencies (includes pre-commit hooks)
 uv sync --dev
 
+# Add CPU QC runtime for QC tests
+uv sync --dev --extra qc
+
+# Or add CUDA QC runtime for GPU-backed QC tests
+uv sync --dev --extra qc-cuda
+
 # Install pre-commit hooks
 pre-commit install
 
@@ -195,12 +210,21 @@ uv sync --reinstall
 ### Polars CPU Instruction Issues
 
 If your machine does not support the CPU instructions required by default Polars
-builds, install Tablassert with the runtime-compat extra from `pyproject.toml`:
+builds, install Tablassert with the `rt` extra from `pyproject.toml`:
 
 ```bash
-uv tool install "tablassert[rtcompat]"
-# or use the shorter alias
 uv tool install "tablassert[rt]"
 # or
-pip install "tablassert[rtcompat]"
+pip install "tablassert[rt]"
 ```
+
+### QC Runtime Issues
+
+If you enable `qc: true` in a graph configuration without a QC runtime installed, install one of:
+
+```bash
+pip install "tablassert[qc]"
+pip install "tablassert[qc-cuda]"
+```
+
+Use `qc-cuda` only on systems with a working NVIDIA CUDA/cuDNN environment. Tablassert will not silently fall back to CPU from the CUDA path.

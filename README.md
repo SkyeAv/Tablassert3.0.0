@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/pypi/l/tablassert.svg)](https://github.com/SkyeAv/Tablassert/blob/main/LICENSE)
 [![Docs](https://img.shields.io/github/deployments/SkyeAv/Tablassert/github-pages?label=docs)](https://skyeav.github.io/Tablassert/)
 
-Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in.
+Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution built in and optional quality control.
 
 ```bash
 pip install tablassert
@@ -20,11 +20,15 @@ tablassert build-knowledge-graph config.yaml
 pip install tablassert
 ```
 
-All dependencies (ML, web, Excel support) are included in the base install. An optional extra is available for CPU compatibility:
+Base install includes web and Excel support. Optional extras are available for CPU compatibility and QC runtime selection:
 
 ```bash
-pip install "tablassert[rtcompat]"  # Polars build for CPUs without required instructions
+pip install "tablassert[rt]"       # Polars build for CPUs without required instructions
+pip install "tablassert[qc]"       # Enable QC with CPU ONNX Runtime
+pip install "tablassert[qc-cuda]"  # Enable QC with CUDA ONNX Runtime on GPU 0
 ```
+
+QC is disabled by default at the graph level. Set `qc: true` in a graph config to enable the audit stage.
 
 <details>
 <summary><strong>Docker</strong></summary>
@@ -61,7 +65,7 @@ Define your entities and relationships in YAML, point tablassert at your data, a
 
 - **Declarative Configuration** — YAML-based, no code required
 - **Entity Resolution** — Maps text to biological entities (genes, diseases, chemicals)
-- **Quality Control** — Three-stage validation (exact → fuzzy → BERT embeddings)
+- **Quality Control** — Optional three-stage validation (exact → fuzzy → BERT embeddings)
 - **KGX Compliance** — NCATS Translator-compatible NDJSON output
 - **Performance** — Lazy evaluation pipelines with Polars and DuckDB-accelerated entity resolution
 

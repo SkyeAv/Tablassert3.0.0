@@ -25,7 +25,7 @@ uv sync
 All ML, web, and Excel dependencies are included in the core install. The only optional extra is a runtime-compatible Polars build for CPUs without required instructions:
 
 ```bash
-uv sync --extra rtcompat   # polars[rtcompat]
+uv sync --extra rt   # polars[rtcompat]
 ```
 
 ## Development Workflow

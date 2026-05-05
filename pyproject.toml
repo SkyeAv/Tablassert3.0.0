@@ -43,7 +43,6 @@ dependencies = [
     "httpx>=0.28.1",
     "lazy-loader>=0.5",
     "loguru>=0.7.3",
-    "onnxruntime>=1.24.4",
     "optimum-onnx>=0.1.0",
     "orjson>=3.11.7",
     "playwright>=1.58.0",
@@ -78,11 +77,14 @@ packages = ["./src/tablassert"]
 tablassert = "tablassert.cli:APP"
 
 [project.optional-dependencies]
-rtcompat = [
+rt = [
     "polars[rtcompat]>=1.39.0",
 ]
-rt = [
-    "tablassert[rtcompat]",
+qc = [
+    "onnxruntime>=1.24.4",
+]
+qc-cuda = [
+    "onnxruntime-gpu>=1.24.4",
 ]
 
 [dependency-groups]
@@ -97,7 +99,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["network: requires internet"]
+markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider"]
 
 [tool.ruff]
 line-length = 120

@@ -266,6 +266,7 @@ class Tcode(Section):
     number: PositiveInt = Field(...)
     config: Path = Field(...)
     store: Path = Field(...)
+    qc: bool = Field(False)
 
     def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
         # ? Collect Helper For Encoding Classes
@@ -289,7 +290,7 @@ class Tcode(Section):
             (level_one, (col,)),
             (level_two, (col,)),
             (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
-            (fullmap_audit, (col, self.store.stem, self.config.name)),
+            (fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) if self.qc else None,
         ]
         return add(encoding, node)
 
@@ -491,7 +492,9 @@ def resolve_many(
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
+    qc: bool = False,
     column_context: bool = True,
+    qc_provider: Optional[Literal["cpu", "cuda"]] = None,
 ) -> list[dict[str, Any]]:
     series: pl.Series = pl.Series(col, entities)
     lf: pl.LazyFrame = series.to_frame().lazy()
@@ -507,6 +510,8 @@ def resolve_many(
         ]
 
         lf = resolve(lf, col, conns, taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
+        if qc:
+            lf = fullmap_audit(lf, col, "", "", log=qc, provider=qc_provider)
 
     df: pl.DataFrame = lf.collect()
     return df.to_dicts()

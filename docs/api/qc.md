@@ -2,6 +2,8 @@
 
 The `qc` module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BERT semantic similarity.
 
+QC runtime support is optional. Install `tablassert[qc]` for CPU inference or `tablassert[qc-cuda]` for CUDA inference on GPU 0.
+
 ## fullmap_audit()
 
 Primary quality control function that filters entity mappings based on confidence criteria.
@@ -14,7 +16,9 @@ def fullmap_audit(
   col: str,
   section_hash: str,
   config_file: str,
-  out: str = "passed"
+  out: str = "passed",
+  log: bool = True,
+  provider: Optional[Literal["cpu", "cuda"]] = None
 ) -> pl.LazyFrame
 ```
 
@@ -43,6 +47,14 @@ Example: If `col="subject"`, looks for:
 Name of the boolean column indicating validation status.
 
 Rows with `out=True` passed QC, `out=False` failed.
+
+**`log: bool` (default: `True`)**
+
+Controls whether failed QC rows are logged.
+
+**`provider: Optional[Literal["cpu", "cuda"]]`**
+
+Optional runtime override. Use `"cpu"` to force CPU inference, `"cuda"` to require CUDA inference, or `None` to auto-select from the installed QC runtime.
 
 **`section_hash: str` / `config_file: str`**
 
@@ -119,13 +131,13 @@ return similarity >= 0.2
 
 **Model:** `pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb`
 
-**Backend:** ONNX Runtime (CPU)
+**Backend:** ONNX Runtime (`CPUExecutionProvider` or `CUDAExecutionProvider`)
 
 **Optimizations:**
 - Graph optimization level: ALL
 - ONNX session caching
 
-Lazy-loaded on first `fullmap_audit()` call that reaches the embedding stage, then reused for subsequent calls.
+Lazy-loaded on first `fullmap_audit()` call that reaches the embedding stage, then reused per provider for subsequent calls.
 
 ### Model Caching
 
@@ -163,7 +175,8 @@ validated = fullmap_audit(
   lf,
   col="subject",
   section_hash="tutorial-section",
-  config_file="tutorial-table.yaml"
+  config_file="tutorial-table.yaml",
+  provider="cpu"
 )
 
 # Only rows that passed QC remain
@@ -205,7 +218,7 @@ Output: 990 rows (700 + 250 + 40)
 
 ### Integration with Pipeline
 
-QC is applied after entity resolution:
+QC is applied after entity resolution when graph or API QC is enabled:
 
 1. **Entity resolution** (`resolve()`) - Maps text to CURIEs
 2. **Quality control** (`fullmap_audit()`) - Validates mappings

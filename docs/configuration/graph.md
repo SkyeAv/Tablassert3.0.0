@@ -6,6 +6,7 @@ Graph configurations orchestrate the processing of multiple table configurations
 
 A graph configuration file specifies:
 - Output knowledge graph name and version
+- Whether QC auditing runs during the build
 - List of table configurations to process
 - Database locations for entity resolution and provenance
 
@@ -27,6 +28,7 @@ A graph configuration file specifies:
 |-------|------|-------------|
 | `pubmed_db` | Path | Path to SQLite PubMed metadata database |
 | `pmc_db` | Path | Path to SQLite PMC figure captions database |
+| `qc` | Boolean | Enable the QC audit stage during graph builds |
 
 ### Field Details
 
@@ -45,6 +47,12 @@ Example: `name: MULTIOMICS_KG` produces `MULTIOMICS_KG_{version}.nodes.ndjson`
 Output knowledge graph version. Used as suffix for NDJSON files.
 
 Common values: `"1.0.0"`, `"UNSTABLE"`, `"BETA"`
+
+**`qc: bool = false`**
+
+When `true`, Tablassert runs the QC audit stage after entity resolution for node-like columns. When `false`, the build skips QC entirely.
+
+This field only controls whether QC runs. Install `tablassert[qc]` or `tablassert[qc-cuda]` if you plan to enable it.
 
 **`tables: list[path]`**
 
@@ -97,6 +105,7 @@ Paths can be:
 syntax: GC2
 name: MY_GRAPH
 version: 1.0.0
+qc: true
 tables:
   - ./my-table.yaml
 datassert: /data/datassert
@@ -129,7 +138,7 @@ When you run `tablassert build-knowledge-graph graph.yaml`:
    - Download source file (if URL specified)
    - Apply transformations
    - Resolve entities using `datassert`
-   - Validate with QC pipeline
+    - Validate with QC pipeline when `qc: true`
    - Create subgraph parquet file
 3. **Aggregate subgraphs** - Merge all parquet files
 4. **Add provenance (optional)** - Query `pubmed_db` and `pmc_db` for metadata when configured
