@@ -64,7 +64,9 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
     for idx, s in enumerate(sections, start=1):
         try:
             tcode.append(
-                Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet"), "log": g.log, "qc": g.qc})
+                Tcode.model_validate(
+                    {**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet"), "log": g.log, "qc": g.qc}
+                )
             )
         except pydantic.ValidationError as e:
             raise RuntimeError(

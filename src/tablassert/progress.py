@@ -23,6 +23,7 @@ from rich.progress import (
 
 if TYPE_CHECKING:
     from pydantic import ValidationError
+
     from tablassert.lib import Tcode
 
 
