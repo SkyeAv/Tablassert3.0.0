@@ -28,6 +28,7 @@ A graph configuration file specifies:
 |-------|------|-------------|
 | `pubmed_db` | Path | Path to SQLite PubMed metadata database |
 | `pmc_db` | Path | Path to SQLite PMC figure captions database |
+| `log` | Boolean | Log unmatched entities and audit details during graph builds |
 | `qc` | Boolean | Enable the QC audit stage during graph builds |
 
 ### Field Details
@@ -47,6 +48,10 @@ Example: `name: MULTIOMICS_KG` produces `MULTIOMICS_KG_{version}.nodes.ndjson`
 Output knowledge graph version. Used as suffix for NDJSON files.
 
 Common values: `"1.0.0"`, `"UNSTABLE"`, `"BETA"`
+
+**`log: bool = false`**
+
+When `true`, Tablassert logs unmatched entities and audit details during the graph build. When `false`, unmatched entities are silently filtered.
 
 **`qc: bool = false`**
 
@@ -105,6 +110,7 @@ Paths can be:
 syntax: GC2
 name: MY_GRAPH
 version: 1.0.0
+log: true
 qc: true
 tables:
   - ./my-table.yaml
