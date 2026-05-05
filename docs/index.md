@@ -62,7 +62,7 @@ cd Tablassert
 uv sync
 
 # Run with your configuration
-uv run tablassert build-knowledge-graph <config>
+uv run tablassert build <config>
 ```
 
 ## Documentation Sections

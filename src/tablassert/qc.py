@@ -45,7 +45,9 @@ def get_qc_provider(provider: Optional[Literal["cpu", "cuda"]] = None) -> tuple[
     if provider == "cpu":
         if has_cpu or has_cuda:
             return CPU_PROVIDER, None
-        raise RuntimeError("03 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
+        raise RuntimeError(
+            "03 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda]."
+        )
 
     if provider == "cuda":
         if not has_cuda:

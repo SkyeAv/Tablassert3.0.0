@@ -495,7 +495,6 @@ def resolve_many(
     avoid: Optional[list[Categories]] = None,
     qc: bool = False,
     column_context: bool = True,
-    qc_provider: Optional[Literal["cpu", "cuda"]] = None,
 ) -> list[dict[str, Any]]:
     series: pl.Series = pl.Series(col, entities)
     lf: pl.LazyFrame = series.to_frame().lazy()
@@ -512,7 +511,7 @@ def resolve_many(
 
         lf = resolve(lf, col, conns, taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
         if qc:
-            lf = fullmap_audit(lf, col, "", "", log=qc, provider=qc_provider)
+            lf = fullmap_audit(lf, col, "", "", log=qc)
 
     df: pl.DataFrame = lf.collect()
     return df.to_dicts()

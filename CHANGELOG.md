@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.0 - 2026-05-05
+
+### Changes
+- Renamed CLI commands for brevity: `build-knowledge-graph` → `build`, `verify-table-configuration-syntax` → `validate`. Version display moved from `tablassert version` subcommand to `tablassert --version` flag.
+- Added `qc` parameter to `resolve_many()` for optional QC auditing during standalone batch resolution. ONNX Runtime provider is auto-detected via `get_qc_provider()`.
+- Added `has_qc_runtime()` helper to `qc.py` for ONNX Runtime detection.
+- Added `empty_matches()` helper to `fullmap.py` for empty result fallback.
+- Added `DownloadReceipt` dataclass, `DownloadError`/`DownloadValidationError` exception classes, and `classify()`/`validate_download()`/`modernize_xls()` to `downloader.py`.
+- Updated log format to include timestamps: `{time:YYYY-MM-DD HH:mm:ss}`.
+
+### Bug Fixes
+- Fixed tutorial table configuration using header names as `encoding` values instead of Excel column letters (`A`, `B`, `C`, `D`).
+
+### Documentation
+- Updated all documentation to reflect renamed CLI commands.
+- Fixed tutorial and example YAML configurations to use Excel column letter references (`A`, `B`, `C`, `D`) for `method: column` encodings instead of header names, matching the headerless source reading behavior.
+- Fixed `encoding` values in `docs/examples/` gallery configurations.
+- Updated `resolve_many()` API reference with new `qc` parameter and auto-detected QC provider.
+- Fixed CITATION.cff version (7.2.2 → 7.4.0).
+- Fixed CONTRIBUTING.md lazy-loaded package list (`typer` → `cyclopts`, added missing packages).
+
 ## 7.3.6 - 2026-04-29
 
 ### Documentation

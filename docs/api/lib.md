@@ -19,6 +19,7 @@ def resolve_many(
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
     column_context: bool = True,
+    qc: bool = False,
 ) -> list[dict[str, Any]]
 ```
 
@@ -70,6 +71,10 @@ Example: `[Categories.Gene]` prevents gene mappings from appearing in the output
 Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the resolution query adds a category frequency score and prefers the category that appears most frequently across all terms in the batch. When `False`, frequency-based tie-breaking is disabled.
 
 This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.
+
+**`qc: bool` (default: `False`)**
+
+When `True`, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Requires a QC runtime to be installed (`tablassert[qc]` or `tablassert[qc-cuda]`). The ONNX Runtime provider is auto-detected based on the installed package — CUDA is preferred when `onnxruntime-gpu` is available, otherwise CPU is used.
 
 ### Return Value
 
@@ -230,7 +235,7 @@ Both levels are queried during resolution. Level one (exact case-insensitive mat
 
 ## Integration
 
-`resolve_many()` is a self-contained entry point. It does not require any prior setup beyond having a datassert database available. For full pipeline builds, use the CLI (`tablassert build-knowledge-graph`) which orchestrates resolution through the `Tcode` class.
+`resolve_many()` is a self-contained entry point. It does not require any prior setup beyond having a datassert database available. For full pipeline builds, use the CLI (`tablassert build`) which orchestrates resolution through the `Tcode` class.
 
 ## Next Steps
 

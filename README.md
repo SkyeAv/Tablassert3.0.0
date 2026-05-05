@@ -9,7 +9,7 @@ Extract knowledge assertions from tabular data into NCATS Translator-compliant K
 
 ```bash
 pip install tablassert
-tablassert build-knowledge-graph config.yaml
+tablassert build config.yaml
 ```
 
 **[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
@@ -40,26 +40,33 @@ docker run --rm \
   -v /path/to/config:/data \
   -v /path/to/datassert:/datassert \
   ghcr.io/skyeav/tablassert:latest \
-  build-knowledge-graph /data/graph-config.yaml
+  build /data/graph-config.yaml
 ```
 
 </details>
 
 ## Quick Demo
 
-```bash
-# Build a knowledge graph from a YAML configuration
-$ tablassert build-knowledge-graph graph-config.yaml
-⠋ Loading Tables...
-⠋ Extracting Sections...
-⠋ Building TCode...
-⠋ Collecting Instructions...
-⠋ Building Subgraphs...
-⠋ Compiling Graph...
-✓ Finished!
+```python
+from pathlib import Path
+from tablassert.lib import resolve_many
+
+# Resolve gene names to CURIEs against a datassert database
+results = resolve_many(
+    col="gene",
+    entities=["TP53", "BRCA1", "EGFR"],
+    datassert=Path("/path/to/datassert"),
+    taxon="9606",
+)
+
+for row in results:
+    print(f"{row['original gene']} → {row['gene']} ({row['gene name']})")
+# TP53 → HGNC:11998 (TP53)
+# BRCA1 → HGNC:1100 (BRCA1)
+# EGFR → HGNC:3236 (EGFR)
 ```
 
-Define your entities and relationships in YAML, point tablassert at your data, and get NCATS Translator-compliant KGX NDJSON out the other side — no code required. Intermediate section artifacts are staged in `.storassert/` during the build.
+Point `resolve_many()` at a datassert database and resolve any iterable of entity strings to CURIEs — no LazyFrame setup, NLP preprocessing, or DuckDB connection management required. For full pipeline builds with YAML configuration, use `tablassert build config.yaml`.
 
 ## Key Features
 
