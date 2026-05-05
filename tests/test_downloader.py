@@ -120,7 +120,9 @@ def test_from_url_logs_strategy(tmp_path: Path) -> None:
 
         def write_file(url: str, p: Path, timeout: int) -> DownloadReceipt:
             p.write_bytes(fake_xlsx_bytes())
-            return DownloadReceipt(final_url=url, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            return DownloadReceipt(
+                final_url=url, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
         mock_direct.side_effect = write_file
         with patch("tablassert.downloader.logger") as mock_logger:
@@ -147,7 +149,9 @@ def test_from_url_uses_direct_for_extensions(tmp_path: Path) -> None:
 
     def write_file(url: str, p: Path, timeout: int) -> DownloadReceipt:
         p.write_bytes(fake_xlsx_bytes())
-        return DownloadReceipt(final_url=url, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        return DownloadReceipt(
+            final_url=url, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     with patch("tablassert.downloader.direct", side_effect=write_file) as mock_direct:
         from_url("https://example.com/data.xlsx", out, retries=1)
