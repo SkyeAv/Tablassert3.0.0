@@ -41,7 +41,7 @@ src/tablassert/
   ingests.py      # YAML ingestion: from_yaml(), to_sections(), fastmerge()
   downloader.py   # Playwright-based file downloads with retries
   utils.py        # Hashing (xxhash), STORE path, namespace UUIDs
-  log.py          # loguru logger → .logassert/logassert.log
+  log.py          # loguru logger → .logassert/tablassert.log; cat() helper for category tagging
   __init__.py     # Empty file (lazy loading is per-module, not here)
 docs/             # MkDocs documentation source
 mkdocs.yml        # MkDocs configuration

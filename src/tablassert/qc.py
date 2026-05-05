@@ -5,9 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional
 
 import lazy_loader as Lazy
-from rapidfuzz import fuzz
-from rapidfuzz.process import cpdist
-from sklearn.metrics.pairwise import cosine_similarity
 
 if TYPE_CHECKING:
     import onnxruntime as ort
@@ -18,14 +15,12 @@ else:
     sentence_transformers = Lazy.load("sentence_transformers")
     pl = Lazy.load("polars")
 
-from tablassert.log import logger
+from tablassert.log import cat
 
-SESSION_OPTS: object = ort.SessionOptions()
-SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
+logger = cat("QC")
 
 MODEL: Path = Path("./.onnxassert/")
 MODEL_BACKEND: Literal["onnx"] = "onnx"
-MODEL_KWARGS: dict[str, object] = {"provider": "CPUExecutionProvider", "session_options": SESSION_OPTS}
 
 # TODO: Explore Best Model For QC
 BIOBERT: Optional[object] = None
@@ -36,13 +31,16 @@ def get_biobert() -> object:
     global BIOBERT
     if BIOBERT:
         return BIOBERT
-    elif not BIOBERT and MODEL.exists():
+    session_opts: object = ort.SessionOptions()
+    session_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
+    model_kwargs: dict[str, object] = {"provider": "CPUExecutionProvider", "session_options": session_opts}
+    if MODEL.exists():
         BIOBERT = sentence_transformers.SentenceTransformer(
-            str(MODEL), backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS
+            str(MODEL), backend=MODEL_BACKEND, model_kwargs=model_kwargs
         )  # pyright: ignore
     else:
         BIOBERT = sentence_transformers.SentenceTransformer(
-            "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS
+            "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=model_kwargs
         )  # pyright: ignore
         MODEL.mkdir(parents=True, exist_ok=True)
         BIOBERT.save(MODEL)  # pyright: ignore
@@ -53,6 +51,10 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     # ? Ensures Fullmap Correct Processes Strings To CURIES
     # * Deletes Suspected Errors
     # ! Collection Point: Pending Pairs Require Eager
+    from rapidfuzz import fuzz
+    from rapidfuzz.process import cpdist
+    from sklearn.metrics.pairwise import cosine_similarity
+
     original: str = add("original ", col)
     preferred: str = add(col, " name")
     cols: list[str] = [col, original, preferred]

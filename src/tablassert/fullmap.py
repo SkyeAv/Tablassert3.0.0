@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Optional
 import lazy_loader as Lazy
 
 from tablassert.enums import Categories
-from tablassert.log import logger
+from tablassert.log import cat
+
+logger = cat("FULLMAP")
 
 if TYPE_CHECKING:
     import polars as pl

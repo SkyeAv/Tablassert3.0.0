@@ -9,7 +9,9 @@ from urllib.parse import urlparse
 
 import lazy_loader as Lazy
 
-from tablassert.log import logger
+from tablassert.log import cat
+
+logger = cat("DOWNLOAD")
 
 if TYPE_CHECKING:
     import httpx
@@ -195,7 +197,7 @@ def from_url(
         return p
 
     strategy: str = classify(website)
-    logger.info(f"download | strategy={strategy} | url={website} | config={config_name} | hash={section_hash}")
+    logger.info(f"DOWNLOAD | STRATEGY: {strategy} | URL: {website} | CONFIG: {config_name} | HASH: {section_hash}")
 
     resolved: Optional[str] = resolve(website)
     url: str = resolved if resolved is not None else website
@@ -221,7 +223,7 @@ def from_url(
                         return p
                 except Exception as e:
                     cleanup(candidate)
-                    logger.info(f"download | host adapter fell back to browser | url={url} | reason={e}")
+                    logger.info(f"BROWSER FALLBACK | URL: {url} | REASON: {e}")
 
             browser(website, candidate, timeout)
             validate_download(candidate)
@@ -232,7 +234,7 @@ def from_url(
         except Exception as e:
             last = e
             cleanup(candidate)
-            logger.warning(f"download | attempt={attempt + 1}/{retries} | error={e}")
+            logger.warning(f"DOWNLOAD RETRY | ATTEMPT: {attempt + 1}/{retries} | ERROR: {e}")
             if attempt < retries - 1:
                 sleep(2**attempt)
 

@@ -127,7 +127,7 @@ def test_from_url_logs_strategy(tmp_path: Path) -> None:
             from_url("https://example.com/data.xlsx", out, retries=1)
 
         mock_logger.info.assert_any_call(
-            "download | strategy=direct | url=https://example.com/data.xlsx | config=None | hash=None"
+            "DOWNLOAD | STRATEGY: direct | URL: https://example.com/data.xlsx | CONFIG: None | HASH: None"
         )
 
 

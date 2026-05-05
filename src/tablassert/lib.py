@@ -12,12 +12,11 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt, PositiveInt
-from sqlite_utils import Database
 
 from tablassert.downloader import from_url
 from tablassert.enums import Categories, EncodingMethods, Files, Tokens
 from tablassert.fullmap import SHARDS, resolve
-from tablassert.log import logger
+from tablassert.log import cat
 from tablassert.models import Encoding, NodeEncoding, Section
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
@@ -33,6 +32,8 @@ else:
     orjson = Lazy.load("orjson")
     pl = Lazy.load("polars")
     xxhash = Lazy.load("xxhash")
+
+logger = cat("PIPELINE")
 
 
 def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
@@ -190,6 +191,8 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
     # ? Adds PubMedDB Related MeSH Annotations To LazyFrame
     # ! Collection Point: SQLite Query Then Per-Row Literal Assignment
+    from sqlite_utils import Database
+
     df: pl.DataFrame = lf.collect()
     db: object = Database(pubmed_db)
     query: str = """
@@ -237,6 +240,8 @@ LIMIT 1
 def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
     # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
     # ! Collection Point: SQLite Query Then Literal Assignment
+    from sqlite_utils import Database
+
     df: pl.DataFrame = lf.collect()
     db: object = Database(pmc_db)
     filename: str = basename(url)
