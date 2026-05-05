@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import lazy_loader as Lazy
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from tablassert.fullmap import SHARDS
 from tablassert.ingests import from_yaml, to_sections
@@ -51,10 +51,9 @@ def track(task_id: Any, iterable: Any) -> Any:
         PROGRESS.advance(task_id)
 
 
-class InFlight:
+class InFlight(BaseModel):
     # ? Tracks Sections Currently Being Processed For The Live Panel
-    def __init__(self: InFlight) -> None:
-        self.items: dict[int, tuple[str, str]] = {}
+    items: dict[int, tuple[str, str]] = Field(default_factory=dict)
 
     def add(self: InFlight, number: int, config: str, section_hash: str) -> None:
         self.items[number] = (config, section_hash)
