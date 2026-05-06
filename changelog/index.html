@@ -92,13 +92,9 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#740-2026-05-05">7.4.0 - 2026-05-05</a>
+    <li class="toctree-l2"><a class="reference internal" href="#741-2026-05-05">7.4.1 - 2026-05-05</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
-    </li>
     <li class="toctree-l3"><a class="reference internal" href="#bug-fixes">Bug Fixes</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#documentation">Documentation</a>
     </li>
         </ul>
     </li>
@@ -131,29 +127,10 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="740-2026-05-05">7.4.0 - 2026-05-05</h2>
-<h3 id="changes">Changes</h3>
-<ul>
-<li>Renamed CLI commands: <code>build-knowledge-graph</code> → <code>build</code>, <code>verify-table-configuration-syntax</code> → <code>validate</code>. Version now shown via <code>--version</code> flag.</li>
-<li>Added <code>log</code> parameter to graph configuration for controlling unmatched entity and audit logging during builds.</li>
-<li>Added <code>qc</code> parameter to <code>resolve_many()</code> for optional QC auditing. ONNX Runtime provider is auto-detected via <code>get_qc_provider()</code>.</li>
-<li>Added <code>has_qc_runtime()</code> helper to <code>qc.py</code> and <code>empty_matches()</code> helper to <code>fullmap.py</code>.</li>
-<li>Rewrote <code>downloader.py</code> with <code>DownloadReceipt</code>, exception classes, and file validation.</li>
-<li>Refactored <code>cli.py</code> to use the shared <code>logger</code> instance instead of <code>loguru.logger</code> directly.</li>
-<li>Unified failure log messages to a single <code>FAILED</code> prefix; unmatched entity logging now filters to NLP level 1 terms only.</li>
-<li>Updated progress bar and section display labels to uppercase with pipe separators.</li>
-</ul>
+<h2 id="741-2026-05-05">7.4.1 - 2026-05-05</h2>
 <h3 id="bug-fixes">Bug Fixes</h3>
 <ul>
-<li>Fixed tutorial table configuration using header names instead of Excel column letters for encodings.</li>
-</ul>
-<h3 id="documentation">Documentation</h3>
-<ul>
-<li>Updated all documentation for renamed CLI commands.</li>
-<li>Fixed tutorial and example YAML configurations to use Excel column letter references.</li>
-<li>Updated <code>resolve_many()</code> API reference with new <code>qc</code> parameter and auto-detected QC provider.</li>
-<li>Documented new <code>log</code> graph configuration parameter with example.</li>
-<li>Fixed CITATION.cff version and CONTRIBUTING.md package list.</li>
+<li>Fixed crash in the BUILDING TCODE progress display caused by <code>format_section_oneline()</code> calling <code>.value</code> on <code>Tcode.status</code>, which is a plain string under <code>use_enum_values=True</code>.</li>
 </ul>
 <p>For older releases and the full project history, open the root <code>CHANGELOG.md</code> in the repository.</p>
               
