@@ -155,6 +155,7 @@
               
                 <h1 id="quality-control-qc">Quality Control (qc)</h1>
 <p>The <code>qc</code> module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BERT semantic similarity.</p>
+<p>QC runtime support is optional. Install <code>tablassert[qc]</code> for CPU inference or <code>tablassert[qc-cuda]</code> for CUDA inference on GPU 0.</p>
 <h2 id="fullmap_audit">fullmap_audit()</h2>
 <p>Primary quality control function that filters entity mappings based on confidence criteria.</p>
 <h3 id="function-signature">Function Signature</h3>
@@ -163,7 +164,9 @@
   col: str,
   section_hash: str,
   config_file: str,
-  out: str = &quot;passed&quot;
+  out: str = &quot;passed&quot;,
+  log: bool = True,
+  provider: Optional[Literal[&quot;cpu&quot;, &quot;cuda&quot;]] = None
 ) -&gt; pl.LazyFrame
 </code></pre>
 <h3 id="parameters">Parameters</h3>
@@ -182,6 +185,10 @@
 <p><strong><code>out: str</code> (default: <code>"passed"</code>)</strong></p>
 <p>Name of the boolean column indicating validation status.</p>
 <p>Rows with <code>out=True</code> passed QC, <code>out=False</code> failed.</p>
+<p><strong><code>log: bool</code> (default: <code>True</code>)</strong></p>
+<p>Controls whether failed QC rows are logged.</p>
+<p><strong><code>provider: Optional[Literal["cpu", "cuda"]]</code></strong></p>
+<p>Optional runtime override. Use <code>"cpu"</code> to force CPU inference, <code>"cuda"</code> to require CUDA inference, or <code>None</code> to auto-select from the installed QC runtime.</p>
 <p><strong><code>section_hash: str</code> / <code>config_file: str</code></strong></p>
 <p>Context fields used in QC failure logs for traceability.</p>
 <h3 id="return-value">Return Value</h3>
@@ -228,11 +235,11 @@ return similarity &gt;= 0.2
 <p><strong>Performance:</strong> Expensive (ONNX inference), heavily cached</p>
 <h3 id="biobert-model">BioBERT Model</h3>
 <p><strong>Model:</strong> <code>pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb</code></p>
-<p><strong>Backend:</strong> ONNX Runtime (CPU)</p>
+<p><strong>Backend:</strong> ONNX Runtime (<code>CPUExecutionProvider</code> or <code>CUDAExecutionProvider</code>)</p>
 <p><strong>Optimizations:</strong>
 - Graph optimization level: ALL
 - ONNX session caching</p>
-<p>Lazy-loaded on first <code>fullmap_audit()</code> call that reaches the embedding stage, then reused for subsequent calls.</p>
+<p>Lazy-loaded on first <code>fullmap_audit()</code> call that reaches the embedding stage, then reused per provider for subsequent calls.</p>
 <h3 id="model-caching">Model Caching</h3>
 <p>BioBERT is lazy-loaded on first use and cached globally for the lifetime of the process:</p>
 <pre><code class="language-python"># ? Lazy-loads BioBERT once on first batch audit call, then caches globally
@@ -260,7 +267,8 @@ validated = fullmap_audit(
   lf,
   col=&quot;subject&quot;,
   section_hash=&quot;tutorial-section&quot;,
-  config_file=&quot;tutorial-table.yaml&quot;
+  config_file=&quot;tutorial-table.yaml&quot;,
+  provider=&quot;cpu&quot;
 )
 
 # Only rows that passed QC remain
@@ -316,7 +324,7 @@ Output: 990 rows (700 + 250 + 40)
 - 1M rows: ~2 minutes (first run)
 - 1M rows: ~5 seconds (cached)</p>
 <h3 id="integration-with-pipeline">Integration with Pipeline</h3>
-<p>QC is applied after entity resolution:</p>
+<p>QC is applied after entity resolution when graph or API QC is enabled:</p>
 <ol>
 <li><strong>Entity resolution</strong> (<code>resolve()</code>) - Maps text to CURIEs</li>
 <li><strong>Quality control</strong> (<code>fullmap_audit()</code>) - Validates mappings</li>

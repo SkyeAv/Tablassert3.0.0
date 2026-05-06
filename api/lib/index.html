@@ -165,6 +165,7 @@
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
     column_context: bool = True,
+    qc: bool = False,
 ) -&gt; list[dict[str, Any]]
 </code></pre>
 <h3 id="parameters">Parameters</h3>
@@ -194,6 +195,8 @@
 <p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
 <p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the resolution query adds a category frequency score and prefers the category that appears most frequently across all terms in the batch. When <code>False</code>, frequency-based tie-breaking is disabled.</p>
 <p>This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.</p>
+<p><strong><code>qc: bool</code> (default: <code>False</code>)</strong></p>
+<p>When <code>True</code>, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Requires a QC runtime to be installed (<code>tablassert[qc]</code> or <code>tablassert[qc-cuda]</code>). The ONNX Runtime provider is auto-detected based on the installed package — CUDA is preferred when <code>onnxruntime-gpu</code> is available, otherwise CPU is used.</p>
 <h3 id="return-value">Return Value</h3>
 <p>Returns a <code>list[dict[str, Any]]</code> — one dictionary per resolved entity. The list is produced by calling <code>polars.DataFrame.to_dicts()</code> on the collected resolution output.</p>
 <p>Each dictionary contains the following keys (where <code>{col}</code> is the value of the <code>col</code> parameter):</p>
@@ -413,7 +416,7 @@ for row in result:
 <li>Unresolved entities are silently filtered from the output (logged at INFO level by default via <code>resolve()</code>).</li>
 </ul>
 <h2 id="integration">Integration</h2>
-<p><code>resolve_many()</code> is a self-contained entry point. It does not require any prior setup beyond having a datassert database available. For full pipeline builds, use the CLI (<code>tablassert build-knowledge-graph</code>) which orchestrates resolution through the <code>Tcode</code> class.</p>
+<p><code>resolve_many()</code> is a self-contained entry point. It does not require any prior setup beyond having a datassert database available. For full pipeline builds, use the CLI (<code>tablassert build</code>) which orchestrates resolution through the <code>Tcode</code> class.</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><strong><a href="../fullmap/">Entity Resolution</a></strong> — Lower-level <code>resolve()</code> function details</li>

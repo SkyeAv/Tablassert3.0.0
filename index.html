@@ -135,7 +135,7 @@
 <ul>
 <li><strong>Declarative YAML configuration</strong> - Define data transformations without code</li>
 <li><strong>Entity resolution</strong> - Map text to biological entities (genes, diseases, chemicals) using comprehensive databases</li>
-<li><strong>Multi-stage quality control</strong> - Exact matching, fuzzy matching, and BioBERT semantic validation</li>
+<li><strong>Optional multi-stage quality control</strong> - Exact matching, fuzzy matching, and BioBERT semantic validation</li>
 <li><strong>KGX compliance</strong> - Outputs NCATS Translator-compatible NDJSON for node and edge files</li>
 </ul>
 <h2 id="key-features">Key Features</h2>
@@ -159,13 +159,23 @@ tablassert --help
 # (for CPUs without the required Polars instructions)
 uv tool install &quot;tablassert[rt]&quot;
 # or
-pip install &quot;tablassert[rtcompat]&quot;
+pip install &quot;tablassert[rt]&quot;
+
+# Install CPU QC runtime
+uv tool install &quot;tablassert[qc]&quot;
+# or
+pip install &quot;tablassert[qc]&quot;
+
+# Install CUDA QC runtime
+uv tool install &quot;tablassert[qc-cuda]&quot;
+# or
+pip install &quot;tablassert[qc-cuda]&quot;
 
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 </code></pre>
-<p>All dependencies are included in the base install. An optional <code>rtcompat</code> (alias: <code>rt</code>) extra is available for CPUs that lack the default Polars instruction set.
+<p>QC is opt-in and requires either the <code>qc</code> or <code>qc-cuda</code> extra. CUDA support targets a single GPU on <code>device_id=0</code> and does not silently fall back to CPU if CUDA is unavailable.
 See <a href="installation/">Installation</a> for details.</p>
 <p>For development from source:</p>
 <pre><code class="language-bash">git clone https://github.com/SkyeAv/Tablassert.git
@@ -173,7 +183,7 @@ cd Tablassert
 uv sync
 
 # Run with your configuration
-uv run tablassert build-knowledge-graph &lt;config&gt;
+uv run tablassert build &lt;config&gt;
 </code></pre>
 <h2 id="documentation-sections">Documentation Sections</h2>
 <ul>
@@ -240,5 +250,5 @@ uv run tablassert build-knowledge-graph &lt;config&gt;
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-04-29 21:49:31.002883+00:00
+Build Date UTC : 2026-05-06 01:54:00.834507+00:00
 -->

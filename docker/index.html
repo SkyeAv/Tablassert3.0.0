@@ -138,28 +138,28 @@
 <p>The image is based on <code>python:3.14-slim</code> with the Tablassert CLI as the entrypoint. All dependencies are included in the base install.</p>
 <pre><code class="language-bash">docker pull ghcr.io/skyeav/tablassert:latest
 </code></pre>
-<p>Version-pinned tags match the git tag (e.g., <code>ghcr.io/skyeav/tablassert:v7.2.2</code>).</p>
+<p>Version-pinned tags match the git tag (e.g., <code>ghcr.io/skyeav/tablassert:v7.4.0</code>).</p>
 <h2 id="quick-start">Quick Start</h2>
 <pre><code class="language-bash"># Show CLI help (default CMD)
 docker run --rm ghcr.io/skyeav/tablassert:latest
 
 # Check version
-docker run --rm ghcr.io/skyeav/tablassert:latest version
+docker run --rm ghcr.io/skyeav/tablassert:latest --version
 </code></pre>
 <h2 id="building-a-knowledge-graph">Building a Knowledge Graph</h2>
-<p>The primary CLI command is <code>build-knowledge-graph</code>, which reads a graph configuration YAML file and produces KGX-compliant NDJSON output. Defined in <code>src/tablassert/cli.py:51</code>.</p>
+<p>The primary CLI command is <code>build</code>, which reads a graph configuration YAML file and produces KGX-compliant NDJSON output.</p>
 <pre><code class="language-bash">docker run --rm \
   -v /path/to/config:/data \
   -v /path/to/datassert:/datassert \
   ghcr.io/skyeav/tablassert:latest \
-  build-knowledge-graph /data/graph-config.yaml
+  build /data/graph-config.yaml
 </code></pre>
 <h2 id="verifying-table-configuration">Verifying Table Configuration</h2>
-<p>The <code>verify-table-configuration-syntax</code> command validates a table configuration YAML against the schema without running a full build. Defined in <code>src/tablassert/cli.py:105</code>.</p>
+<p>The <code>validate</code> command validates a table configuration YAML against the schema without running a full build.</p>
 <pre><code class="language-bash">docker run --rm \
   -v /path/to/config:/data \
   ghcr.io/skyeav/tablassert:latest \
-  verify-table-configuration-syntax /data/table-config.yaml
+  validate /data/table-config.yaml
 </code></pre>
 <h2 id="included-capabilities">Included Capabilities</h2>
 <p>All dependencies ship in the base install, so the Docker image includes:</p>
@@ -205,13 +205,13 @@ docker run --rm ghcr.io/skyeav/tablassert:latest version
   -v ./.onnxassert:/app/.onnxassert \
   -w /app \
   ghcr.io/skyeav/tablassert:latest \
-  build-knowledge-graph /data/graph-config.yaml
+  build /data/graph-config.yaml
 </code></pre>
 <h2 id="runtime-considerations">Runtime Considerations</h2>
 <ul>
 <li><strong>Datassert path</strong> — The graph configuration YAML specifies the <code>datassert</code> path for the entity-resolution database. Ensure it is accessible inside the container.</li>
-<li><strong>Multiprocessing</strong> — <code>src/tablassert/cli.py:63</code> uses <code>multiprocessing.Pool</code> for parallel table loading and section extraction.</li>
-<li><strong>DuckDB connections</strong> — An <code>ExitStack</code> at <code>src/tablassert/cli.py:81</code> opens read-only connections to all 10 Datassert DuckDB shards concurrently.</li>
+<li><strong>Multiprocessing</strong> — <code>src/tablassert/cli.py</code> uses <code>multiprocessing.Pool</code> for parallel table loading and section extraction.</li>
+<li><strong>DuckDB connections</strong> — An <code>ExitStack</code> in <code>src/tablassert/cli.py</code> opens read-only connections to all 10 Datassert DuckDB shards concurrently.</li>
 <li><strong>Entity resolution</strong> — The <code>fullmap</code> module (<code>src/tablassert/fullmap.py</code>) shards terms across 10 DuckDB shards (<code>SHARDS = 10</code>) using xxhash64.</li>
 <li><strong>Text normalization</strong> — <code>src/tablassert/nlp.py</code> provides <code>level_one</code> (strip + lowercase) and <code>level_two</code> (regex-based cleanup).</li>
 </ul>

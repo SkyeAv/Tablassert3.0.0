@@ -148,6 +148,7 @@
 <h2 id="purpose">Purpose</h2>
 <p>A graph configuration file specifies:
 - Output knowledge graph name and version
+- Whether QC auditing runs during the build
 - List of table configurations to process
 - Database locations for entity resolution and provenance</p>
 <h2 id="schema">Schema</h2>
@@ -208,6 +209,16 @@
 <td>Path</td>
 <td>Path to SQLite PMC figure captions database</td>
 </tr>
+<tr>
+<td><code>log</code></td>
+<td>Boolean</td>
+<td>Log unmatched entities and audit details during graph builds</td>
+</tr>
+<tr>
+<td><code>qc</code></td>
+<td>Boolean</td>
+<td>Enable the QC audit stage during graph builds</td>
+</tr>
 </tbody>
 </table>
 <h3 id="field-details">Field Details</h3>
@@ -219,6 +230,11 @@
 <p><strong><code>version: string</code></strong></p>
 <p>Output knowledge graph version. Used as suffix for NDJSON files.</p>
 <p>Common values: <code>"1.0.0"</code>, <code>"UNSTABLE"</code>, <code>"BETA"</code></p>
+<p><strong><code>log: bool = false</code></strong></p>
+<p>When <code>true</code>, Tablassert logs unmatched entities and audit details during the graph build. When <code>false</code>, unmatched entities are silently filtered.</p>
+<p><strong><code>qc: bool = false</code></strong></p>
+<p>When <code>true</code>, Tablassert runs the QC audit stage after entity resolution for node-like columns. When <code>false</code>, the build skips QC entirely.</p>
+<p>This field only controls whether QC runs. Install <code>tablassert[qc]</code> or <code>tablassert[qc-cuda]</code> if you plan to enable it.</p>
 <p><strong><code>tables: list[path]</code></strong></p>
 <p>List of table configuration file paths. Can be absolute or relative to graph config location.</p>
 <p>Each table config defines:
@@ -253,6 +269,8 @@
 <pre><code class="language-yaml">syntax: GC2
 name: MY_GRAPH
 version: 1.0.0
+log: true
+qc: true
 tables:
   - ./my-table.yaml
 datassert: /data/datassert
@@ -272,15 +290,17 @@ pubmed_db: /databases/PubMed.db
 pmc_db: /databases/PMCSuppCaptions.db
 </code></pre>
 <h2 id="processing-flow">Processing Flow</h2>
-<p>When you run <code>tablassert build-knowledge-graph graph.yaml</code>:</p>
+<p>When you run <code>tablassert build graph.yaml</code>:</p>
 <ol>
 <li><strong>Load graph configuration</strong> - Parse YAML, validate schema</li>
 <li><strong>For each table in <code>tables</code>:</strong></li>
 <li>Load table configuration</li>
 <li>Download source file (if URL specified)</li>
 <li>Apply transformations</li>
-<li>Resolve entities using <code>datassert</code></li>
-<li>Validate with QC pipeline</li>
+<li>Resolve entities using <code>datassert</code><ul>
+<li>Validate with QC pipeline when <code>qc: true</code></li>
+</ul>
+</li>
 <li>Create subgraph parquet file</li>
 <li><strong>Aggregate subgraphs</strong> - Merge all parquet files</li>
 <li><strong>Add provenance (optional)</strong> - Query <code>pubmed_db</code> and <code>pmc_db</code> for metadata when configured</li>

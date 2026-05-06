@@ -147,19 +147,19 @@
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
       taxon: 9606
     predicate: associated_with
     object:
       method: column
-      encoding: disease_name
+      encoding: B
       prioritize:
         - Disease
   provenance:
     repo: PMID
-    publication: 12345678
+    publication: &quot;12345678&quot;
     contributors:
       - kind: curation
         name: Your Name
@@ -167,13 +167,14 @@
   annotations:
     - annotation: p value
       method: column
-      encoding: p_value
+      encoding: C
 </code></pre>
 <p><strong>Key techniques:</strong></p>
 <ul>
 <li><strong>Taxonomic filtering</strong> (<code>taxon: 9606</code>) restricts gene resolution to human genes</li>
 <li><strong>Category prioritization</strong> ensures genes resolve as <code>biolink:Gene</code> and diseases as <code>biolink:Disease</code></li>
 <li><strong>Column annotations</strong> attach per-row p-values to each edge</li>
+<li><strong>Excel column letters</strong> (<code>A</code>, <code>B</code>, <code>C</code>) reference columns in headerless sources — converted internally to Polars column names</li>
 </ul>
 <hr />
 <h2 id="drug-target-interactions">Drug-Target Interactions</h2>
@@ -191,21 +192,21 @@
   statement:
     subject:
       method: column
-      encoding: drug_name
+      encoding: A
       prioritize:
         - ChemicalEntity
         - SmallMolecule
     predicate: interacts_with
     object:
       method: column
-      encoding: target_gene
+      encoding: B
       prioritize:
         - Gene
         - Protein
       taxon: 9606
   provenance:
     repo: PMID
-    publication: 98765432
+    publication: &quot;98765432&quot;
     contributors:
       - kind: curation
         name: Your Name
@@ -213,7 +214,7 @@
   annotations:
     - annotation: interaction type
       method: column
-      encoding: interaction_type
+      encoding: C
     - annotation: assay
       method: value
       encoding: &quot;binding assay&quot;
@@ -302,7 +303,7 @@
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
       taxon: 9606
@@ -311,7 +312,7 @@
       encoding: PLACEHOLDER
   provenance:
     repo: PMID
-    publication: 11223344
+    publication: &quot;11223344&quot;
     contributors:
       - kind: curation
         name: Your Name
@@ -322,7 +323,7 @@ sections:
       predicate: participates_in
       object:
         method: column
-        encoding: kegg_pathway
+        encoding: B
         prioritize:
           - Pathway
     annotations:
@@ -334,7 +335,7 @@ sections:
       predicate: participates_in
       object:
         method: column
-        encoding: reactome_pathway
+        encoding: C
         prioritize:
           - Pathway
     annotations:
@@ -362,28 +363,28 @@ sections:
     row_slice: [1, auto]
     delimiter: &quot;,&quot;
     reindex:
-      - column: p_value
+      - column: C
         comparison: lt
         comparator: 0.05
-      - column: sample_size
+      - column: D
         comparison: ge
         comparator: 100
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
       taxon: 9606
     predicate: associated_with
     object:
       method: column
-      encoding: disease_name
+      encoding: B
       prioritize:
         - Disease
   provenance:
     repo: PMID
-    publication: 55667788
+    publication: &quot;55667788&quot;
     contributors:
       - kind: curation
         name: Your Name
@@ -391,14 +392,14 @@ sections:
   annotations:
     - annotation: p value
       method: column
-      encoding: p_value
+      encoding: C
     - annotation: sample size
       method: column
-      encoding: sample_size
+      encoding: D
 </code></pre>
 <p><strong>Key techniques:</strong></p>
 <ul>
-<li><strong>Reindex filtering</strong> keeps only rows where <code>p_value &lt; 0.05</code> AND <code>sample_size &gt;= 100</code></li>
+<li><strong>Reindex filtering</strong> keeps only rows where column C (p-value) &lt; 0.05 AND column D (sample size) &gt;= 100</li>
 <li><strong>Comparison operators</strong> — <code>lt</code> (less than), <code>ge</code> (greater or equal), <code>eq</code>, <code>ne</code>, <code>gt</code>, <code>le</code></li>
 <li><strong>Multiple reindex conditions</strong> are ANDed together</li>
 </ul>
@@ -418,19 +419,19 @@ sections:
   statement:
     subject:
       method: column
-      encoding: category
+      encoding: A
       fill: forward
       prioritize:
         - ChemicalEntity
     predicate: subclass_of
     object:
       method: column
-      encoding: subcategory
+      encoding: B
       prioritize:
         - ChemicalEntity
   provenance:
     repo: PMID
-    publication: 99887766
+    publication: &quot;99887766&quot;
     contributors:
       - kind: curation
         name: Your Name

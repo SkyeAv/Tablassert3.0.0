@@ -180,18 +180,18 @@ EOF
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
     predicate: associated_with
     object:
       method: column
-      encoding: disease_name
+      encoding: B
       prioritize:
         - Disease
   provenance:
     repo: PMID
-    publication: 12345678
+    publication: &quot;12345678&quot;
     contributors:
       - kind: curation
         name: Tutorial Example
@@ -202,17 +202,17 @@ EOF
   annotations:
     - annotation: p value
       method: column
-      encoding: p_value
+      encoding: C
     - annotation: sample size
       method: column
-      encoding: sample_size
+      encoding: D
 </code></pre>
 <p><strong>What this does:</strong>
 - <strong>source</strong>: Reads CSV, skips header row (row_slice starts at 1)
 - <strong>statement</strong>: Creates edges where genes (subject) are <code>associated_with</code> diseases (object)
-- <strong>subject/object</strong>: Uses <code>column</code> method to read from gene_symbol and disease_name columns
+- <strong>subject/object</strong>: Uses <code>column</code> method to read from columns A (gene symbol) and B (disease name)
 - <strong>prioritize</strong>: Tells entity resolution to prefer Gene/Disease categories
-- <strong>annotations</strong>: Adds p-value and sample size as edge attributes</p>
+- <strong>annotations</strong>: Adds p-value (column C) and sample size (column D) as edge attributes</p>
 <h2 id="step-3-create-graph-configuration">Step 3: Create Graph Configuration</h2>
 <p>Create <code>tutorial-graph.yaml</code>:</p>
 <pre><code class="language-yaml">syntax: GC2
@@ -230,7 +230,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 - <strong>tables</strong>: List of table configurations to process
 - <strong>databases</strong>: Path to the datassert directory, plus optional provenance databases</p>
 <h2 id="step-4-run-tablassert">Step 4: Run Tablassert</h2>
-<pre><code class="language-bash">tablassert build-knowledge-graph tutorial-graph.yaml
+<pre><code class="language-bash">tablassert build tutorial-graph.yaml
 </code></pre>
 <p><strong>What happens:</strong>
 1. Loads graph configuration

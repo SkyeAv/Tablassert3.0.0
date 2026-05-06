@@ -12,18 +12,18 @@ template:
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
     predicate: associated_with
     object:
       method: column
-      encoding: disease_name
+      encoding: B
       prioritize:
         - Disease
   provenance:
     repo: PMID
-    publication: 12345678
+    publication: "12345678"
     contributors:
       - kind: curation
         name: Tutorial Example
@@ -34,7 +34,7 @@ template:
   annotations:
     - annotation: p value
       method: column
-      encoding: p_value
+      encoding: C
     - annotation: sample size
       method: column
-      encoding: sample_size
+      encoding: D

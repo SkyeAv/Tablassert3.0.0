@@ -68,7 +68,7 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#build-knowledge-graph">build-knowledge-graph</a>
+    <li class="toctree-l2"><a class="reference internal" href="#build">build</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#synopsis_1">Synopsis</a>
     </li>
@@ -80,7 +80,7 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#verify-table-configuration-syntax">verify-table-configuration-syntax</a>
+    <li class="toctree-l2"><a class="reference internal" href="#validate">validate</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#synopsis_2">Synopsis</a>
     </li>
@@ -96,7 +96,7 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#check-version">Check Version</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#build-knowledge-graph_1">Build Knowledge Graph</a>
+    <li class="toctree-l3"><a class="reference internal" href="#build-knowledge-graph">Build Knowledge Graph</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#validate-table-configuration">Validate Table Configuration</a>
     </li>
@@ -165,22 +165,22 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="cli-reference">CLI Reference</h1>
-<p>Tablassert provides three commands.</p>
+<p>Tablassert provides two commands.</p>
 <h2 id="version">version</h2>
 <p>Display the current Tablassert package version.</p>
 <h3 id="synopsis">Synopsis</h3>
-<pre><code class="language-bash">tablassert version
+<pre><code class="language-bash">tablassert --version
 </code></pre>
 <h3 id="example">Example</h3>
-<pre><code class="language-bash">tablassert version
+<pre><code class="language-bash">tablassert --version
 </code></pre>
 <h3 id="description">Description</h3>
-<p>Prints the installed Tablassert version to stdout and exits.</p>
+<p>Prints the installed Tablassert version to stdout and exits. This is a flag on the main <code>tablassert</code> command, not a subcommand.</p>
 <hr />
-<h2 id="build-knowledge-graph">build-knowledge-graph</h2>
+<h2 id="build">build</h2>
 <p>Build A KGX Compliant Knowledge Graph From A Graph Configuration File</p>
 <h3 id="synopsis_1">Synopsis</h3>
-<pre><code class="language-bash">tablassert build-knowledge-graph &lt;graph_configuration_file&gt;
+<pre><code class="language-bash">tablassert build &lt;graph_configuration_file&gt;
 </code></pre>
 <h3 id="options">Options</h3>
 <table>
@@ -202,7 +202,7 @@
 </tbody>
 </table>
 <h3 id="example_1">Example</h3>
-<pre><code class="language-bash">tablassert build-knowledge-graph /path/to/MOKGV6.yaml
+<pre><code class="language-bash">tablassert build /path/to/MOKGV6.yaml
 </code></pre>
 <h3 id="description_1">Description</h3>
 <p>This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through datassert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.</p>
@@ -219,10 +219,10 @@
 <p>Intermediate parquet artifacts are written to <code>.storassert/</code> during section processing.</p>
 <p>See <a href="../configuration/graph/">Graph Configuration</a> for details on the YAML schema.</p>
 <hr />
-<h2 id="verify-table-configuration-syntax">verify-table-configuration-syntax</h2>
+<h2 id="validate">validate</h2>
 <p>Verify The Syntax Of A Declarative Table Configuration File</p>
 <h3 id="synopsis_2">Synopsis</h3>
-<pre><code class="language-bash">tablassert verify-table-configuration-syntax &lt;table_configuration_file&gt;
+<pre><code class="language-bash">tablassert validate &lt;table_configuration_file&gt;
 </code></pre>
 <h3 id="options_1">Options</h3>
 <table>
@@ -244,7 +244,7 @@
 </tbody>
 </table>
 <h3 id="example_2">Example</h3>
-<pre><code class="language-bash">tablassert verify-table-configuration-syntax /path/to/table-config.yaml
+<pre><code class="language-bash">tablassert validate /path/to/table-config.yaml
 </code></pre>
 <h3 id="description_2">Description</h3>
 <p>This command validates a TC3 YAML configuration file without running the full extraction pipeline. It loads the file, extracts sections, and validates each section against the schema using Pydantic models. The command exits with a non-zero status if schema errors are detected, making it useful for CI/CD pipelines and pre-commit hooks.</p>
@@ -256,20 +256,20 @@
 <hr />
 <h2 id="examples">Examples</h2>
 <h3 id="check-version">Check Version</h3>
-<pre><code class="language-bash">tablassert version
+<pre><code class="language-bash">tablassert --version
 </code></pre>
-<h3 id="build-knowledge-graph_1">Build Knowledge Graph</h3>
-<pre><code class="language-bash">tablassert build-knowledge-graph my-graph.yaml
+<h3 id="build-knowledge-graph">Build Knowledge Graph</h3>
+<pre><code class="language-bash">tablassert build my-graph.yaml
 </code></pre>
 <h3 id="validate-table-configuration">Validate Table Configuration</h3>
-<pre><code class="language-bash">tablassert verify-table-configuration-syntax table-config.yaml
+<pre><code class="language-bash">tablassert validate table-config.yaml
 </code></pre>
 <h2 id="workflow">Workflow</h2>
 <ol>
 <li><strong>Create table configuration</strong> - Define data sources and transformations</li>
 <li><strong>Create graph configuration</strong> - Define output name, table configs, databases</li>
-<li><strong>Validate table config</strong> - <code>tablassert verify-table-configuration-syntax table.yaml</code></li>
-<li><strong>Build knowledge graph</strong> - <code>tablassert build-knowledge-graph graph.yaml</code></li>
+<li><strong>Validate table config</strong> - <code>tablassert validate table.yaml</code></li>
+<li><strong>Build knowledge graph</strong> - <code>tablassert build graph.yaml</code></li>
 <li><strong>Process executes:</strong></li>
 <li>Downloads files from URLs (if needed)</li>
 <li>Applies transformations to each table</li>
