@@ -13,6 +13,7 @@ from tablassert.models import (
     Contributor,
     Encoding,
     Excel,
+    Graph,
     NodeEncoding,
     Provenance,
     Reindex,
@@ -31,6 +32,22 @@ def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
     assert section.statement.subject.encoding == "BRCA1"
     assert section.statement.object.encoding == "TP53"
     assert section.provenance.repo == "PMC"
+
+
+# ? Graph QC Defaults To False
+def test_graph_qc_defaults_false() -> None:
+    graph: Graph = Graph(  # pyright: ignore
+        name="TEST", version="1.0.0", tables=[Path("./table.yaml")], datassert=Path("./datassert")
+    )
+    assert graph.qc is False
+
+
+# ? Graph Accepts Explicit QC True
+def test_graph_qc_true() -> None:
+    graph: Graph = Graph(  # pyright: ignore
+        name="TEST", version="1.0.0", qc=True, tables=[Path("./table.yaml")], datassert=Path("./datassert")
+    )
+    assert graph.qc is True
 
 
 # ? Valid Minimal Excel Section

@@ -1,6 +1,6 @@
 # CLI Reference
 
-Tablassert provides three commands.
+Tablassert provides two commands.
 
 ## version
 
@@ -9,29 +9,29 @@ Display the current Tablassert package version.
 ### Synopsis
 
 ```bash
-tablassert version
+tablassert --version
 ```
 
 ### Example
 
 ```bash
-tablassert version
+tablassert --version
 ```
 
 ### Description
 
-Prints the installed Tablassert version to stdout and exits.
+Prints the installed Tablassert version to stdout and exits. This is a flag on the main `tablassert` command, not a subcommand.
 
 ---
 
-## build-knowledge-graph
+## build
 
 Build A KGX Compliant Knowledge Graph From A Graph Configuration File
 
 ### Synopsis
 
 ```bash
-tablassert build-knowledge-graph <graph_configuration_file>
+tablassert build <graph_configuration_file>
 ```
 
 ### Options
@@ -43,7 +43,7 @@ tablassert build-knowledge-graph <graph_configuration_file>
 ### Example
 
 ```bash
-tablassert build-knowledge-graph /path/to/MOKGV6.yaml
+tablassert build /path/to/MOKGV6.yaml
 ```
 
 ### Description
@@ -68,14 +68,14 @@ See [Graph Configuration](configuration/graph.md) for details on the YAML schema
 
 ---
 
-## verify-table-configuration-syntax
+## validate
 
 Verify The Syntax Of A Declarative Table Configuration File
 
 ### Synopsis
 
 ```bash
-tablassert verify-table-configuration-syntax <table_configuration_file>
+tablassert validate <table_configuration_file>
 ```
 
 ### Options
@@ -87,7 +87,7 @@ tablassert verify-table-configuration-syntax <table_configuration_file>
 ### Example
 
 ```bash
-tablassert verify-table-configuration-syntax /path/to/table-config.yaml
+tablassert validate /path/to/table-config.yaml
 ```
 
 ### Description
@@ -108,27 +108,27 @@ See [Table Configuration](configuration/table.md) for details on the YAML schema
 ### Check Version
 
 ```bash
-tablassert version
+tablassert --version
 ```
 
 ### Build Knowledge Graph
 
 ```bash
-tablassert build-knowledge-graph my-graph.yaml
+tablassert build my-graph.yaml
 ```
 
 ### Validate Table Configuration
 
 ```bash
-tablassert verify-table-configuration-syntax table-config.yaml
+tablassert validate table-config.yaml
 ```
 
 ## Workflow
 
 1. **Create table configuration** - Define data sources and transformations
 2. **Create graph configuration** - Define output name, table configs, databases
-3. **Validate table config** - `tablassert verify-table-configuration-syntax table.yaml`
-4. **Build knowledge graph** - `tablassert build-knowledge-graph graph.yaml`
+3. **Validate table config** - `tablassert validate table.yaml`
+4. **Build knowledge graph** - `tablassert build graph.yaml`
 5. **Process executes:**
    - Downloads files from URLs (if needed)
    - Applies transformations to each table

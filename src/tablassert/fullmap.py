@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Optional
 import lazy_loader as Lazy
 
 from tablassert.enums import Categories
-from tablassert.log import logger
+from tablassert.log import cat
+
+logger = cat("FULLMAP")
 
 if TYPE_CHECKING:
     import polars as pl
@@ -147,14 +149,15 @@ def log_unmatched(
     col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]
 ) -> None:
     # * Log Unmatched Entities
-    antimatches: pl.LazyFrame = terms.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
+    level_one: pl.LazyFrame = terms.filter(pl.col("nlp level") == 1)
+    antimatches: pl.LazyFrame = level_one.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
 
     # ! Collection Point: Requires Eager
     unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
     if unnmatched.height > 0:
         for term in unnmatched.get_column("term").to_list():
             logger.info(
-                f"FAILED FULLMAP | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}"
+                f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}"
             )
 
 

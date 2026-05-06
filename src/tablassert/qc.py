@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_version
 from operator import add, eq
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional
 
 import lazy_loader as Lazy
-from rapidfuzz import fuzz
-from rapidfuzz.process import cpdist
-from sklearn.metrics.pairwise import cosine_similarity
 
 if TYPE_CHECKING:
     import onnxruntime as ort
@@ -18,41 +17,110 @@ else:
     sentence_transformers = Lazy.load("sentence_transformers")
     pl = Lazy.load("polars")
 
-from tablassert.log import logger
+from tablassert.log import cat
 
-SESSION_OPTS: object = ort.SessionOptions()
-SESSION_OPTS.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
+logger = cat("QC")
 
 MODEL: Path = Path("./.onnxassert/")
 MODEL_BACKEND: Literal["onnx"] = "onnx"
-MODEL_KWARGS: dict[str, object] = {"provider": "CPUExecutionProvider", "session_options": SESSION_OPTS}
+CPU_PROVIDER: str = "CPUExecutionProvider"
+CUDA_PROVIDER: str = "CUDAExecutionProvider"
 
 # TODO: Explore Best Model For QC
-BIOBERT: Optional[object] = None
+BIOBERT: dict[str, object] = {}
 
 
-def get_biobert() -> object:
+def has_qc_runtime(name: str) -> bool:
+    try:
+        get_version(name)
+        return True
+    except PackageNotFoundError:
+        return False
+
+
+def get_qc_provider(provider: Optional[Literal["cpu", "cuda"]] = None) -> tuple[str, Optional[dict[str, object]]]:
+    has_cpu: bool = has_qc_runtime("onnxruntime")
+    has_cuda: bool = has_qc_runtime("onnxruntime-gpu")
+
+    if provider == "cpu":
+        if has_cpu or has_cuda:
+            return CPU_PROVIDER, None
+        raise RuntimeError(
+            "03 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda]."
+        )
+
+    if provider == "cuda":
+        if not has_cuda:
+            raise RuntimeError(
+                "04 | QC requested CUDA runtime but onnxruntime-gpu is not installed. Install tablassert[qc-cuda]."
+            )
+        available: list[str] = ort.get_available_providers()  # pyright: ignore
+        if CUDA_PROVIDER not in available:
+            raise RuntimeError(
+                "05 | QC requested CUDA runtime but CUDAExecutionProvider is unavailable. Verify the CUDA/cuDNN environment for tablassert[qc-cuda]."
+            )
+        return CUDA_PROVIDER, {"device_id": 0}
+
+    if has_cuda:
+        available = ort.get_available_providers()  # pyright: ignore
+        if CUDA_PROVIDER not in available:
+            raise RuntimeError(
+                "06 | Detected onnxruntime-gpu but CUDAExecutionProvider is unavailable. Tablassert will not fall back to CPU from qc-cuda. Install tablassert[qc] or fix the CUDA/cuDNN environment."
+            )
+        return CUDA_PROVIDER, {"device_id": 0}
+
+    if has_cpu:
+        return CPU_PROVIDER, None
+
+    raise RuntimeError("07 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
+
+
+def get_biobert(provider: Optional[Literal["cpu", "cuda"]] = None) -> object:
     # ? Lazy-loads BioBERT once on first batch audit call, then caches globally
-    global BIOBERT
-    if BIOBERT:
-        return BIOBERT
-    elif not BIOBERT and MODEL.exists():
-        BIOBERT = sentence_transformers.SentenceTransformer(
-            str(MODEL), backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS
+    provider_name: str
+    provider_options: Optional[dict[str, object]]
+    provider_name, provider_options = get_qc_provider(provider)
+    cache_key: str = add(provider_name, str(provider_options))
+    if cache_key in BIOBERT:
+        return BIOBERT[cache_key]
+
+    session_opts: object = ort.SessionOptions()
+    session_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
+    model_kwargs: dict[str, object] = {"provider": provider_name, "session_options": session_opts}
+    if provider_options:
+        model_kwargs["provider_options"] = provider_options
+
+    if MODEL.exists():
+        model: object = sentence_transformers.SentenceTransformer(
+            str(MODEL), backend=MODEL_BACKEND, model_kwargs=model_kwargs
         )  # pyright: ignore
     else:
-        BIOBERT = sentence_transformers.SentenceTransformer(
-            "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=MODEL_KWARGS
+        model = sentence_transformers.SentenceTransformer(
+            "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=model_kwargs
         )  # pyright: ignore
         MODEL.mkdir(parents=True, exist_ok=True)
-        BIOBERT.save(MODEL)  # pyright: ignore
-    return BIOBERT
+        model.save(MODEL)  # pyright: ignore
+
+    BIOBERT[cache_key] = model
+    return model
 
 
-def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed") -> pl.LazyFrame:
+def fullmap_audit(
+    lf: pl.LazyFrame,
+    col: str,
+    section_hash: str,
+    config_file: str,
+    out: str = "passed",
+    log: bool = True,
+    provider: Optional[Literal["cpu", "cuda"]] = None,
+) -> pl.LazyFrame:
     # ? Ensures Fullmap Correct Processes Strings To CURIES
     # * Deletes Suspected Errors
     # ! Collection Point: Pending Pairs Require Eager
+    from rapidfuzz import fuzz
+    from rapidfuzz.process import cpdist
+    from sklearn.metrics.pairwise import cosine_similarity
+
     original: str = add("original ", col)
     preferred: str = add(col, " name")
     cols: list[str] = [col, original, preferred]
@@ -65,7 +133,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     passed: pl.DataFrame = pairs.filter(pl.col(out))
     pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB"
+    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB|^NCBIGene|^UMLS"
     is_exempt: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(exempt_curies).alias(out))
     pairs = pl.concat((passed, is_exempt))
 
@@ -107,7 +175,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     originals = pending.get_column(cols[1]).to_list()
     preferreds = pending.get_column(cols[2]).to_list()
 
-    embeddings: object = get_biobert().encode(originals + preferreds)  # pyright: ignore
+    embeddings: object = get_biobert(provider).encode(originals + preferreds)  # pyright: ignore
     n: int = len(originals)
     similarity: object = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()  # pyright: ignore
 
@@ -119,14 +187,14 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     pending = pairs.filter(~pl.col(out))
 
     # * Add Logging For Failed CURIES
-    if pending.height > 0:
+    if log and pending.height > 0:
         for c, o, p in zip(
             pending.get_column(col).to_list(),
             pending.get_column(original).to_list(),
             pending.get_column(preferred).to_list(),
         ):
             logger.info(
-                f"FAILED QC | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {o!r} | PREFERRED: {p!r} | CURIE: {c!r}"
+                f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {o!r} | PREFERRED: {p!r} | CURIE: {c!r}"
             )
 
     return df.join(passed.select(col), on=col, how="semi").lazy()

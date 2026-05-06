@@ -57,18 +57,18 @@ template:
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
     predicate: associated_with
     object:
       method: column
-      encoding: disease_name
+      encoding: B
       prioritize:
         - Disease
   provenance:
     repo: PMID
-    publication: 12345678
+    publication: "12345678"
     contributors:
       - kind: curation
         name: Tutorial Example
@@ -79,18 +79,18 @@ template:
   annotations:
     - annotation: p value
       method: column
-      encoding: p_value
+      encoding: C
     - annotation: sample size
       method: column
-      encoding: sample_size
+      encoding: D
 ```
 
 **What this does:**
 - **source**: Reads CSV, skips header row (row_slice starts at 1)
 - **statement**: Creates edges where genes (subject) are `associated_with` diseases (object)
-- **subject/object**: Uses `column` method to read from gene_symbol and disease_name columns
+- **subject/object**: Uses `column` method to read from columns A (gene symbol) and B (disease name)
 - **prioritize**: Tells entity resolution to prefer Gene/Disease categories
-- **annotations**: Adds p-value and sample size as edge attributes
+- **annotations**: Adds p-value (column C) and sample size (column D) as edge attributes
 
 ## Step 3: Create Graph Configuration
 
@@ -117,7 +117,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 ## Step 4: Run Tablassert
 
 ```bash
-tablassert build-knowledge-graph tutorial-graph.yaml
+tablassert build tutorial-graph.yaml
 ```
 
 **What happens:**

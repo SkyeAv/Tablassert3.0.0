@@ -7,121 +7,155 @@ from multiprocessing import Pool
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import cyclopts
 import lazy_loader as Lazy
 
-from tablassert.fullmap import SHARDS
-from tablassert.ingests import from_yaml, to_sections
-from tablassert.lib import Tcode, compile_graph, compile_subgraph
-from tablassert.models import Graph, Section
-from tablassert.utils import STORE, mkhash
+from tablassert.log import logger
 
 if TYPE_CHECKING:
     import duckdb
-    import typer
+    import pydantic
+
+    from tablassert.lib import Tcode  # noqa: F401
+    from tablassert.models import Graph  # noqa: F401
+    from tablassert.progress import PipelineProgress
 else:
     duckdb = Lazy.load("duckdb")
-    typer = Lazy.load("typer")
+    pydantic = Lazy.load("pydantic")
 
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
-
-CLI: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
-PROGRESS: Progress = Progress(
-    SpinnerColumn(),
-    TextColumn("[progress.description]{task.description}"),
-    BarColumn(),
-    TaskProgressColumn(),
-    TimeElapsedColumn(),
+APP: cyclopts.App = cyclopts.App(
+    version=f"tablassert {get_version('tablassert')}",
+    help="Extract Knowledge Assertions From Tabular Data Into KGX NDJSON",
 )
 
 
-@CLI.command()
-def version() -> None:
-    """Print The Tablassert Version"""
-    v: str = get_version("tablassert")
-    typer.echo(f"tablassert {v}")
+def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress") -> None:
+    # ? Build A Knowledge Graph From A Configuration File
+    from tablassert.fullmap import SHARDS
+    from tablassert.ingests import from_yaml, to_sections
+    from tablassert.lib import Tcode, compile_graph, compile_subgraph
+    from tablassert.models import Graph
+    from tablassert.progress import flatten_pydantic_error, format_section_oneline
+    from tablassert.utils import STORE, mkhash
 
-
-def track(task_id: Any, iterable: Any) -> Any:
-    for item in iterable:
-        yield item
-        PROGRESS.advance(task_id)
-
-
-@CLI.command()
-def build_knowledge_graph(
-    graph_configuration_file: Path = typer.Argument(..., help="Knowledge Graph Configuration -- See Docs"),
-) -> None:
-    """Build A KGX Compliant Knowledge Graph From A Graph Configuration File"""
-    # TODO: Make MeSH A Node (Micro Version)
-    # TODO: Add FullMap Column Context Flag"
+    # * Load Tables (1/6)
+    progress.stage("Loading Tables")
     r: object = from_yaml(graph_configuration_file)
-    g: Graph = Graph.model_validate(r)
+    try:
+        g: Graph = Graph.model_validate(r)
+    except pydantic.ValidationError as e:
+        raise RuntimeError(
+            f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | KIND: graph | PYDANTIC: {flatten_pydantic_error(e)}"
+        ) from e
+    with Pool() as pool:
+        raw: list[object] = pool.map(from_yaml, g.tables)
 
-    with PROGRESS:
-        # ? Load Tables
-        t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
-        with Pool() as pool:
-            raw: list[object] = pool.map(from_yaml, g.tables)
-        PROGRESS.update(t1, total=1, completed=1)
+    # * Extract Sections (2/6)
+    progress.stage("Extracting Sections")
+    with Pool() as pool:
+        temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
+    sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
+    n: int = len(sections)
 
-        # ? Extract Sections
-        t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
-        with Pool() as pool:
-            temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
-        PROGRESS.update(t2, total=1, completed=1)
-        sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
-        n: int = len(sections)
+    # * Build TCode (3/6)
+    progress.stage(f"Building TCode | Sections: {n}")
+    advance = progress.section_loop(n, "TCode")
+    tcode: list[Tcode] = []
+    for idx, s in enumerate(sections, start=1):
+        try:
+            tcode.append(
+                Tcode.model_validate(
+                    {**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet"), "log": g.log, "qc": g.qc}
+                )
+            )
+        except pydantic.ValidationError as e:
+            raise RuntimeError(
+                f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | IDX: {idx} | HASH: {mkhash(s)} | PYDANTIC: {flatten_pydantic_error(e)}"
+            ) from e
+        advance(format_section_oneline(tcode[-1]))
 
-        # ? Build Tcodes
-        t3: Any = PROGRESS.add_task("Building TCode...", total=n)
-        tcode: list[Tcode] = [
-            Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet")})
-            for idx, s in track(t3, enumerate(sections, start=1))
+    with ExitStack() as stack:
+        conns: list[object] = [
+            stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True))
+            for x in range(SHARDS)
         ]
-        with ExitStack() as stack:
-            conns: list[object] = [
-                stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True))
-                for x in range(SHARDS)
-            ]
-            # ? Collect Instructions
-            t4: Any = PROGRESS.add_task("Collecting Instructions...", total=n)
-            instructions: list[Any] = [x.collect(conns, g.pubmed_db, g.pmc_db) for x in track(t4, tcode)]  # pyright: ignore
 
-            # ? Build Subgraphs
-            t5: Any = PROGRESS.add_task("Building Subgraphs...", total=n)
-            subgraphs: list[Path] = [
-                op if isinstance(op, Path) else compile_subgraph(op) for op in track(t5, instructions)
-            ]  # pyright: ignore
+        # * Collect Instructions (4/6)
+        progress.stage(f"Collecting Instructions | Sections: {n}")
+        advance = progress.section_loop(n, "Collect")
+        instructions: list[Any] = []
+        for x in tcode:
+            instructions.append(x.collect(conns, g.pubmed_db, g.pmc_db))  # pyright: ignore
+            advance(format_section_oneline(x))
 
-        # ? Compile Graph
-        t6: Any = PROGRESS.add_task("Compiling Graph...", total=None)
-        compile_graph(subgraphs, g.name, g.version)
-        PROGRESS.update(t6, total=1, completed=1)
+        # * Build Subgraphs (5/6)
+        progress.stage(f"Building Subgraphs | Sections: {n}")
+        advance = progress.section_loop(n, "Subgraph")
+        subgraphs: list[Path] = []
+        for x, op in zip(tcode, instructions):
+            subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op))
+            advance(format_section_oneline(x))
 
-        PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)
+    # * Compile Graph (6/6)
+    progress.stage(f"Compiling Graph | Sections: {n}")
+    advance = progress.section_loop(1, "Graph")
+    compile_graph(subgraphs, g.name, g.version)
+    advance(f"NAME: {g.name} | VERSION: {g.version}")
+
+    logger.info(f"BUILD DONE | SECTIONS: {n} | NAME: {g.name} | VERSION: {g.version}")
 
 
-@CLI.command()
-def verify_table_configuration_syntax(
-    table_configuration_file: Path = typer.Argument(..., help="Table Configuration -- See Docs"),
-) -> None:
-    """Verify The Syntax Of A Declarative Table Configuration File"""
-    with PROGRESS:
-        # ? Load Tables
-        t1: Any = PROGRESS.add_task("Loading Tables...", total=None)
-        r: object = from_yaml(table_configuration_file)
-        PROGRESS.update(t1, total=1, completed=1)
+def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgress") -> None:
+    # ? Validate Section Syntax From A Configuration File
+    from tablassert.ingests import from_yaml, to_sections
+    from tablassert.lib import Tcode
+    from tablassert.progress import flatten_pydantic_error
+    from tablassert.utils import STORE, mkhash
 
-        # ? Extract Sections
-        t2: Any = PROGRESS.add_task("Extracting Sections...", total=None)
-        sections: list[dict[str, Any]] = to_sections(r)  # pyright: ignore
-        n: int = len(sections)
-        PROGRESS.update(t2, total=1, completed=1)
+    # * Load Tables (1/3)
+    progress.stage("Loading Tables")
+    r: object = from_yaml(table_configuration_file)
 
-        # ? Validating Section Syntax
-        t3: Any = PROGRESS.add_task("Validating Section Syntax...", total=n)
-        for s in track(t3, sections):
-            Section.model_validate(s)
-            PROGRESS.update(t3, total=1, completed=1)
+    # * Extract Sections (2/3)
+    progress.stage("Extracting Sections")
+    sections: list[dict[str, Any]] = to_sections(r, table_configuration_file)  # pyright: ignore
+    n: int = len(sections)
 
-        PROGRESS.add_task("[bold green]Finished!", total=1, completed=1)
+    # * Validate Section Syntax (3/3)
+    progress.stage(f"Validating Section Syntax | Sections: {n}")
+    advance = progress.section_loop(n, "Validate")
+    for idx, s in enumerate(sections, start=1):
+        h: str = mkhash(s)
+        try:
+            Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet")})
+        except pydantic.ValidationError as e:
+            raise RuntimeError(
+                f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
+            ) from e
+        advance(f"#{idx} | HASH: {h}")
+
+    logger.info(f"VALIDATE DONE | SECTIONS: {n} | CONFIG: {table_configuration_file.name}")
+
+
+def run(stages: int, fn: Any, arg: Path) -> None:
+    from tablassert.log import LOG_FORMAT, logger
+    from tablassert.progress import PipelineProgress
+
+    with PipelineProgress(total_stages=stages) as progress:
+        sink_id: int = logger.add(progress.log_sink, level="INFO", format=LOG_FORMAT)
+        try:
+            fn(arg, progress)
+        finally:
+            logger.remove(sink_id)
+
+
+@APP.command
+def build(graph_configuration_file: Path) -> None:
+    """Build a knowledge graph from a YAML configuration file."""
+    run(6, build_pipeline, graph_configuration_file)
+
+
+@APP.command
+def validate(table_configuration_file: Path) -> None:
+    """Validate section syntax from a YAML configuration file."""
+    run(3, validate_pipeline, table_configuration_file)

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from tablassert.lib import idxname, label_edge, strip_nulls
+import polars as pl
+
+import tablassert.lib as lib
+from tablassert.ingests import from_yaml
+from tablassert.lib import Tcode, idxname, label_edge, strip_nulls
 
 
 # ? idxname Converts Single Letter Columns
@@ -116,3 +121,135 @@ def test_label_edge_different_data() -> None:
     result1: dict = label_edge(r1)  # pyright: ignore
     result2: dict = label_edge(r2)  # pyright: ignore
     assert result1["uuid"] != result2["uuid"]
+
+
+# ? Tcode collect Threads Downloader Context Into from_url
+def test_tcode_collect_threads_download_context(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    first_op: tuple[Any, tuple[Any]] = collected[0]
+
+    assert first_op[0].__name__ == "from_url"
+    assert first_op[1] == ("https://example.com/test.tsv", Path("test.tsv"), "minimal_section.yaml", "sectionhash")
+
+
+# ? Tcode collect Enables QC Logging By Default
+def test_tcode_collect_skips_qc_by_default(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    qc_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "fullmap_audit"]
+
+    assert qc_ops == []
+
+
+# ? Tcode collect Enables QC Logging When Graph QC Is Enabled
+def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    qc_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "fullmap_audit"]
+
+    assert len(qc_ops) == 2
+    assert qc_ops[0][1] == ("subject", "sectionhash", "minimal_section.yaml", "passed", True)
+    assert qc_ops[1][1] == ("object", "sectionhash", "minimal_section.yaml", "passed", True)
+
+
+# ? resolve_many Skips QC When Disabled
+def test_resolve_many_skips_qc(monkeypatch: Any, tmp_path: Path) -> None:
+    calls: list[tuple[Any, ...]] = []
+
+    class DummyConn:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+    class DummyDuckDB:
+        def connect(self, path: Path, read_only: bool = True) -> DummyConn:
+            calls.append(("connect", path, read_only))
+            return DummyConn()
+
+    def fake_resolve(lf: pl.LazyFrame, col: str, conns: list[object], **kwargs: Any) -> pl.LazyFrame:
+        calls.append(("resolve", col, len(conns), kwargs))
+        return lf
+
+    def fake_qc(
+        lf: pl.LazyFrame,
+        col: str,
+        section_hash: str,
+        config_file: str,
+        out: str = "passed",
+        log: bool = True,
+        provider: str | None = None,
+    ) -> pl.LazyFrame:
+        calls.append(("qc", col, section_hash, config_file, out, log, provider))
+        return lf
+
+    monkeypatch.setattr(lib, "duckdb", DummyDuckDB())
+    monkeypatch.setattr(lib, "resolve", fake_resolve)
+    monkeypatch.setattr(lib, "fullmap_audit", fake_qc)
+    monkeypatch.setattr(lib, "SHARDS", 2)
+
+    result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1", "TP53"], tmp_path, qc=False)
+
+    assert len(result) == 2
+    assert any(call[0] == "resolve" for call in calls)
+    assert not any(call[0] == "qc" for call in calls)
+
+
+# ? resolve_many Runs QC With Logging When Enabled
+def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
+    calls: list[tuple[Any, ...]] = []
+
+    class DummyConn:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+    class DummyDuckDB:
+        def connect(self, path: Path, read_only: bool = True) -> DummyConn:
+            calls.append(("connect", path, read_only))
+            return DummyConn()
+
+    def fake_resolve(lf: pl.LazyFrame, col: str, conns: list[object], **kwargs: Any) -> pl.LazyFrame:
+        calls.append(("resolve", col, len(conns), kwargs))
+        return lf
+
+    def fake_qc(
+        lf: pl.LazyFrame,
+        col: str,
+        section_hash: str,
+        config_file: str,
+        out: str = "passed",
+        log: bool = True,
+        provider: str | None = None,
+    ) -> pl.LazyFrame:
+        calls.append(("qc", col, section_hash, config_file, out, log, provider))
+        return lf.with_columns(pl.lit("YES").alias(out))
+
+    monkeypatch.setattr(lib, "duckdb", DummyDuckDB())
+    monkeypatch.setattr(lib, "resolve", fake_resolve)
+    monkeypatch.setattr(lib, "fullmap_audit", fake_qc)
+    monkeypatch.setattr(lib, "SHARDS", 2)
+
+    result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1"], tmp_path, qc=True)
+
+    assert result == [{"subject": "brca1", "original subject": "BRCA1", "subject two": "brca1", "passed": "YES"}]
+    assert ("qc", "subject", "", "", "passed", True, None) in calls

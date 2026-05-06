@@ -10,7 +10,7 @@ The image is based on `python:3.14-slim` with the Tablassert CLI as the entrypoi
 docker pull ghcr.io/skyeav/tablassert:latest
 ```
 
-Version-pinned tags match the git tag (e.g., `ghcr.io/skyeav/tablassert:v7.2.2`).
+Version-pinned tags match the git tag (e.g., `ghcr.io/skyeav/tablassert:v7.4.0`).
 
 ## Quick Start
 
@@ -19,30 +19,30 @@ Version-pinned tags match the git tag (e.g., `ghcr.io/skyeav/tablassert:v7.2.2`)
 docker run --rm ghcr.io/skyeav/tablassert:latest
 
 # Check version
-docker run --rm ghcr.io/skyeav/tablassert:latest version
+docker run --rm ghcr.io/skyeav/tablassert:latest --version
 ```
 
 ## Building a Knowledge Graph
 
-The primary CLI command is `build-knowledge-graph`, which reads a graph configuration YAML file and produces KGX-compliant NDJSON output. Defined in `src/tablassert/cli.py:51`.
+The primary CLI command is `build`, which reads a graph configuration YAML file and produces KGX-compliant NDJSON output.
 
 ```bash
 docker run --rm \
   -v /path/to/config:/data \
   -v /path/to/datassert:/datassert \
   ghcr.io/skyeav/tablassert:latest \
-  build-knowledge-graph /data/graph-config.yaml
+  build /data/graph-config.yaml
 ```
 
 ## Verifying Table Configuration
 
-The `verify-table-configuration-syntax` command validates a table configuration YAML against the schema without running a full build. Defined in `src/tablassert/cli.py:105`.
+The `validate` command validates a table configuration YAML against the schema without running a full build.
 
 ```bash
 docker run --rm \
   -v /path/to/config:/data \
   ghcr.io/skyeav/tablassert:latest \
-  verify-table-configuration-syntax /data/table-config.yaml
+  validate /data/table-config.yaml
 ```
 
 ## Included Capabilities
@@ -74,14 +74,14 @@ docker run --rm \
   -v ./.onnxassert:/app/.onnxassert \
   -w /app \
   ghcr.io/skyeav/tablassert:latest \
-  build-knowledge-graph /data/graph-config.yaml
+  build /data/graph-config.yaml
 ```
 
 ## Runtime Considerations
 
 - **Datassert path** — The graph configuration YAML specifies the `datassert` path for the entity-resolution database. Ensure it is accessible inside the container.
-- **Multiprocessing** — `src/tablassert/cli.py:63` uses `multiprocessing.Pool` for parallel table loading and section extraction.
-- **DuckDB connections** — An `ExitStack` at `src/tablassert/cli.py:81` opens read-only connections to all 10 Datassert DuckDB shards concurrently.
+- **Multiprocessing** — `src/tablassert/cli.py` uses `multiprocessing.Pool` for parallel table loading and section extraction.
+- **DuckDB connections** — An `ExitStack` in `src/tablassert/cli.py` opens read-only connections to all 10 Datassert DuckDB shards concurrently.
 - **Entity resolution** — The `fullmap` module (`src/tablassert/fullmap.py`) shards terms across 10 DuckDB shards (`SHARDS = 10`) using xxhash64.
 - **Text normalization** — `src/tablassert/nlp.py` provides `level_one` (strip + lowercase) and `level_two` (regex-based cleanup).
 

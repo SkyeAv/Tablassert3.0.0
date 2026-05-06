@@ -8,7 +8,7 @@ Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge g
 
 - **Declarative YAML configuration** - Define data transformations without code
 - **Entity resolution** - Map text to biological entities (genes, diseases, chemicals) using comprehensive databases
-- **Multi-stage quality control** - Exact matching, fuzzy matching, and BioBERT semantic validation
+- **Optional multi-stage quality control** - Exact matching, fuzzy matching, and BioBERT semantic validation
 - **KGX compliance** - Outputs NCATS Translator-compatible NDJSON for node and edge files
 
 ## Key Features
@@ -34,14 +34,24 @@ tablassert --help
 # (for CPUs without the required Polars instructions)
 uv tool install "tablassert[rt]"
 # or
-pip install "tablassert[rtcompat]"
+pip install "tablassert[rt]"
+
+# Install CPU QC runtime
+uv tool install "tablassert[qc]"
+# or
+pip install "tablassert[qc]"
+
+# Install CUDA QC runtime
+uv tool install "tablassert[qc-cuda]"
+# or
+pip install "tablassert[qc-cuda]"
 
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-All dependencies are included in the base install. An optional `rtcompat` (alias: `rt`) extra is available for CPUs that lack the default Polars instruction set.
+QC is opt-in and requires either the `qc` or `qc-cuda` extra. CUDA support targets a single GPU on `device_id=0` and does not silently fall back to CPU if CUDA is unavailable.
 See [Installation](installation.md) for details.
 
 For development from source:
@@ -52,7 +62,7 @@ cd Tablassert
 uv sync
 
 # Run with your configuration
-uv run tablassert build-knowledge-graph <config>
+uv run tablassert build <config>
 ```
 
 ## Documentation Sections

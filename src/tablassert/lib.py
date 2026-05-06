@@ -12,12 +12,11 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt, PositiveInt
-from sqlite_utils import Database
 
 from tablassert.downloader import from_url
 from tablassert.enums import Categories, EncodingMethods, Files, Tokens
 from tablassert.fullmap import SHARDS, resolve
-from tablassert.log import logger
+from tablassert.log import cat
 from tablassert.models import Encoding, NodeEncoding, Section
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
@@ -33,6 +32,8 @@ else:
     orjson = Lazy.load("orjson")
     pl = Lazy.load("polars")
     xxhash = Lazy.load("xxhash")
+
+logger = cat("PIPELINE")
 
 
 def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
@@ -190,6 +191,8 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
 def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
     # ? Adds PubMedDB Related MeSH Annotations To LazyFrame
     # ! Collection Point: SQLite Query Then Per-Row Literal Assignment
+    from sqlite_utils import Database
+
     df: pl.DataFrame = lf.collect()
     db: object = Database(pubmed_db)
     query: str = """
@@ -237,6 +240,8 @@ LIMIT 1
 def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
     # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
     # ! Collection Point: SQLite Query Then Literal Assignment
+    from sqlite_utils import Database
+
     df: pl.DataFrame = lf.collect()
     db: object = Database(pmc_db)
     filename: str = basename(url)
@@ -261,6 +266,8 @@ class Tcode(Section):
     number: PositiveInt = Field(...)
     config: Path = Field(...)
     store: Path = Field(...)
+    log: bool = Field(False)
+    qc: bool = Field(False)
 
     def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
         # ? Collect Helper For Encoding Classes
@@ -283,8 +290,8 @@ class Tcode(Section):
             (column, (add("original ", col), col)),
             (level_one, (col,)),
             (level_two, (col,)),
-            (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, True, self.store.stem, self.config.name, True)),
-            (fullmap_audit, (col, self.store.stem, self.config.name)),
+            (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, self.log, self.store.stem, self.config.name, True)),
+            (fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) if self.qc else None,
         ]
         return add(encoding, node)
 
@@ -312,7 +319,7 @@ class Tcode(Section):
         else:
             # * Returns A List Of: (Function, (Arguments))
             tcode: Optional[list[Any]] = [
-                (from_url, (str(self.source.url), self.source.local)),
+                (from_url, (str(self.source.url), self.source.local, self.config.name, self.store.stem)),
                 (csv, (self.source.delimiter,)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
                 (excel, (self.source.sheet,)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (idx, ()),
@@ -486,6 +493,7 @@ def resolve_many(
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
+    qc: bool = False,
     column_context: bool = True,
 ) -> list[dict[str, Any]]:
     series: pl.Series = pl.Series(col, entities)
@@ -502,6 +510,8 @@ def resolve_many(
         ]
 
         lf = resolve(lf, col, conns, taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
+        if qc:
+            lf = fullmap_audit(lf, col, "", "", log=qc)
 
     df: pl.DataFrame = lf.collect()
     return df.to_dicts()

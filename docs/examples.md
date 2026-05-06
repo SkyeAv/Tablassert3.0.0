@@ -21,19 +21,19 @@ template:
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
       taxon: 9606
     predicate: associated_with
     object:
       method: column
-      encoding: disease_name
+      encoding: B
       prioritize:
         - Disease
   provenance:
     repo: PMID
-    publication: 12345678
+    publication: "12345678"
     contributors:
       - kind: curation
         name: Your Name
@@ -41,7 +41,7 @@ template:
   annotations:
     - annotation: p value
       method: column
-      encoding: p_value
+      encoding: C
 ```
 
 **Key techniques:**
@@ -49,6 +49,7 @@ template:
 - **Taxonomic filtering** (`taxon: 9606`) restricts gene resolution to human genes
 - **Category prioritization** ensures genes resolve as `biolink:Gene` and diseases as `biolink:Disease`
 - **Column annotations** attach per-row p-values to each edge
+- **Excel column letters** (`A`, `B`, `C`) reference columns in headerless sources — converted internally to Polars column names
 
 ---
 
@@ -71,21 +72,21 @@ template:
   statement:
     subject:
       method: column
-      encoding: drug_name
+      encoding: A
       prioritize:
         - ChemicalEntity
         - SmallMolecule
     predicate: interacts_with
     object:
       method: column
-      encoding: target_gene
+      encoding: B
       prioritize:
         - Gene
         - Protein
       taxon: 9606
   provenance:
     repo: PMID
-    publication: 98765432
+    publication: "98765432"
     contributors:
       - kind: curation
         name: Your Name
@@ -93,7 +94,7 @@ template:
   annotations:
     - annotation: interaction type
       method: column
-      encoding: interaction_type
+      encoding: C
     - annotation: assay
       method: value
       encoding: "binding assay"
@@ -194,7 +195,7 @@ template:
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
       taxon: 9606
@@ -203,7 +204,7 @@ template:
       encoding: PLACEHOLDER
   provenance:
     repo: PMID
-    publication: 11223344
+    publication: "11223344"
     contributors:
       - kind: curation
         name: Your Name
@@ -214,7 +215,7 @@ sections:
       predicate: participates_in
       object:
         method: column
-        encoding: kegg_pathway
+        encoding: B
         prioritize:
           - Pathway
     annotations:
@@ -226,7 +227,7 @@ sections:
       predicate: participates_in
       object:
         method: column
-        encoding: reactome_pathway
+        encoding: C
         prioritize:
           - Pathway
     annotations:
@@ -260,28 +261,28 @@ template:
     row_slice: [1, auto]
     delimiter: ","
     reindex:
-      - column: p_value
+      - column: C
         comparison: lt
         comparator: 0.05
-      - column: sample_size
+      - column: D
         comparison: ge
         comparator: 100
   statement:
     subject:
       method: column
-      encoding: gene_symbol
+      encoding: A
       prioritize:
         - Gene
       taxon: 9606
     predicate: associated_with
     object:
       method: column
-      encoding: disease_name
+      encoding: B
       prioritize:
         - Disease
   provenance:
     repo: PMID
-    publication: 55667788
+    publication: "55667788"
     contributors:
       - kind: curation
         name: Your Name
@@ -289,15 +290,15 @@ template:
   annotations:
     - annotation: p value
       method: column
-      encoding: p_value
+      encoding: C
     - annotation: sample size
       method: column
-      encoding: sample_size
+      encoding: D
 ```
 
 **Key techniques:**
 
-- **Reindex filtering** keeps only rows where `p_value < 0.05` AND `sample_size >= 100`
+- **Reindex filtering** keeps only rows where column C (p-value) < 0.05 AND column D (sample size) >= 100
 - **Comparison operators** — `lt` (less than), `ge` (greater or equal), `eq`, `ne`, `gt`, `le`
 - **Multiple reindex conditions** are ANDed together
 
@@ -322,19 +323,19 @@ template:
   statement:
     subject:
       method: column
-      encoding: category
+      encoding: A
       fill: forward
       prioritize:
         - ChemicalEntity
     predicate: subclass_of
     object:
       method: column
-      encoding: subcategory
+      encoding: B
       prioritize:
         - ChemicalEntity
   provenance:
     repo: PMID
-    publication: 99887766
+    publication: "99887766"
     contributors:
       - kind: curation
         name: Your Name

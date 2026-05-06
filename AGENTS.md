@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Tablassert is a Python package (>=3.11) for tabular data assertion, normalization, and quality control. It builds declarative knowledge graphs from tabular data, exporting NCATS Translator-compliant KGX NDJSON. Uses **Polars** DataFrames, **DuckDB** for entity resolution, and **ONNX/BioBERT** for quality control. CLI built with **Typer**. Models built with **Pydantic v2**.
+Tablassert is a Python package (>=3.11) for tabular data assertion, normalization, and optional quality control. It builds declarative knowledge graphs from tabular data, exporting NCATS Translator-compliant KGX NDJSON. Uses **Polars** DataFrames, **DuckDB** for entity resolution, and **ONNX/BioBERT** for QC when enabled. CLI built with **cyclopts**. Models built with **Pydantic v2**.
 
 ## Quick Reference
 
@@ -31,17 +31,18 @@ Tablassert is a Python package (>=3.11) for tabular data assertion, normalizatio
 
 ```
 src/tablassert/
-  cli.py          # Typer CLI (entry point: tablassert.cli:CLI)
+  cli.py          # cyclopts CLI (entry point: tablassert.cli:APP)
   lib.py          # Core logic: encodings, data loading, Tcode(Section) class
   models.py       # Pydantic v2 models (TablaBase base class)
   enums.py        # str, Enum subclasses (Tokens, Repositories, Comparisons, etc.)
-  fullmap.py      # NER / entity resolution (DuckDB, 12 shards)
+  fullmap.py      # NER / entity resolution (DuckDB, 10 shards)
   qc.py           # Quality control (ONNX/BioBERT, sentence_transformers)
   nlp.py          # Text normalization (level_one: strip+lowercase, level_two: regex)
   ingests.py      # YAML ingestion: from_yaml(), to_sections(), fastmerge()
-  downloader.py   # Playwright-based file downloads with retries
+  downloader.py   # httpx-based file downloads with retries
+  progress.py     # Rich progress bars for pipeline stages
   utils.py        # Hashing (xxhash), STORE path, namespace UUIDs
-  log.py          # loguru logger → .logassert/logassert.log
+  log.py          # loguru logger → .logassert/tablassert.log; cat() helper for category tagging
   __init__.py     # Empty file (lazy loading is per-module, not here)
 docs/             # MkDocs documentation source
 mkdocs.yml        # MkDocs configuration
@@ -51,8 +52,9 @@ tests/            # Test directory (at repo root)
 
 - `conftest.py` provides a `fixtures_path` fixture returning `Path(__file__).parent / "fixtures"`.
 - pytest configured via `pyproject.toml` `[tool.pytest.ini_options]` with `testpaths = ["tests"]`.
+- pytest markers: `network` requires internet; `gpu` requires `CUDAExecutionProvider`.
 - Test fixtures: `tests/fixtures/` contains YAML files for Section model tests.
-- Test modules: `test_enums.py`, `test_fullmap.py`, `test_ingests.py`, `test_lib.py`, `test_models.py`, `test_nlp.py`, `test_utils.py`.
+- Test modules: `test_downloader.py`, `test_enums.py`, `test_fullmap.py`, `test_ingests.py`, `test_lib.py`, `test_models.py`, `test_nlp.py`, `test_utils.py`.
 
 ## Code Style
 
@@ -69,9 +71,8 @@ tests/            # Test directory (at repo root)
   else:
       pl = Lazy.load("polars")
   ```
-- Lazy-loaded deps: `polars`, `duckdb`, `orjson`, `typer`, `xxhash`, `polars_hash`, `yaml`
-- Direct (non-lazy) heavy deps: `sqlite_utils`, `rapidfuzz`, `pydantic`, `loguru`, `yaml.CLoader`
-- Previously-optional deps now in core: `sentence_transformers`, `onnxruntime`, `sklearn`, `playwright`, `pyexcel` — lazy-loaded when present
+- Lazy-loaded deps: `polars`, `duckdb`, `orjson`, `xxhash`, `polars_hash`, `yaml`, `httpx`, `pyexcel`, `onnxruntime`, `sentence_transformers`
+- Direct (non-lazy) heavy deps: `sqlite_utils`, `rapidfuzz`, `pydantic`, `loguru`, `cyclopts`, `rich`, `yaml.CLoader`
 - Some modules mix direct and lazy imports for the same package (e.g., `ingests.py` does `from yaml import CLoader` directly, then lazy-loads `yaml` for `yaml.load()`)
 - Import order: standard library → blank line → third-party → blank line → local
 - Use `from __future__ import annotations` to enable deferred evaluation
@@ -130,13 +131,13 @@ All enums live in `enums.py` and extend `str, Enum`. Key enums: `Tokens`, `Repos
 
 - Use `RuntimeError` for exceptional cases (no custom exception classes currently)
 - Use `logger.warning()` for non-fatal issues (e.g., empty subgraphs)
-- Logger: `from tablassert.log import logger`
+- Logger: `from tablassert.log import logger` (or `cat()` for category-tagged logger)
 
 ### Other Conventions
 
 - `operator.add` for Polars string concatenation on columns (not `+` directly)
-- CLI entry point: `tablassert.cli:CLI` (Typer app with `pretty_exceptions_show_locals=False`)
-- Use `rich.progress` for progress tracking in CLI
+- CLI entry point: `tablassert.cli:APP` (cyclopts app)
+- Use `rich.progress` for progress tracking in CLI (via `progress.py` which wraps Rich Live/Progress)
 - Data side-effects stored in hidden directories: `.logassert/`, `.storassert/`, `.onnxassert/`
 
 ## Tools
@@ -151,12 +152,13 @@ All enums live in `enums.py` and extend `str, Enum`. Key enums: `Tokens`, `Repos
 ## Optional Dependency Groups
 
 Defined in `pyproject.toml` `[project.optional-dependencies]`:
-- `rtcompat` — `polars[rtcompat]` (runtime-compatible Polars build for CPUs without required instructions)
-- `rt` — alias for `rtcompat`
+- `rt` — `polars[rtcompat]` (runtime-compatible Polars build for CPUs without required instructions)
+- `qc` — `onnxruntime` (CPU QC runtime)
+- `qc-cuda` — `onnxruntime-gpu` (CUDA QC runtime; single GPU on device 0)
 
-All other dependencies (ML, web, Excel) are now in core `dependencies`.
+All other ML, web, and Excel dependencies are in core `dependencies`; the ONNX Runtime choice is extra-driven.
 
-Install with: `uv sync` or `pip install tablassert`
+Install with: `uv sync`, `uv sync --extra qc`, `uv sync --extra qc-cuda`, or `pip install tablassert[...]`
 
 ## CI Workflows
 
@@ -164,7 +166,3 @@ Install with: `uv sync` or `pip install tablassert`
 - **MkDocs deploy** (`.github/workflows/docs.yml`): builds docs and deploys to GitHub Pages on push to `main`
 - **Docker publish** (`.github/workflows/docker.yml`): builds and pushes image to GHCR on tag push (`v*`)
 - **Autotag** (`.github/workflows/autotag.yml`): automatic version tagging
-
-## Key Dependencies
-
-polars, duckdb, orjson, pydantic, typer, xxhash, loguru, rapidfuzz, scikit-learn, sqlite-utils, pyyaml, lazy-loader, polars-hash, fastexcel, pyarrow, optimum-onnx

@@ -25,7 +25,7 @@ uv sync
 All ML, web, and Excel dependencies are included in the core install. The only optional extra is a runtime-compatible Polars build for CPUs without required instructions:
 
 ```bash
-uv sync --extra rtcompat   # polars[rtcompat]
+uv sync --extra rt   # polars[rtcompat]
 ```
 
 ## Development Workflow
@@ -143,7 +143,7 @@ else:
     pl = Lazy.load("polars")
 ```
 
-Lazy-loaded packages: `polars`, `duckdb`, `orjson`, `typer`, `xxhash`, `polars_hash`, `yaml`
+Lazy-loaded packages: `polars`, `duckdb`, `orjson`, `xxhash`, `polars_hash`, `yaml`, `httpx`, `pyexcel`, `onnxruntime`, `sentence_transformers`
 
 Import order: standard library → blank line → third-party → blank line → local
 
