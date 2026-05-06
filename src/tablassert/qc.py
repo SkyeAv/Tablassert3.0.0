@@ -194,7 +194,7 @@ def fullmap_audit(
             pending.get_column(preferred).to_list(),
         ):
             logger.info(
-                f"FAILED QC | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {o!r} | PREFERRED: {p!r} | CURIE: {c!r}"
+                f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {o!r} | PREFERRED: {p!r} | CURIE: {c!r}"
             )
 
     return df.join(passed.select(col), on=col, how="semi").lazy()

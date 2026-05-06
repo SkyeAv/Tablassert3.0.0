@@ -148,7 +148,7 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
 
     assert result.height == 0
     assert len(messages) == 1
-    assert "FAILED QC" in messages[0]
+    assert "FAILED" in messages[0]
     assert "STORE: store123" in messages[0]
     assert "CONFIG: config.yaml" in messages[0]
 

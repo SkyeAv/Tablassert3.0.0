@@ -36,7 +36,7 @@ def format_section_oneline(x: "Tcode") -> str:
         source_detail = f"TEXT({(x.source.delimiter or ',')!r})"  # pyright: ignore
     return (
         f"#{x.number} | HASH: {x.store.stem} | SOURCE: {source_detail} "
-        f"| PREDICATE: {x.statement.predicate} | REPO: {x.provenance.repo} | STATUS: {x.status}"
+        f"| CONFIG: {x.config.name} | STATUS: {x.status.value}"
     )
 
 
@@ -84,7 +84,7 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         self.console.line(1)
         self.live.start()
         self.stage_task = self.progress.add_task(
-            description=f"Stage 0/{self.total_stages} — Starting", total=self.total_stages
+            description=f"STAGE 0/{self.total_stages} | STARTING", total=self.total_stages
         )
         return self
 
@@ -102,18 +102,18 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         assert self.stage_task is not None
         self.progress.update(
             self.stage_task,
-            description=f"Stage {self.stage_step}/{self.total_stages} — {name}",
+            description=f"STAGE {self.stage_step}/{self.total_stages} | {name.upper()}",
             completed=self.stage_step,
         )
         self.end_section_task()
 
     def section_loop(self: "PipelineProgress", total: int, label: str) -> Callable[[str], None]:
         self.end_section_task()
-        self.section_task = self.progress.add_task(description=f"{label} — waiting", total=total)
+        self.section_task = self.progress.add_task(description=f"{label.upper()} | WORKING", total=total)
 
         def advance(info: str) -> None:
             assert self.section_task is not None
-            self.progress.update(self.section_task, description=f"{label} — {info}", advance=1)
+            self.progress.update(self.section_task, description=f"{label.upper()} | {info}", advance=1)
 
         return advance
 
