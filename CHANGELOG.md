@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.1 - 2026-05-05
+
+### Bug Fixes
+- Fixed `AttributeError: 'str' object has no attribute 'value'` raised by `format_section_oneline()` in `progress.py` during the BUILDING TCODE stage. The `Section` model sets `use_enum_values=True`, so `Tcode.status` is already a plain string — removed the stale `.value` access.
+
 ## 7.4.0 - 2026-05-05
 
 ### Changes

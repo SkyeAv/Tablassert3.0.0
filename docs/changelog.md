@@ -4,6 +4,12 @@ The canonical release history lives in the repository root at [`CHANGELOG.md`](h
 
 ## Current Release Notes
 
+## 7.4.1 - 2026-05-05
+
+### Bug Fixes
+
+- Fixed crash in the BUILDING TCODE progress display caused by `format_section_oneline()` calling `.value` on `Tcode.status`, which is a plain string under `use_enum_values=True`.
+
 ## 7.4.0 - 2026-05-05
 
 ### Changes
