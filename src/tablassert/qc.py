@@ -133,7 +133,7 @@ def fullmap_audit(
     passed: pl.DataFrame = pairs.filter(pl.col(out))
     pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB"
+    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB|^NCBIGene|^UMLS"
     is_exempt: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(exempt_curies).alias(out))
     pairs = pl.concat((passed, is_exempt))
 
