@@ -230,8 +230,8 @@ def test_section_with_row_slice() -> None:
 
 # ? Section With Rows
 def test_section_with_rows() -> None:
-    source: Text = Text(local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", rows=[0, 2, 5])  # pyright: ignore
-    assert source.rows == [0, 2, 5]
+    source: Text = Text(local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", rows=[1, 2, 5])  # pyright: ignore
+    assert source.rows == [1, 2, 5]
 
 
 # ? Section With Reindex

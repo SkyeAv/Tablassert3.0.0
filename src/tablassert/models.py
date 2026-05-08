@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from operator import eq
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional, Self, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
 
 import lazy_loader as Lazy
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
@@ -77,7 +77,8 @@ class BaseSource(TablaBase):
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
 
     @field_validator("url", mode="after")
-    def is_real_url(url: HttpUrl, timeout: float = 3.0) -> HttpUrl:
+    @classmethod
+    def is_real_url(cls, url: HttpUrl, timeout: float = 3.0) -> HttpUrl:
         s: str = str(url)
 
         try:
@@ -131,9 +132,10 @@ class Regex(TablaBase):
     )
 
     @field_validator("pattern", mode="after")
-    def polars_compatible_pattern(pattern: Union[int, float, str]) -> Union[int, float, str]:
+    @classmethod
+    def polars_compatible_pattern(cls, pattern: Union[int, float, str]) -> Union[int, float, str]:
         try:
-            pl.Series([""]).str.contains(pattern)
+            pl.Series([""]).str.contains(str(pattern))
         except Exception as e:
             msg: str = f"17 | pattern must be a polars compatible regex, got {pattern} | {e}"
             raise ValueError(msg)
@@ -145,9 +147,10 @@ class Regex(TablaBase):
     )
 
     @field_validator("replacement", mode="after")
-    def polars_compatible_replacement(replacement: Union[int, float, str]) -> Union[int, float, str]:
+    @classmethod
+    def polars_compatible_replacement(cls, replacement: Union[int, float, str]) -> Union[int, float, str]:
         try:
-            pl.Series([""]).str.contains(replacement)
+            pl.Series([""]).str.contains(str(replacement))
         except Exception as e:
             msg: str = f"18 | replacement must be a polars compatible regex, got {replacement} | {e}"
             raise ValueError(msg)
@@ -201,13 +204,14 @@ class Encoding(TablaBase):
     )
 
     @field_validator("remove", mode="after")
+    @classmethod
     def polars_compatible_replacement(
-        remove: Optional[list[Union[int, float, str]]],
+        cls, remove: Optional[list[Union[int, float, str]]]
     ) -> Optional[list[Union[int, float, str]]]:
         if remove:
             for r in remove:
                 try:
-                    pl.Series([""]).str.contains(r)
+                    pl.Series([""]).str.contains(str(r))
                 except Exception as e:
                     msg: str = f"19 | remove must be contain polars compatible regular expressions, got {r} | {e}"
                     raise ValueError(msg)
@@ -283,7 +287,8 @@ class Annotation(Encoding):
     )
 
     @field_validator("annotation", mode="after")
-    def clean_annotation(annotation: str) -> str:
+    @classmethod
+    def clean_annotation(cls, annotation: str) -> str:
         return annotation.replace("_", " ").strip()
 
 
