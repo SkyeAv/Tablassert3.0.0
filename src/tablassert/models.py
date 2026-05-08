@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from operator import eq
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional, Self, Union
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, PositiveInt, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
 from tablassert.enums import (
     Categories,
@@ -50,12 +51,28 @@ class Reindex(TablaBase):
         ..., description="Right-side value compared against the selected column.", examples=["N/A", 0, 1.5]
     )
 
+    @model_validator(mode="after")
+    def comparison_datatypes(self: Self) -> Self:
+        x: Comparisons = self.comparison
+        y: Union[str, int, float] = self.comparator
+
+        if eq(x, Comparisons.NE) or eq(x, Comparisons.EQ):
+            if not isinstance(y, str):
+                msg: str = f"14 | eq or ne comparisons must have a str comparator, got {type(y)}"
+                raise ValueError(msg)
+        else:
+            if not (isinstance(y, int) or isinstance(y, float)):
+                msg = f"15 | all comparisons other than eq or ne must have a float or an int comparator, got {type(y)}"
+                raise ValueError(msg)
+
+        return self
+
 
 class BaseSource(TablaBase):
     local: Path = Field(..., description="Local path to read from or download into.")
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
 
-    @field_validator("url")
+    @field_validator("url", mode="after")
     def is_real_url(url: HttpUrl, timeout: float = 3.0) -> HttpUrl:
         s: str = str(url)
 
@@ -68,14 +85,23 @@ class BaseSource(TablaBase):
 
         return url
 
-    rows: Optional[list[NonNegativeInt]] = Field(
+    rows: Optional[list[PositiveInt]] = Field(
         None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]]
     )
-    row_slice: Optional[list[Union[NonNegativeInt, Literal[Tokens.AUTO]]]] = Field(
+    row_slice: Optional[list[Union[PositiveInt, Literal[Tokens.AUTO]]]] = Field(
         None,
         description="Two-value row bounds [start, stop]; each value can be an index or 'auto'.",
         examples=[[1, 50], [Tokens.AUTO, 100], [5, Tokens.AUTO]],
     )
+
+    @model_validator(mode="after")
+    def no_rows_and_slice(self: Self) -> Self:
+        if self.rows and self.row_slice:
+            msg: str = "13 | cannot specify rows and row_slice in the same section"
+            raise ValueError(msg)
+
+        return self
+
     reindex: Optional[list[Reindex]] = Field(
         None,
         description="Sequential row filters applied using source column values.",
