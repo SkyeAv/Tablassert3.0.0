@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 from operator import eq
 from pathlib import Path
-from typing import Any, Literal, Optional, Self, Union
+from typing import TYPE_CHECKING, Literal, Optional, Self, Union
 
+import lazy_loader as Lazy
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
 from tablassert.enums import (

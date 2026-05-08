@@ -139,10 +139,10 @@ Defines the data file location and format.
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"excel"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path for caching |
-| `url` | URL | Yes | Download URL (HTTP/HTTPS) |
+| `url` | URL | Yes | Download URL (HTTP/HTTPS). Validated as reachable at parse time. |
 | `sheet` | String | No | Sheet name. Defaults to `"Sheet1"`. |
-| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. |
-| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. |
+| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. Mutually exclusive with `rows`. |
+| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
 | `reindex` | List[Reindex] | No | Conditional row filtering |
 
 **Example:**
@@ -163,10 +163,10 @@ source:
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"text"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path for caching |
-| `url` | URL | Yes | Download URL |
+| `url` | URL | Yes | Download URL. Validated as reachable at parse time. |
 | `delimiter` | String | No | Field delimiter. Defaults to `","`. |
-| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. |
-| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. |
+| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. Mutually exclusive with `rows`. |
+| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
 | `reindex` | List[Reindex] | No | Conditional filtering |
 
 **Example:**
@@ -189,7 +189,7 @@ Filter rows based on column values.
 |-------|------|-------------|
 | `column` | String | Source column letters to evaluate (`A`-`ZZZ`) |
 | `comparison` | String | Operator. Defaults to `"ne"`; allowed values are `"eq"`, `"ne"`, `"lt"`, `"le"`, `"gt"`, `"ge"`. |
-| `comparator` | String\|Int\|Float | Value to compare against |
+| `comparator` | String\|Int\|Float | Value to compare against. Must be a string for `"eq"`/`"ne"`, or a number for `"lt"`/`"le"`/`"gt"`/`"ge"`. |
 
 **Example:**
 ```yaml
@@ -454,7 +454,7 @@ Optional edge attributes (statistical metadata, notes, etc.).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `annotation` | String | Attribute name (e.g., `"p value"`, `"sample size"`) |
+| `annotation` | String | Attribute name (e.g., `"p value"`, `"sample size"`). Underscores are automatically replaced with spaces at parse time. |
 | (inherits Encoding) | | All Encoding fields available (method, encoding, regex, etc.) |
 
 **Example:**
