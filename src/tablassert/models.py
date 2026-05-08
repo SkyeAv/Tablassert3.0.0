@@ -25,8 +25,10 @@ from tablassert.enums import (
 
 if TYPE_CHECKING:
     import httpx
+    import polars as pl
 else:
     httpx = Lazy.load("httpx")
+    pl = Lazy.load("polars")
 
 
 class TablaBase(BaseModel):
@@ -126,9 +128,30 @@ class Regex(TablaBase):
     pattern: Union[int, float, str] = Field(
         ..., description="Regex pattern passed to string replacement.", examples=["\\s+", "\\.$"]
     )
+
+    @field_validator("pattern", mode="after")
+    def polars_compatible_pattern(pattern: Union[int, float, str]) -> Union[int, float, str]:
+        try:
+            pl.Series([""]).str.contains(pattern)
+        except Exception as e:
+            msg: str = f"17 | pattern must be a polars compatible regex, got {pattern} | {e}"
+            raise ValueError(msg)
+
+        return pattern
+
     replacement: Union[int, float, str] = Field(
         ..., description="Replacement value used when the pattern matches.", examples=[" ", "", 0]
     )
+
+    @field_validator("replacement", mode="after")
+    def polars_compatible_replacement(replacement: Union[int, float, str]) -> Union[int, float, str]:
+        try:
+            pl.Series([""]).str.contains(replacement)
+        except Exception as e:
+            msg: str = f"18 | replacement must be a polars compatible regex, got {replacement} | {e}"
+            raise ValueError(msg)
+
+        return replacement
 
 
 class Math(TablaBase):
@@ -170,11 +193,26 @@ class Encoding(TablaBase):
         description="Null fill strategy applied after value extraction.",
         examples=[FillMethods.FORWARD, FillMethods.ZERO],
     )
-    remove: Optional[list[str]] = Field(
+    remove: Optional[list[Union[int, float, str]]] = Field(
         None,
         description="Regex patterns removed from text (replace with empty string).",
         examples=[["\\[\\d+\\]", "\\s+"]],
     )
+
+    @field_validator("remove", mode="after")
+    def polars_compatible_replacement(
+        remove: Optional[list[Union[int, float, str]]],
+    ) -> Optional[list[Union[int, float, str]]]:
+        if remove:
+            for r in remove:
+                try:
+                    pl.Series([""]).str.contains(r)
+                except Exception as e:
+                    msg: str = f"19 | remove must be contain polars compatible regular expressions, got {r} | {e}"
+                    raise ValueError(msg)
+
+        return remove
+
     prefix: Optional[str] = Field(None, description="String prepended to the encoded value.")
     suffix: Optional[str] = Field(None, description="String appended to the encoded value.")
     explode_by: Optional[str] = Field(
