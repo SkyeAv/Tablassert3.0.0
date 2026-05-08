@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.2 - 2026-05-07
+
+### Changes
+- Added Pydantic field and model validators to `models.py` that enforce configuration correctness at parse time: `url` fields are verified reachable via `httpx.head()`, `rows` and `row_slice` are mutually exclusive, `Reindex.comparator` type must match its `comparison` operator (`eq`/`ne` require `str`, numeric operators require `int`/`float`), `encoding` values under `method: column` must be Excel-style letters (`A`–`ZZZ`), `Regex` pattern/replacement strings are validated against the Polars regex engine, `remove` entries are validated as Polars-compatible regex, and `annotation` names have underscores replaced with spaces.
+- Changed `rows` and `row_slice` element type from `NonNegativeInt` to `PositiveInt` in `BaseSource`.
+
 ## 7.4.1 - 2026-05-05
 
 ### Bug Fixes

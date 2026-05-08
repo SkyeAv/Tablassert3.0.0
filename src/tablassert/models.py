@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import re
+from operator import eq
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, PositiveInt
+import lazy_loader as Lazy
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
 from tablassert.enums import (
     Categories,
@@ -20,6 +23,13 @@ from tablassert.enums import (
     Syntaxes,
     Tokens,
 )
+
+if TYPE_CHECKING:
+    import httpx
+    import polars as pl
+else:
+    httpx = Lazy.load("httpx")
+    pl = Lazy.load("polars")
 
 
 class TablaBase(BaseModel):
@@ -45,18 +55,58 @@ class Reindex(TablaBase):
         ..., description="Right-side value compared against the selected column.", examples=["N/A", 0, 1.5]
     )
 
+    @model_validator(mode="after")
+    def comparison_datatypes(self: Self) -> Self:
+        x: Comparisons = self.comparison
+        y: Union[str, int, float] = self.comparator
+
+        if eq(x, Comparisons.NE) or eq(x, Comparisons.EQ):
+            if not isinstance(y, str):
+                msg: str = f"14 | eq or ne comparisons must have a str comparator, got {type(y)}"
+                raise ValueError(msg)
+        else:
+            if not (isinstance(y, int) or isinstance(y, float)):
+                msg = f"15 | all comparisons other than eq or ne must have a float or an int comparator, got {type(y)}"
+                raise ValueError(msg)
+
+        return self
+
 
 class BaseSource(TablaBase):
     local: Path = Field(..., description="Local path to read from or download into.")
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
-    rows: Optional[list[NonNegativeInt]] = Field(
+
+    @field_validator("url", mode="after")
+    @classmethod
+    def is_real_url(cls, url: HttpUrl, timeout: float = 3.0) -> HttpUrl:
+        s: str = str(url)
+
+        try:
+            r: Any = httpx.head(s, timeout=timeout, follow_redirects=True)
+            r.raise_for_status()
+        except Exception as e:
+            msg: str = f"12 | not a real url {s} | {e}"
+            raise ValueError(msg)
+
+        return url
+
+    rows: Optional[list[PositiveInt]] = Field(
         None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]]
     )
-    row_slice: Optional[list[Union[NonNegativeInt, Literal[Tokens.AUTO]]]] = Field(
+    row_slice: Optional[list[Union[PositiveInt, Literal[Tokens.AUTO]]]] = Field(
         None,
         description="Two-value row bounds [start, stop]; each value can be an index or 'auto'.",
         examples=[[1, 50], [Tokens.AUTO, 100], [5, Tokens.AUTO]],
     )
+
+    @model_validator(mode="after")
+    def no_rows_and_slice(self: Self) -> Self:
+        if self.rows and self.row_slice:
+            msg: str = "13 | cannot specify rows and row_slice in the same section"
+            raise ValueError(msg)
+
+        return self
+
     reindex: Optional[list[Reindex]] = Field(
         None,
         description="Sequential row filters applied using source column values.",
@@ -80,9 +130,32 @@ class Regex(TablaBase):
     pattern: Union[int, float, str] = Field(
         ..., description="Regex pattern passed to string replacement.", examples=["\\s+", "\\.$"]
     )
+
+    @field_validator("pattern", mode="after")
+    @classmethod
+    def polars_compatible_pattern(cls, pattern: Union[int, float, str]) -> Union[int, float, str]:
+        try:
+            pl.Series([""]).str.contains(str(pattern))
+        except Exception as e:
+            msg: str = f"17 | pattern must be a polars compatible regex, got {pattern} | {e}"
+            raise ValueError(msg)
+
+        return pattern
+
     replacement: Union[int, float, str] = Field(
         ..., description="Replacement value used when the pattern matches.", examples=[" ", "", 0]
     )
+
+    @field_validator("replacement", mode="after")
+    @classmethod
+    def polars_compatible_replacement(cls, replacement: Union[int, float, str]) -> Union[int, float, str]:
+        try:
+            pl.Series([""]).str.contains(str(replacement))
+        except Exception as e:
+            msg: str = f"18 | replacement must be a polars compatible regex, got {replacement} | {e}"
+            raise ValueError(msg)
+
+        return replacement
 
 
 class Math(TablaBase):
@@ -103,6 +176,17 @@ class Encoding(TablaBase):
     encoding: Union[str, int, float] = Field(
         ..., description="Literal value or source column letters, depending on method.", examples=["A", "BRCA1", 1.0]
     )
+
+    @model_validator(mode="after")
+    def excel_style_columns(self: Self) -> Self:
+        if eq(self.method, EncodingMethods.COLUMN):
+            x: Union[str, int, float] = self.encoding
+            if not re.search(r"^[A-Z]{1,3}$", str(x)):
+                msg: str = f"16 | encoding must be an excel style alphanumeric column name like A to ZZ, got {x}"
+                raise ValueError(msg)
+
+        return self
+
     regex: Optional[list[Regex]] = Field(
         None,
         description="Ordered regex replacements applied to encoded text.",
@@ -113,11 +197,27 @@ class Encoding(TablaBase):
         description="Null fill strategy applied after value extraction.",
         examples=[FillMethods.FORWARD, FillMethods.ZERO],
     )
-    remove: Optional[list[str]] = Field(
+    remove: Optional[list[Union[int, float, str]]] = Field(
         None,
         description="Regex patterns removed from text (replace with empty string).",
         examples=[["\\[\\d+\\]", "\\s+"]],
     )
+
+    @field_validator("remove", mode="after")
+    @classmethod
+    def polars_compatible_replacement(
+        cls, remove: Optional[list[Union[int, float, str]]]
+    ) -> Optional[list[Union[int, float, str]]]:
+        if remove:
+            for r in remove:
+                try:
+                    pl.Series([""]).str.contains(str(r))
+                except Exception as e:
+                    msg: str = f"19 | remove must be contain polars compatible regular expressions, got {r} | {e}"
+                    raise ValueError(msg)
+
+        return remove
+
     prefix: Optional[str] = Field(None, description="String prepended to the encoded value.")
     suffix: Optional[str] = Field(None, description="String appended to the encoded value.")
     explode_by: Optional[str] = Field(
@@ -185,6 +285,11 @@ class Annotation(Encoding):
     annotation: str = Field(
         ..., description="Output column name that receives this encoded annotation.", examples=["p_value", "cohort"]
     )
+
+    @field_validator("annotation", mode="after")
+    @classmethod
+    def clean_annotation(cls, annotation: str) -> str:
+        return annotation.replace("_", " ").strip()
 
 
 class Section(TablaBase):

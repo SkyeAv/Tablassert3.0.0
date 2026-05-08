@@ -4,6 +4,13 @@ The canonical release history lives in the repository root at [`CHANGELOG.md`](h
 
 ## Current Release Notes
 
+## 7.4.2 - 2026-05-07
+
+### Changes
+
+- Added Pydantic field and model validators to `models.py` that catch misconfigurations at parse time: unreachable `url` fields, mutually exclusive `rows`/`row_slice`, mismatched `Reindex` comparator types, non–Excel-style column letters under `method: column`, Polars-incompatible `regex`/`remove` patterns, and `annotation` name normalization (underscores → spaces).
+- Changed `rows` and `row_slice` element type from `NonNegativeInt` to `PositiveInt`.
+
 ## 7.4.1 - 2026-05-05
 
 ### Bug Fixes
