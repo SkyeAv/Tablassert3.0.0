@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, PositiveInt, field_validator
 
 from tablassert.enums import (
     Categories,
@@ -20,6 +20,11 @@ from tablassert.enums import (
     Syntaxes,
     Tokens,
 )
+
+if TYPE_CHECKING:
+    import httpx
+else:
+    httpx = Lazy.load("httpx")
 
 
 class TablaBase(BaseModel):
@@ -49,6 +54,20 @@ class Reindex(TablaBase):
 class BaseSource(TablaBase):
     local: Path = Field(..., description="Local path to read from or download into.")
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
+
+    @field_validator("url")
+    def is_real_url(url: HttpUrl, timeout: float = 3.0) -> HttpUrl:
+        s: str = str(url)
+
+        try:
+            r: Any = httpx.head(s, timeout=timeout, follow_redirects=True)
+            r.raise_for_status()
+        except Exception as e:
+            msg: str = f"12 | not a real url {s} | {e}"
+            raise ValueError(msg)
+
+        return url
+
     rows: Optional[list[NonNegativeInt]] = Field(
         None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]]
     )
