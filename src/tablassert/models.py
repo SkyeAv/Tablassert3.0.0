@@ -281,6 +281,10 @@ class Annotation(Encoding):
         ..., description="Output column name that receives this encoded annotation.", examples=["p_value", "cohort"]
     )
 
+    @field_validator("annotation", mode="after")
+    def clean_annotation(annotation: str) -> str:
+        return annotation.replace("_", " ").strip()
+
 
 class Section(TablaBase):
     # ? Pydantic "Section" Model And Coercion
