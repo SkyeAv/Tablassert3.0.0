@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from operator import eq
 from pathlib import Path
 from typing import Any, Literal, Optional, Self, Union
@@ -148,6 +149,17 @@ class Encoding(TablaBase):
     encoding: Union[str, int, float] = Field(
         ..., description="Literal value or source column letters, depending on method.", examples=["A", "BRCA1", 1.0]
     )
+
+    @model_validator(mode="after")
+    def excel_style_columns(self: Self) -> Self:
+        if eq(self.method, EncodingMethods.COLUMN):
+            x: Union[str, int, float] = self.encoding
+            if not re.search(r"^[A-Z]{1,3}$", str(x)):
+                msg: str = f"16 | encoding must be an excel style alphanumeric column name like A to ZZ, got {x}"
+                raise ValueError(msg)
+
+        return self
+
     regex: Optional[list[Regex]] = Field(
         None,
         description="Ordered regex replacements applied to encoded text.",
