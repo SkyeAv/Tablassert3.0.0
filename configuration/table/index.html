@@ -325,7 +325,7 @@ sections:
 <td><code>url</code></td>
 <td>URL</td>
 <td>Yes</td>
-<td>Download URL (HTTP/HTTPS)</td>
+<td>Download URL (HTTP/HTTPS). Validated as reachable at parse time.</td>
 </tr>
 <tr>
 <td><code>sheet</code></td>
@@ -337,13 +337,13 @@ sections:
 <td><code>row_slice</code></td>
 <td>List[Int|"auto"]</td>
 <td>No</td>
-<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>.</td>
+<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>. Mutually exclusive with <code>rows</code>.</td>
 </tr>
 <tr>
 <td><code>rows</code></td>
 <td>List[Int]</td>
 <td>No</td>
-<td>Zero-based row indices to keep after any <code>row_slice</code> crop.</td>
+<td>Zero-based row indices to keep after any <code>row_slice</code> crop. Mutually exclusive with <code>row_slice</code>.</td>
 </tr>
 <tr>
 <td><code>reindex</code></td>
@@ -390,7 +390,7 @@ sections:
 <td><code>url</code></td>
 <td>URL</td>
 <td>Yes</td>
-<td>Download URL</td>
+<td>Download URL. Validated as reachable at parse time.</td>
 </tr>
 <tr>
 <td><code>delimiter</code></td>
@@ -402,13 +402,13 @@ sections:
 <td><code>row_slice</code></td>
 <td>List[Int|"auto"]</td>
 <td>No</td>
-<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>.</td>
+<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>. Mutually exclusive with <code>rows</code>.</td>
 </tr>
 <tr>
 <td><code>rows</code></td>
 <td>List[Int]</td>
 <td>No</td>
-<td>Zero-based row indices to keep after any <code>row_slice</code> crop.</td>
+<td>Zero-based row indices to keep after any <code>row_slice</code> crop. Mutually exclusive with <code>row_slice</code>.</td>
 </tr>
 <tr>
 <td><code>reindex</code></td>
@@ -452,7 +452,7 @@ sections:
 <tr>
 <td><code>comparator</code></td>
 <td>String|Int|Float</td>
-<td>Value to compare against</td>
+<td>Value to compare against. Must be a string for <code>"eq"</code>/<code>"ne"</code>, or a number for <code>"lt"</code>/<code>"le"</code>/<code>"gt"</code>/<code>"ge"</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -833,7 +833,7 @@ sections:
 <tr>
 <td><code>annotation</code></td>
 <td>String</td>
-<td>Attribute name (e.g., <code>"p value"</code>, <code>"sample size"</code>)</td>
+<td>Attribute name (e.g., <code>"p value"</code>, <code>"sample size"</code>). Underscores are automatically replaced with spaces at parse time.</td>
 </tr>
 <tr>
 <td>(inherits Encoding)</td>
