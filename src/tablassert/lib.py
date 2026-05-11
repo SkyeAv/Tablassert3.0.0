@@ -443,13 +443,13 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
 
 def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> None:
     # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
-    p: Path = Path(f"./{name}_{version}")
+    p: Path = Path(f"./{name}_{version}.tmp")
 
-    e: Path = p.with_suffix(".edges.ndjson.temp")  # ! For Labeling
+    e: Path = p.with_suffix(".edges.ndjson.tmp")  # ! For Labeling
     if e.exists():
         e.unlink()
 
-    n: Path = p.with_suffix(".nodes.ndjson.temp")
+    n: Path = p.with_suffix(".nodes.ndjson.tmp")
     if n.exists():
         n.unlink()
 
