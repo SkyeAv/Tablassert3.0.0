@@ -91,7 +91,7 @@ class BaseSource(TablaBase):
         @URL_CACHE.memoize()
         def check_url(s: str, timeout: float = 15.0) -> None:
             r: Any = httpx.head(s, timeout=timeout, follow_redirects=True)
-            if 400 <= r.status_code < 500:
+            if 400 <= r.status_code < 500 and r.status_code != 403:
                 r.raise_for_status()
 
         try:
