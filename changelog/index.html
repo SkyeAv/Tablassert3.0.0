@@ -92,9 +92,9 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#743-2026-05-11">7.4.3 - 2026-05-11</a>
+    <li class="toctree-l2"><a class="reference internal" href="#744-2026-05-11">7.4.4 - 2026-05-11</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#bug-fixes">Bug Fixes</a>
+    <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
     </li>
         </ul>
     </li>
@@ -127,10 +127,11 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="743-2026-05-11">7.4.3 - 2026-05-11</h2>
-<h3 id="bug-fixes">Bug Fixes</h3>
+<h2 id="744-2026-05-11">7.4.4 - 2026-05-11</h2>
+<h3 id="changes">Changes</h3>
 <ul>
-<li>Fixed <code>compile_graph()</code> emitting output paths with the trailing semver segment stripped (e.g. <code>tablassert_7.4</code> instead of <code>tablassert_7.4.3</code>). <code>Path.with_suffix()</code> treated the version's final <code>.N</code> as the path suffix; the base path now carries a <code>.tmp</code> sentinel that gets replaced instead. Temp suffixes also normalized from <code>.temp</code> to <code>.tmp</code>.</li>
+<li>Relaxed the <code>url</code> field validator in <code>BaseSource</code> to only fail on 4xx responses from <code>httpx.head()</code>. Sources whose servers return 5xx or other non-2xx statuses to <code>HEAD</code> requests now pass config validation, since the URL itself is still well-formed.</li>
+<li>Increased the <code>httpx.head()</code> timeout in the <code>url</code> validator from 3.0s to 5.0s to tolerate slower upstreams.</li>
 </ul>
 <p>For older releases and the full project history, open the root <code>CHANGELOG.md</code> in the repository.</p>
               
