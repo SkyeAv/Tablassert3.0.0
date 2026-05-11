@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.7 - 2026-05-11
+
+### Changes
+- Added `Provenance.is_valid_pmc_id` model validator in `models.py` that enforces `publication` starts with `PMC` followed by digits when `repo` is `PMC` (`Repositories.PUBMED_CENTRAL`). The constraint was previously documented in 7.3.6 but only now enforced at parse time.
+
 ## 7.4.6 - 2026-05-11
 
 ### Changes

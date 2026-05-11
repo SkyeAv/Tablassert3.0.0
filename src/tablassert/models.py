@@ -290,6 +290,17 @@ class Provenance(TablaBase):
         description="Repository-local publication id appended as repo:publication.",
         examples=["12345678", "PMC1234567"],
     )
+
+    @model_validator(mode="after")
+    def is_valid_pmc_id(self: Self) -> Self:
+        if eq(self.repo, Repositories.PUBMED_CENTRAL):
+            publication: str = self.publication
+            if not re.search(r"^PMC\d+", publication):
+                msg: str = f"20 | pubmed central publications must start with PMC, got {publication}"
+                raise ValueError(msg)
+
+        return self
+
     contributors: list[Contributor] = Field(..., description="Contributor records embedded in output provenance.")
 
 
