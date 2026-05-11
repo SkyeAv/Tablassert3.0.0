@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.4 - 2026-05-11
+
+### Changes
+- Relaxed `BaseSource.is_real_url` validator in `models.py` to only raise on 4xx responses from `httpx.head()`. Servers that return 5xx or other non-2xx statuses to `HEAD` requests no longer fail config validation, since the URL itself is still well-formed and reachable.
+- Increased `is_real_url` `httpx.head()` timeout from 3.0s to 5.0s to reduce spurious validation failures against slow upstreams.
+
 ## 7.4.3 - 2026-05-11
 
 ### Bug Fixes
