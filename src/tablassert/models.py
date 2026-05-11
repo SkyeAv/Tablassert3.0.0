@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
 
 import lazy_loader as Lazy
+from diskcache import Cache
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
 from tablassert.enums import (
@@ -72,19 +73,29 @@ class Reindex(TablaBase):
         return self
 
 
+CACHE: Path = Path(".cachassert/")
+CACHE.mkdir(parents=True, exist_ok=True)
+
+URL_CACHE: Cache = Cache(CACHE)
+
+
 class BaseSource(TablaBase):
     local: Path = Field(..., description="Local path to read from or download into.")
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
 
     @field_validator("url", mode="after")
     @classmethod
-    def is_real_url(cls, url: HttpUrl, timeout: float = 5.0) -> HttpUrl:
+    def is_real_url(cls, url: HttpUrl) -> HttpUrl:
         s: str = str(url)
 
-        try:
+        @URL_CACHE.memoize()
+        def check_url(s: str, timeout: float = 15.0) -> None:
             r: Any = httpx.head(s, timeout=timeout, follow_redirects=True)
             if 400 <= r.status_code < 500:
                 r.raise_for_status()
+
+        try:
+            check_url(s)
         except Exception as e:
             msg: str = f"12 | not a real url {s} | {e}"
             raise ValueError(msg)

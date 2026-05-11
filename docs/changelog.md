@@ -4,11 +4,12 @@ The canonical release history lives in the repository root at [`CHANGELOG.md`](h
 
 ## Current Release Notes
 
-## 7.4.4 - 2026-05-11
+## 7.4.5 - 2026-05-11
 
 ### Changes
 
-- Relaxed the `url` field validator in `BaseSource` to only fail on 4xx responses from `httpx.head()`. Sources whose servers return 5xx or other non-2xx statuses to `HEAD` requests now pass config validation, since the URL itself is still well-formed.
-- Increased the `httpx.head()` timeout in the `url` validator from 3.0s to 5.0s to tolerate slower upstreams.
+- Cached `url` field validator results in `BaseSource` to a `diskcache.Cache` stored at `.cachassert/`, so repeated config parses skip redundant `httpx.head()` round-trips against unchanged URLs.
+- Increased the `httpx.head()` timeout in the `url` validator from 5.0s to 15.0s to further tolerate slower upstreams.
+- Added `diskcache` as a runtime dependency.
 
 For older releases and the full project history, open the root `CHANGELOG.md` in the repository.

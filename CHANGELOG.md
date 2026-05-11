@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.5 - 2026-05-11
+
+### Changes
+- Cached `BaseSource.is_real_url` validator results to a `diskcache.Cache` at `.cachassert/` in `models.py`, so repeated config parses skip redundant `httpx.head()` round-trips against unchanged URLs.
+- Increased `is_real_url` `httpx.head()` timeout from 5.0s to 15.0s to further reduce spurious validation failures against slow upstreams.
+- Added `diskcache>=5.6.3` runtime dependency.
+
 ## 7.4.4 - 2026-05-11
 
 ### Changes
