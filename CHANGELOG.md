@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.6 - 2026-05-11
+
+### Changes
+- Relaxed `BaseSource.is_real_url` validator in `models.py` to ignore `403 Forbidden` responses from `httpx.head()`. Some upstreams reject anonymous `HEAD` probes with 403 even though the URL itself is well-formed and reachable, so 403 no longer fails config validation.
+
 ## 7.4.5 - 2026-05-11
 
 ### Changes
