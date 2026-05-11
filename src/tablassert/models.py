@@ -78,12 +78,13 @@ class BaseSource(TablaBase):
 
     @field_validator("url", mode="after")
     @classmethod
-    def is_real_url(cls, url: HttpUrl, timeout: float = 3.0) -> HttpUrl:
+    def is_real_url(cls, url: HttpUrl, timeout: float = 5.0) -> HttpUrl:
         s: str = str(url)
 
         try:
             r: Any = httpx.head(s, timeout=timeout, follow_redirects=True)
-            r.raise_for_status()
+            if 400 <= r.status_code < 500:
+                r.raise_for_status()
         except Exception as e:
             msg: str = f"12 | not a real url {s} | {e}"
             raise ValueError(msg)

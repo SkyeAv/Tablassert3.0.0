@@ -4,10 +4,11 @@ The canonical release history lives in the repository root at [`CHANGELOG.md`](h
 
 ## Current Release Notes
 
-## 7.4.3 - 2026-05-11
+## 7.4.4 - 2026-05-11
 
-### Bug Fixes
+### Changes
 
-- Fixed `compile_graph()` emitting output paths with the trailing semver segment stripped (e.g. `tablassert_7.4` instead of `tablassert_7.4.3`). `Path.with_suffix()` treated the version's final `.N` as the path suffix; the base path now carries a `.tmp` sentinel that gets replaced instead. Temp suffixes also normalized from `.temp` to `.tmp`.
+- Relaxed the `url` field validator in `BaseSource` to only fail on 4xx responses from `httpx.head()`. Sources whose servers return 5xx or other non-2xx statuses to `HEAD` requests now pass config validation, since the URL itself is still well-formed.
+- Increased the `httpx.head()` timeout in the `url` validator from 3.0s to 5.0s to tolerate slower upstreams.
 
 For older releases and the full project history, open the root `CHANGELOG.md` in the repository.
