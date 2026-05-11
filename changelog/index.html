@@ -92,7 +92,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#744-2026-05-11">7.4.4 - 2026-05-11</a>
+    <li class="toctree-l2"><a class="reference internal" href="#745-2026-05-11">7.4.5 - 2026-05-11</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
     </li>
@@ -127,11 +127,12 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="744-2026-05-11">7.4.4 - 2026-05-11</h2>
+<h2 id="745-2026-05-11">7.4.5 - 2026-05-11</h2>
 <h3 id="changes">Changes</h3>
 <ul>
-<li>Relaxed the <code>url</code> field validator in <code>BaseSource</code> to only fail on 4xx responses from <code>httpx.head()</code>. Sources whose servers return 5xx or other non-2xx statuses to <code>HEAD</code> requests now pass config validation, since the URL itself is still well-formed.</li>
-<li>Increased the <code>httpx.head()</code> timeout in the <code>url</code> validator from 3.0s to 5.0s to tolerate slower upstreams.</li>
+<li>Cached <code>url</code> field validator results in <code>BaseSource</code> to a <code>diskcache.Cache</code> stored at <code>.cachassert/</code>, so repeated config parses skip redundant <code>httpx.head()</code> round-trips against unchanged URLs.</li>
+<li>Increased the <code>httpx.head()</code> timeout in the <code>url</code> validator from 5.0s to 15.0s to further tolerate slower upstreams.</li>
+<li>Added <code>diskcache</code> as a runtime dependency.</li>
 </ul>
 <p>For older releases and the full project history, open the root <code>CHANGELOG.md</code> in the repository.</p>
               
