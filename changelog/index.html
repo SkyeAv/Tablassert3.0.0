@@ -92,7 +92,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#745-2026-05-11">7.4.5 - 2026-05-11</a>
+    <li class="toctree-l2"><a class="reference internal" href="#746-2026-05-11">7.4.6 - 2026-05-11</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
     </li>
@@ -127,12 +127,10 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="745-2026-05-11">7.4.5 - 2026-05-11</h2>
+<h2 id="746-2026-05-11">7.4.6 - 2026-05-11</h2>
 <h3 id="changes">Changes</h3>
 <ul>
-<li>Cached <code>url</code> field validator results in <code>BaseSource</code> to a <code>diskcache.Cache</code> stored at <code>.cachassert/</code>, so repeated config parses skip redundant <code>httpx.head()</code> round-trips against unchanged URLs.</li>
-<li>Increased the <code>httpx.head()</code> timeout in the <code>url</code> validator from 5.0s to 15.0s to further tolerate slower upstreams.</li>
-<li>Added <code>diskcache</code> as a runtime dependency.</li>
+<li>Relaxed the <code>url</code> field validator in <code>BaseSource</code> to ignore <code>403 Forbidden</code> responses from <code>httpx.head()</code>. Some upstreams reject anonymous <code>HEAD</code> probes with 403 even though the URL itself is well-formed and reachable, so 403 no longer fails config validation.</li>
 </ul>
 <p>For older releases and the full project history, open the root <code>CHANGELOG.md</code> in the repository.</p>
               
