@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.3 - 2026-05-11
+
+### Bug Fixes
+- Fixed `compile_graph()` in `lib.py` stripping the final version segment from output paths. `Path(f"./{name}_{version}")` treated the trailing `.N` of a semver version (e.g. `.3` in `7.4.3`) as a suffix, so `with_suffix(".edges.ndjson.temp")` replaced the version segment instead of appending. Base path now carries a `.tmp` sentinel suffix (`Path(f"./{name}_{version}.tmp")`) that `with_suffix()` replaces, preserving the full version in emitted filenames. Temp suffixes also shortened from `.temp` to `.tmp` for consistency.
+
 ## 7.4.2 - 2026-05-07
 
 ### Changes
