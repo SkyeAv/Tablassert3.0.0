@@ -83,7 +83,8 @@ class BaseSource(TablaBase):
 
         try:
             r: Any = httpx.head(s, timeout=timeout, follow_redirects=True)
-            r.raise_for_status()
+            if 400 <= r.status_code < 500:
+                r.raise_for_status()
         except Exception as e:
             msg: str = f"12 | not a real url {s} | {e}"
             raise ValueError(msg)
