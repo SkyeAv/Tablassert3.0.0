@@ -2351,7 +2351,7 @@ wheels = [
 
 [[package]]
 name = "tablassert"
-version = "7.4.2"
+version = "7.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },
