@@ -78,7 +78,7 @@ class BaseSource(TablaBase):
 
     @field_validator("url", mode="after")
     @classmethod
-    def is_real_url(cls, url: HttpUrl, timeout: float = 3.0) -> HttpUrl:
+    def is_real_url(cls, url: HttpUrl, timeout: float = 5.0) -> HttpUrl:
         s: str = str(url)
 
         try:
