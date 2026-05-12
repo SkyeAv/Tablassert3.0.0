@@ -92,7 +92,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#747-2026-05-11">7.4.7 - 2026-05-11</a>
+    <li class="toctree-l2"><a class="reference internal" href="#748-2026-05-12">7.4.8 - 2026-05-12</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
     </li>
@@ -127,10 +127,10 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="747-2026-05-11">7.4.7 - 2026-05-11</h2>
+<h2 id="748-2026-05-12">7.4.8 - 2026-05-12</h2>
 <h3 id="changes">Changes</h3>
 <ul>
-<li>Added an <code>is_valid_pmc_id</code> model validator on <code>Provenance</code> that enforces <code>publication</code> starts with <code>PMC</code> followed by digits when <code>repo</code> is <code>PMC</code>. The constraint was previously documented in 7.3.6 but only now enforced at parse time.</li>
+<li>Expanded <code>fullmap_audit()</code> failure logging in <code>qc.py</code> so each rejected CURIE log line now carries the underlying <code>FUZZ_RATIO</code>, <code>FUZZ_PARTIAL</code>, and (when the BERT stage ran) <code>BERT_SIMILARITY</code> score values, making it easier to diagnose why a term was dropped during QC.</li>
 </ul>
 <p>For older releases and the full project history, open the root <code>CHANGELOG.md</code> in the repository.</p>
               
