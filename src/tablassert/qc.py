@@ -133,7 +133,7 @@ def fullmap_audit(
     passed: pl.DataFrame = pairs.filter(pl.col(out))
     pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB|^NCBIGene|^UMLS"
+    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB|^NCBIGene|^UMLS|^UNII|^PUBCHEM|^MONDO"
     is_exempt: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(exempt_curies).alias(out))
     pairs = pl.concat((passed, is_exempt))
 
@@ -160,9 +160,11 @@ def fullmap_audit(
     ratio_scores: object = cpdist(originals, preferreds, scorer=fuzz.ratio)
     partial_scores: object = cpdist(originals, preferreds, scorer=fuzz.partial_token_sort_ratio)
 
-    fuzz_mask: pl.Series = pl.Series(out, (ratio_scores >= 20) | (partial_scores >= 20), dtype=pl.Boolean)
+    pending = pending.with_columns([pl.Series("fuzz_ratio", ratio_scores), pl.Series("fuzz_partial", partial_scores)])
+
+    fuzz_mask: pl.Series = pl.Series(out, (ratio_scores >= 20) | (partial_scores >= 30), dtype=pl.Boolean)
     masked_fuzz: pl.DataFrame = pending.with_columns(fuzz_mask)
-    pairs = pl.concat((passed, masked_fuzz))
+    pairs = pl.concat((passed, masked_fuzz), how="diagonal")
 
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
@@ -179,22 +181,33 @@ def fullmap_audit(
     n: int = len(originals)
     similarity: object = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()  # pyright: ignore
 
+    pending = pending.with_columns(pl.Series("bert_similarity", similarity))  # pyright: ignore
+
     bert_mask: pl.Series = pl.Series(out, similarity >= 0.2, dtype=pl.Boolean)  # pyright: ignore
     BERT_fuzz: pl.DataFrame = pending.with_columns(bert_mask)
-    pairs = pl.concat((passed, BERT_fuzz))
+    pairs = pl.concat((passed, BERT_fuzz), how="diagonal")
 
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
     # * Add Logging For Failed CURIES
     if log and pending.height > 0:
-        for c, o, p in zip(
-            pending.get_column(col).to_list(),
-            pending.get_column(original).to_list(),
-            pending.get_column(preferred).to_list(),
-        ):
-            logger.info(
-                f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {o!r} | PREFERRED: {p!r} | CURIE: {c!r}"
+        has_bert: bool = "bert_similarity" in pending.columns
+        curies: list[str] = pending.get_column(col).to_list()
+        originals_list: list[str] = pending.get_column(original).to_list()
+        preferreds_list: list[str] = pending.get_column(preferred).to_list()
+        fuzz_ratios: list[object] = pending.get_column("fuzz_ratio").to_list()
+        fuzz_partials: list[object] = pending.get_column("fuzz_partial").to_list()
+        bert_sims: list[object] = pending.get_column("bert_similarity").to_list() if has_bert else []
+
+        for i, c in enumerate(curies):
+            msg: str = (
+                f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col}"
+                f" | ORIGINAL: {originals_list[i]!r} | PREFERRED: {preferreds_list[i]!r} | CURIE: {c!r}"
+                f" | FUZZ_RATIO: {fuzz_ratios[i]} | FUZZ_PARTIAL: {fuzz_partials[i]}"
             )
+            if has_bert:
+                msg = f"{msg} | BERT_SIMILARITY: {bert_sims[i]}"
+            logger.info(msg)
 
     return df.join(passed.select(col), on=col, how="semi").lazy()

@@ -108,9 +108,7 @@ def test_fullmap_audit_suppresses_logs(monkeypatch: Any) -> None:
     monkeypatch.setattr(rf_process, "cpdist", fake_cpdist)
     monkeypatch.setattr(pairwise, "cosine_similarity", fake_cosine_similarity)
 
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"subject": ["MONDO:1"], "original subject": ["foo"], "subject name": ["bar"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["FOO:1"], "original subject": ["foo"], "subject name": ["bar"]}).lazy()
     result: pl.DataFrame = qc.fullmap_audit(lf, "subject", "store123", "config.yaml", log=False).collect()
 
     assert result.height == 0
@@ -141,9 +139,7 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
     monkeypatch.setattr(rf_process, "cpdist", fake_cpdist)
     monkeypatch.setattr(pairwise, "cosine_similarity", fake_cosine_similarity)
 
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"subject": ["MONDO:1"], "original subject": ["foo"], "subject name": ["bar"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["FOO:1"], "original subject": ["foo"], "subject name": ["bar"]}).lazy()
     result: pl.DataFrame = qc.fullmap_audit(lf, "subject", "store123", "config.yaml", log=True).collect()
 
     assert result.height == 0
@@ -151,6 +147,42 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
     assert "FAILED" in messages[0]
     assert "STORE: store123" in messages[0]
     assert "CONFIG: config.yaml" in messages[0]
+    assert "FUZZ_RATIO:" in messages[0]
+    assert "FUZZ_PARTIAL:" in messages[0]
+    assert "BERT_SIMILARITY:" in messages[0]
+
+
+# ? fullmap_audit Log Message Contains Expected Score Values
+def test_fullmap_audit_log_score_values(monkeypatch: Any) -> None:
+    messages: list[str] = []
+
+    class DummyLogger:
+        def info(self, message: str) -> None:
+            messages.append(message)
+
+    class DummyBioBERT:
+        def encode(self, values: list[str]) -> object:
+            return np.array([[0.0], [1.0]])
+
+    def fake_cpdist(left: list[str], right: list[str], scorer: Any) -> object:
+        return np.array([5.0]) if scorer == fuzz.ratio else np.array([8.0])
+
+    def fake_cosine_similarity(left: object, right: object) -> object:
+        return np.array([[0.05]])
+
+    monkeypatch.setattr(qc, "logger", DummyLogger())
+    monkeypatch.setattr(qc, "get_biobert", lambda provider=None: DummyBioBERT())
+    monkeypatch.setattr(rf_process, "cpdist", fake_cpdist)
+    monkeypatch.setattr(pairwise, "cosine_similarity", fake_cosine_similarity)
+
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["X:1"], "original subject": ["foo"], "subject name": ["bar"]}).lazy()
+    result: pl.DataFrame = qc.fullmap_audit(lf, "subject", "store456", "cfg.yaml", log=True).collect()
+
+    assert result.height == 0
+    assert len(messages) == 1
+    assert "FUZZ_RATIO: 5.0" in messages[0]
+    assert "FUZZ_PARTIAL: 8.0" in messages[0]
+    assert "BERT_SIMILARITY: 0.05" in messages[0]
 
 
 # ? GPU Runtime Can Be Forced To CPU

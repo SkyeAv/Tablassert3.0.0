@@ -1,6 +1,6 @@
 [project]
 name = "tablassert"
-version = "7.4.7"
+version = "7.4.8"
 description = "Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in."
 authors = [
     { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
@@ -106,7 +106,6 @@ markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider"]
 line-length = 120
 indent-width = 4
 target-version = "py311"
-exclude = ["*.tcss"]
 
 [tool.ruff.format]
 quote-style = "double"
