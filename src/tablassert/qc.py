@@ -133,7 +133,7 @@ def fullmap_audit(
     passed: pl.DataFrame = pairs.filter(pl.col(out))
     pending: pl.DataFrame = pairs.filter(~pl.col(out))
 
-    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB|^NCBIGene|^UMLS"
+    exempt_curies: str = r"^CHEBI|^PR|^UniProtKB|^NCBIGene|^UMLS|^UNII|^PUBCHEM|^MONDO"
     is_exempt: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(exempt_curies).alias(out))
     pairs = pl.concat((passed, is_exempt))
 
@@ -160,7 +160,7 @@ def fullmap_audit(
     ratio_scores: object = cpdist(originals, preferreds, scorer=fuzz.ratio)
     partial_scores: object = cpdist(originals, preferreds, scorer=fuzz.partial_token_sort_ratio)
 
-    fuzz_mask: pl.Series = pl.Series(out, (ratio_scores >= 20) | (partial_scores >= 20), dtype=pl.Boolean)
+    fuzz_mask: pl.Series = pl.Series(out, (ratio_scores >= 20) | (partial_scores >= 30), dtype=pl.Boolean)
     masked_fuzz: pl.DataFrame = pending.with_columns(fuzz_mask)
     pairs = pl.concat((passed, masked_fuzz))
 

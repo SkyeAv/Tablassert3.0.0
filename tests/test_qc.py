@@ -108,9 +108,7 @@ def test_fullmap_audit_suppresses_logs(monkeypatch: Any) -> None:
     monkeypatch.setattr(rf_process, "cpdist", fake_cpdist)
     monkeypatch.setattr(pairwise, "cosine_similarity", fake_cosine_similarity)
 
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"subject": ["MONDO:1"], "original subject": ["foo"], "subject name": ["bar"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["FOO:1"], "original subject": ["foo"], "subject name": ["bar"]}).lazy()
     result: pl.DataFrame = qc.fullmap_audit(lf, "subject", "store123", "config.yaml", log=False).collect()
 
     assert result.height == 0
@@ -141,9 +139,7 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
     monkeypatch.setattr(rf_process, "cpdist", fake_cpdist)
     monkeypatch.setattr(pairwise, "cosine_similarity", fake_cosine_similarity)
 
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"subject": ["MONDO:1"], "original subject": ["foo"], "subject name": ["bar"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["FOO:1"], "original subject": ["foo"], "subject name": ["bar"]}).lazy()
     result: pl.DataFrame = qc.fullmap_audit(lf, "subject", "store123", "config.yaml", log=True).collect()
 
     assert result.height == 0
