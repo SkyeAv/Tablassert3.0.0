@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.8 - 2026-05-12
+
+### Changes
+- Expanded `fullmap_audit()` failure logging in `qc.py` to include the underlying score values that caused each rejection. Failed CURIE log lines now carry `FUZZ_RATIO`, `FUZZ_PARTIAL`, and (when the BERT stage ran) `BERT_SIMILARITY` alongside the existing `STORE`/`CONFIG`/`COL`/`ORIGINAL`/`PREFERRED`/`CURIE` fields, making it easier to diagnose why a term was dropped.
+- Attached the per-row fuzzy and BERT scores as columns on the pending frame before masking, and switched the intermediate `pl.concat()` calls to `how="diagonal"` so the score columns survive concatenation with the already-passed rows.
+
 ## 7.4.7 - 2026-05-11
 
 ### Changes
