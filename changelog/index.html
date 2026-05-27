@@ -92,9 +92,9 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#748-2026-05-12">7.4.8 - 2026-05-12</a>
+    <li class="toctree-l2"><a class="reference internal" href="#749-2026-05-26">7.4.9 - 2026-05-26</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
+    <li class="toctree-l3"><a class="reference internal" href="#bug-fixes">Bug Fixes</a>
     </li>
         </ul>
     </li>
@@ -127,12 +127,11 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="748-2026-05-12">7.4.8 - 2026-05-12</h2>
-<h3 id="changes">Changes</h3>
+<h2 id="749-2026-05-26">7.4.9 - 2026-05-26</h2>
+<h3 id="bug-fixes">Bug Fixes</h3>
 <ul>
-<li>Expanded <code>fullmap_audit()</code> failure logging in <code>qc.py</code> so each rejected CURIE log line now carries the underlying <code>FUZZ_RATIO</code>, <code>FUZZ_PARTIAL</code>, and (when the BERT stage ran) <code>BERT_SIMILARITY</code> score values, making it easier to diagnose why a term was dropped during QC.</li>
+<li>Fixed <code>OSError: Too many open files</code> during subgraph build at large scales (700+ sections). <code>with_mesh()</code> and <code>with_captions()</code> in <code>lib.py</code> opened a <code>sqlite_utils.Database</code> per section but never closed the underlying SQLite connection, leaving FD release to GC. In the tight sequential <code>compile_subgraph</code> loop the leaked FDs accumulated past the OS soft limit, causing the next <code>to_store()</code> → <code>df.write_parquet()</code> (which polars 1.39 routes through <code>sink_parquet</code>) to fail opening its target <code>.storassert/*.parquet</code>. Both functions now wrap their query bodies in <code>try:</code> / <code>finally: db.conn.close()</code>.</li>
 </ul>
-<p>For older releases and the full project history, open the root <code>CHANGELOG.md</code> in the repository.</p>
               
             </div>
           </div><footer>
