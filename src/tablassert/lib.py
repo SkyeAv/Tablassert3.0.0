@@ -195,7 +195,8 @@ def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
 
     df: pl.DataFrame = lf.collect()
     db: object = Database(pubmed_db)
-    query: str = """
+    try:
+        query: str = """
 SELECT
   mesh.mesh_major,
   mesh.mesh,
@@ -209,7 +210,9 @@ INNER JOIN info ON ids.pmid = info.pmid
 WHERE ids.alt = :curie OR ids.pmid = :curie
 LIMIT 1
 """
-    rows: list[dict[str, str]] = list(db.query(query, {"curie": curie})) or []
+        rows: list[dict[str, str]] = list(db.query(query, {"curie": curie})) or []
+    finally:
+        db.conn.close()  # pyright: ignore
     all_ids: list[str] = [add("MESH:", x["mesh"]) for x in rows if x]
     is_major: list[bool] = [eq(x["mesh_major"], "Y") for x in rows]
     domain: list[str] = [x for x, y in zip(all_ids, is_major) if y]
@@ -244,14 +247,17 @@ def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.La
 
     df: pl.DataFrame = lf.collect()
     db: object = Database(pmc_db)
-    filename: str = basename(url)
-    query: str = """
+    try:
+        filename: str = basename(url)
+        query: str = """
 SELECT caption
 FROM captions
 WHERE pmc = :curie AND file = :filename
 LIMIT 1
 """
-    rows: list[dict[str, str]] = list(db.query(query, {"curie": curie, "filename": filename})) or []
+        rows: list[dict[str, str]] = list(db.query(query, {"curie": curie, "filename": filename})) or []
+    finally:
+        db.conn.close()  # pyright: ignore
     row: dict[str, str] = rows[0] if rows else {}
 
     caption: Optional[str] = row.get("caption")
