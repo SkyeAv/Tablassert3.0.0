@@ -343,7 +343,7 @@ class Tcode(Section):
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
-                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)]
+                [op for x in self.statement.qualifiers for op in self.node(x, add("biolink:", x.qualifier), conns)]
                 if self.statement.qualifiers
                 else None,
                 (value, ("syntax", self.syntax)),
