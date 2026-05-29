@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.10 - 2026-05-29
+
+### Changes
+- Enforced explicit `biolink:` namespace prefix on predicates and qualifiers emitted by `compile_subgraph()` in `lib.py`. Both `self.statement.predicate` and `x.qualifier` (in the qualifier loop) are now prefixed via `add("biolink:", ...)`, ensuring all output edges carry fully-qualified Biolink CURIEs rather than bare predicate/qualifier names.
+
 ## 7.4.9 - 2026-05-26
 
 ### Bug Fixes
