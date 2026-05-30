@@ -92,9 +92,9 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#749-2026-05-26">7.4.9 - 2026-05-26</a>
+    <li class="toctree-l2"><a class="reference internal" href="#7410-2026-05-29">7.4.10 - 2026-05-29</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#bug-fixes">Bug Fixes</a>
+    <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
     </li>
         </ul>
     </li>
@@ -127,10 +127,10 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="749-2026-05-26">7.4.9 - 2026-05-26</h2>
-<h3 id="bug-fixes">Bug Fixes</h3>
+<h2 id="7410-2026-05-29">7.4.10 - 2026-05-29</h2>
+<h3 id="changes">Changes</h3>
 <ul>
-<li>Fixed <code>OSError: Too many open files</code> during subgraph build at large scales (700+ sections). <code>with_mesh()</code> and <code>with_captions()</code> in <code>lib.py</code> opened a <code>sqlite_utils.Database</code> per section but never closed the underlying SQLite connection, leaving FD release to GC. In the tight sequential <code>compile_subgraph</code> loop the leaked FDs accumulated past the OS soft limit, causing the next <code>to_store()</code> → <code>df.write_parquet()</code> (which polars 1.39 routes through <code>sink_parquet</code>) to fail opening its target <code>.storassert/*.parquet</code>. Both functions now wrap their query bodies in <code>try:</code> / <code>finally: db.conn.close()</code>.</li>
+<li>Enforced explicit <code>biolink:</code> namespace prefix on predicates and qualifiers emitted by <code>compile_subgraph()</code> in <code>lib.py</code>. Both <code>self.statement.predicate</code> and <code>x.qualifier</code> (in the qualifier loop) are now prefixed via <code>add("biolink:", ...)</code>, ensuring all output edges carry fully-qualified Biolink CURIEs rather than bare predicate/qualifier names.</li>
 </ul>
               
             </div>
