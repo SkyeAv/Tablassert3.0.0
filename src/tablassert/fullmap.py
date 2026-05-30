@@ -150,15 +150,15 @@ def log_unmatched(
 ) -> None:
     # * Log Unmatched Entities
     level_one: pl.LazyFrame = terms.filter(pl.col("nlp level") == 1)
-    antimatches: pl.LazyFrame = level_one.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
+    antimatches: pl.LazyFrame = level_one.join(
+        matches.lazy().select("term"), left_on="term", right_on="term", how="anti"
+    )
 
     # ! Collection Point: Requires Eager
     unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
     if unnmatched.height > 0:
         for term in unnmatched.get_column("term").to_list():
-            logger.info(
-                f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}"
-            )
+            logger.info(f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}")
 
 
 def resolve(

@@ -342,8 +342,8 @@ class Tcode(Section):
                 [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
-                (value, ("predicate", self.statement.predicate)),
-                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)]
+                (value, ("predicate", add("biolink:", self.statement.predicate))),
+                [op for x in self.statement.qualifiers for op in self.node(x, add("biolink:", x.qualifier), conns)]
                 if self.statement.qualifiers
                 else None,
                 (value, ("syntax", self.syntax)),
