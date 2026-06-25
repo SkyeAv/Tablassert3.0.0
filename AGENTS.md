@@ -1,168 +1,50 @@
 # AGENTS.md — Tablassert
 
-Guidance for AI coding agents working in this repository.
+## Fast Start
 
-## Project Overview
+- Python package, not a monorepo. Main code lives in `src/tablassert/`; tests live in `tests/`.
+- Install with `uv sync`. QC is not available unless you install an extra: `uv sync --extra qc` or `uv sync --extra qc-cuda`.
+- CLI entrypoint is `tablassert.cli:APP`. Real user commands are:
+  - `uv run tablassert build <graph.yaml>`
+  - `uv run tablassert validate <table.yaml>`
 
-Tablassert is a Python package (>=3.11) for tabular data assertion, normalization, and optional quality control. It builds declarative knowledge graphs from tabular data, exporting NCATS Translator-compliant KGX NDJSON. Uses **Polars** DataFrames, **DuckDB** for entity resolution, and **ONNX/BioBERT** for QC when enabled. CLI built with **cyclopts**. Models built with **Pydantic v2**.
+## Verify Changes
 
-## Quick Reference
+- Match the repo hooks before finishing: `uv run ruff check --fix .`, `uv run ruff format .`, `uv run pyright`, `uv run pytest`.
+- Full hook run: `uv run pre-commit run --all-files`.
+- Focused test runs:
+  - Single test: `uv run pytest tests/test_lib.py::test_name`
+  - By keyword: `uv run pytest -k "pattern"`
+  - With print output: `uv run pytest -s tests/test_lib.py`
+- Docs build: `uv run --group dev mkdocs build`
 
-| Task | Command |
-|---|---|
-| Install | `uv sync` |
-| Run CLI | `uv run tablassert` |
-| Lint | `uv run ruff check .` |
-| Lint (fix) | `uv run ruff check --fix .` |
-| Format | `uv run ruff format .` |
-| Format check | `uv run ruff format --check .` |
-| Type check | `uv run pyright` |
-| All checks | `uv run pre-commit run --all-files` |
-| Run all tests | `uv run pytest` |
-| Run single test | `uv run pytest tests/test_foo.py::test_name` |
-| Run by keyword | `uv run pytest -k "test_pattern"` |
-| Run with print | `uv run pytest -s tests/test_foo.py` |
-| Build | `uv build` |
-| Build docs | `uv run --group dev mkdocs build` |
-| Add dependency | `uv add <package>` |
-| Add dev dependency | `uv add --group dev <package>` |
+## High-Value Structure
 
-## Repository Structure
+- `src/tablassert/cli.py` is the wiring layer: `build()` calls `build_pipeline()`, `validate()` calls `validate_pipeline()`.
+- `src/tablassert/ingests.py` loads YAML and expands table configs into section dicts.
+- `src/tablassert/lib.py` is the core pipeline:
+  - `Tcode.collect()` builds the per-section operation list.
+  - `compile_subgraph()` executes that list into parquet.
+  - `compile_graph()` aggregates subgraph parquets into KGX NDJSON.
+  - `resolve_many()` is the direct library API for batch entity resolution.
+- Entity resolution uses DuckDB shard files under `<datassert>/data/`. `src/tablassert/fullmap.py` hardcodes `SHARDS = 10`.
 
-```
-src/tablassert/
-  cli.py          # cyclopts CLI (entry point: tablassert.cli:APP)
-  lib.py          # Core logic: encodings, data loading, Tcode(Section) class
-  models.py       # Pydantic v2 models (TablaBase base class)
-  enums.py        # str, Enum subclasses (Tokens, Repositories, Comparisons, etc.)
-  fullmap.py      # NER / entity resolution (DuckDB, 10 shards)
-  qc.py           # Quality control (ONNX/BioBERT, sentence_transformers)
-  nlp.py          # Text normalization (level_one: strip+lowercase, level_two: regex)
-  ingests.py      # YAML ingestion: from_yaml(), to_sections(), fastmerge()
-  downloader.py   # httpx-based file downloads with retries
-  progress.py     # Rich progress bars for pipeline stages
-  utils.py        # Hashing (xxhash), STORE path, namespace UUIDs
-  log.py          # loguru logger → .logassert/tablassert.log; cat() helper for category tagging
-  __init__.py     # Empty file (lazy loading is per-module, not here)
-docs/             # MkDocs documentation source
-mkdocs.yml        # MkDocs configuration
-pyproject.toml    # Project config, dependencies, tool settings
-tests/            # Test directory (at repo root)
-```
+## Repo-Specific Gotchas
 
-- `conftest.py` provides a `fixtures_path` fixture returning `Path(__file__).parent / "fixtures"`.
-- pytest configured via `pyproject.toml` `[tool.pytest.ini_options]` with `testpaths = ["tests"]`.
-- pytest markers: `network` requires internet; `gpu` requires `CUDAExecutionProvider`.
-- Test fixtures: `tests/fixtures/` contains YAML files for Section model tests.
-- Test modules: `test_downloader.py`, `test_enums.py`, `test_fullmap.py`, `test_ingests.py`, `test_lib.py`, `test_models.py`, `test_nlp.py`, `test_utils.py`.
+- Heavy dependencies are lazy-loaded per module with `TYPE_CHECKING` + `lazy_loader`. Follow the existing pattern instead of importing heavy packages eagerly.
+- `tests/conftest.py` autouse-mocks `httpx.head`, so model URL validation tests do not hit the network unless a test is explicitly marked otherwise.
+- Network-dependent tests are marked `@pytest.mark.network`; GPU QC tests are marked with both `network` and `gpu` in `tests/test_qc.py`.
+- QC runtime selection is strict in `src/tablassert/qc.py`: if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is unavailable, the code raises instead of falling back to CPU.
+- Downloader behavior in `src/tablassert/downloader.py` is two-path: direct `httpx` fetch for known file URLs, headless-browser fallback for browser-only sources. Keep tests around payload validation and cleanup intact when changing it.
 
-## Code Style
+## Conventions That Matter Here
 
-### Imports
+- Start every module with `from __future__ import annotations`.
+- Annotate locals, not just function signatures.
+- Use `Optional[T]` / `Union[...]`, not `T | None`.
+- Prefer `Path` over raw path strings.
+- Function docs are usually `# ?` comments above the code, not docstrings.
 
-- Every file starts with `from __future__ import annotations`
-- Heavy dependencies are loaded **lazily per-module** using this pattern:
-  ```python
-  from typing import TYPE_CHECKING
-  import lazy_loader as Lazy
+## Side Effects
 
-  if TYPE_CHECKING:
-      import polars as pl
-  else:
-      pl = Lazy.load("polars")
-  ```
-- Lazy-loaded deps: `polars`, `duckdb`, `orjson`, `xxhash`, `polars_hash`, `yaml`, `httpx`, `pyexcel`, `onnxruntime`, `sentence_transformers`
-- Direct (non-lazy) heavy deps: `sqlite_utils`, `rapidfuzz`, `pydantic`, `loguru`, `cyclopts`, `rich`, `yaml.CLoader`
-- Some modules mix direct and lazy imports for the same package (e.g., `ingests.py` does `from yaml import CLoader` directly, then lazy-loads `yaml` for `yaml.load()`)
-- Import order: standard library → blank line → third-party → blank line → local
-- Use `from __future__ import annotations` to enable deferred evaluation
-
-### Type Annotations
-
-- **Every variable** gets a type annotation, including locals: `col: str = "name"`, `df: pl.DataFrame = ...`
-- Use `Optional[T]` and `Union[...]` (not `T | None` or `X | Y`)
-- Use `Self` for class methods returning the class type
-- Use `Path` (not `str`) for filesystem paths
-- Use `# pyright: ignore` comments to suppress false positives from lazy-loaded modules
-
-### Pydantic Models
-
-- All models inherit from `TablaBase(BaseModel)` which sets:
-  ```python
-  model_config: ConfigDict = ConfigDict(  # pyright: ignore
-      str_strip_whitespace=False,
-      validate_assignment=True,
-      use_enum_values=True,
-      extra="forbid",
-      populate_by_name=True,
-  )
-  ```
-- Required fields: `Field(...)` (ellipsis sentinel)
-- Optional fields: `Optional[T] = Field(None)`
-- All enums are `str, Enum` subclasses (defined in `enums.py`)
-
-### Enums
-
-All enums live in `enums.py` and extend `str, Enum`. Key enums: `Tokens`, `Repositories`, `Contributions`, `Comparisons`, `Functions`, `Files`, `EncodingMethods`, `FillMethods`, `Syntaxes`, `Statuses`, `Categories`, `Predicates`, `Qualifiers`.
-
-### Naming
-
-- Functions/variables: `snake_case`
-- Classes: `PascalCase`
-- Module-level constants: `UPPER_CASE`
-
-### Comments
-
-- `# ?` — descriptions / clarifications
-- `# !` — warnings / important notes
-- `# *` — stage markers (pipeline steps)
-- `# TODO:` — todos
-- No docstrings on functions; use `# ?` comment on the line above instead
-
-### Formatting (enforced by ruff)
-
-- Line length: **120**
-- Quote style: **double quotes**
-- Indent: **4 spaces**
-- `skip-magic-trailing-comma = true`
-- Target: Python >=3.11
-
-### Error Handling
-
-- Use `RuntimeError` for exceptional cases (no custom exception classes currently)
-- Use `logger.warning()` for non-fatal issues (e.g., empty subgraphs)
-- Logger: `from tablassert.log import logger` (or `cat()` for category-tagged logger)
-
-### Other Conventions
-
-- `operator.add` for Polars string concatenation on columns (not `+` directly)
-- CLI entry point: `tablassert.cli:APP` (cyclopts app)
-- Use `rich.progress` for progress tracking in CLI (via `progress.py` which wraps Rich Live/Progress)
-- Data side-effects stored in hidden directories: `.logassert/`, `.storassert/`, `.onnxassert/`
-
-## Tools
-
-- **ruff** — linting (`ruff check`) and formatting (`ruff format`)
-- **pyright** — type checking (no pyrightconfig.json; uses defaults)
-- **pre-commit** — runs ruff fix, ruff-format, pyright, and pytest on all Python files
-- **pytest** — testing (>=9.0.2)
-- **uv** — package manager (use `uv run` for all commands, `uv add` for deps)
-- **hatchling** — build backend
-
-## Optional Dependency Groups
-
-Defined in `pyproject.toml` `[project.optional-dependencies]`:
-- `rt` — `polars[rtcompat]` (runtime-compatible Polars build for CPUs without required instructions)
-- `qc` — `onnxruntime` (CPU QC runtime)
-- `qc-cuda` — `onnxruntime-gpu` (CUDA QC runtime; single GPU on device 0)
-
-All other ML, web, and Excel dependencies are in core `dependencies`; the ONNX Runtime choice is extra-driven.
-
-Install with: `uv sync`, `uv sync --extra qc`, `uv sync --extra qc-cuda`, or `pip install tablassert[...]`
-
-## CI Workflows
-
-- **PyPI publish** (`.github/workflows/pipy.yml`): builds and publishes on push to `main`
-- **MkDocs deploy** (`.github/workflows/docs.yml`): builds docs and deploys to GitHub Pages on push to `main`
-- **Docker publish** (`.github/workflows/docker.yml`): builds and pushes image to GHCR on tag push (`v*`)
-- **Autotag** (`.github/workflows/autotag.yml`): automatic version tagging
+- The package writes working artifacts to hidden directories in the repo root: `.storassert/`, `.logassert/`, `.cachassert/`, and `.onnxassert/`.
