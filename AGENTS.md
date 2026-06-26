@@ -6,7 +6,7 @@
 - Install with `uv sync`. QC is not available unless you install an extra: `uv sync --extra qc` or `uv sync --extra qc-cuda`.
 - CLI entrypoint is `tablassert.cli:APP`. Real user commands are:
   - `uv run tablassert build <graph.yaml>`
-  - `uv run tablassert validate <table.yaml>`
+  - `uv run tablassert validate <table.yaml> <datassert>`
 
 ## Verify Changes
 

@@ -25,6 +25,9 @@ from tablassert.enums import (
     Tokens,
 )
 
+from tablassert.fullmap import resolve
+from tablassert.nlp import level_one, level_two
+
 if TYPE_CHECKING:
     import httpx
     import polars as pl
@@ -315,6 +318,35 @@ class Annotation(Encoding):
         return annotation.replace("_", " ").strip()
 
 
+def resolves_value_encodings(statement: Statement, conns: list[object]) -> None:
+    # ? Resolve Every Value-Method Literal Against The Shared Datassert Shards
+    nodes: list[tuple[str, NodeEncoding]] = [("subject", statement.subject), ("object", statement.object)]
+    if statement.qualifiers:
+        nodes += [(q.qualifier, q) for q in statement.qualifiers]
+
+    for label, node in nodes:
+        if not eq(node.method, EncodingMethods.VALUE):
+            continue
+
+        term: str = str(node.encoding)
+        lf: pl.LazyFrame = pl.DataFrame({"term": [term]}).lazy()
+        lf = level_one(lf, "term")
+        lf = level_two(lf, "term")
+        resolved: pl.DataFrame = resolve(
+            lf,
+            "term",
+            conns,
+            taxon=str(node.taxon) if node.taxon else None,
+            prioritize=node.prioritize,
+            avoid=node.avoid,
+            log=False,
+            column_context=False,
+        ).collect()
+        if resolved.height == 0:
+            msg: str = f"21 | value encoding {term!r} in {label!r} did not resolve against datassert"
+            raise ValueError(msg)
+
+
 class Section(TablaBase):
     # ? Pydantic "Section" Model And Coercion
     syntax: Syntaxes = Field(Syntaxes.TC3, description="Section configuration syntax version.")
@@ -325,6 +357,16 @@ class Section(TablaBase):
     annotations: Optional[list[Annotation]] = Field(
         None, description="Optional extra encoded columns added to each row."
     )
+
+    @field_validator("statement", mode="after")
+    @classmethod
+    def value_encodings_resolve(cls, statement: Statement, info: Any) -> Statement:
+        # ? Ensure Value-Method Encodings Resolve Against The Shared Datassert Shards
+        conns: Optional[list[object]] = info.context.get("conns") if info.context else None
+        if conns is None:
+            return statement  # * skip without shared connections (contextless path)
+        resolves_value_encodings(statement, conns)
+        return statement
 
 
 class Graph(TablaBase):

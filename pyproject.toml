@@ -100,7 +100,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider"]
+markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider", "datassert: requires the datassert DuckDB shards"]
 
 [tool.ruff]
 line-length = 120

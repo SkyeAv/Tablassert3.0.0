@@ -35,8 +35,7 @@ def format_section_oneline(x: "Tcode") -> str:
     else:
         source_detail = f"TEXT({(x.source.delimiter or ',')!r})"  # pyright: ignore
     return (
-        f"#{x.number} | HASH: {x.store.stem} | SOURCE: {source_detail} "
-        f"| CONFIG: {x.config.name} | STATUS: {x.status}"
+        f"#{x.number} | HASH: {x.store.stem} | SOURCE: {source_detail} | CONFIG: {x.config.name} | STATUS: {x.status}"
     )
 
 

@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import polars as pl
 import pytest
 from pydantic import ValidationError
 
+import tablassert.models as models
 from tablassert.enums import Categories
 from tablassert.ingests import from_yaml
 from tablassert.models import (
@@ -280,3 +282,193 @@ def test_section_with_annotations() -> None:
         ],
     )
     assert len(section.annotations) == 2  # pyright: ignore
+
+
+# ? Value Encoding Resolves Against Datassert (Context-Aware Pass)
+def test_value_encoding_resolves_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_resolve(_lf: Any, _col: str, _conns: list[object], **_kwargs: Any) -> Any:
+        return pl.DataFrame({"resolved": ["YES"]}).lazy()
+
+    monkeypatch.setattr(models, "resolve", fake_resolve)
+    section: Section = Section.model_validate(
+        {
+            "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+            "statement": {
+                "subject": {"method": "value", "encoding": "BRCA1"},
+                "object": {"method": "value", "encoding": "TP53"},
+            },
+            "provenance": {
+                "repo": "PMC",
+                "publication": "PMC000",
+                "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
+            },
+        },
+        context={"conns": [object()]},
+    )
+    assert section.statement.subject.encoding == "BRCA1"
+
+
+# ? Value Encoding Fails To Resolve Raises Code 21
+def test_value_encoding_resolves_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_resolve_empty(_lf: Any, _col: str, _conns: list[object], **_kwargs: Any) -> Any:
+        return pl.DataFrame({"resolved": []}).lazy()
+
+    monkeypatch.setattr(models, "resolve", fake_resolve_empty)
+    with pytest.raises(ValidationError) as exc_info:
+        Section.model_validate(
+            {
+                "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+                "statement": {
+                    "subject": {"method": "value", "encoding": "BRCA1"},
+                    "object": {"method": "value", "encoding": "TP53"},
+                },
+                "provenance": {
+                    "repo": "PMC",
+                    "publication": "PMC000",
+                    "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
+                },
+            },
+            context={"conns": [object()]},
+        )
+    assert "21 |" in str(exc_info.value)
+
+
+# ? Value Encoding Validator Skips Without Context
+def test_value_encoding_skips_without_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_resolve_empty(_lf: Any, _col: str, _conns: list[object], **_kwargs: Any) -> Any:
+        return pl.DataFrame({"resolved": []}).lazy()
+
+    monkeypatch.setattr(models, "resolve", fake_resolve_empty)
+    section: Section = Section(  # pyright: ignore
+        source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+        statement={
+            "subject": {"method": "value", "encoding": "BRCA1"},
+            "object": {"method": "value", "encoding": "TP53"},
+        },
+        provenance={
+            "repo": "PMC",
+            "publication": "PMC000",
+            "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
+        },
+    )
+    assert section.statement.subject.encoding == "BRCA1"
+
+
+# ? Column Method Encodings Are Not Checked
+def test_column_encoding_not_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom_resolve(_lf: Any, _col: str, _conns: list[object], **_kwargs: Any) -> Any:
+        raise AssertionError("resolve must not be called for column-method encodings")
+
+    monkeypatch.setattr(models, "resolve", boom_resolve)
+    section: Section = Section.model_validate(
+        {
+            "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {
+                "repo": "PMC",
+                "publication": "PMC000",
+                "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
+            },
+        },
+        context={"conns": [object()]},
+    )
+    assert section.statement.subject.encoding == "A"
+
+
+# ? Qualifier Value Encoding Is Checked Against Datassert
+def test_qualifier_value_encoding_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_resolve(lf: Any, col: str, _conns: list[object], **_kwargs: Any) -> Any:
+        term: str = str(lf.collect().get_column(col).to_list()[0])
+        if term in ("brca1", "tp53"):
+            return pl.DataFrame({"resolved": ["YES"]}).lazy()
+        return pl.DataFrame({"resolved": []}).lazy()
+
+    monkeypatch.setattr(models, "resolve", fake_resolve)
+    with pytest.raises(ValidationError) as exc_info:
+        Section.model_validate(
+            {
+                "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+                "statement": {
+                    "subject": {"method": "value", "encoding": "BRCA1"},
+                    "object": {"method": "value", "encoding": "TP53"},
+                    "qualifiers": [
+                        {"qualifier": "disease_context_qualifier", "method": "value", "encoding": "ZZZNOTAREALGENE123"}
+                    ],
+                },
+                "provenance": {
+                    "repo": "PMC",
+                    "publication": "PMC000",
+                    "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
+                },
+            },
+            context={"conns": [object()]},
+        )
+    assert "21 |" in str(exc_info.value)
+
+
+# ? Real Value Encoding Resolves Against The Datassert Shards
+@pytest.mark.datassert
+def test_real_value_encoding_resolves(datassert_dir: Path) -> None:
+    from contextlib import ExitStack
+
+    import duckdb
+
+    from tablassert.fullmap import SHARDS
+
+    with ExitStack() as stack:
+        conns: list[object] = [
+            stack.enter_context(duckdb.connect(datassert_dir / "data" / f"{x}.duckdb", read_only=True))
+            for x in range(SHARDS)
+        ]
+        section: Section = Section.model_validate(
+            {
+                "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+                "statement": {
+                    "subject": {"method": "value", "encoding": "BRCA1"},
+                    "object": {"method": "value", "encoding": "TP53"},
+                },
+                "provenance": {
+                    "repo": "PMC",
+                    "publication": "PMC000",
+                    "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
+                },
+            },
+            context={"conns": conns},
+        )
+        assert section.statement.subject.encoding == "BRCA1"
+
+
+# ? Real Value Encoding Failure Raises Code 21
+@pytest.mark.datassert
+def test_real_value_encoding_fails(datassert_dir: Path) -> None:
+    from contextlib import ExitStack
+
+    import duckdb
+
+    from tablassert.fullmap import SHARDS
+
+    with ExitStack() as stack:
+        conns: list[object] = [
+            stack.enter_context(duckdb.connect(datassert_dir / "data" / f"{x}.duckdb", read_only=True))
+            for x in range(SHARDS)
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            Section.model_validate(
+                {
+                    "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+                    "statement": {
+                        "subject": {"method": "value", "encoding": "ZZZNOTAREALGENE123"},
+                        "object": {"method": "value", "encoding": "TP53"},
+                    },
+                    "provenance": {
+                        "repo": "PMC",
+                        "publication": "PMC000",
+                        "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
+                    },
+                },
+                context={"conns": conns},
+            )
+        assert "21 |" in str(exc_info.value)

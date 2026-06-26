@@ -57,28 +57,29 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
 
-    # * Build TCode (3/6)
-    progress.stage(f"Building TCode | Sections: {n}")
-    advance = progress.section_loop(n, "TCode")
-    tcode: list[Tcode] = []
-    for idx, s in enumerate(sections, start=1):
-        try:
-            tcode.append(
-                Tcode.model_validate(
-                    {**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet"), "log": g.log, "qc": g.qc}
-                )
-            )
-        except pydantic.ValidationError as e:
-            raise RuntimeError(
-                f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | IDX: {idx} | HASH: {mkhash(s)} | PYDANTIC: {flatten_pydantic_error(e)}"
-            ) from e
-        advance(format_section_oneline(tcode[-1]))
-
     with ExitStack() as stack:
         conns: list[object] = [
             stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True))
             for x in range(SHARDS)
         ]
+
+        # * Build TCode (3/6)
+        progress.stage(f"Building TCode | Sections: {n}")
+        advance = progress.section_loop(n, "TCode")
+        tcode: list[Tcode] = []
+        for idx, s in enumerate(sections, start=1):
+            try:
+                tcode.append(
+                    Tcode.model_validate(
+                        {**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet"), "log": g.log, "qc": g.qc},
+                        context={"conns": conns},
+                    )
+                )
+            except pydantic.ValidationError as e:
+                raise RuntimeError(
+                    f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | IDX: {idx} | HASH: {mkhash(s)} | PYDANTIC: {flatten_pydantic_error(e)}"
+                ) from e
+            advance(format_section_oneline(tcode[-1]))
 
         # * Collect Instructions (4/6)
         progress.stage(f"Collecting Instructions | Sections: {n}")
@@ -105,8 +106,9 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
     logger.info(f"BUILD DONE | SECTIONS: {n} | NAME: {g.name} | VERSION: {g.version}")
 
 
-def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgress") -> None:
+def validate_pipeline(table_configuration_file: Path, datassert: Path, progress: "PipelineProgress") -> None:
     # ? Validate Section Syntax From A Configuration File
+    from tablassert.fullmap import SHARDS
     from tablassert.ingests import from_yaml, to_sections
     from tablassert.lib import Tcode
     from tablassert.progress import flatten_pydantic_error
@@ -124,27 +126,32 @@ def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgres
     # * Validate Section Syntax (3/3)
     progress.stage(f"Validating Section Syntax | Sections: {n}")
     advance = progress.section_loop(n, "Validate")
-    for idx, s in enumerate(sections, start=1):
-        h: str = mkhash(s)
-        try:
-            Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet")})
-        except pydantic.ValidationError as e:
-            raise RuntimeError(
-                f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
-            ) from e
-        advance(f"#{idx} | HASH: {h}")
+    with ExitStack() as stack:
+        conns: list[object] = [
+            stack.enter_context(duckdb.connect(datassert / "data" / f"{x}.duckdb", read_only=True))
+            for x in range(SHARDS)
+        ]
+        for idx, s in enumerate(sections, start=1):
+            h: str = mkhash(s)
+            try:
+                Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet")}, context={"conns": conns})
+            except pydantic.ValidationError as e:
+                raise RuntimeError(
+                    f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
+                ) from e
+            advance(f"#{idx} | HASH: {h}")
 
     logger.info(f"VALIDATE DONE | SECTIONS: {n} | CONFIG: {table_configuration_file.name}")
 
 
-def run(stages: int, fn: Any, arg: Path) -> None:
+def run(stages: int, fn: Any, *args: Path) -> None:
     from tablassert.log import LOG_FORMAT, logger
     from tablassert.progress import PipelineProgress
 
     with PipelineProgress(total_stages=stages) as progress:
         sink_id: int = logger.add(progress.log_sink, level="INFO", format=LOG_FORMAT)
         try:
-            fn(arg, progress)
+            fn(*args, progress)
         finally:
             logger.remove(sink_id)
 
@@ -156,6 +163,6 @@ def build(graph_configuration_file: Path) -> None:
 
 
 @APP.command
-def validate(table_configuration_file: Path) -> None:
-    """Validate section syntax from a YAML configuration file."""
-    run(3, validate_pipeline, table_configuration_file)
+def validate(table_configuration_file: Path, datassert: Path) -> None:
+    """Validate section syntax from a YAML configuration file against a datassert directory."""
+    run(3, validate_pipeline, table_configuration_file, datassert)
