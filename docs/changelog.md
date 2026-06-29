@@ -4,8 +4,8 @@ The canonical release history lives in the repository root at [`CHANGELOG.md`](h
 
 ## Current Release Notes
 
-## 7.4.10 - 2026-05-29
+## 7.4.11 - 2026-06-29
 
 ### Changes
 
-- Enforced explicit `biolink:` namespace prefix on predicates and qualifiers emitted by `compile_subgraph()` in `lib.py`. Both `self.statement.predicate` and `x.qualifier` (in the qualifier loop) are now prefixed via `add("biolink:", ...)`, ensuring all output edges carry fully-qualified Biolink CURIEs rather than bare predicate/qualifier names.
+- Expanded the placeholder-term filter regex in `distinct()` (`fullmap.py`) to drop additional non-informative terms during entity resolution. The `bad` pattern now also excludes `not applicable`, `p value`, `variable`, `result`, `exposure`, `expression`, and `symbol` alongside the existing `none`, `nan`, `na`, `null`, and `unknown`, preventing these generic column-header-like values from being sent through resolution and producing spurious CURIE mappings.
