@@ -92,7 +92,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#7410-2026-05-29">7.4.10 - 2026-05-29</a>
+    <li class="toctree-l2"><a class="reference internal" href="#7412-2026-06-29">7.4.12 - 2026-06-29</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
     </li>
@@ -127,10 +127,10 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="7410-2026-05-29">7.4.10 - 2026-05-29</h2>
+<h2 id="7412-2026-06-29">7.4.12 - 2026-06-29</h2>
 <h3 id="changes">Changes</h3>
 <ul>
-<li>Enforced explicit <code>biolink:</code> namespace prefix on predicates and qualifiers emitted by <code>compile_subgraph()</code> in <code>lib.py</code>. Both <code>self.statement.predicate</code> and <code>x.qualifier</code> (in the qualifier loop) are now prefixed via <code>add("biolink:", ...)</code>, ensuring all output edges carry fully-qualified Biolink CURIEs rather than bare predicate/qualifier names.</li>
+<li>Expanded the placeholder-term filter regex in <code>distinct()</code> (<code>fullmap.py</code>) to drop additional non-informative terms during entity resolution. The <code>bad</code> pattern now also excludes <code>not applicable</code>, <code>p value</code>, <code>variable</code>, <code>result</code>, <code>exposure</code>, <code>expression</code>, and <code>symbol</code> alongside the existing <code>none</code>, <code>nan</code>, <code>na</code>, <code>null</code>, and <code>unknown</code>, preventing these generic column-header-like values from being sent through resolution and producing spurious CURIE mappings.</li>
 </ul>
               
             </div>
