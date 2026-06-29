@@ -4,7 +4,7 @@ The canonical release history lives in the repository root at [`CHANGELOG.md`](h
 
 ## Current Release Notes
 
-## 7.4.11 - 2026-06-29
+## 7.4.12 - 2026-06-29
 
 ### Changes
 
