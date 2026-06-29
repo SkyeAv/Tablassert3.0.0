@@ -1,6 +1,6 @@
 [project]
 name = "tablassert"
-version = "7.4.10"
+version = "7.4.11"
 description = "Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in."
 authors = [
     { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
@@ -100,7 +100,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider"]
+markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider", "datassert: requires the datassert DuckDB shards"]
 
 [tool.ruff]
 line-length = 120

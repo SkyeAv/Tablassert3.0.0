@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 import pytest
@@ -26,3 +27,15 @@ def mockhttpxhead(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def fixtures_path() -> Path:
     return Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def datassert_dir() -> Path:
+    # ? Shared Datassert Shard Directory (Skipped When Unavailable)
+    env: Optional[str] = os.environ.get("DATASSERT")
+    if not env:
+        pytest.skip("DATASSERT env var not set; skipping datassert-dependent test")
+    directory: Path = Path(env)
+    if not (directory / "data" / "0.duckdb").is_file():
+        pytest.skip(f"datassert shard data/0.duckdb not found under {directory}")
+    return directory

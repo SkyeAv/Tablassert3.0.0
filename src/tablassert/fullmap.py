@@ -51,7 +51,9 @@ def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFr
 
     terms: pl.LazyFrame = pl.concat([t1, t2]).unique(subset=[col], keep="first")
 
-    bad: str = r"^\d+$|^(none|nan|na|null|unknown)$|^$"
+    bad: str = (
+        r"^\d+$|^(none|nan|na|null|unknown|not applicable|p value|variable|result|exposure|expression|symbol)$|^$"
+    )
     terms = terms.filter(~pl.col(col).str.contains(bad))
     return terms.with_columns((plh.col(col).nchash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
 
