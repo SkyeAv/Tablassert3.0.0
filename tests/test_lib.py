@@ -267,3 +267,39 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
 
     assert result == [{"subject": "brca1", "original subject": "BRCA1", "subject two": "brca1", "passed": "YES"}]
     assert ("qc", "subject", "", "", "passed", True, None) in calls
+
+
+# ? sig Uses Exact "p value" Column When Present Alongside Other P-Value Columns
+def test_sig_prefers_exact_p_value_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p value": [0.01, 0.1], "adjusted p value": [0.5, 0.5]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["significant"]) == ["YES", "NO"]
+
+
+# ? sig Falls Back To Non-Exact P-Value Column When No Exact Match
+def test_sig_uses_non_exact_p_value_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"adjusted p value": [0.01, 0.1]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["significant"]) == ["YES", "NO"]
+
+
+# ? sig Picks Closest Match When Multiple Non-Exact Columns Present
+def test_sig_picks_closest_non_exact_match() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"log p value": [0.01], "adjusted p value corrected": [0.5]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    # "log p value" has higher fuzz.ratio to "p value" than "adjusted p value corrected"
+    assert list(result["significant"]) == ["YES"]
+
+
+# ? sig Returns UNSURE When No P-Value Column Exists
+def test_sig_returns_unsure_with_no_p_value_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"gene": ["BRCA1"]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["significant"]) == ["UNSURE"]
+
+
+# ? sig Marks Null P-Values As UNSURE
+def test_sig_marks_null_as_unsure() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p value": [None, 0.01, 0.1]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["significant"]) == ["UNSURE", "YES", "NO"]

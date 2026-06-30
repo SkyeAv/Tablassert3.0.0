@@ -101,14 +101,18 @@ def sig(
     out: str = "significant",
 ) -> pl.LazyFrame:
     # ? Creates The "significant" Column
-    if col in lf.collect_schema().names():
-        expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
+    from rapidfuzz import fuzz
+
+    names: list[str] = lf.collect_schema().names()
+    candidates: list[str] = [c for c in names if col in c]
+    chosen: Optional[str] = max(candidates, key=lambda c: fuzz.ratio(c, col)) if candidates else None
+    if chosen is not None:
+        expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
         cond: pl.Expr = le(expr, cutoff)
         cutoff: pl.Expr = (
             pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
         )
         return lf.with_columns(cutoff.alias(out))
-
     else:
         return lf.with_columns(pl.lit("UNSURE").alias(out))
 
