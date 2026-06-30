@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.13 - 2026-06-30
+
+### Changes
+- Removed the datassert prevalidation failure for unresolved `statement.subject` / `statement.object` literal encodings under `method: value`. Graph builds no longer abort during `Tcode.model_validate(...)` for cases like `"Incertae Sedis XI"`; unresolved literal values are now allowed through config validation so downstream runtime handling can decide whether they map or get filtered.
+- Added a regression test at the `Tcode.model_validate(...)` layer covering an unresolved `method: value` subject encoding, matching the build-time validation path reported in the field.
+
 ## 7.4.12 - 2026-06-29
 
 ### Changes

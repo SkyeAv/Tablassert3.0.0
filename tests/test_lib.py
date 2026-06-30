@@ -138,6 +138,20 @@ def test_tcode_collect_threads_download_context(fixtures_path: Path) -> None:
     assert first_op[1] == ("https://example.com/test.tsv", Path("test.tsv"), "minimal_section.yaml", "sectionhash")
 
 
+# ? Tcode Allows Unresolved Value Encodings During Validation
+def test_tcode_model_allows_unresolved_value_encoding(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    data["statement"]["subject"] = {"method": "value", "encoding": "Incertae Sedis XI"}
+
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "number": 55, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    assert tcode_model.statement.subject.method == "value"
+    assert tcode_model.statement.subject.encoding == "Incertae Sedis XI"
+
+
 # ? Tcode collect Enables QC Logging By Default
 def test_tcode_collect_skips_qc_by_default(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
