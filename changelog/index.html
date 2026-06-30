@@ -92,9 +92,15 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#7412-2026-06-29">7.4.12 - 2026-06-29</a>
+    <li class="toctree-l2"><a class="reference internal" href="#7413-2026-06-30">7.4.13 - 2026-06-30</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#changes">Changes</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#7412-2026-06-29">7.4.12 - 2026-06-29</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#changes_1">Changes</a>
     </li>
         </ul>
     </li>
@@ -127,8 +133,14 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="7412-2026-06-29">7.4.12 - 2026-06-29</h2>
+<h2 id="7413-2026-06-30">7.4.13 - 2026-06-30</h2>
 <h3 id="changes">Changes</h3>
+<ul>
+<li>Removed the datassert prevalidation failure for unresolved <code>statement.subject</code> / <code>statement.object</code> literal encodings under <code>method: value</code>. Graph builds no longer abort during <code>Tcode.model_validate(...)</code> for cases like <code>"Incertae Sedis XI"</code>; unresolved literal values are now allowed through config validation so downstream runtime handling can decide whether they map or get filtered.</li>
+<li>Added a regression test at the <code>Tcode.model_validate(...)</code> layer covering an unresolved <code>method: value</code> subject encoding, matching the build-time validation path reported in the field.</li>
+</ul>
+<h2 id="7412-2026-06-29">7.4.12 - 2026-06-29</h2>
+<h3 id="changes_1">Changes</h3>
 <ul>
 <li>Expanded the placeholder-term filter regex in <code>distinct()</code> (<code>fullmap.py</code>) to drop additional non-informative terms during entity resolution. The <code>bad</code> pattern now also excludes <code>not applicable</code>, <code>p value</code>, <code>variable</code>, <code>result</code>, <code>exposure</code>, <code>expression</code>, and <code>symbol</code> alongside the existing <code>none</code>, <code>nan</code>, <code>na</code>, <code>null</code>, and <code>unknown</code>, preventing these generic column-header-like values from being sent through resolution and producing spurious CURIE mappings.</li>
 </ul>
