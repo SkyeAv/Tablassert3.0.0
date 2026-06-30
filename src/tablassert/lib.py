@@ -359,6 +359,7 @@ class Tcode(Section):
                 (contributor_values, ("contributors", self.provenance.contributors)),
                 (value, ("url", str(self.source.url))),
                 (value, ("section hash", self.store.stem)),
+                (value, ("sheet name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (with_mesh, (pubmed_db, self.provenance.publication)) if pubmed_db else None,
                 (with_captions, (pmc_db, self.provenance.publication, str(self.source.url))) if pmc_db else None,
                 (sig, ()),
