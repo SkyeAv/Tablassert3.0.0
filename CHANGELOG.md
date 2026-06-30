@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.4.14 - 2026-06-30
+
+### Changes
+- Extended `sig()` in `lib.py` to select a p-value column by fuzzy matching rather than requiring an exact `"p value"` name. All schema columns whose names contain the substring `"p value"` are now considered candidates; `fuzz.ratio` (rapidfuzz) scores each against the literal `"p value"` and the highest-scoring column is used to compute the `"significant"` output. An exact `"p value"` column scores 100 and is always preferred; columns like `"adjusted p value"` or `"log p value"` are used only when no exact match is present. If no column contains the substring the function continues to emit `"UNSURE"` for all rows.
+- Added five regression tests in `test_lib.py` covering: exact-match preference, non-exact fallback, closest-match selection among multiple non-exact candidates, no-p-value column (UNSURE), and null value handling.
+
 ## 7.4.13 - 2026-06-30
 
 ### Changes
