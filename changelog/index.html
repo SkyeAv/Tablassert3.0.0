@@ -92,7 +92,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#current-release-notes">Current Release Notes</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#751-2026-07-01">7.5.1 - 2026-07-01</a>
+    <li class="toctree-l2"><a class="reference internal" href="#752-2026-07-01">7.5.2 - 2026-07-01</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#changed">Changed</a>
     </li>
@@ -129,17 +129,14 @@
                 <h1 id="changelog">Changelog</h1>
 <p>The canonical release history lives in the repository root at <a href="https://github.com/SkyeAv/Tablassert/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="current-release-notes">Current Release Notes</h2>
-<h2 id="751-2026-07-01">7.5.1 - 2026-07-01</h2>
+<h2 id="752-2026-07-01">7.5.2 - 2026-07-01</h2>
 <h3 id="changed">Changed</h3>
 <ul>
-<li>Numeric annotation columns are now coerced and emitted as controlled-notation strings in NDJSON output instead of raw values. Two new pipeline steps wired into <code>Tcode.collect()</code> (<code>lib.py</code>): <code>clean_numeric()</code> lazily casts matching columns to <code>Float64</code> with <code>strict=False</code> (non-numeric entries drop to null), and <code>format_numeric()</code> renders them as strings — p-value columns (any name containing <code>"p value"</code>, case-insensitive) in scientific notation (<code>{:.4e}</code>), and <code>relationship strength</code> / <code>sample size</code> in decimal general format (<code>{:.4g}</code>, ≥4 significant figures). Non-matching columns are left untouched, and nulls are subsequently dropped by <code>strip_nulls()</code>. <code>math_op()</code> now also casts with <code>strict=False</code> so it tolerates residual junk in numeric annotation columns. <code>format_numeric()</code> formats via numpy-backed batch conversion rather than <code>map_elements</code> for throughput.</li>
-<li>Removed dead <code>pl.Config(set_fmt_float=...)</code> and <code>pl.Config(float_precision=...)</code> context managers from <code>compile_graph()</code> (<code>lib.py</code>); they were no-ops for NDJSON serialization (<code>write_ndjson</code> emits raw f64 via serde shortest-repr and ignores float display options), and the <code>fmt</code>/<code>precision</code> parameters of <code>compile_graph()</code> were removed alongside them.</li>
-<li>Fixed an off-by-one in the build/validate progress bar so each section loop now shows the configuration currently being processed instead of the last-completed one. <code>PipelineProgress.section_loop()</code> (<code>progress.py</code>) previously returned a single <code>advance(info)</code> callback that set the description and ticked the completed counter together, called after each item's work — so while section <em>K</em> ran the bar still displayed section <em>K−1</em>. It now returns a <code>(start, advance)</code> pair: <code>start(info)</code> updates the description to the in-flight item without incrementing, and <code>advance()</code> ticks the counter afterwards (so the counter never claims an in-flight item is complete). All five call sites in <code>cli.py</code> (TCode build, Collect, Subgraph, Graph, Validate) were updated to <code>start(...)</code> before the work and <code>advance()</code> after; the long-running Collect and Subgraph stages continue to show the full <code>format_section_oneline()</code> summary (including the <code>CONFIG</code> name) of the in-flight section.</li>
+<li><code>sig()</code> in <code>lib.py</code> now emits a third significance label, <code>"INCONCLUSIVE"</code>, for p-values that fall between the existing significance <code>cutoff</code> (default <code>0.05</code>, inclusive) and a new <code>threshold</code> parameter (default <code>0.10</code>, exclusive). A p-value <code>p</code> is now mapped as: null → <code>"UNSURE"</code>; <code>p &lt;= cutoff</code> → <code>"YES"</code>; <code>cutoff &lt; p &lt; threshold</code> → <code>"INCONCLUSIVE"</code>; <code>p &gt;= threshold</code> → <code>"NO"</code>. The upper bound is exclusive so <code>0.10</code> (and the <code>0.1</code> <code>NO</code> cases in the existing tests) continue to map to <code>"NO"</code>. <code>threshold</code> is added to <code>sig()</code>'s signature alongside <code>cutoff</code>; the function remains wired into <code>Tcode.collect()</code> at its default arguments, so builds are unaffected unless a caller overrides the new bound.</li>
 </ul>
 <h3 id="added">Added</h3>
 <ul>
-<li>Fifteen regression tests in <code>test_lib.py</code> covering <code>numeric_columns()</code> detection (p-value substring, exact-name match, case-insensitivity), <code>clean_numeric()</code> (parse/coerce numeric and scientific notation, null out non-numeric junk, leave non-matching columns untouched, noop, idempotent on Float64), <code>format_numeric()</code> (scientific notation for p-value, decimal general format for relationship strength/sample size, null preservation, floating-point-noise cleaning, noop), null-stripped NDJSON rows, <code>compile_graph()</code> NDJSON emission, and <code>sig()</code> operating over a cleaned Float64 p-value column.</li>
-<li>Three regression tests in <code>tests/test_progress.py</code> pinning the new two-callback contract: <code>start</code> shows the in-flight item with the counter still at zero, <code>advance</code> ticks the counter without altering the description, and a <code>start</code>/<code>advance</code> cycle keeps the description synced to the current item rather than the previous one.</li>
+<li>One regression test in <code>test_lib.py</code> (<code>test_sig_marks_inconclusive_band</code>) asserting all four bands in a single frame: a value at/below cutoff (<code>YES</code>), a value in the inconclusive range (<code>INCONCLUSIVE</code>), and a value at the exclusive threshold (<code>NO</code>).</li>
 </ul>
               
             </div>
