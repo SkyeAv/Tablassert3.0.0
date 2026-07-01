@@ -19,10 +19,8 @@ def namespace_uuid(domain: Any, *values: list[Any]) -> str
 Domain string used to create the namespace UUID.
 
 Converted to string internally. Common domains:
-- `"TABLASSERT"` - Default domain used for knowledge graph edge IDs
-- `"edges"` - Optional custom domain for edge IDs
-- `"nodes"` - For custom node IDs
-- `"tablassert"` - For application-specific IDs
+- `"TABLASSERT"` - Default domain used for KGX edge IDs (the value used by `label_edge`)
+- Other domain strings (e.g., `"edges"`, `"nodes"`) may be passed for custom namespaces, though only `"TABLASSERT"` is used internally.
 
 **`*values: list[Any]`**
 
@@ -118,7 +116,7 @@ edge_id = namespace_uuid(
   "MONDO:0005148",  # Type 2 diabetes
   "PMC11708054"  # Publication
 )
-# Returns: "uuid:a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+# Returns: "2cfea591-0f8f-33af-a7df-03da531d3359"
 ```
 
 **Benefits:**
@@ -145,7 +143,7 @@ from tablassert.utils import namespace_uuid
 
 # Generate edge ID
 edge_id = namespace_uuid("edges", "subject", "predicate", "object")
-print(edge_id)  # "uuid:12345678-1234-1234-1234-123456789abc"
+print(edge_id)  # "12345678-1234-1234-1234-123456789abc"
 ```
 
 **With qualifiers:**
@@ -183,12 +181,33 @@ Suitable for millions of ID generations per second.
 **`basespace(domain)`** - Creates namespace UUID from domain
 
 ```python
+@cache
 def basespace(domain: str) -> UUID:
   namespace = UUID("00000000-0000-0000-0000-000000000000")
   return uuid3(namespace, domain)
 ```
 
-Used internally by `namespace_uuid()`.
+Used internally by `namespace_uuid()`. Results are memoized per domain.
+
+## mkhash()
+
+Generates an `xxhash` 64-bit digest (hex string, 16 characters) for arbitrary input.
+
+```python
+def mkhash(x: Any) -> str
+```
+
+Used for compact identifier hashing (e.g., config/file identifiers in the CLI). Returns the `xxh64` hex digest of the input converted to a string.
+
+## samphash()
+
+Hashes a sampled `polars.DataFrame` for deterministic temp-file naming.
+
+```python
+def samphash(df: pl.DataFrame, n: int = 20) -> str
+```
+
+Samples up to `n` rows (default `20`) from `df`, hashes the sampled bytes via `mkhash()`, and returns the digest string.
 
 ## Next Steps
 

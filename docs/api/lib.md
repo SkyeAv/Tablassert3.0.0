@@ -2,7 +2,7 @@
 
 The `lib` module exposes `resolve_many()`, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction, NLP preprocessing, or DuckDB shard management.
 
-It wraps the lower-level [`resolve()`](fullmap.md) pipeline — applying `level_one` and `level_two` normalization, opening all 10 DuckDB shard connections, executing entity resolution, and returning results as a plain Python list of row dictionaries.
+It wraps the lower-level [`resolve()`](fullmap.md) pipeline — preserving the original input text, applying `level_one` and `level_two` normalization, opening all 10 DuckDB shard connections, executing entity resolution, optionally running the QC audit (when `qc=True`), and returning results as a plain Python list of row dictionaries.
 
 ## resolve_many()
 
@@ -18,8 +18,8 @@ def resolve_many(
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
-    column_context: bool = True,
     qc: bool = False,
+    column_context: bool = True,
 ) -> list[dict[str, Any]]
 ```
 
@@ -52,29 +52,29 @@ Each shard contains:
 
 Optional NCBI Taxon ID for filtering results to a specific organism.
 
-Example: `"9606"` restricts matches to human-specific entities. When `None`, no taxon filtering is applied and matches from all organisms are returned.
+Example: `"9606"` restricts **gene** matches to human-specific entries; non-gene categories (e.g., diseases, chemicals) are returned regardless of taxon. When `None`, no taxon filtering is applied and matches from all organisms are returned.
 
 **`prioritize: Optional[list[Categories]]` (default: `None`)**
 
 Optional list of Biolink categories to prefer when multiple matches exist for the same input term. Categories listed here receive higher ranking scores during resolution.
 
-Example: `[Categories.Gene, Categories.Protein]` prefers gene and protein mappings over other categories like diseases or chemicals.
+Example: `[Categories.GENE, Categories.PROTEIN]` prefers gene and protein mappings over other categories like diseases or chemicals.
 
 **`avoid: Optional[list[Categories]]` (default: `None`)**
 
 Optional list of Biolink categories to exclude from results entirely. Any match belonging to an avoided category is filtered out before ranking.
 
-Example: `[Categories.Gene]` prevents gene mappings from appearing in the output, even if they would otherwise be the best match.
+Example: `[Categories.GENE]` prevents gene mappings from appearing in the output, even if they would otherwise be the best match.
 
 **`column_context: bool` (default: `True`)**
 
-Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the resolution query adds a category frequency score and prefers the category that appears most frequently across all terms in the batch. When `False`, frequency-based tie-breaking is disabled.
+Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the deduplication stage adds a category-frequency score (computed in Polars after the SQL query) and prefers the category that appears most frequently across all matched terms in the batch. When `False`, frequency-based tie-breaking is disabled.
 
 This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.
 
 **`qc: bool` (default: `False`)**
 
-When `True`, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Requires a QC runtime to be installed (`tablassert[qc]` or `tablassert[qc-cuda]`). The ONNX Runtime provider is auto-detected based on the installed package — CUDA is preferred when `onnxruntime-gpu` is available, otherwise CPU is used.
+When `True`, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Mappings that fail all three stages are dropped from the returned list (in addition to the unresolved-entity filtering performed by `resolve()`). Requires a QC runtime to be installed (`tablassert[qc]` or `tablassert[qc-cuda]`). The ONNX Runtime provider is auto-detected based on the installed package — CUDA is preferred when `onnxruntime-gpu` is installed and `CUDAExecutionProvider` is available; if only `onnxruntime` (CPU) is installed, CPU is used. Note: if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is unavailable, QC raises rather than falling back to CPU.
 
 ### Return Value
 
@@ -101,13 +101,17 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 1. **Series construction** — Wraps the input iterable in a `pl.Series` with the given column name, then converts to a single-column `pl.LazyFrame`.
 
-2. **NLP normalization** — Applies `level_one()` (whitespace stripping + lowercasing) and `level_two()` (non-word character removal via `\W+`) to produce the two normalized columns required by `resolve()`.
+2. **Original column capture** — Copies the raw input column into `original {col}` via `column(lf, add("original ", col), col)` so the pre-normalization text is preserved in the output.
 
-3. **DuckDB connection management** — Opens all 10 shard connections inside a `contextlib.ExitStack`, ensuring every connection is properly closed when resolution completes or if an error occurs.
+3. **NLP normalization** — Applies `level_one()` (whitespace stripping + lowercasing) and `level_two()` (non-word character removal via `\W+`) to produce the two normalized columns required by `resolve()`.
 
-4. **Entity resolution** — Delegates to `fullmap.resolve()` which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.
+4. **DuckDB connection management** — Opens all 10 shard connections inside a `contextlib.ExitStack`, ensuring every connection is properly closed when resolution completes or if an error occurs.
 
-5. **Collection and conversion** — Collects the lazy result into an eager `pl.DataFrame` and converts to a list of row dictionaries via `to_dicts()`.
+5. **Entity resolution** — Delegates to `fullmap.resolve()` which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.
+
+6. **QC audit (optional)** — When `qc=True`, runs `fullmap_audit()` on the resolved LazyFrame. Rows that fail all three audit stages are dropped from the result.
+
+7. **Collection and conversion** — Collects the lazy result into an eager `pl.DataFrame` and converts to a list of row dictionaries via `to_dicts()`.
 
 ### Example Usage
 
@@ -126,7 +130,7 @@ result: list[dict[str, Any]] = resolve_many(
     entities=["TP53", "BRCA1", "EGFR", "KRAS"],
     datassert=datassert,
     taxon="9606",
-    prioritize=[Categories.Gene],
+    prioritize=[Categories.GENE],
 )
 
 # result[0] → {"original gene": "TP53", "gene": "HGNC:11998", "gene name": "TP53", ...}
@@ -147,7 +151,7 @@ result: list[dict[str, Any]] = resolve_many(
     col="disease",
     entities=["diabetes mellitus", "breast cancer", "alzheimer disease"],
     datassert=datassert,
-    avoid=[Categories.Gene, Categories.Protein],
+    avoid=[Categories.GENE, Categories.PROTEIN],
 )
 
 # result[0] → {"original disease": "diabetes mellitus", "disease": "MONDO:0005015", ...}
@@ -206,7 +210,7 @@ for row in result:
 | **Connections** | Managed internally via `ExitStack` | Must be opened externally |
 | **Output** | `list[dict[str, Any]]` | `pl.LazyFrame` |
 | **Logging** | Uses default (`log=True`) | Configurable |
-| **Context params** | Not exposed (`section_hash`, `config_file`, `tag`) | Fully configurable |
+| **Context params** | `column_context` exposed; `section_hash`, `config_file`, `tag` not exposed | Fully configurable |
 | **Use case** | Standalone batch lookups, scripting, notebooks | Internal pipeline integration |
 
 `resolve_many()` is designed for ad-hoc and programmatic use — scripts, notebooks, and one-off lookups. For pipeline integration where you need full control over logging, context metadata, and lazy evaluation, use `resolve()` directly.

@@ -84,7 +84,7 @@ template:
   syntax: TC3
 
 sections:
-  - syntax: TC2  # Overrides (not recommended)
+  - syntax: GC2  # Valid values are TC3 (default) and GC2; overriding is not recommended
 ```
 
 ### Use Cases
@@ -100,7 +100,7 @@ template:
 ```yaml
 template:
   source: {kind: excel, local: data.xlsx, url: https://example.com/data.xlsx}
-  provenance: {repo: PMC, publication: 123, contributors: [{name: Example User, date: 27 JAN 2026}]}
+  provenance: {repo: PMC, publication: "PMC123", contributors: [{name: Example User, date: 27 JAN 2026}]}
 
 sections:
   - statement: {predicate: treats}
@@ -111,7 +111,7 @@ sections:
 ```yaml
 template:
   source: {kind: text, local: data.csv, url: https://example.com/data.csv}
-  provenance: {repo: PMID, publication: 456, contributors: [{name: Example User, date: 27 JAN 2026}]}
+  provenance: {repo: PMID, publication: "456", contributors: [{name: Example User, date: 27 JAN 2026}]}
   statement:
     subject: {method: column, encoding: A}
 
@@ -141,8 +141,8 @@ Defines the data file location and format.
 | `local` | Path | Yes | Local file path for caching |
 | `url` | URL | Yes | Download URL (HTTP/HTTPS). Validated as reachable at parse time. |
 | `sheet` | String | No | Sheet name. Defaults to `"Sheet1"`. |
-| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. Mutually exclusive with `rows`. |
-| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
+| `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
+| `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
 | `reindex` | List[Reindex] | No | Conditional row filtering |
 
 **Example:**
@@ -165,8 +165,8 @@ source:
 | `local` | Path | Yes | Local file path for caching |
 | `url` | URL | Yes | Download URL. Validated as reachable at parse time. |
 | `delimiter` | String | No | Field delimiter. Defaults to `","`. |
-| `row_slice` | List[Int\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be an integer or `"auto"`. Mutually exclusive with `rows`. |
-| `rows` | List[Int] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
+| `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
+| `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
 | `reindex` | List[Reindex] | No | Conditional filtering |
 
 **Example:**
@@ -185,11 +185,11 @@ source:
 
 Filter rows based on column values.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `column` | String | Source column letters to evaluate (`A`-`ZZZ`) |
-| `comparison` | String | Operator. Defaults to `"ne"`; allowed values are `"eq"`, `"ne"`, `"lt"`, `"le"`, `"gt"`, `"ge"`. |
-| `comparator` | String\|Int\|Float | Value to compare against. Must be a string for `"eq"`/`"ne"`, or a number for `"lt"`/`"le"`/`"gt"`/`"ge"`. |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `column` | String | Yes | Source column letters to evaluate; constrained to `^[A-Z]{1,3}$` (`A`-`ZZZ`). |
+| `comparison` | String | No | Operator. Defaults to `"ne"`; allowed values are `"eq"`, `"ne"`, `"lt"`, `"le"`, `"gt"`, `"ge"`. |
+| `comparator` | String\|Int\|Float | Yes | Value to compare against. Must be a string for `"eq"`/`"ne"`, or a number for `"lt"`/`"le"`/`"gt"`/`"ge"`. |
 
 **Example:**
 ```yaml
@@ -232,12 +232,12 @@ Defines how to extract and resolve entities.
 |-------|------|----------|-------------|
 | `method` | String | No | `"value"` (literal) or `"column"` (source column letters). Defaults to `"value"`. |
 | `encoding` | String\|Int\|Float | Yes | Literal value or source column letters, depending on `method` |
-| `taxon` | Int | No | NCBI Taxon ID for filtering (e.g., `9606` for human) |
+| `taxon` | PositiveInt | No | NCBI Taxon ID for filtering (e.g., `9606` for human) |
 | `prioritize` | List[String] | No | Preferred Biolink categories (must be valid `Categories` enum values such as `Gene`, `Protein`) |
 | `avoid` | List[String] | No | Excluded Biolink categories (must be valid `Categories` enum values) |
 | `regex` | List[Regex] | No | Pattern replacements |
 | `fill` | String | No | Null-filling strategy: `"forward"`, `"backward"`, `"min"`, `"max"`, `"mean"`, `"zero"`, `"one"` |
-| `remove` | List[String] | No | Strings to filter out |
+| `remove` | List[Int\|Float\|String] | No | Regex patterns to remove (replaced with empty string) |
 | `prefix` | String | No | Add prefix to values |
 | `suffix` | String | No | Add suffix to values |
 | `explode_by` | String | No | Delimiter to split multi-value cells |
@@ -314,7 +314,7 @@ Prevents misclassifying organism names as genes.
 
 #### Text Transformations
 
-**`regex: list[{pattern, replacement}]`** - Pattern-based replacements
+**`regex: list[{pattern: Int|Float|String, replacement: Int|Float|String}]`** - Pattern-based replacements
 
 ```yaml
 subject:
@@ -328,18 +328,18 @@ subject:
 
 Executed in order.
 
-> **Regex dialect:** Patterns are passed directly to Polars `str.replace_all()`, which uses the Rust [`regex`](https://docs.rs/regex/) crate. Only features supported by that engine work — in particular, **capturing groups (`(...)`, `\1`) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)` are not supported** and will raise an error at parse time. Stick to character classes, anchors (`^`, `$`), quantifiers, alternation (`a|b`), and non-capturing groups (`(?:...)`) if grouping is needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a `miscellaneous notes` annotation instead.
+> **Regex dialect:** Patterns are passed directly to Polars `str.replace_all()`, which uses the Rust [`regex`](https://docs.rs/regex/) crate. Only features supported by that engine work — in particular, **backreferences (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not supported** and will raise an error at parse time. Plain groups `(...)` and non-capturing groups `(?:...)` *are* supported. Stick to character classes, anchors (`^`, `$`), quantifiers, alternation (`a|b`), and grouping if needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a `miscellaneous notes` annotation instead.
 
-**`remove: list[string]`** - Filter out specific strings
+**`remove: list[regex]`** - Regex patterns to remove
 
 ```yaml
 subject:
   encoding: A
   remove:
-    - "^NA "  # Remove rows starting with "NA "
+    - "^NA "  # Strip leading "NA " prefix from cell text
 ```
 
-Same regex constraints apply as the `regex` field — Polars-compatible patterns only, no capturing groups or lookarounds.
+Each entry is applied as a regex replace-with-empty-string on the cell text in place (rows are not dropped). Same regex constraints apply as the `regex` field — Polars-compatible patterns only, no backreferences or lookarounds.
 
 **`prefix` / `suffix`** - Add text
 
@@ -348,6 +348,13 @@ object:
   encoding: identifier
   prefix: "CUSTOM:"  # "123" → "CUSTOM:123"
 ```
+
+**Output columns: `original <col>` vs `<col> table literal value`** - For every subject/object/qualifier node, the pipeline snapshots the cell value into two edge columns at different stages:
+
+- `<col> table literal value` - the **pristine source-cell value**, captured immediately after the column is read and *before* any `fill`, `explode_by`, `regex`, `remove`, `prefix`, `suffix`, or `transformations`. Emitted only when `method: column` (a `method: value` node has no table source).
+- `original <col>` - the **fully-transformed value**, captured *after* all of the above, i.e. the same text that is then normalized and resolved to a CURIE. Always present for subject/object/qualifier nodes.
+
+Example: with `method: column`, `encoding: A`, `remove: ["^NA "]` over a cell `"NA BRCA1"`, `subject table literal value` is `"NA BRCA1"` while `original subject` is `"BRCA1"`. Annotations never emit a table-literal column.
 
 #### Null Handling
 
@@ -400,10 +407,10 @@ Use the `"values"` token to reference column values in transformations.
 
 Add context to edges (anatomical location, species, etc.).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `qualifier` | String | Biolink qualifier from the `Qualifiers` enum (e.g., `"species_context_qualifier"`) |
-| (inherits NodeEncoding) | | All NodeEncoding fields available |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `qualifier` | String | Yes | Biolink qualifier from the `Qualifiers` enum (e.g., `"species_context_qualifier"`) |
+| (inherits NodeEncoding) | | | All NodeEncoding fields available |
 
 **Example:**
 ```yaml
@@ -420,7 +427,7 @@ Required metadata about data source.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `repo` | String | No | Repository. Defaults to `"PMC"`; allowed values are `"PMC"`, `"PMID"`. |
-| `publication` | String | Yes | Repository-local identifier appended to `repo:` (e.g., `"11708054"`, `"123"`). When `repo` is `"PMC"`, the value **must** start with `PMC` followed by digits (e.g., `"PMC11708054"`, `"PMC123"`). |
+| `publication` | String | Yes | Repository-local identifier emitted as a CURIE. For `repo: PMC` the value **must** start with `PMC` followed by digits (e.g., `"PMC11708054"`, `"PMC123"`) and is emitted under the `PMCID:` namespace as `PMCID:PMC...` (previously `PMC:PMC...`); for `repo: PMID` it is emitted as `PMID:<publication>` (e.g., `"11708054"` → `PMID:11708054`). The `repository` output column still records the raw `repo` value (`PMC`/`PMID`). |
 | `contributors` | List[Contributor] | Yes | Curation information |
 
 **Contributor fields:**
@@ -437,7 +444,7 @@ Required metadata about data source.
 ```yaml
 provenance:
   repo: PMC
-  publication: 11708054
+  publication: "PMC11708054"
   contributors:
     - kind: curation
       name: Skye Lane Goetz
@@ -452,10 +459,10 @@ provenance:
 
 Optional edge attributes (statistical metadata, notes, etc.).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `annotation` | String | Attribute name (e.g., `"p value"`, `"sample size"`). Underscores are automatically replaced with spaces at parse time. |
-| (inherits Encoding) | | All Encoding fields available (method, encoding, regex, etc.) |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `annotation` | String | Yes | Attribute name (e.g., `"p value"`, `"sample size"`). Underscores are automatically replaced with spaces and the result is trimmed of leading/trailing whitespace at parse time. |
+| (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
 **Example:**
 ```yaml
@@ -510,7 +517,7 @@ template:
 
   provenance:
     repo: PMID
-    publication: 12345678
+    publication: "12345678"
     contributors:
       - kind: curation
         name: Example User

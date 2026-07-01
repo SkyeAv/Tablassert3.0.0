@@ -16,7 +16,6 @@ A graph configuration file specifies:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `syntax` | String | Configuration version (must be `"GC2"`) |
 | `name` | String | Knowledge graph name (used in output filename) |
 | `version` | String | Knowledge graph version (used in output filename) |
 | `tables` | List[Path] | Paths to table configuration YAML files |
@@ -26,6 +25,7 @@ A graph configuration file specifies:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `syntax` | String | Configuration version. Defaults to `"GC2"` (also accepts `"TC3"`); overriding is not recommended. |
 | `pubmed_db` | Path | Path to SQLite PubMed metadata database |
 | `pmc_db` | Path | Path to SQLite PMC figure captions database |
 | `log` | Boolean | Log unmatched entities and audit details during graph builds |
@@ -35,7 +35,7 @@ A graph configuration file specifies:
 
 **`syntax: "GC2"`**
 
-Configuration syntax version. Must be `"GC2"`.
+Configuration syntax version. Defaults to `"GC2"` (the type also accepts `"TC3"`); overriding the default is not recommended.
 
 **`name: string`**
 
@@ -61,7 +61,7 @@ This field only controls whether QC runs. Install `tablassert[qc]` or `tablasser
 
 **`tables: list[path]`**
 
-List of table configuration file paths. Can be absolute or relative to graph config location.
+List of table configuration file paths. Can be absolute or relative to the current working directory (paths are resolved against the process CWD, not the graph-config file location).
 
 Each table config defines:
 - Data source (Excel/CSV/TSV)
@@ -101,8 +101,7 @@ When provided, this is used when provenance specifies PMC publications.
 
 Paths can be:
 - **Absolute:** `/home/user/data/datassert`
-- **Relative to graph config:** `./tables/table1.yaml`
-- **Relative to current directory:** `../configs/table.yaml`
+- **Relative to the current working directory:** `./tables/table1.yaml` (note: paths are resolved against the process CWD, not the graph-config file location — there is no config-relative resolver)
 
 ## Minimal Example
 
@@ -139,16 +138,17 @@ pmc_db: /databases/PMCSuppCaptions.db
 When you run `tablassert build graph.yaml`:
 
 1. **Load graph configuration** - Parse YAML, validate schema
-2. **For each table in `tables`:**
-   - Load table configuration
+2. **Load table configurations** - Parse each YAML in `tables`
+3. **Extract sections** - Expand templates into per-section `Tcode` instances
+4. **Collect instructions (per section):**
    - Download source file (if URL specified)
-   - Apply transformations
-   - Resolve entities using `datassert`
-    - Validate with QC pipeline when `qc: true`
-   - Create subgraph parquet file
-3. **Aggregate subgraphs** - Merge all parquet files
-4. **Add provenance (optional)** - Query `pubmed_db` and `pmc_db` for metadata when configured
-5. **Export NDJSON** - Generate `{name}_{version}.nodes.ndjson` and `.edges.ndjson`
+   - Apply transformations and resolve entities using `datassert`
+   - Validate with the QC audit when `qc: true`
+   - Enrich with provenance: query `pubmed_db` (MeSH) and `pmc_db` (captions) when configured
+5. **Build subgraphs** - Compile each section's resolved data into a parquet file
+6. **Compile graph** - Aggregate all subgraph parquets and export `{name}_{version}.nodes.ndjson` / `.edges.ndjson`
+
+> Note: provenance enrichment (`with_mesh`/`with_captions`) and QC both run during the per-section Collect Instructions stage, *before* subgraphs are built — not as a separate post-aggregation step.
 
 ## Output Files
 
@@ -173,8 +173,8 @@ version: UNSTABLE
 tables:
   - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
 datassert: /local_raid1/sgoetz/CODE/DATASSERT/datassert
-pubmed_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
-pmc_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
+pubmed_db: /local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
+pmc_db: /local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
 ```
 
 This processes a single table configuration (ALAMV6.yaml) into a knowledge graph named `MULTIOMICS_KG_UNSTABLE`.
