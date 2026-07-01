@@ -24,11 +24,13 @@ from tablassert.utils import namespace_uuid
 
 if TYPE_CHECKING:
     import duckdb
+    import numpy as np
     import orjson
     import polars as pl
     import xxhash
 else:
     duckdb = Lazy.load("duckdb")
+    np = Lazy.load("numpy")
     orjson = Lazy.load("orjson")
     pl = Lazy.load("polars")
     xxhash = Lazy.load("xxhash")
@@ -56,14 +58,47 @@ def math_op(
 ) -> pl.LazyFrame:
     # ? Transform Values In A Column With The Math Module
     # ! Collection Point: Required For map_elements
+    # * strict=False tolerates residual non numeric junk in numeric annotation columns
     df: pl.DataFrame = lf.collect()
-    expr: pl.Expr = pl.col(col).cast(pl.Float64)
+    expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
     attr: Callable[[Any], Any] = getattr(math, func)
     df = df.with_columns(
         expr.map_elements(
             lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args)), return_dtype=pl.Float64
         ).alias(col)
     )
+    return df.lazy()
+
+
+def numeric_columns(names: list[str]) -> list[str]:
+    # ? Returns Column Names That Should Be Coerced And Formatted As Numbers
+    # * P Value Columns By Substring Plus Exact Relationship Strength And Sample Size
+    exact: set[str] = {"relationship strength", "sample size"}
+    return [c for c in names if ("p value" in c.lower()) or (c in exact)]
+
+
+def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # ? Coerces Numeric Annotation Columns To Float64 Dropping Non Numeric Values To Null
+    # * Only Touches P Value Relationship Strength And Sample Size Columns
+    cols: list[str] = numeric_columns(lf.collect_schema().names())
+    if not cols:
+        return lf
+    return lf.with_columns([pl.col(c).cast(pl.Float64, strict=False) for c in cols])
+
+
+def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # ? Formats Numeric Annotation Columns As Strings With Controlled Notation
+    # ! Collection Point: numpy Batch Formatting Required For Notation Control
+    # * P Value Columns Use Scientific Notation Others Use Decimal General Format
+    df: pl.DataFrame = lf.collect()
+    cols: list[str] = numeric_columns(df.columns)
+    for c in cols:
+        df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
+        mask: object = df[c].is_null().to_numpy()
+        arr: object = df[c].to_numpy()
+        fmt: str = "{:.4e}" if "p value" in c.lower() else "{:.4g}"
+        formatted: list[Optional[str]] = [None if m else fmt.format(float(v)) for v, m in zip(arr, mask)]  # pyright: ignore
+        df = df.with_columns(pl.Series(c, formatted))
     return df.lazy()
 
 
@@ -347,6 +382,7 @@ class Tcode(Section):
                 if self.source.reindex
                 else None,
                 [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
+                (clean_numeric, ()),
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
@@ -367,6 +403,7 @@ class Tcode(Section):
                 (with_captions, (pmc_db, self.provenance.publication, str(self.source.url))) if pmc_db else None,
                 (sig, ()),
                 (trim, ()),
+                (format_numeric, ()),
                 (to_store, (self.store, self.config.name)),
             ]
             return self.clean(tcode)
@@ -462,7 +499,7 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
     p_in.unlink()
 
 
-def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mixed", precision: int = 4) -> None:
+def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
     # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
     p: Path = Path(f"./{name}_{version}.tmp")
 
@@ -497,11 +534,9 @@ def compile_graph(subgraphs: list[Path], name: str, version: str, fmt: str = "mi
             eagernode.write_ndjson(f)
 
     with e.open("a") as f:
-        with pl.Config(set_fmt_float=fmt):  # pyright: ignore
-            with pl.Config(float_precision=precision):
-                for subedge in subedges:
-                    eageredge: pl.DataFrame = subedge.collect().unique()
-                    eageredge.write_ndjson(f)
+        for subedge in subedges:
+            eageredge: pl.DataFrame = subedge.collect().unique()
+            eageredge.write_ndjson(f)
 
     dedup_stream(e, is_edges=True)
     dedup_stream(n, is_edges=False)
