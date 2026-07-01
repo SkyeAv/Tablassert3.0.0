@@ -106,15 +106,23 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         )
         self.end_section_task()
 
-    def section_loop(self: "PipelineProgress", total: int, label: str) -> Callable[[str], None]:
+    def section_loop(
+        self: "PipelineProgress", total: int, label: str
+    ) -> tuple[Callable[[str], None], Callable[[], None]]:
+        # ? Returns A start Callback To Mark The In Flight Item And An advance Callback To Tick The Counter
+        # ! start Updates The Description Without Incrementing So The Bar Shows The Item Being Processed
         self.end_section_task()
-        self.section_task = self.progress.add_task(description=f"{label.upper()} | WORKING", total=total)
+        self.section_task = self.progress.add_task(description=f"{label.upper()} | STARTING", total=total)
 
-        def advance(info: str) -> None:
+        def start(info: str) -> None:
             assert self.section_task is not None
-            self.progress.update(self.section_task, description=f"{label.upper()} | {info}", advance=1)
+            self.progress.update(self.section_task, description=f"{label.upper()} | {info}")
 
-        return advance
+        def advance() -> None:
+            assert self.section_task is not None
+            self.progress.update(self.section_task, advance=1)
+
+        return start, advance
 
     def end_section_task(self: "PipelineProgress") -> None:
         if self.section_task is not None:
