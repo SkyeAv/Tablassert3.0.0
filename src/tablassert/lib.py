@@ -5,7 +5,7 @@ import operator
 from collections.abc import Iterable
 from contextlib import ExitStack
 from functools import reduce
-from operator import add, eq, le
+from operator import add, eq, le, lt
 from os.path import basename
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
@@ -132,6 +132,7 @@ def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
 def sig(
     lf: pl.LazyFrame,
     cutoff: float = 0.05,  # pyright: ignore
+    threshold: float = 0.10,
     col: str = "p value",
     out: str = "significant",
 ) -> pl.LazyFrame:
@@ -145,7 +146,13 @@ def sig(
         expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
         cond: pl.Expr = le(expr, cutoff)
         cutoff: pl.Expr = (
-            pl.when(expr.is_null()).then(pl.lit("UNSURE")).when(cond).then(pl.lit("YES")).otherwise(pl.lit("NO"))
+            pl.when(expr.is_null())
+            .then(pl.lit("UNSURE"))
+            .when(cond)
+            .then(pl.lit("YES"))
+            .when(lt(expr, threshold))
+            .then(pl.lit("INCONCLUSIVE"))
+            .otherwise(pl.lit("NO"))
         )
         return lf.with_columns(cutoff.alias(out))
     else:

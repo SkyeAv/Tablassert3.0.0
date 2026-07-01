@@ -358,6 +358,13 @@ def test_sig_marks_null_as_unsure() -> None:
     assert list(result["significant"]) == ["UNSURE", "YES", "NO"]
 
 
+# ? sig Marks P-Values Between Cutoff And Threshold As INCONCLUSIVE
+def test_sig_marks_inconclusive_band() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p value": [0.01, 0.07, 0.1]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["significant"]) == ["YES", "INCONCLUSIVE", "NO"]
+
+
 # ? numeric_columns Matches Any Column With P Value In The Name
 def test_numeric_columns_matches_p_value_substring() -> None:
     names: list[str] = ["p value", "adjusted p value", "log p value", "subject"]
