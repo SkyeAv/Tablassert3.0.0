@@ -2,7 +2,7 @@
 
 The `qc` module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BERT semantic similarity.
 
-QC runtime support is optional. Install `tablassert[qc]` for CPU inference or `tablassert[qc-cuda]` for CUDA inference on GPU 0.
+QC runtime support is optional. Install `tablassert[qc]` for CPU inference or `tablassert[qc-cuda]` for CUDA inference on GPU 0. **Strict GPU behavior:** if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is not available (e.g., a broken CUDA/cuDNN environment), `fullmap_audit()` raises a `RuntimeError` rather than silently falling back to CPU — install `tablassert[qc]` for CPU inference or fix the CUDA environment.
 
 ## fullmap_audit()
 
@@ -84,7 +84,7 @@ original == preferred_name
 
 **Performance:** O(1) string comparison
 
-Before fuzzy matching, the function also applies rule-based pass-through checks for known safe patterns (for example CHEBI/PR/UniProtKB CURIE families and selected exception prefixes).
+Before fuzzy matching, the function also applies rule-based pass-through checks: (1) the resolved CURIE matches an exempt prefix (`CHEBI`, `PR`, `UniProtKB`, `NCBIGene`, `UMLS`, `UNII`, `PUBCHEM`, `MONDO`); (2) the original text contains `:` (looks like a CURIE); (3) the preferred name matches an exception prefix (`^LOC` or `^si:`).
 
 #### Stage 2: Fuzzy Matching
 
@@ -94,11 +94,11 @@ Two fuzzy matching algorithms:
 1. **Ratio:** Overall string similarity
 2. **Partial token sort ratio:** Combined token/subsequence matching
 
-**Threshold:** 20% similarity
+**Thresholds:** `fuzz.ratio` >= 20 OR `fuzz.partial_token_sort_ratio` >= 30
 
 ```python
 fuzz.ratio(original, preferred) >= 20
-or fuzz.partial_token_sort_ratio(original, preferred) >= 20
+or fuzz.partial_token_sort_ratio(original, preferred) >= 30
 ```
 
 **Example passes:**
@@ -116,8 +116,8 @@ or fuzz.partial_token_sort_ratio(original, preferred) >= 20
 3. **Accept** if similarity >= 0.2 (20%)
 
 ```python
-embeddings = BIOBERT.encode([original, preferred])
-similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+embeddings = get_biobert(provider).encode(originals + preferreds)
+similarity = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()
 return similarity >= 0.2
 ```
 

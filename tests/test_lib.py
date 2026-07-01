@@ -182,6 +182,59 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
     assert qc_ops[1][1] == ("object", "sectionhash", "minimal_section.yaml", "passed", True)
 
 
+# ? publication_curie Uses PMCID Namespace For PubMed Central
+def test_publication_curie_pmc() -> None:
+    assert lib.publication_curie("PMC", "PMC1234567") == "PMCID:PMC1234567"
+
+
+# ? publication_curie Uses Repo Namespace For Non PMC Repositories
+def test_publication_curie_pubmed() -> None:
+    assert lib.publication_curie("PMID", "11708054") == "PMID:11708054"
+
+
+# ? Tcode Captures Table Literal Value Before Regex For Column Encoded Nodes
+def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    data["statement"]["subject"] = {
+        "method": "column",
+        "encoding": "A",
+        "regex": [{"pattern": "\\s+", "replacement": " "}],
+    }
+    data["statement"]["object"] = {"method": "column", "encoding": "B"}
+
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
+    assert "subject table literal value" in targets
+    assert "object table literal value" in targets
+
+    lit_idx: int = next(
+        i for i, op in enumerate(collected) if len(op[1]) > 0 and op[1][0] == "subject table literal value"
+    )
+    regex_idx: int = next(
+        i for i, op in enumerate(collected) if op[0].__name__ == "regex" and len(op[1]) > 0 and op[1][0] == "subject"
+    )
+    assert lit_idx < regex_idx
+
+
+# ? Tcode Omits Table Literal Value For Value Encoded Nodes
+def test_tcode_table_literal_value_absent_for_value_encoding(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
+    assert "subject table literal value" not in targets
+    assert "object table literal value" not in targets
+
+
 # ? resolve_many Skips QC When Disabled
 def test_resolve_many_skips_qc(monkeypatch: Any, tmp_path: Path) -> None:
     calls: list[tuple[Any, ...]] = []

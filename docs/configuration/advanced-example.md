@@ -23,7 +23,7 @@ template:
     local: ./DATALAKE/ALAM.XLSX
     url: https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx
     row_slice:
-      - 2  # Skip first row (header)
+      - 2  # Skip the first two rows (title + header)
       - auto  # Read to end
     sheet: all correlations
 
@@ -39,9 +39,9 @@ template:
       avoid:
         - Gene
 
-      # Remove invalid entries
+      # Strip non-value text in place (rows are not dropped)
       remove:
-        - "^NA "  # Rows starting with "NA "
+        - "^NA "  # Cells starting with "NA "
 
       # Clean taxonomic names with regex
       regex:
@@ -66,7 +66,7 @@ template:
   # Provenance: Publication and curation info
   provenance:
     repo: PMC
-    publication: 11708054
+    publication: PMC11708054
     contributors:
       - kind: curation
         name: Skye Lane Goetz
@@ -147,7 +147,7 @@ The subject field uses three regex transformations in sequence:
 ```
 `"Lactobacillus sp"` → `"Lactobacillus sp. "`
 
-> **Regex constraint:** Each `pattern` is handed to Polars `str.replace_all()` (Rust `regex` crate). **Capturing groups (`(...)` / `\1`) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not allowed** and will fail validation. Express transformations as a sequence of simple anchored / character-class substitutions instead — the pipeline above is a deliberate three-step chain because no single capturing-group pattern is permitted. If the transformation can't be expressed without those features, capture the leftover context in a `miscellaneous notes` annotation rather than fighting the regex engine.
+> **Regex constraint:** Each `pattern` is handed to Polars `str.replace_all()` (Rust `regex` crate). **Backreferences (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not allowed** and will fail validation. Plain groups `(...)` and non-capturing groups `(?:...)` *are* supported. Express transformations as a sequence of simple anchored / character-class substitutions where possible — the pipeline above is a deliberate three-step chain. If the transformation can't be expressed without those unsupported features, capture the leftover context in a `miscellaneous notes` annotation rather than fighting the regex engine.
 
 ### Taxonomic Filtering
 
@@ -226,6 +226,7 @@ template:
 
   statement:
     subject:
+      method: column
       encoding: A
       prioritize: [OrganismTaxon]
       avoid: [Gene]
@@ -239,18 +240,20 @@ sections:
   # Section 1: Positive correlations
   - statement:
       predicate: positively_correlated_with
-    reindex:
-      - column: B  # Correlation coefficient
-        comparison: gt
-        comparator: 0
+    source:
+      reindex:
+        - column: B  # Correlation coefficient
+          comparison: gt
+          comparator: 0
 
   # Section 2: Negative correlations
   - statement:
       predicate: negatively_correlated_with
-    reindex:
-      - column: B
-        comparison: lt
-        comparator: 0
+    source:
+      reindex:
+        - column: B
+          comparison: lt
+          comparator: 0
 ```
 
 This produces two sets of edges from one table:
@@ -296,14 +299,9 @@ template:
         - pattern: _
           replacement: ' '   # "Lactobacillus_rhamnosus" → "Lactobacillus rhamnosus"
 
-    qualifiers:
-      - qualifier: p value
-        method: column
-        encoding: E
-
   provenance:
     repo: PMC
-    publication: 12345678
+    publication: PMC12345678
     contributors:
       - kind: curation
         name: Skye Lane Goetz
@@ -324,7 +322,7 @@ template:
 
 **Both nodes from columns:** Setting `method: column` on both subject and object means both undergo entity resolution via `resolve()`. Each gets its own `prioritize` list to guide disambiguation.
 
-**`remove` vs `regex`:** `remove` filters out entire rows matching a pattern before resolution. `regex` transforms the column value in-place before resolution.
+**`remove` vs `regex`:** Both transform cell text in place before resolution (neither drops rows). `remove` strips each listed regex pattern by replacing it with an empty string; `regex` applies an ordered `pattern`→`replacement` substitution list.
 
 ---
 
@@ -364,7 +362,7 @@ template:
 
   provenance:
     repo: PMC
-    publication: 87654321
+    publication: PMC87654321
     contributors:
       - kind: curation
         name: Skye Lane Goetz

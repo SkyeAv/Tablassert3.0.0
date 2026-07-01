@@ -26,7 +26,7 @@ Prints the installed Tablassert version to stdout and exits. This is a flag on t
 
 ## build
 
-Build A KGX Compliant Knowledge Graph From A Graph Configuration File
+Build a knowledge graph from a YAML configuration file.
 
 ### Synopsis
 
@@ -70,7 +70,7 @@ See [Graph Configuration](configuration/graph.md) for details on the YAML schema
 
 ## validate
 
-Verify The Syntax Of A Declarative Table Configuration File
+Validate section syntax from a YAML configuration file.
 
 ### Synopsis
 

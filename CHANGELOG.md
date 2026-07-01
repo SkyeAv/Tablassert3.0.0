@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.5.0 - 2026-07-01
+
+### Changed
+- Publication CURIEs in `compile_subgraph()` (`lib.py`) now use the `PMCID:` namespace prefix for PubMed Central sources. A `repo: PMC` section with `publication: PMC11708054` is emitted as `PMCID:PMC11708054` (previously `PMC:PMC11708054`); non-PMC repos such as `PMID` are unaffected and continue to emit `<repo>:<publication>` (e.g., `PMID:11708054`). The `repository` edge column is unchanged and still records the raw `repo` value. Extracted via a new `publication_curie()` helper.
+
+### Added
+- New `<col> table literal value` edge column for subject, object, and qualifier nodes encoded with `method: column`. Unlike the existing `original <col>` column (which snapshots the value *after* all `fill`/`explode_by`/`regex`/`remove`/`prefix`/`suffix`/`transformations`), `<col> table literal value` captures the pristine source-cell value *before* any transformation. Emitted only for column-encoded nodes; annotations and `method: value` nodes are unaffected. Implemented via a `table_literal` flag on `Tcode.encoding()`, enabled by `Tcode.node()`.
+- Four regression tests in `test_lib.py`: `publication_curie()` for PMC and PMID namespaces, and two `Tcode` tcode-inspection tests covering presence/ordering of the table-literal column for column encodings and its absence for value encodings.
+
+### Documentation
+- Comprehensive accuracy pass across the API, configuration, and Docker documentation, reconciling every page against the current codebase. Highlights: corrected invalid examples that would not load (`syntax: TC2`; `publication` integers and missing `PMC` prefixes; a non-existent `Qualifiers` member; `reindex` placed at section level; a subject missing `method: column`), fixed wrong field types (`rows`/`row_slice`/`taxon` → `PositiveInt`, `remove` → regex patterns), corrected the QC fuzzy thresholds (`fuzz.ratio >= 20 OR partial_token_sort_ratio >= 30`), removed a non-existent `uuid:` prefix from `utils.md` return examples, fixed the `resolve_many()` parameter order and added the original-column-capture and optional QC-audit pipeline steps, corrected graph-config path resolution (CWD, not config-relative) and processing-flow ordering, documented the strict QC GPU no-fallback behavior and the `.cachassert/` working directory, and aligned `Categories` enum member names (`GENE`/`PROTEIN`) and Docker CI triggers with the source.
+
 ## 7.4.14 - 2026-06-30
 
 ### Changes

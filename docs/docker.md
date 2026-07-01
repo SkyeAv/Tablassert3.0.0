@@ -10,7 +10,7 @@ The image is based on `python:3.14-slim` with the Tablassert CLI as the entrypoi
 docker pull ghcr.io/skyeav/tablassert:latest
 ```
 
-Version-pinned tags match the git tag (e.g., `ghcr.io/skyeav/tablassert:v7.4.0`).
+Version-pinned tags match the git tag (e.g., `ghcr.io/skyeav/tablassert:v7.5.0`).
 
 ## Quick Start
 
@@ -49,7 +49,7 @@ docker run --rm \
 
 All dependencies ship in the base install, so the Docker image includes:
 
-- **Quality control** — The QC pipeline in `src/tablassert/qc.py` runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (threshold >= 20), then BioBERT sentence embeddings with cosine similarity (threshold >= 0.2). The ONNX model is cached in `.onnxassert/` (line 26).
+- **Quality control** — The QC pipeline in `src/tablassert/qc.py` runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (`fuzz.ratio` >= 20 or `partial_token_sort_ratio` >= 30), then BioBERT sentence embeddings with cosine similarity (threshold >= 0.2). The ONNX model is cached in `.onnxassert/` (line 24).
 - **Web downloads** — `src/tablassert/downloader.py` uses Playwright to download remote files with retry logic.
 - **Legacy Excel** — `modernize_xls()` in `src/tablassert/downloader.py` converts `.xls` files using pyexcel.
 
@@ -61,7 +61,8 @@ Mount these volumes to persist data across container runs:
 |---|---|---|
 | `.storassert/` | `src/tablassert/utils.py:17` — `STORE` | Intermediate Parquet storage for compiled subgraphs |
 | `.logassert/` | `src/tablassert/log.py` | Loguru log files with 100 MB rotation |
-| `.onnxassert/` | `src/tablassert/qc.py:26` — `MODEL` | Cached ONNX/BioBERT model |
+| `.onnxassert/` | `src/tablassert/qc.py:24` — `MODEL` | Cached ONNX/BioBERT model |
+| `.cachassert/` | `src/tablassert/models.py:76` — `CACHE` | diskcache store for URL-validation memoization |
 
 Example:
 
@@ -72,6 +73,7 @@ docker run --rm \
   -v ./.storassert:/app/.storassert \
   -v ./.logassert:/app/.logassert \
   -v ./.onnxassert:/app/.onnxassert \
+  -v ./.cachassert:/app/.cachassert \
   -w /app \
   ghcr.io/skyeav/tablassert:latest \
   build /data/graph-config.yaml
@@ -87,4 +89,4 @@ docker run --rm \
 
 ## CI/CD Integration
 
-Images are built by `.github/workflows/docker.yml`, which triggers on tag pushes (after autotag and PyPI publish complete). Tags match the repository version tag (e.g., `v7.2.2`).
+Images are built by `.github/workflows/docker.yml`, which triggers when the `Auto Tag Versions` workflow completes on `main` (also runnable manually via `workflow_dispatch`). Tags match the repository version tag (e.g., `v7.5.0`).

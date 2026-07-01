@@ -14,7 +14,7 @@ import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt, PositiveInt
 
 from tablassert.downloader import from_url
-from tablassert.enums import Categories, EncodingMethods, Files, Tokens
+from tablassert.enums import Categories, EncodingMethods, Files, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
 from tablassert.models import Encoding, NodeEncoding, Section
@@ -279,11 +279,14 @@ class Tcode(Section):
     log: bool = Field(False)
     qc: bool = Field(False)
 
-    def encoding(self: Self, x: Encoding, col: str) -> list[Any]:
+    def encoding(self: Self, x: Encoding, col: str, table_literal: bool = False) -> list[Any]:
         # ? Collect Helper For Encoding Classes
         return [
             (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
             (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
+            (column, (add(col, " table literal value"), col))
+            if (table_literal and eq(x.method, EncodingMethods.COLUMN))
+            else None,
             (fill, (col, x.fill)) if x.fill else None,
             (explode, (col, x.explode_by)) if x.explode_by else None,
             [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
@@ -295,7 +298,7 @@ class Tcode(Section):
 
     def node(self: Self, x: NodeEncoding, col: str, conns: list[object]) -> list[Any]:
         # ? Collect Helper For NodeEncoding Classes
-        encoding: list[Any] = self.encoding(x, col)
+        encoding: list[Any] = self.encoding(x, col, table_literal=True)
         node: list[Any] = [
             (column, (add("original ", col), col)),
             (level_one, (col,)),
@@ -355,10 +358,11 @@ class Tcode(Section):
                 (value, ("section number", self.number)),
                 (value, ("status", self.status)),
                 (value, ("repository", self.provenance.repo)),
-                (value, ("publication", (self.provenance.repo + ":" + self.provenance.publication))),
+                (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
                 (contributor_values, ("contributors", self.provenance.contributors)),
                 (value, ("url", str(self.source.url))),
                 (value, ("section hash", self.store.stem)),
+                (value, ("sheet name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (with_mesh, (pubmed_db, self.provenance.publication)) if pubmed_db else None,
                 (with_captions, (pmc_db, self.provenance.publication, str(self.source.url))) if pmc_db else None,
                 (sig, ()),
@@ -389,6 +393,13 @@ def normalize(
     nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
     edges_out: pl.LazyFrame = edges.drop(cols[1:])
     return nodes, edges_out
+
+
+def publication_curie(repo: str, publication: str) -> str:
+    # ? Builds The Publication CURIE; PMCID Namespace For PubMed Central
+    if eq(repo, Repositories.PUBMED_CENTRAL):
+        return add("PMCID:", publication)
+    return add(repo, add(":", publication))
 
 
 def publications(
