@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## 7.5.1 - 2026-07-01
+
+### Changed
+- Numeric annotation columns are now coerced and emitted as controlled-notation strings in NDJSON output instead of raw values. Two new pipeline steps wired into `Tcode.collect()` (`lib.py`): `clean_numeric()` lazily casts matching columns to `Float64` with `strict=False` (non-numeric entries drop to null), and `format_numeric()` renders them as strings — p-value columns (any name containing `"p value"`, case-insensitive) in scientific notation (`{:.4e}`), and `relationship strength` / `sample size` in decimal general format (`{:.4g}`, ≥4 significant figures). Non-matching columns are left untouched, and nulls are subsequently dropped by `strip_nulls()`. `math_op()` now also casts with `strict=False` so it tolerates residual junk in numeric annotation columns. `format_numeric()` formats via numpy-backed batch conversion rather than `map_elements` for throughput.
+- Removed dead `pl.Config(set_fmt_float=...)` and `pl.Config(float_precision=...)` context managers from `compile_graph()` (`lib.py`); they were no-ops for NDJSON serialization (`write_ndjson` emits raw f64 via serde shortest-repr and ignores float display options), and the `fmt`/`precision` parameters of `compile_graph()` were removed alongside them.
+- Fixed an off-by-one in the build/validate progress bar so each section loop now shows the configuration currently being processed instead of the last-completed one. `PipelineProgress.section_loop()` (`progress.py`) previously returned a single `advance(info)` callback that set the description and ticked the completed counter together, called after each item's work — so while section *K* ran the bar still displayed section *K−1*. It now returns a `(start, advance)` pair: `start(info)` updates the description to the in-flight item without incrementing, and `advance()` ticks the counter afterwards (so the counter never claims an in-flight item is complete). All five call sites in `cli.py` (TCode build, Collect, Subgraph, Graph, Validate) were updated to `start(...)` before the work and `advance()` after; the long-running Collect and Subgraph stages continue to show the full `format_section_oneline()` summary (including the `CONFIG` name) of the in-flight section.
+
+### Added
+- Fifteen regression tests in `test_lib.py` covering `numeric_columns()` detection (p-value substring, exact-name match, case-insensitivity), `clean_numeric()` (parse/coerce numeric and scientific notation, null out non-numeric junk, leave non-matching columns untouched, noop, idempotent on Float64), `format_numeric()` (scientific notation for p-value, decimal general format for relationship strength/sample size, null preservation, floating-point-noise cleaning, noop), null-stripped NDJSON rows, `compile_graph()` NDJSON emission, and `sig()` operating over a cleaned Float64 p-value column.
+- Three regression tests in `tests/test_progress.py` pinning the new two-callback contract: `start` shows the in-flight item with the counter still at zero, `advance` ticks the counter without altering the description, and a `start`/`advance` cycle keeps the description synced to the current item rather than the previous one.
+
 ## 7.5.0 - 2026-07-01
 
 ### Changed

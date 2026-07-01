@@ -59,20 +59,20 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
 
     # * Build TCode (3/6)
     progress.stage(f"Building TCode | Sections: {n}")
-    advance = progress.section_loop(n, "TCode")
+    start, advance = progress.section_loop(n, "TCode")
     tcode: list[Tcode] = []
     for idx, s in enumerate(sections, start=1):
+        h: str = mkhash(s)
+        start(f"#{idx} | CONFIG: {Path(s['config']).name} | HASH: {h}")
         try:
             tcode.append(
-                Tcode.model_validate(
-                    {**s, "number": idx, "store": (STORE / f"{mkhash(s)}.parquet"), "log": g.log, "qc": g.qc}
-                )
+                Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc})
             )
         except pydantic.ValidationError as e:
             raise RuntimeError(
-                f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | IDX: {idx} | HASH: {mkhash(s)} | PYDANTIC: {flatten_pydantic_error(e)}"
+                f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
             ) from e
-        advance(format_section_oneline(tcode[-1]))
+        advance()
 
     with ExitStack() as stack:
         conns: list[object] = [
@@ -82,25 +82,28 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
 
         # * Collect Instructions (4/6)
         progress.stage(f"Collecting Instructions | Sections: {n}")
-        advance = progress.section_loop(n, "Collect")
+        start, advance = progress.section_loop(n, "Collect")
         instructions: list[Any] = []
         for x in tcode:
+            start(format_section_oneline(x))
             instructions.append(x.collect(conns, g.pubmed_db, g.pmc_db))  # pyright: ignore
-            advance(format_section_oneline(x))
+            advance()
 
         # * Build Subgraphs (5/6)
         progress.stage(f"Building Subgraphs | Sections: {n}")
-        advance = progress.section_loop(n, "Subgraph")
+        start, advance = progress.section_loop(n, "Subgraph")
         subgraphs: list[Path] = []
         for x, op in zip(tcode, instructions):
+            start(format_section_oneline(x))
             subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op))
-            advance(format_section_oneline(x))
+            advance()
 
     # * Compile Graph (6/6)
     progress.stage(f"Compiling Graph | Sections: {n}")
-    advance = progress.section_loop(1, "Graph")
+    start, advance = progress.section_loop(1, "Graph")
+    start(f"NAME: {g.name} | VERSION: {g.version}")
     compile_graph(subgraphs, g.name, g.version)
-    advance(f"NAME: {g.name} | VERSION: {g.version}")
+    advance()
 
     logger.info(f"BUILD DONE | SECTIONS: {n} | NAME: {g.name} | VERSION: {g.version}")
 
@@ -123,16 +126,17 @@ def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgres
 
     # * Validate Section Syntax (3/3)
     progress.stage(f"Validating Section Syntax | Sections: {n}")
-    advance = progress.section_loop(n, "Validate")
+    start, advance = progress.section_loop(n, "Validate")
     for idx, s in enumerate(sections, start=1):
         h: str = mkhash(s)
+        start(f"#{idx} | HASH: {h}")
         try:
             Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet")})
         except pydantic.ValidationError as e:
             raise RuntimeError(
                 f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
             ) from e
-        advance(f"#{idx} | HASH: {h}")
+        advance()
 
     logger.info(f"VALIDATE DONE | SECTIONS: {n} | CONFIG: {table_configuration_file.name}")
 

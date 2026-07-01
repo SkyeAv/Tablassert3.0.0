@@ -3,48 +3,55 @@
 ## Fast Start
 
 - Python package, not a monorepo. Main code lives in `src/tablassert/`; tests live in `tests/`.
-- Install with `uv sync`. QC is not available unless you install an extra: `uv sync --extra qc` or `uv sync --extra qc-cuda`.
-- CLI entrypoint is `tablassert.cli:APP`. Real user commands are:
-  - `uv run tablassert build <graph.yaml>`
-  - `uv run tablassert validate <table.yaml>`
+- Install with `uv sync`. Three optional extras:
+  - `--extra qc` / `--extra qc-cuda` — installs `onnxruntime` / `onnxruntime-gpu` for QC (strict runtime behavior below).
+  - `--extra rt` — runtime-compatible Polars build for CPUs missing required SIMD instructions.
+- CLI entrypoint is `tablassert.cli:APP`. Real user commands:
+  - `uv run tablassert build <graph.yaml>` — 6 pipeline stages.
+  - `uv run tablassert validate <table.yaml>` — 3 stages, syntax-only.
+
+## Source of Truth
+
+- When prose docs and code disagree, `src/tablassert/models.py` and `src/tablassert/cli.py` are authoritative. Docs drift: some pages claim shard files are `{0..11}.duckdb` or that only the `rt` extra exists; the code uses `SHARDS = 10` (so `0..9`) and exposes `qc`/`qc-cuda`/`rt` extras.
 
 ## Verify Changes
 
 - Match the repo hooks before finishing: `uv run ruff check --fix .`, `uv run ruff format .`, `uv run pyright`, `uv run pytest`.
-- Full hook run: `uv run pre-commit run --all-files`.
+- Full hook run: `uv run pre-commit run --all-files` (ruff, ruff-format, pyright, pytest).
 - Focused test runs:
   - Single test: `uv run pytest tests/test_lib.py::test_name`
   - By keyword: `uv run pytest -k "pattern"`
   - With print output: `uv run pytest -s tests/test_lib.py`
-- Docs build: `uv run --group dev mkdocs build`
+- Docs build: `uv run --group dev mkdocs build`.
 
 ## High-Value Structure
 
-- `src/tablassert/cli.py` is the wiring layer: `build()` calls `build_pipeline()`, `validate()` calls `validate_pipeline()`.
+- `src/tablassert/cli.py` is the wiring layer: `build()` → `build_pipeline()`, `validate()` → `validate_pipeline()`.
 - `src/tablassert/ingests.py` loads YAML and expands table configs into section dicts.
 - `src/tablassert/lib.py` is the core pipeline:
   - `Tcode.collect()` builds the per-section operation list.
   - `compile_subgraph()` executes that list into parquet.
   - `compile_graph()` aggregates subgraph parquets into KGX NDJSON.
   - `resolve_many()` is the direct library API for batch entity resolution.
-- Entity resolution uses DuckDB shard files under `<datassert>/data/`. `src/tablassert/fullmap.py` hardcodes `SHARDS = 10`.
+- Entity resolution uses DuckDB shard files at `<datassert>/data/{0..9}.duckdb`, opened read-only. `datassert` is a required `Path` field on the `Graph` model (not a fixed location); `src/tablassert/fullmap.py` hardcodes `SHARDS = 10`.
 
 ## Repo-Specific Gotchas
 
-- Heavy dependencies are lazy-loaded per module with `TYPE_CHECKING` + `lazy_loader`. Follow the existing pattern instead of importing heavy packages eagerly.
-- `tests/conftest.py` autouse-mocks `httpx.head`, so model URL validation tests do not hit the network unless a test is explicitly marked otherwise.
+- Heavy dependencies are lazy-loaded per module with `TYPE_CHECKING` + `lazy_loader`. Follow the existing pattern instead of importing heavy packages eagerly. Lazy-loaded: polars, duckdb, orjson, xxhash, polars_hash, yaml, httpx, pyexcel, onnxruntime, sentence_transformers.
+- `tests/conftest.py` autouse-mocks `httpx.head`, so model-URL validation tests never hit the network unless a test opts in.
 - Network-dependent tests are marked `@pytest.mark.network`; GPU QC tests are marked with both `network` and `gpu` in `tests/test_qc.py`.
-- QC runtime selection is strict in `src/tablassert/qc.py`: if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is unavailable, the code raises instead of falling back to CPU.
-- Downloader behavior in `src/tablassert/downloader.py` is two-path: direct `httpx` fetch for known file URLs, headless-browser fallback for browser-only sources. Keep tests around payload validation and cleanup intact when changing it.
+- QC runtime selection is strict in `src/tablassert/qc.py`: if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is unavailable, the code raises (error 06) instead of falling back to CPU. Install `tablassert[qc]` for CPU-only.
+- Downloader behavior in `src/tablassert/downloader.py` is two-path: `direct()` via `httpx` for known file URLs, `browser()` via Playwright fallback for browser-only sources. Keep payload-validation and cleanup tests intact when changing it.
 
 ## Conventions That Matter Here
 
 - Start every module with `from __future__ import annotations`.
-- Annotate locals, not just function signatures.
-- Use `Optional[T]` / `Union[...]`, not `T | None`.
-- Prefer `Path` over raw path strings.
-- Function docs are usually `# ?` comments above the code, not docstrings.
+- Annotate every variable, including locals.
+- Use `Optional[T]` / `Union[...]`, not `T | None`. Use `Path`, not `str`, for filesystem paths. Use `# pyright: ignore` to silence lazy-load false positives.
+- No docstrings on functions. Use comment markers on the line above: `# ?` description, `# !` warning, `# *` pipeline stage, `# TODO:` todo.
+- Pydantic models inherit `TablaBase` (`extra="forbid"`, `validate_assignment=True`). Required fields use `Field(...)`; optional use `Optional[T] = Field(None)`. Enums extend `str, Enum` and live in `enums.py`.
+- Per-module logger: `from tablassert.log import cat; logger = cat("MODULE")` (e.g. `cat("FULLMAP")`). The CLI uses the root `from tablassert.log import logger`. Raise `RuntimeError` for failures; `logger.warning()` for non-fatal issues.
 
 ## Side Effects
 
-- The package writes working artifacts to hidden directories in the repo root: `.storassert/`, `.logassert/`, `.cachassert/`, and `.onnxassert/`.
+- The package writes working artifacts to hidden dirs in the repo root, each defined in code: `.storassert/` (`utils.STORE`), `.logassert/` (`log.LOGASSERT`), `.cachassert/` (`models.CACHE`), `.onnxassert/` (`qc.MODEL`).
