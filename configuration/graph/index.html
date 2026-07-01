@@ -163,11 +163,6 @@
 </thead>
 <tbody>
 <tr>
-<td><code>syntax</code></td>
-<td>String</td>
-<td>Configuration version (must be <code>"GC2"</code>)</td>
-</tr>
-<tr>
 <td><code>name</code></td>
 <td>String</td>
 <td>Knowledge graph name (used in output filename)</td>
@@ -200,6 +195,11 @@
 </thead>
 <tbody>
 <tr>
+<td><code>syntax</code></td>
+<td>String</td>
+<td>Configuration version. Defaults to <code>"GC2"</code> (also accepts <code>"TC3"</code>); overriding is not recommended.</td>
+</tr>
+<tr>
 <td><code>pubmed_db</code></td>
 <td>Path</td>
 <td>Path to SQLite PubMed metadata database</td>
@@ -223,7 +223,7 @@
 </table>
 <h3 id="field-details">Field Details</h3>
 <p><strong><code>syntax: "GC2"</code></strong></p>
-<p>Configuration syntax version. Must be <code>"GC2"</code>.</p>
+<p>Configuration syntax version. Defaults to <code>"GC2"</code> (the type also accepts <code>"TC3"</code>); overriding the default is not recommended.</p>
 <p><strong><code>name: string</code></strong></p>
 <p>Output knowledge graph name. Used as prefix for NDJSON files.</p>
 <p>Example: <code>name: MULTIOMICS_KG</code> produces <code>MULTIOMICS_KG_{version}.nodes.ndjson</code></p>
@@ -236,7 +236,7 @@
 <p>When <code>true</code>, Tablassert runs the QC audit stage after entity resolution for node-like columns. When <code>false</code>, the build skips QC entirely.</p>
 <p>This field only controls whether QC runs. Install <code>tablassert[qc]</code> or <code>tablassert[qc-cuda]</code> if you plan to enable it.</p>
 <p><strong><code>tables: list[path]</code></strong></p>
-<p>List of table configuration file paths. Can be absolute or relative to graph config location.</p>
+<p>List of table configuration file paths. Can be absolute or relative to the current working directory (paths are resolved against the process CWD, not the graph-config file location).</p>
 <p>Each table config defines:
 - Data source (Excel/CSV/TSV)
 - Entity resolution rules
@@ -263,8 +263,7 @@
 <h2 id="path-resolution">Path Resolution</h2>
 <p>Paths can be:
 - <strong>Absolute:</strong> <code>/home/user/data/datassert</code>
-- <strong>Relative to graph config:</strong> <code>./tables/table1.yaml</code>
-- <strong>Relative to current directory:</strong> <code>../configs/table.yaml</code></p>
+- <strong>Relative to the current working directory:</strong> <code>./tables/table1.yaml</code> (note: paths are resolved against the process CWD, not the graph-config file location — there is no config-relative resolver)</p>
 <h2 id="minimal-example">Minimal Example</h2>
 <pre><code class="language-yaml">syntax: GC2
 name: MY_GRAPH
@@ -293,19 +292,19 @@ pmc_db: /databases/PMCSuppCaptions.db
 <p>When you run <code>tablassert build graph.yaml</code>:</p>
 <ol>
 <li><strong>Load graph configuration</strong> - Parse YAML, validate schema</li>
-<li><strong>For each table in <code>tables</code>:</strong></li>
-<li>Load table configuration</li>
+<li><strong>Load table configurations</strong> - Parse each YAML in <code>tables</code></li>
+<li><strong>Extract sections</strong> - Expand templates into per-section <code>Tcode</code> instances</li>
+<li><strong>Collect instructions (per section):</strong></li>
 <li>Download source file (if URL specified)</li>
-<li>Apply transformations</li>
-<li>Resolve entities using <code>datassert</code><ul>
-<li>Validate with QC pipeline when <code>qc: true</code></li>
-</ul>
-</li>
-<li>Create subgraph parquet file</li>
-<li><strong>Aggregate subgraphs</strong> - Merge all parquet files</li>
-<li><strong>Add provenance (optional)</strong> - Query <code>pubmed_db</code> and <code>pmc_db</code> for metadata when configured</li>
-<li><strong>Export NDJSON</strong> - Generate <code>{name}_{version}.nodes.ndjson</code> and <code>.edges.ndjson</code></li>
+<li>Apply transformations and resolve entities using <code>datassert</code></li>
+<li>Validate with the QC audit when <code>qc: true</code></li>
+<li>Enrich with provenance: query <code>pubmed_db</code> (MeSH) and <code>pmc_db</code> (captions) when configured</li>
+<li><strong>Build subgraphs</strong> - Compile each section's resolved data into a parquet file</li>
+<li><strong>Compile graph</strong> - Aggregate all subgraph parquets and export <code>{name}_{version}.nodes.ndjson</code> / <code>.edges.ndjson</code></li>
 </ol>
+<blockquote>
+<p>Note: provenance enrichment (<code>with_mesh</code>/<code>with_captions</code>) and QC both run during the per-section Collect Instructions stage, <em>before</em> subgraphs are built — not as a separate post-aggregation step.</p>
+</blockquote>
 <h2 id="output-files">Output Files</h2>
 <p>Given this configuration:</p>
 <pre><code class="language-yaml">name: EXAMPLE_KG
@@ -322,8 +321,8 @@ version: UNSTABLE
 tables:
   - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
 datassert: /local_raid1/sgoetz/CODE/DATASSERT/datassert
-pubmed_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
-pmc_db: /local_raid1/sgoetz/DBSTORE/local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
+pubmed_db: /local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
+pmc_db: /local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
 </code></pre>
 <p>This processes a single table configuration (ALAMV6.yaml) into a knowledge graph named <code>MULTIOMICS_KG_UNSTABLE</code>.</p>
 <h2 id="next-steps">Next Steps</h2>

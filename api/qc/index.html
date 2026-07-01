@@ -155,7 +155,7 @@
               
                 <h1 id="quality-control-qc">Quality Control (qc)</h1>
 <p>The <code>qc</code> module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BERT semantic similarity.</p>
-<p>QC runtime support is optional. Install <code>tablassert[qc]</code> for CPU inference or <code>tablassert[qc-cuda]</code> for CUDA inference on GPU 0.</p>
+<p>QC runtime support is optional. Install <code>tablassert[qc]</code> for CPU inference or <code>tablassert[qc-cuda]</code> for CUDA inference on GPU 0. <strong>Strict GPU behavior:</strong> if <code>onnxruntime-gpu</code> is installed but <code>CUDAExecutionProvider</code> is not available (e.g., a broken CUDA/cuDNN environment), <code>fullmap_audit()</code> raises a <code>RuntimeError</code> rather than silently falling back to CPU — install <code>tablassert[qc]</code> for CPU inference or fix the CUDA environment.</p>
 <h2 id="fullmap_audit">fullmap_audit()</h2>
 <p>Primary quality control function that filters entity mappings based on confidence criteria.</p>
 <h3 id="function-signature">Function Signature</h3>
@@ -204,15 +204,15 @@
 - Original: <code>"TP53"</code> → Preferred: <code>"TP53"</code> ✓
 - Original: <code>"diabetes"</code> → Preferred: <code>"diabetes mellitus"</code> ✗ (goes to Stage 2)</p>
 <p><strong>Performance:</strong> O(1) string comparison</p>
-<p>Before fuzzy matching, the function also applies rule-based pass-through checks for known safe patterns (for example CHEBI/PR/UniProtKB CURIE families and selected exception prefixes).</p>
+<p>Before fuzzy matching, the function also applies rule-based pass-through checks: (1) the resolved CURIE matches an exempt prefix (<code>CHEBI</code>, <code>PR</code>, <code>UniProtKB</code>, <code>NCBIGene</code>, <code>UMLS</code>, <code>UNII</code>, <code>PUBCHEM</code>, <code>MONDO</code>); (2) the original text contains <code>:</code> (looks like a CURIE); (3) the preferred name matches an exception prefix (<code>^LOC</code> or <code>^si:</code>).</p>
 <h4 id="stage-2-fuzzy-matching">Stage 2: Fuzzy Matching</h4>
 <p><strong>Medium confidence using RapidFuzz.</strong></p>
 <p>Two fuzzy matching algorithms:
 1. <strong>Ratio:</strong> Overall string similarity
 2. <strong>Partial token sort ratio:</strong> Combined token/subsequence matching</p>
-<p><strong>Threshold:</strong> 20% similarity</p>
+<p><strong>Thresholds:</strong> <code>fuzz.ratio</code> &gt;= 20 OR <code>fuzz.partial_token_sort_ratio</code> &gt;= 30</p>
 <pre><code class="language-python">fuzz.ratio(original, preferred) &gt;= 20
-or fuzz.partial_token_sort_ratio(original, preferred) &gt;= 20
+or fuzz.partial_token_sort_ratio(original, preferred) &gt;= 30
 </code></pre>
 <p><strong>Example passes:</strong>
 - Original: <code>"breast ca"</code> → Preferred: <code>"breast cancer"</code> ✓
@@ -225,8 +225,8 @@ or fuzz.partial_token_sort_ratio(original, preferred) &gt;= 20
 <li><strong>Compute</strong> cosine similarity between embeddings</li>
 <li><strong>Accept</strong> if similarity &gt;= 0.2 (20%)</li>
 </ol>
-<pre><code class="language-python">embeddings = BIOBERT.encode([original, preferred])
-similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+<pre><code class="language-python">embeddings = get_biobert(provider).encode(originals + preferreds)
+similarity = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()
 return similarity &gt;= 0.2
 </code></pre>
 <p><strong>Example passes:</strong>

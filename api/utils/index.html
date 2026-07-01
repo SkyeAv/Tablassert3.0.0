@@ -110,6 +110,10 @@
     </li>
         </ul>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#mkhash">mkhash()</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#samphash">samphash()</a>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
     </li>
     </ul>
@@ -154,10 +158,8 @@
 <p><strong><code>domain: Any</code></strong></p>
 <p>Domain string used to create the namespace UUID.</p>
 <p>Converted to string internally. Common domains:
-- <code>"TABLASSERT"</code> - Default domain used for knowledge graph edge IDs
-- <code>"edges"</code> - Optional custom domain for edge IDs
-- <code>"nodes"</code> - For custom node IDs
-- <code>"tablassert"</code> - For application-specific IDs</p>
+- <code>"TABLASSERT"</code> - Default domain used for KGX edge IDs (the value used by <code>label_edge</code>)
+- Other domain strings (e.g., <code>"edges"</code>, <code>"nodes"</code>) may be passed for custom namespaces, though only <code>"TABLASSERT"</code> is used internally.</p>
 <p><strong><code>*values: list[Any]</code></strong></p>
 <p>Variable number of values to include in the UUID.</p>
 <p>Values are:
@@ -218,7 +220,7 @@ assert uuid1 != uuid2  # Different namespaces
   &quot;MONDO:0005148&quot;,  # Type 2 diabetes
   &quot;PMC11708054&quot;  # Publication
 )
-# Returns: &quot;uuid:a1b2c3d4-e5f6-7890-abcd-ef1234567890&quot;
+# Returns: &quot;2cfea591-0f8f-33af-a7df-03da531d3359&quot;
 </code></pre>
 <p><strong>Benefits:</strong>
 - <strong>Reproducible:</strong> Same edge always gets same ID across runs
@@ -237,7 +239,7 @@ assert uuid1 != uuid2  # Different namespaces
 
 # Generate edge ID
 edge_id = namespace_uuid(&quot;edges&quot;, &quot;subject&quot;, &quot;predicate&quot;, &quot;object&quot;)
-print(edge_id)  # &quot;uuid:12345678-1234-1234-1234-123456789abc&quot;
+print(edge_id)  # &quot;12345678-1234-1234-1234-123456789abc&quot;
 </code></pre>
 <p><strong>With qualifiers:</strong></p>
 <pre><code class="language-python"># Include anatomical context qualifier
@@ -264,11 +266,22 @@ edge_id = namespace_uuid(&quot;edges&quot;, &quot;A&quot;, None, &quot;B&quot;, 
 <p>Suitable for millions of ID generations per second.</p>
 <h3 id="related-functions">Related Functions</h3>
 <p><strong><code>basespace(domain)</code></strong> - Creates namespace UUID from domain</p>
-<pre><code class="language-python">def basespace(domain: str) -&gt; UUID:
+<pre><code class="language-python">@cache
+def basespace(domain: str) -&gt; UUID:
   namespace = UUID(&quot;00000000-0000-0000-0000-000000000000&quot;)
   return uuid3(namespace, domain)
 </code></pre>
-<p>Used internally by <code>namespace_uuid()</code>.</p>
+<p>Used internally by <code>namespace_uuid()</code>. Results are memoized per domain.</p>
+<h2 id="mkhash">mkhash()</h2>
+<p>Generates an <code>xxhash</code> 64-bit digest (hex string, 16 characters) for arbitrary input.</p>
+<pre><code class="language-python">def mkhash(x: Any) -&gt; str
+</code></pre>
+<p>Used for compact identifier hashing (e.g., config/file identifiers in the CLI). Returns the <code>xxh64</code> hex digest of the input converted to a string.</p>
+<h2 id="samphash">samphash()</h2>
+<p>Hashes a sampled <code>polars.DataFrame</code> for deterministic temp-file naming.</p>
+<pre><code class="language-python">def samphash(df: pl.DataFrame, n: int = 20) -&gt; str
+</code></pre>
+<p>Samples up to <code>n</code> rows (default <code>20</code>) from <code>df</code>, hashes the sampled bytes via <code>mkhash()</code>, and returns the digest string.</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><strong><a href="../fullmap/">Entity Resolution</a></strong> - Core entity mapping</li>

@@ -138,7 +138,7 @@
 <p>The image is based on <code>python:3.14-slim</code> with the Tablassert CLI as the entrypoint. All dependencies are included in the base install.</p>
 <pre><code class="language-bash">docker pull ghcr.io/skyeav/tablassert:latest
 </code></pre>
-<p>Version-pinned tags match the git tag (e.g., <code>ghcr.io/skyeav/tablassert:v7.4.0</code>).</p>
+<p>Version-pinned tags match the git tag (e.g., <code>ghcr.io/skyeav/tablassert:v7.5.0</code>).</p>
 <h2 id="quick-start">Quick Start</h2>
 <pre><code class="language-bash"># Show CLI help (default CMD)
 docker run --rm ghcr.io/skyeav/tablassert:latest
@@ -164,7 +164,7 @@ docker run --rm ghcr.io/skyeav/tablassert:latest --version
 <h2 id="included-capabilities">Included Capabilities</h2>
 <p>All dependencies ship in the base install, so the Docker image includes:</p>
 <ul>
-<li><strong>Quality control</strong> — The QC pipeline in <code>src/tablassert/qc.py</code> runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (threshold &gt;= 20), then BioBERT sentence embeddings with cosine similarity (threshold &gt;= 0.2). The ONNX model is cached in <code>.onnxassert/</code> (line 26).</li>
+<li><strong>Quality control</strong> — The QC pipeline in <code>src/tablassert/qc.py</code> runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (<code>fuzz.ratio</code> &gt;= 20 or <code>partial_token_sort_ratio</code> &gt;= 30), then BioBERT sentence embeddings with cosine similarity (threshold &gt;= 0.2). The ONNX model is cached in <code>.onnxassert/</code> (line 24).</li>
 <li><strong>Web downloads</strong> — <code>src/tablassert/downloader.py</code> uses Playwright to download remote files with retry logic.</li>
 <li><strong>Legacy Excel</strong> — <code>modernize_xls()</code> in <code>src/tablassert/downloader.py</code> converts <code>.xls</code> files using pyexcel.</li>
 </ul>
@@ -191,8 +191,13 @@ docker run --rm ghcr.io/skyeav/tablassert:latest --version
 </tr>
 <tr>
 <td><code>.onnxassert/</code></td>
-<td><code>src/tablassert/qc.py:26</code> — <code>MODEL</code></td>
+<td><code>src/tablassert/qc.py:24</code> — <code>MODEL</code></td>
 <td>Cached ONNX/BioBERT model</td>
+</tr>
+<tr>
+<td><code>.cachassert/</code></td>
+<td><code>src/tablassert/models.py:76</code> — <code>CACHE</code></td>
+<td>diskcache store for URL-validation memoization</td>
 </tr>
 </tbody>
 </table>
@@ -203,6 +208,7 @@ docker run --rm ghcr.io/skyeav/tablassert:latest --version
   -v ./.storassert:/app/.storassert \
   -v ./.logassert:/app/.logassert \
   -v ./.onnxassert:/app/.onnxassert \
+  -v ./.cachassert:/app/.cachassert \
   -w /app \
   ghcr.io/skyeav/tablassert:latest \
   build /data/graph-config.yaml
@@ -216,7 +222,7 @@ docker run --rm ghcr.io/skyeav/tablassert:latest --version
 <li><strong>Text normalization</strong> — <code>src/tablassert/nlp.py</code> provides <code>level_one</code> (strip + lowercase) and <code>level_two</code> (regex-based cleanup).</li>
 </ul>
 <h2 id="cicd-integration">CI/CD Integration</h2>
-<p>Images are built by <code>.github/workflows/docker.yml</code>, which triggers on tag pushes (after autotag and PyPI publish complete). Tags match the repository version tag (e.g., <code>v7.2.2</code>).</p>
+<p>Images are built by <code>.github/workflows/docker.yml</code>, which triggers when the <code>Auto Tag Versions</code> workflow completes on <code>main</code> (also runnable manually via <code>workflow_dispatch</code>). Tags match the repository version tag (e.g., <code>v7.5.0</code>).</p>
               
             </div>
           </div><footer>

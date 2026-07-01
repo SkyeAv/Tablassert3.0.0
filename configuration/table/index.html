@@ -242,7 +242,7 @@ sections:
   syntax: TC3
 
 sections:
-  - syntax: TC2  # Overrides (not recommended)
+  - syntax: GC2  # Valid values are TC3 (default) and GC2; overriding is not recommended
 </code></pre>
 <h3 id="use-cases">Use Cases</h3>
 <p><strong>Single output:</strong> Template only</p>
@@ -253,7 +253,7 @@ sections:
 <p><strong>Multiple predicates, same source:</strong></p>
 <pre><code class="language-yaml">template:
   source: {kind: excel, local: data.xlsx, url: https://example.com/data.xlsx}
-  provenance: {repo: PMC, publication: 123, contributors: [{name: Example User, date: 27 JAN 2026}]}
+  provenance: {repo: PMC, publication: &quot;PMC123&quot;, contributors: [{name: Example User, date: 27 JAN 2026}]}
 
 sections:
   - statement: {predicate: treats}
@@ -262,7 +262,7 @@ sections:
 <p><strong>Multiple columns, shared provenance:</strong></p>
 <pre><code class="language-yaml">template:
   source: {kind: text, local: data.csv, url: https://example.com/data.csv}
-  provenance: {repo: PMID, publication: 456, contributors: [{name: Example User, date: 27 JAN 2026}]}
+  provenance: {repo: PMID, publication: &quot;456&quot;, contributors: [{name: Example User, date: 27 JAN 2026}]}
   statement:
     subject: {method: column, encoding: A}
 
@@ -335,13 +335,13 @@ sections:
 </tr>
 <tr>
 <td><code>row_slice</code></td>
-<td>List[Int|"auto"]</td>
+<td>List[PositiveInt|"auto"]</td>
 <td>No</td>
-<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>. Mutually exclusive with <code>rows</code>.</td>
+<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be a positive integer or <code>"auto"</code>. Mutually exclusive with <code>rows</code>.</td>
 </tr>
 <tr>
 <td><code>rows</code></td>
-<td>List[Int]</td>
+<td>List[PositiveInt]</td>
 <td>No</td>
 <td>Zero-based row indices to keep after any <code>row_slice</code> crop. Mutually exclusive with <code>row_slice</code>.</td>
 </tr>
@@ -400,13 +400,13 @@ sections:
 </tr>
 <tr>
 <td><code>row_slice</code></td>
-<td>List[Int|"auto"]</td>
+<td>List[PositiveInt|"auto"]</td>
 <td>No</td>
-<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be an integer or <code>"auto"</code>. Mutually exclusive with <code>rows</code>.</td>
+<td>Two-value zero-based crop bounds: <code>[start, stop]</code>. Each value may be a positive integer or <code>"auto"</code>. Mutually exclusive with <code>rows</code>.</td>
 </tr>
 <tr>
 <td><code>rows</code></td>
-<td>List[Int]</td>
+<td>List[PositiveInt]</td>
 <td>No</td>
 <td>Zero-based row indices to keep after any <code>row_slice</code> crop. Mutually exclusive with <code>row_slice</code>.</td>
 </tr>
@@ -435,6 +435,7 @@ sections:
 <tr>
 <th>Field</th>
 <th>Type</th>
+<th>Required</th>
 <th>Description</th>
 </tr>
 </thead>
@@ -442,16 +443,19 @@ sections:
 <tr>
 <td><code>column</code></td>
 <td>String</td>
-<td>Source column letters to evaluate (<code>A</code>-<code>ZZZ</code>)</td>
+<td>Yes</td>
+<td>Source column letters to evaluate; constrained to <code>^[A-Z]{1,3}$</code> (<code>A</code>-<code>ZZZ</code>).</td>
 </tr>
 <tr>
 <td><code>comparison</code></td>
 <td>String</td>
+<td>No</td>
 <td>Operator. Defaults to <code>"ne"</code>; allowed values are <code>"eq"</code>, <code>"ne"</code>, <code>"lt"</code>, <code>"le"</code>, <code>"gt"</code>, <code>"ge"</code>.</td>
 </tr>
 <tr>
 <td><code>comparator</code></td>
 <td>String|Int|Float</td>
+<td>Yes</td>
 <td>Value to compare against. Must be a string for <code>"eq"</code>/<code>"ne"</code>, or a number for <code>"lt"</code>/<code>"le"</code>/<code>"gt"</code>/<code>"ge"</code>.</td>
 </tr>
 </tbody>
@@ -538,7 +542,7 @@ sections:
 </tr>
 <tr>
 <td><code>taxon</code></td>
-<td>Int</td>
+<td>PositiveInt</td>
 <td>No</td>
 <td>NCBI Taxon ID for filtering (e.g., <code>9606</code> for human)</td>
 </tr>
@@ -568,9 +572,9 @@ sections:
 </tr>
 <tr>
 <td><code>remove</code></td>
-<td>List[String]</td>
+<td>List[Int|Float|String]</td>
 <td>No</td>
-<td>Strings to filter out</td>
+<td>Regex patterns to remove (replaced with empty string)</td>
 </tr>
 <tr>
 <td><code>prefix</code></td>
@@ -645,7 +649,7 @@ sections:
 </code></pre>
 <p>Prevents misclassifying organism names as genes.</p>
 <h4 id="text-transformations">Text Transformations</h4>
-<p><strong><code>regex: list[{pattern, replacement}]</code></strong> - Pattern-based replacements</p>
+<p><strong><code>regex: list[{pattern: Int|Float|String, replacement: Int|Float|String}]</code></strong> - Pattern-based replacements</p>
 <pre><code class="language-yaml">subject:
   encoding: A
   regex:
@@ -656,20 +660,26 @@ sections:
 </code></pre>
 <p>Executed in order.</p>
 <blockquote>
-<p><strong>Regex dialect:</strong> Patterns are passed directly to Polars <code>str.replace_all()</code>, which uses the Rust <a href="https://docs.rs/regex/"><code>regex</code></a> crate. Only features supported by that engine work — in particular, <strong>capturing groups (<code>(...)</code>, <code>\1</code>) and lookarounds (<code>(?=...)</code>, <code>(?&lt;=...)</code>, <code>(?!...)</code>, <code>(?&lt;!...)</code> are not supported</strong> and will raise an error at parse time. Stick to character classes, anchors (<code>^</code>, <code>$</code>), quantifiers, alternation (<code>a|b</code>), and non-capturing groups (<code>(?:...)</code>) if grouping is needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a <code>miscellaneous notes</code> annotation instead.</p>
+<p><strong>Regex dialect:</strong> Patterns are passed directly to Polars <code>str.replace_all()</code>, which uses the Rust <a href="https://docs.rs/regex/"><code>regex</code></a> crate. Only features supported by that engine work — in particular, <strong>backreferences (<code>\1</code>, <code>\2</code>, …) and lookarounds (<code>(?=...)</code>, <code>(?&lt;=...)</code>, <code>(?!...)</code>, <code>(?&lt;!...)</code>) are not supported</strong> and will raise an error at parse time. Plain groups <code>(...)</code> and non-capturing groups <code>(?:...)</code> <em>are</em> supported. Stick to character classes, anchors (<code>^</code>, <code>$</code>), quantifiers, alternation (<code>a|b</code>), and grouping if needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a <code>miscellaneous notes</code> annotation instead.</p>
 </blockquote>
-<p><strong><code>remove: list[string]</code></strong> - Filter out specific strings</p>
+<p><strong><code>remove: list[regex]</code></strong> - Regex patterns to remove</p>
 <pre><code class="language-yaml">subject:
   encoding: A
   remove:
-    - &quot;^NA &quot;  # Remove rows starting with &quot;NA &quot;
+    - &quot;^NA &quot;  # Strip leading &quot;NA &quot; prefix from cell text
 </code></pre>
-<p>Same regex constraints apply as the <code>regex</code> field — Polars-compatible patterns only, no capturing groups or lookarounds.</p>
+<p>Each entry is applied as a regex replace-with-empty-string on the cell text in place (rows are not dropped). Same regex constraints apply as the <code>regex</code> field — Polars-compatible patterns only, no backreferences or lookarounds.</p>
 <p><strong><code>prefix</code> / <code>suffix</code></strong> - Add text</p>
 <pre><code class="language-yaml">object:
   encoding: identifier
   prefix: &quot;CUSTOM:&quot;  # &quot;123&quot; → &quot;CUSTOM:123&quot;
 </code></pre>
+<p><strong>Output columns: <code>original &lt;col&gt;</code> vs <code>&lt;col&gt; table literal value</code></strong> - For every subject/object/qualifier node, the pipeline snapshots the cell value into two edge columns at different stages:</p>
+<ul>
+<li><code>&lt;col&gt; table literal value</code> - the <strong>pristine source-cell value</strong>, captured immediately after the column is read and <em>before</em> any <code>fill</code>, <code>explode_by</code>, <code>regex</code>, <code>remove</code>, <code>prefix</code>, <code>suffix</code>, or <code>transformations</code>. Emitted only when <code>method: column</code> (a <code>method: value</code> node has no table source).</li>
+<li><code>original &lt;col&gt;</code> - the <strong>fully-transformed value</strong>, captured <em>after</em> all of the above, i.e. the same text that is then normalized and resolved to a CURIE. Always present for subject/object/qualifier nodes.</li>
+</ul>
+<p>Example: with <code>method: column</code>, <code>encoding: A</code>, <code>remove: ["^NA "]</code> over a cell <code>"NA BRCA1"</code>, <code>subject table literal value</code> is <code>"NA BRCA1"</code> while <code>original subject</code> is <code>"BRCA1"</code>. Annotations never emit a table-literal column.</p>
 <h4 id="null-handling">Null Handling</h4>
 <p><strong><code>fill: string</code></strong> - Fill null values using a strategy</p>
 <p>Available strategies:
@@ -709,6 +719,7 @@ sections:
 <tr>
 <th>Field</th>
 <th>Type</th>
+<th>Required</th>
 <th>Description</th>
 </tr>
 </thead>
@@ -716,10 +727,12 @@ sections:
 <tr>
 <td><code>qualifier</code></td>
 <td>String</td>
+<td>Yes</td>
 <td>Biolink qualifier from the <code>Qualifiers</code> enum (e.g., <code>"species_context_qualifier"</code>)</td>
 </tr>
 <tr>
 <td>(inherits NodeEncoding)</td>
+<td></td>
 <td></td>
 <td>All NodeEncoding fields available</td>
 </tr>
@@ -753,7 +766,7 @@ sections:
 <td><code>publication</code></td>
 <td>String</td>
 <td>Yes</td>
-<td>Repository-local identifier appended to <code>repo:</code> (e.g., <code>"11708054"</code>, <code>"123"</code>). When <code>repo</code> is <code>"PMC"</code>, the value <strong>must</strong> start with <code>PMC</code> followed by digits (e.g., <code>"PMC11708054"</code>, <code>"PMC123"</code>).</td>
+<td>Repository-local identifier emitted as a CURIE. For <code>repo: PMC</code> the value <strong>must</strong> start with <code>PMC</code> followed by digits (e.g., <code>"PMC11708054"</code>, <code>"PMC123"</code>) and is emitted under the <code>PMCID:</code> namespace as <code>PMCID:PMC...</code> (previously <code>PMC:PMC...</code>); for <code>repo: PMID</code> it is emitted as <code>PMID:&lt;publication&gt;</code> (e.g., <code>"11708054"</code> → <code>PMID:11708054</code>). The <code>repository</code> output column still records the raw <code>repo</code> value (<code>PMC</code>/<code>PMID</code>).</td>
 </tr>
 <tr>
 <td><code>contributors</code></td>
@@ -809,7 +822,7 @@ sections:
 <p><strong>Example:</strong></p>
 <pre><code class="language-yaml">provenance:
   repo: PMC
-  publication: 11708054
+  publication: &quot;PMC11708054&quot;
   contributors:
     - kind: curation
       name: Skye Lane Goetz
@@ -826,6 +839,7 @@ sections:
 <tr>
 <th>Field</th>
 <th>Type</th>
+<th>Required</th>
 <th>Description</th>
 </tr>
 </thead>
@@ -833,10 +847,12 @@ sections:
 <tr>
 <td><code>annotation</code></td>
 <td>String</td>
-<td>Attribute name (e.g., <code>"p value"</code>, <code>"sample size"</code>). Underscores are automatically replaced with spaces at parse time.</td>
+<td>Yes</td>
+<td>Attribute name (e.g., <code>"p value"</code>, <code>"sample size"</code>). Underscores are automatically replaced with spaces and the result is trimmed of leading/trailing whitespace at parse time.</td>
 </tr>
 <tr>
 <td>(inherits Encoding)</td>
+<td></td>
 <td></td>
 <td>All Encoding fields available (method, encoding, regex, etc.)</td>
 </tr>
@@ -891,7 +907,7 @@ sections:
 
   provenance:
     repo: PMID
-    publication: 12345678
+    publication: &quot;12345678&quot;
     contributors:
       - kind: curation
         name: Example User

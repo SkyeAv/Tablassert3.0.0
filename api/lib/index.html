@@ -153,7 +153,7 @@
               
                 <h1 id="batch-resolution-lib">Batch Resolution (lib)</h1>
 <p>The <code>lib</code> module exposes <code>resolve_many()</code>, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction, NLP preprocessing, or DuckDB shard management.</p>
-<p>It wraps the lower-level <a href="../fullmap/"><code>resolve()</code></a> pipeline — applying <code>level_one</code> and <code>level_two</code> normalization, opening all 10 DuckDB shard connections, executing entity resolution, and returning results as a plain Python list of row dictionaries.</p>
+<p>It wraps the lower-level <a href="../fullmap/"><code>resolve()</code></a> pipeline — preserving the original input text, applying <code>level_one</code> and <code>level_two</code> normalization, opening all 10 DuckDB shard connections, executing entity resolution, optionally running the QC audit (when <code>qc=True</code>), and returning results as a plain Python list of row dictionaries.</p>
 <h2 id="resolve_many">resolve_many()</h2>
 <p>Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the datassert database, then returns resolved CURIEs and metadata as a list of row dictionaries.</p>
 <h3 id="function-signature">Function Signature</h3>
@@ -164,8 +164,8 @@
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
-    column_context: bool = True,
     qc: bool = False,
+    column_context: bool = True,
 ) -&gt; list[dict[str, Any]]
 </code></pre>
 <h3 id="parameters">Parameters</h3>
@@ -185,18 +185,18 @@
 - Source databases and versions</p>
 <p><strong><code>taxon: Optional[str]</code> (default: <code>None</code>)</strong></p>
 <p>Optional NCBI Taxon ID for filtering results to a specific organism.</p>
-<p>Example: <code>"9606"</code> restricts matches to human-specific entities. When <code>None</code>, no taxon filtering is applied and matches from all organisms are returned.</p>
+<p>Example: <code>"9606"</code> restricts <strong>gene</strong> matches to human-specific entries; non-gene categories (e.g., diseases, chemicals) are returned regardless of taxon. When <code>None</code>, no taxon filtering is applied and matches from all organisms are returned.</p>
 <p><strong><code>prioritize: Optional[list[Categories]]</code> (default: <code>None</code>)</strong></p>
 <p>Optional list of Biolink categories to prefer when multiple matches exist for the same input term. Categories listed here receive higher ranking scores during resolution.</p>
-<p>Example: <code>[Categories.Gene, Categories.Protein]</code> prefers gene and protein mappings over other categories like diseases or chemicals.</p>
+<p>Example: <code>[Categories.GENE, Categories.PROTEIN]</code> prefers gene and protein mappings over other categories like diseases or chemicals.</p>
 <p><strong><code>avoid: Optional[list[Categories]]</code> (default: <code>None</code>)</strong></p>
 <p>Optional list of Biolink categories to exclude from results entirely. Any match belonging to an avoided category is filtered out before ranking.</p>
-<p>Example: <code>[Categories.Gene]</code> prevents gene mappings from appearing in the output, even if they would otherwise be the best match.</p>
+<p>Example: <code>[Categories.GENE]</code> prevents gene mappings from appearing in the output, even if they would otherwise be the best match.</p>
 <p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
-<p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the resolution query adds a category frequency score and prefers the category that appears most frequently across all terms in the batch. When <code>False</code>, frequency-based tie-breaking is disabled.</p>
+<p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the deduplication stage adds a category-frequency score (computed in Polars after the SQL query) and prefers the category that appears most frequently across all matched terms in the batch. When <code>False</code>, frequency-based tie-breaking is disabled.</p>
 <p>This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.</p>
 <p><strong><code>qc: bool</code> (default: <code>False</code>)</strong></p>
-<p>When <code>True</code>, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Requires a QC runtime to be installed (<code>tablassert[qc]</code> or <code>tablassert[qc-cuda]</code>). The ONNX Runtime provider is auto-detected based on the installed package — CUDA is preferred when <code>onnxruntime-gpu</code> is available, otherwise CPU is used.</p>
+<p>When <code>True</code>, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Mappings that fail all three stages are dropped from the returned list (in addition to the unresolved-entity filtering performed by <code>resolve()</code>). Requires a QC runtime to be installed (<code>tablassert[qc]</code> or <code>tablassert[qc-cuda]</code>). The ONNX Runtime provider is auto-detected based on the installed package — CUDA is preferred when <code>onnxruntime-gpu</code> is installed and <code>CUDAExecutionProvider</code> is available; if only <code>onnxruntime</code> (CPU) is installed, CPU is used. Note: if <code>onnxruntime-gpu</code> is installed but <code>CUDAExecutionProvider</code> is unavailable, QC raises rather than falling back to CPU.</p>
 <h3 id="return-value">Return Value</h3>
 <p>Returns a <code>list[dict[str, Any]]</code> — one dictionary per resolved entity. The list is produced by calling <code>polars.DataFrame.to_dicts()</code> on the collected resolution output.</p>
 <p>Each dictionary contains the following keys (where <code>{col}</code> is the value of the <code>col</code> parameter):</p>
@@ -259,6 +259,9 @@
 <p><strong>Series construction</strong> — Wraps the input iterable in a <code>pl.Series</code> with the given column name, then converts to a single-column <code>pl.LazyFrame</code>.</p>
 </li>
 <li>
+<p><strong>Original column capture</strong> — Copies the raw input column into <code>original {col}</code> via <code>column(lf, add("original ", col), col)</code> so the pre-normalization text is preserved in the output.</p>
+</li>
+<li>
 <p><strong>NLP normalization</strong> — Applies <code>level_one()</code> (whitespace stripping + lowercasing) and <code>level_two()</code> (non-word character removal via <code>\W+</code>) to produce the two normalized columns required by <code>resolve()</code>.</p>
 </li>
 <li>
@@ -266,6 +269,9 @@
 </li>
 <li>
 <p><strong>Entity resolution</strong> — Delegates to <code>fullmap.resolve()</code> which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.</p>
+</li>
+<li>
+<p><strong>QC audit (optional)</strong> — When <code>qc=True</code>, runs <code>fullmap_audit()</code> on the resolved LazyFrame. Rows that fail all three audit stages are dropped from the result.</p>
 </li>
 <li>
 <p><strong>Collection and conversion</strong> — Collects the lazy result into an eager <code>pl.DataFrame</code> and converts to a list of row dictionaries via <code>to_dicts()</code>.</p>
@@ -285,7 +291,7 @@ result: list[dict[str, Any]] = resolve_many(
     entities=[&quot;TP53&quot;, &quot;BRCA1&quot;, &quot;EGFR&quot;, &quot;KRAS&quot;],
     datassert=datassert,
     taxon=&quot;9606&quot;,
-    prioritize=[Categories.Gene],
+    prioritize=[Categories.GENE],
 )
 
 # result[0] → {&quot;original gene&quot;: &quot;TP53&quot;, &quot;gene&quot;: &quot;HGNC:11998&quot;, &quot;gene name&quot;: &quot;TP53&quot;, ...}
@@ -303,7 +309,7 @@ result: list[dict[str, Any]] = resolve_many(
     col=&quot;disease&quot;,
     entities=[&quot;diabetes mellitus&quot;, &quot;breast cancer&quot;, &quot;alzheimer disease&quot;],
     datassert=datassert,
-    avoid=[Categories.Gene, Categories.Protein],
+    avoid=[Categories.GENE, Categories.PROTEIN],
 )
 
 # result[0] → {&quot;original disease&quot;: &quot;diabetes mellitus&quot;, &quot;disease&quot;: &quot;MONDO:0005015&quot;, ...}
@@ -387,7 +393,7 @@ for row in result:
 </tr>
 <tr>
 <td><strong>Context params</strong></td>
-<td>Not exposed (<code>section_hash</code>, <code>config_file</code>, <code>tag</code>)</td>
+<td><code>column_context</code> exposed; <code>section_hash</code>, <code>config_file</code>, <code>tag</code> not exposed</td>
 <td>Fully configurable</td>
 </tr>
 <tr>
