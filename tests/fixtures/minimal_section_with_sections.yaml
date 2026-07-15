@@ -18,10 +18,6 @@ template:
   provenance:
     repo: PMC
     publication: PMC0000000
-    contributors:
-      - kind: curation
-        name: Test User
-        date: 01 JAN 2025
 sections:
   - statement:
       object:
