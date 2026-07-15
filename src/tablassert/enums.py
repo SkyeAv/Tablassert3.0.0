@@ -58,12 +58,6 @@ class Syntaxes(str, Enum):
     GC2 = "GC2"
 
 
-class Statuses(str, Enum):
-    ALPHA = "alpha"
-    BETA = "beta"
-    PRIMETIME = "primetime"
-
-
 class Categories(str, Enum):
     ACCESSIBLE_DNA_REGION = "AccessibleDnaRegion"
     ACTIVITY = "Activity"
