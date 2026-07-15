@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt, PositiveInt
 
-from tablassert.downloader import from_url
 from tablassert.enums import Categories, EncodingMethods, Files, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
@@ -374,7 +373,6 @@ class Tcode(Section):
         else:
             # * Returns A List Of: (Function, (Arguments))
             tcode: Optional[list[Any]] = [
-                (from_url, (str(self.source.url), self.source.local, self.config.name, self.store.stem)),
                 (csv, (self.source.delimiter,)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
                 (excel, (self.source.sheet,)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (idx, ()),
