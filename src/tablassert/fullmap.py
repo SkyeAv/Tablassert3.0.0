@@ -160,7 +160,7 @@ def log_unmatched(
     unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
     if unnmatched.height > 0:
         for term in unnmatched.get_column("term").to_list():
-            logger.info(f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}")
+            logger.info(f"FAILED | HASH: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}")
 
 
 def resolve(
