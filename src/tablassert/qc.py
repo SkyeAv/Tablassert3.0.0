@@ -196,18 +196,13 @@ def fullmap_audit(
         curies: list[str] = pending.get_column(col).to_list()
         originals_list: list[str] = pending.get_column(original).to_list()
         preferreds_list: list[str] = pending.get_column(preferred).to_list()
-        fuzz_ratios: list[object] = pending.get_column("fuzz_ratio").to_list()
         fuzz_partials: list[object] = pending.get_column("fuzz_partial").to_list()
         bert_sims: list[object] = pending.get_column("bert_similarity").to_list() if has_bert else []
 
         for i, c in enumerate(curies):
-            msg: str = (
-                f"FAILED | STORE: {section_hash} | CONFIG: {config_file} | COL: {col}"
-                f" | ORIGINAL: {originals_list[i]!r} | PREFERRED: {preferreds_list[i]!r} | CURIE: {c!r}"
-                f" | FUZZ_RATIO: {fuzz_ratios[i]} | FUZZ_PARTIAL: {fuzz_partials[i]}"
-            )
+            msg: str = f"FAILED | HASH: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {originals_list[i]!r} | PREFERRED: {preferreds_list[i]!r} | CURIE: {c!r} | FUZZ: {fuzz_partials[i]}"
             if has_bert:
-                msg = f"{msg} | BERT_SIMILARITY: {bert_sims[i]}"
+                msg = f"{msg} | BERT: {bert_sims[i]}"
             logger.info(msg)
 
     return df.join(passed.select(col), on=col, how="semi").lazy()
