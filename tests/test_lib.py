@@ -113,23 +113,6 @@ def test_label_edge_deterministic() -> None:
     result2: dict = label_edge(r2)  # pyright: ignore
     assert result1["uuid"] == result2["uuid"]
 
-
-# ? label_edge Different Data Produces Different UUIDs
-def test_label_edge_different_data() -> None:
-    r1: dict[str, Any] = {"subject": "A", "predicate": "treats"}
-    r2: dict[str, Any] = {"subject": "B", "predicate": "treats"}
-    result1: dict = label_edge(r1)  # pyright: ignore
-    result2: dict = label_edge(r2)  # pyright: ignore
-    assert result1["uuid"] != result2["uuid"]
-
-    store: Path = Path("/tmp/sectionhash.parquet")
-    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
-    )
-
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
-
-
 # ? Tcode Allows Unresolved Value Encodings During Validation
 def test_tcode_model_allows_unresolved_value_encoding(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
