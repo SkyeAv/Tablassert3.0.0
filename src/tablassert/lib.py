@@ -385,14 +385,12 @@ class Tcode(Section):
                 ]
                 if self.source.reindex
                 else None,
-                [op for x in self.annotations for op in self.encoding(x, x.annotation)] if self.annotations else None,
+                [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
                 (clean_numeric, ()),
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
-                [op for x in self.statement.qualifiers for op in self.node(x, add("biolink:", x.qualifier), conns)]
-                if self.statement.qualifiers
-                else None,
+                [op for x in self.statement.qualifiers for op in self.node(x, add("biolink:", x.qualifier), conns)] if self.statement.qualifiers else None,
                 (value, ("syntax", self.syntax)),
                 (value, ("configuration file", self.config.name)),
                 (value, ("section number", self.number)),
