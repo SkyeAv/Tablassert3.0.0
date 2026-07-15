@@ -34,9 +34,7 @@ def format_section_oneline(x: "Tcode") -> str:
         source_detail: str = f"EXCEL({x.source.sheet})"
     else:
         source_detail = f"TEXT({(x.source.delimiter or ',')!r})"  # pyright: ignore
-    return (
-        f"#{x.number} | HASH: {x.store.stem} | SOURCE: {source_detail} | CONFIG: {x.config.name} | STATUS: {x.status}"
-    )
+    return f"#{x.number} | HASH: {x.store.stem} | SOURCE: {source_detail} | CONFIG: {x.config.name}"
 
 
 def flatten_pydantic_error(e: "ValidationError") -> str:

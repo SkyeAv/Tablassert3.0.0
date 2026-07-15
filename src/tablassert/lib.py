@@ -397,7 +397,6 @@ class Tcode(Section):
                 (value, ("syntax", self.syntax)),
                 (value, ("configuration file", self.config.name)),
                 (value, ("section number", self.number)),
-                (value, ("status", self.status)),
                 (value, ("repository", self.provenance.repo)),
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
                 (value, ("url", str(self.source.url))),
