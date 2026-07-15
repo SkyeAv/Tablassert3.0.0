@@ -54,7 +54,7 @@ class FillMethods(str, Enum):
 
 
 class Syntaxes(str, Enum):
-    TC3 = "TC3"
+    TC4 = "TC4"
     GC2 = "GC2"
 
 
