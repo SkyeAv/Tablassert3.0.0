@@ -145,11 +145,10 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
     assert result.height == 0
     assert len(messages) == 1
     assert "FAILED" in messages[0]
-    assert "STORE: store123" in messages[0]
+    assert "HASH: store123" in messages[0]
     assert "CONFIG: config.yaml" in messages[0]
-    assert "FUZZ_RATIO:" in messages[0]
-    assert "FUZZ_PARTIAL:" in messages[0]
-    assert "BERT_SIMILARITY:" in messages[0]
+    assert "FUZZ:" in messages[0]
+    assert "BERT:" in messages[0]
 
 
 # ? fullmap_audit Log Message Contains Expected Score Values
@@ -180,9 +179,8 @@ def test_fullmap_audit_log_score_values(monkeypatch: Any) -> None:
 
     assert result.height == 0
     assert len(messages) == 1
-    assert "FUZZ_RATIO: 5.0" in messages[0]
-    assert "FUZZ_PARTIAL: 8.0" in messages[0]
-    assert "BERT_SIMILARITY: 0.05" in messages[0]
+    assert "FUZZ: 8.0" in messages[0]
+    assert "BERT: 0.05" in messages[0]
 
 
 # ? GPU Runtime Can Be Forced To CPU

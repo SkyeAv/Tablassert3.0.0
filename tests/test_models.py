@@ -170,7 +170,6 @@ def test_provenance_valid() -> None:
     p: Provenance = Provenance(  # pyright: ignore
         repo="PMC",  # pyright: ignore[reportArgumentType]
         publication="PMC0000000",
-        contributors=[{"kind": "curation", "name": "Test", "date": "01 JAN 2025"}],  # pyright: ignore
     )
     assert p.repo == "PMC"
     assert p.publication == "PMC0000000"
