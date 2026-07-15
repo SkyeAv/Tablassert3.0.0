@@ -95,9 +95,7 @@ def get_biobert(provider: Optional[Literal["cpu", "cuda"]] = None) -> object:
             str(MODEL), backend=MODEL_BACKEND, model_kwargs=model_kwargs
         )  # pyright: ignore
     else:
-        model = sentence_transformers.SentenceTransformer(
-            "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=model_kwargs
-        )  # pyright: ignore
+        model = sentence_transformers.SentenceTransformer("pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=model_kwargs)  # pyright: ignore
         MODEL.mkdir(parents=True, exist_ok=True)
         model.save(MODEL)  # pyright: ignore
 
