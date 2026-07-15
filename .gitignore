@@ -9,7 +9,6 @@
 *specs/
 *.storassert/
 *.logassert/
-*.cachassert/
 *DATALAKE/
 *.onnxassert/
 *.claude/
