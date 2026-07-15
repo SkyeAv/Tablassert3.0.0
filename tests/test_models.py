@@ -26,7 +26,7 @@ from tablassert.models import (
 def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     section: Section = Section(**data)  # pyright: ignore
-    assert section.syntax == "TC3"
+    assert section.syntax == "TC4"
     assert section.source.kind == "text"
     assert section.statement.subject.encoding == "BRCA1"
     assert section.statement.object.encoding == "TP53"

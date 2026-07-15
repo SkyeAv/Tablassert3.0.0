@@ -1,5 +1,5 @@
 template:
-  syntax: TC3
+  syntax: TC4
   source:
     url: https://example.com/test.xlsx
     local: ./test.xlsx

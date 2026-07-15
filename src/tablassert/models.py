@@ -18,7 +18,6 @@ from tablassert.enums import (
     Predicates,
     Qualifiers,
     Repositories,
-    Statuses,
     Syntaxes,
     Tokens,
 )
@@ -275,8 +274,7 @@ class Annotation(Encoding):
 
 class Section(TablaBase):
     # ? Pydantic "Section" Model And Coercion
-    syntax: Syntaxes = Field(Syntaxes.TC3, description="Section configuration syntax version.")
-    status: Statuses = Field(Statuses.ALPHA, description="Section maturity label for configuration tracking.")
+    syntax: Syntaxes = Field(Syntaxes.TC4, description="Section configuration syntax version.")
     source: Union[Excel, Text] = Field(..., description="Input source definition for reading tabular rows.")
     statement: Statement = Field(..., description="Subject-object statement mapping for this section.")
     provenance: Provenance = Field(..., description="Provenance metadata applied to all produced edges.")
