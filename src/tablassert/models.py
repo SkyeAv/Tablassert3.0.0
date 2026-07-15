@@ -3,16 +3,14 @@ from __future__ import annotations
 import re
 from operator import eq
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
+from typing import TYPE_CHECKING, Literal, Optional, Self, Union
 
 import lazy_loader as Lazy
-from diskcache import Cache
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
 from tablassert.enums import (
     Categories,
     Comparisons,
-    Contributions,
     EncodingMethods,
     Files,
     FillMethods,
@@ -248,15 +246,6 @@ class Statement(TablaBase):
         None, description="Optional qualifier nodes attached to the statement."
     )
 
-
-class Contributor(TablaBase):
-    kind: Contributions = Field(Contributions.CURATION, description="Contributor role for this provenance entry.")
-    name: str = Field(..., description="Contributor display name.")
-    date: str = Field(..., description="Contribution date string preserved as provided.")
-    organizations: Optional[list[str]] = Field(None, description="Optional affiliated organizations.")
-    comment: Optional[str] = Field(None, description="Optional free-text contributor note.")
-
-
 class Provenance(TablaBase):
     repo: Repositories = Field(Repositories.PUBMED_CENTRAL, description="Publication identifier namespace prefix.")
     publication: str = Field(
@@ -274,9 +263,6 @@ class Provenance(TablaBase):
                 raise ValueError(msg)
 
         return self
-
-    contributors: list[Contributor] = Field(..., description="Contributor records embedded in output provenance.")
-
 
 class Annotation(Encoding):
     annotation: str = Field(

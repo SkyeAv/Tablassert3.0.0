@@ -400,7 +400,6 @@ class Tcode(Section):
                 (value, ("status", self.status)),
                 (value, ("repository", self.provenance.repo)),
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
-                (contributor_values, ("contributors", self.provenance.contributors)),
                 (value, ("url", str(self.source.url))),
                 (value, ("section hash", self.store.stem)),
                 (value, ("sheet name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
