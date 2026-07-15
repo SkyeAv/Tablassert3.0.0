@@ -133,7 +133,7 @@ def sig(
     lf: pl.LazyFrame,
     cutoff: float = 0.05,  # pyright: ignore
     threshold: float = 0.10,
-    col: str = "p value",
+    col: str = "p val",
     out: str = "significant",
 ) -> pl.LazyFrame:
     # ? Creates The "significant" Column
