@@ -326,8 +326,7 @@ class Tcode(Section):
             (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
             (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
             (column, (add(col, " table literal value"), col))
-            if (table_literal and eq(x.method, EncodingMethods.COLUMN))
-            else None,
+            if (table_literal and eq(x.method, EncodingMethods.COLUMN)) else None,
             (fill, (col, x.fill)) if x.fill else None,
             (explode, (col, x.explode_by)) if x.explode_by else None,
             [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
