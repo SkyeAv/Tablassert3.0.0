@@ -488,7 +488,7 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
 
             if r:
                 b: bytes = orjson.dumps(r)
-                h: bytes = xxhash.xxh64(b).digest()
+                h: bytes = xxhash.xxh32(b).digest()
                 if h not in seen:
                     seen |= {h}
 

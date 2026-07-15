@@ -23,7 +23,7 @@ def test_mkhash_different_inputs() -> None:
 def test_mkhash_returns_hex_string() -> None:
     h: str = mkhash("test")
     assert isinstance(h, str)
-    assert len(h) == 16  # ? xxh64 hexdigest is 16 chars
+    assert len(h) == 8  # ? xxh32 hexdigest is 16 chars
 
 
 # ? mkhash Handles Various Types

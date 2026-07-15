@@ -20,7 +20,7 @@ STORE.mkdir(parents=True, exist_ok=True)
 
 def mkhash(x: Any) -> str:
     b: bytes = str(x).encode("utf-8")
-    return xxhash.xxh64(b).hexdigest()
+    return xxhash.xxh32(b).hexdigest()
 
 
 def samphash(df: pl.DataFrame, n: int = 20) -> str:
