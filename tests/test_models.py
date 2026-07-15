@@ -192,7 +192,6 @@ def test_section_rejects_extra_fields() -> None:
             provenance={
                 "repo": "PMC",
                 "publication": "PMC000",
-                "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
             },
             unknown_field="bad",  # pyright: ignore
         )
@@ -236,7 +235,6 @@ def test_section_with_qualifiers() -> None:
         provenance={
             "repo": "PMC",
             "publication": "PMC000",
-            "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
         },
     )
     assert len(section.statement.qualifiers) == 1  # pyright: ignore
@@ -250,7 +248,6 @@ def test_section_with_annotations() -> None:
         provenance={
             "repo": "PMC",
             "publication": "PMC000",
-            "contributors": [{"kind": "curation", "name": "T", "date": "2025"}],
         },
         annotations=[
             {"annotation": "p value", "method": "column", "encoding": "E"},
