@@ -24,10 +24,8 @@ from tablassert.enums import (
 )
 
 if TYPE_CHECKING:
-    import httpx
     import polars as pl
 else:
-    httpx = Lazy.load("httpx")
     pl = Lazy.load("polars")
 
 

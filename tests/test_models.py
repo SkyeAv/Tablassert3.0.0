@@ -10,7 +10,6 @@ from tablassert.enums import Categories
 from tablassert.ingests import from_yaml
 from tablassert.models import (
     Annotation,
-    Contributor,
     Encoding,
     Excel,
     Graph,
@@ -165,27 +164,6 @@ def test_reindex_valid() -> None:
 def test_reindex_numeric_comparator() -> None:
     ri: Reindex = Reindex(column="B", comparison="gt", comparator=0)  # pyright: ignore
     assert ri.comparator == 0
-
-
-# ? Contributor Valid Construction
-def test_contributor_valid() -> None:
-    c: Contributor = Contributor(kind="curation", name="Test User", date="01 JAN 2025")  # pyright: ignore
-    assert c.kind == "curation"
-    assert c.name == "Test User"
-
-
-# ? Contributor With Optional Fields
-def test_contributor_with_optionals() -> None:
-    c: Contributor = Contributor(  # pyright: ignore
-        kind="curation",  # pyright: ignore[reportArgumentType]
-        name="Test User",
-        date="01 JAN 2025",
-        organizations=["Org A"],
-        comment="Test comment",  # pyright: ignore
-    )
-    assert c.organizations == ["Org A"]
-    assert c.comment == "Test comment"
-
 
 # ? Provenance Valid Construction
 def test_provenance_valid() -> None:
