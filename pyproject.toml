@@ -104,7 +104,7 @@ testpaths = ["tests"]
 markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider"]
 
 [tool.ruff]
-line-length = 120
+line-length = 150
 indent-width = 4
 target-version = "py311"
 
