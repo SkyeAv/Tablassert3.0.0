@@ -61,16 +61,16 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
     progress.stage(f"Building TCode | Sections: {n}")
     start, advance = progress.section_loop(n, "TCode")
     tcode: list[Tcode] = []
-    for idx, s in enumerate(sections, start=1):
+    for s in sections:
         h: str = mkhash(s)
-        start(f"#{idx} | CONFIG: {Path(s['config']).name} | HASH: {h}")
+        start(f"CONFIG: {Path(s['config']).name} | HASH: {h}")
         try:
             tcode.append(
-                Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc})
+                Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc})
             )
         except pydantic.ValidationError as e:
             raise RuntimeError(
-                f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
+                f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
             ) from e
         advance()
 
@@ -127,14 +127,14 @@ def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgres
     # * Validate Section Syntax (3/3)
     progress.stage(f"Validating Section Syntax | Sections: {n}")
     start, advance = progress.section_loop(n, "Validate")
-    for idx, s in enumerate(sections, start=1):
+    for s in sections:
         h: str = mkhash(s)
-        start(f"#{idx} | HASH: {h}")
+        start(f"HASH: {h}")
         try:
-            Tcode.model_validate({**s, "number": idx, "store": (STORE / f"{h}.parquet")})
+            Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet")})
         except pydantic.ValidationError as e:
             raise RuntimeError(
-                f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | IDX: {idx} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
+                f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
             ) from e
         advance()
 

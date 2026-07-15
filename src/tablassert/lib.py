@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
 import lazy_loader as Lazy
-from pydantic import Field, NonNegativeInt, PositiveInt
+from pydantic import Field, NonNegativeInt
 
 from tablassert.enums import Categories, EncodingMethods, Files, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
@@ -314,7 +314,6 @@ LIMIT 1
 
 class Tcode(Section):
     # ? Extends Section To Compile A KG
-    number: PositiveInt = Field(...)
     config: Path = Field(...)
     store: Path = Field(...)
     log: bool = Field(False)
@@ -393,7 +392,6 @@ class Tcode(Section):
                 [op for x in self.statement.qualifiers for op in self.node(x, add("biolink:", x.qualifier), conns)] if self.statement.qualifiers else None,
                 (value, ("syntax", self.syntax)),
                 (value, ("configuration file", self.config.name)),
-                (value, ("section number", self.number)),
                 (value, ("repository", self.provenance.repo)),
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
                 (value, ("url", str(self.source.url))),

@@ -120,7 +120,7 @@ def test_tcode_model_allows_unresolved_value_encoding(fixtures_path: Path) -> No
     data["statement"]["subject"] = {"method": "value", "encoding": "Incertae Sedis XI"}
 
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "number": 55, "config": fixtures_path / "minimal_section.yaml", "store": store}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
     assert tcode_model.statement.subject.method == "value"
@@ -132,7 +132,7 @@ def test_tcode_collect_skips_qc_by_default(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
@@ -146,7 +146,7 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
@@ -179,7 +179,7 @@ def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path)
     data["statement"]["object"] = {"method": "column", "encoding": "B"}
 
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
@@ -201,7 +201,7 @@ def test_tcode_table_literal_value_absent_for_value_encoding(fixtures_path: Path
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
