@@ -162,7 +162,7 @@ def fullmap_audit(
 
     pending = pending.with_columns([pl.Series("fuzz_ratio", ratio_scores), pl.Series("fuzz_partial", partial_scores)])
 
-    fuzz_mask: pl.Series = pl.Series(out, (ratio_scores >= 20) | (partial_scores >= 30), dtype=pl.Boolean)
+    fuzz_mask: pl.Series = pl.Series(out, (ratio_scores >= 70) | (partial_scores >= 80), dtype=pl.Boolean)
     masked_fuzz: pl.DataFrame = pending.with_columns(fuzz_mask)
     pairs = pl.concat((passed, masked_fuzz), how="diagonal")
 
@@ -183,7 +183,7 @@ def fullmap_audit(
 
     pending = pending.with_columns(pl.Series("bert_similarity", similarity))  # pyright: ignore
 
-    bert_mask: pl.Series = pl.Series(out, similarity >= 0.2, dtype=pl.Boolean)  # pyright: ignore
+    bert_mask: pl.Series = pl.Series(out, similarity >= 0.5, dtype=pl.Boolean)  # pyright: ignore
     BERT_fuzz: pl.DataFrame = pending.with_columns(bert_mask)
     pairs = pl.concat((passed, BERT_fuzz), how="diagonal")
 
