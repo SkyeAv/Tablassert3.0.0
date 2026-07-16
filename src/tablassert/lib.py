@@ -428,7 +428,7 @@ def infores(name: str) -> str:
     return add("infores:", name.lower().replace("_", "-"))
 
 
-def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> object:
+def label_edge(r: object, domain: str = "TABLASSERT", out: str = "id") -> object:
     # ? Gives Edges A Unique UUID In The Tablassert Namespace
     r[out] = namespace_uuid(domain, *r.values())  # pyright: ignore
     return r

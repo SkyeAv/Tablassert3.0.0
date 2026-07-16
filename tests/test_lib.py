@@ -100,9 +100,9 @@ def test_strip_nulls_whitespace() -> None:
 def test_label_edge_assigns_uuid() -> None:
     r: dict[str, Any] = {"subject": "A", "object": "B", "predicate": "treats"}
     result: dict = label_edge(r)  # pyright: ignore
-    assert "uuid" in result
-    assert isinstance(result["uuid"], str)
-    assert len(result["uuid"]) == 36  # ? Standard UUID string length
+    assert "id" in result
+    assert isinstance(result["id"], str)
+    assert len(result["id"]) == 36  # ? Standard UUID string length
 
 
 # ? label_edge UUID Is Deterministic
@@ -111,7 +111,7 @@ def test_label_edge_deterministic() -> None:
     r2: dict[str, Any] = {"subject": "A", "object": "B", "predicate": "treats"}
     result1: dict = label_edge(r1)  # pyright: ignore
     result2: dict = label_edge(r2)  # pyright: ignore
-    assert result1["uuid"] == result2["uuid"]
+    assert result1["id"] == result2["id"]
 
 
 # ? Tcode Allows Unresolved Value Encodings During Validation
@@ -539,7 +539,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     edges: list[str] = (tmp_path / "smoke_1.0.0.edges.ndjson").read_text().strip().splitlines()
     nodes: list[str] = (tmp_path / "smoke_1.0.0.nodes.ndjson").read_text().strip().splitlines()
     assert len(edges) == 2
-    assert all('"uuid"' in line for line in edges)
+    assert all('"id"' in line for line in edges)
     flat: str = "\n".join(edges)
     assert '"p_value":"1.0000e-08"' in flat
     assert len(nodes) >= 1
