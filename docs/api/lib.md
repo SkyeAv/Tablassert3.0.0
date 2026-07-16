@@ -29,7 +29,7 @@ def resolve_many(
 
 Column name used internally to label the Polars Series and DataFrame columns during resolution. This name propagates through the NLP and resolution pipeline and determines the keys in each returned row dictionary.
 
-For example, if `col="gene"`, each returned row dictionary will contain keys like `"gene"`, `"gene name"`, `"gene category"`, etc.
+For example, if `col="gene"`, each returned row dictionary will contain keys like `"gene"`, `"gene_name"`, `"gene_category"`, etc.
 
 **`entities: Iterable[str]`**
 
@@ -84,14 +84,14 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 | Key | Description | Example Value |
 |-----|-------------|---------------|
-| `original {col}` | Original input text before normalization | `"TP53"` |
+| `original_{col}` | Original input text before normalization | `"TP53"` |
 | `{col}` | CURIE identifier | `"HGNC:11998"` |
-| `{col} name` | Preferred entity name | `"TP53"` |
-| `{col} category` | Biolink category (prefixed) | `"biolink:Gene"` |
-| `{col} taxon` | NCBI Taxon ID (prefixed) | `"NCBITaxon:9606"` |
-| `{col} source` | Source database | `"HGNC"` |
-| `{col} source version` | Database version | `"2025-01"` |
-| `{col} nlp level` | NLP processing level used for match | `1` or `2` |
+| `{col}_name` | Preferred entity name | `"TP53"` |
+| `{col}_category` | Biolink category (prefixed) | `"biolink:Gene"` |
+| `{col}_taxon` | NCBI Taxon ID (prefixed) | `"NCBITaxon:9606"` |
+| `{col}_source` | Source database | `"HGNC"` |
+| `{col}_source_version` | Database version | `"2025-01"` |
+| `{col}_nlp_level` | NLP processing level used for match | `1` or `2` |
 
 **Important:** Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by `resolve()`. The returned list may therefore be shorter than the input iterable.
 
@@ -101,7 +101,7 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 1. **Series construction** — Wraps the input iterable in a `pl.Series` with the given column name, then converts to a single-column `pl.LazyFrame`.
 
-2. **Original column capture** — Copies the raw input column into `original {col}` via `column(lf, add("original ", col), col)` so the pre-normalization text is preserved in the output.
+2. **Original column capture** — Copies the raw input column into `original_{col}` via `column(lf, add("original_", col), col)` so the pre-normalization text is preserved in the output.
 
 3. **NLP normalization** — Applies `level_one()` (whitespace stripping + lowercasing) and `level_two()` (non-word character removal via `\W+`) to produce the two normalized columns required by `resolve()`.
 
@@ -133,8 +133,8 @@ result: list[dict[str, Any]] = resolve_many(
     prioritize=[Categories.GENE],
 )
 
-# result[0] → {"original gene": "TP53", "gene": "HGNC:11998", "gene name": "TP53", ...}
-# result[1] → {"original gene": "BRCA1", "gene": "HGNC:1100", "gene name": "BRCA1", ...}
+# result[0] → {"original_gene": "TP53", "gene": "HGNC:11998", "gene_name": "TP53", ...}
+# result[1] → {"original_gene": "BRCA1", "gene": "HGNC:1100", "gene_name": "BRCA1", ...}
 ```
 
 #### Disease Resolution With Category Avoidance
@@ -154,8 +154,8 @@ result: list[dict[str, Any]] = resolve_many(
     avoid=[Categories.GENE, Categories.PROTEIN],
 )
 
-# result[0] → {"original disease": "diabetes mellitus", "disease": "MONDO:0005015", ...}
-# result[1] → {"original disease": "breast cancer", "disease name": "breast cancer", ...}
+# result[0] → {"original_disease": "diabetes mellitus", "disease": "MONDO:0005015", ...}
+# result[1] → {"original_disease": "breast cancer", "disease_name": "breast cancer", ...}
 ```
 
 #### Chemical Resolution Without Column Context
@@ -197,7 +197,7 @@ df: pl.DataFrame = pl.DataFrame(result)
 
 # Or iterate over resolved rows
 for row in result:
-    print(f"{row['gene name']} → {row['gene']}")
+    print(f"{row['gene_name']} → {row['gene']}")
 ```
 
 ### Comparison With resolve()
@@ -226,7 +226,7 @@ for row in result:
 
 **Level two** — `level_two(lf, col)`:
 - Removes all non-word characters (`\W+` → `""`) from the level-one result
-- Output column: `{col} two`
+- Output column: `{col}_two`
 
 Both levels are queried during resolution. Level one (exact case-insensitive match) is preferred; level two is used as a fallback for terms with punctuation or special characters.
 

@@ -221,10 +221,10 @@ def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path)
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
-    assert "subject table literal value" in targets
-    assert "object table literal value" in targets
+    assert "subject_table_literal_value" in targets
+    assert "object_table_literal_value" in targets
 
-    lit_idx: int = next(i for i, op in enumerate(collected) if len(op[1]) > 0 and op[1][0] == "subject table literal value")
+    lit_idx: int = next(i for i, op in enumerate(collected) if len(op[1]) > 0 and op[1][0] == "subject_table_literal_value")
     regex_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "regex" and len(op[1]) > 0 and op[1][0] == "subject")
     assert lit_idx < regex_idx
 
@@ -239,8 +239,8 @@ def test_tcode_table_literal_value_absent_for_value_encoding(fixtures_path: Path
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
-    assert "subject table literal value" not in targets
-    assert "object table literal value" not in targets
+    assert "subject_table_literal_value" not in targets
+    assert "object_table_literal_value" not in targets
 
 
 # ? resolve_many Skips QC When Disabled
@@ -314,29 +314,29 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
 
     result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1"], tmp_path, qc=True)
 
-    assert result == [{"subject": "brca1", "original subject": "BRCA1", "subject two": "brca1", "passed": "YES"}]
+    assert result == [{"subject": "brca1", "original_subject": "BRCA1", "subject_two": "brca1", "passed": "YES"}]
     assert ("qc", "subject", "", "", "passed", True, None) in calls
 
 
-# ? sig Uses Exact "p value" Column When Present Alongside Other P-Value Columns
+# ? sig Uses Exact "p_value" Column When Present Alongside Other P-Value Columns
 def test_sig_prefers_exact_p_value_column() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": [0.01, 0.1], "adjusted p value": [0.5, 0.5]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01, 0.1], "adjusted_p_value": [0.5, 0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     assert list(result["significant"]) == ["YES", "NO"]
 
 
 # ? sig Falls Back To Non-Exact P-Value Column When No Exact Match
 def test_sig_uses_non_exact_p_value_column() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"adjusted p value": [0.01, 0.1]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"adjusted_p_value": [0.01, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     assert list(result["significant"]) == ["YES", "NO"]
 
 
 # ? sig Picks Closest Match When Multiple Non-Exact Columns Present
 def test_sig_picks_closest_non_exact_match() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"log p value": [0.01], "adjusted p value corrected": [0.5]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"log_p_value": [0.01], "adjusted_p_value_corrected": [0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    # "log p value" has higher fuzz.ratio to "p value" than "adjusted p value corrected"
+    # "log_p_value" has higher fuzz.ratio to "p_value" than "adjusted_p_value_corrected"
     assert list(result["significant"]) == ["YES"]
 
 
@@ -349,71 +349,71 @@ def test_sig_returns_unsure_with_no_p_value_column() -> None:
 
 # ? sig Marks Null P-Values As UNSURE
 def test_sig_marks_null_as_unsure() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": [None, 0.01, 0.1]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [None, 0.01, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     assert list(result["significant"]) == ["UNSURE", "YES", "NO"]
 
 
 # ? sig Marks P-Values Between Cutoff And Threshold As INCONCLUSIVE
 def test_sig_marks_inconclusive_band() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": [0.01, 0.07, 0.1]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01, 0.07, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     assert list(result["significant"]) == ["YES", "INCONCLUSIVE", "NO"]
 
 
 # ? numeric_columns Matches Any Column With P Value In The Name
 def test_numeric_columns_matches_p_value_substring() -> None:
-    names: list[str] = ["p value", "adjusted p value", "log p value", "subject"]
+    names: list[str] = ["p_value", "adjusted_p_value", "log_p_value", "subject"]
     result: list[str] = numeric_columns(names)
-    assert result == ["p value", "adjusted p value", "log p value"]
+    assert result == ["p_value", "adjusted_p_value", "log_p_value"]
     assert "subject" not in result
 
 
 # ? numeric_columns Matches Exact Relationship Strength And Sample Size Names
 def test_numeric_columns_matches_exact_names() -> None:
-    names: list[str] = ["relationship strength", "sample size", "cohort"]
+    names: list[str] = ["relationship_strength", "sample_size", "cohort"]
     result: list[str] = numeric_columns(names)
-    assert "relationship strength" in result
-    assert "sample size" in result
+    assert "relationship_strength" in result
+    assert "sample_size" in result
     assert "cohort" not in result
 
 
 # ? numeric_columns Is Case Insensitive On The P Value Substring
 def test_numeric_columns_case_insensitive() -> None:
-    names: list[str] = ["P Value", "P VALUE"]
+    names: list[str] = ["P_Value", "P_VALUE"]
     result: list[str] = numeric_columns(names)
-    assert result == ["P Value", "P VALUE"]
+    assert result == ["P_Value", "P_VALUE"]
 
 
 # ? clean_numeric Coerces Numeric And Scientific Notation Strings To Float64
 def test_clean_numeric_parses_numeric_and_scientific() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": ["1e-8", "0.05", "450"], "sample size": ["1200", "0.42", "-1.2"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "450"], "sample_size": ["1200", "0.42", "-1.2"]}).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
-    assert result.schema["p value"] == pl.Float64
-    assert result.schema["sample size"] == pl.Float64
-    assert result["p value"].to_list() == [1e-8, 0.05, 450.0]
-    assert result["sample size"].to_list() == [1200.0, 0.42, -1.2]
+    assert result.schema["p_value"] == pl.Float64
+    assert result.schema["sample_size"] == pl.Float64
+    assert result["p_value"].to_list() == [1e-8, 0.05, 450.0]
+    assert result["sample_size"].to_list() == [1200.0, 0.42, -1.2]
 
 
 # ? clean_numeric Drops Non Numeric Entries To Null
 def test_clean_numeric_nulls_non_numeric() -> None:
     lf: pl.LazyFrame = pl.DataFrame(
-        {"p value": ["1e-8", "N/A", "", "<0.001", "abc"], "relationship strength": ["0.85", "n/a", "NULL", "x", "y"]}
+        {"p_value": ["1e-8", "N/A", "", "<0.001", "abc"], "relationship_strength": ["0.85", "n/a", "NULL", "x", "y"]}
     ).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
-    assert result["p value"].to_list() == [1e-8, None, None, None, None]
-    assert result["relationship strength"].to_list() == [0.85, None, None, None, None]
+    assert result["p_value"].to_list() == [1e-8, None, None, None, None]
+    assert result["relationship_strength"].to_list() == [0.85, None, None, None, None]
 
 
 # ? clean_numeric Leaves Non Matching Columns Untouched
 def test_clean_numeric_leaves_non_matching_untouched() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "assertion method": ["ANOVA", "t-test"], "p value": ["0.05", "1e-8"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "assertion_method": ["ANOVA", "t-test"], "p_value": ["0.05", "1e-8"]}).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
     assert result.schema["subject"] == pl.String
-    assert result.schema["assertion method"] == pl.String
-    assert result.schema["p value"] == pl.Float64
+    assert result.schema["assertion_method"] == pl.String
+    assert result.schema["p_value"] == pl.Float64
     assert result["subject"].to_list() == ["BRCA1", "TP53"]
-    assert result["assertion method"].to_list() == ["ANOVA", "t-test"]
+    assert result["assertion_method"].to_list() == ["ANOVA", "t-test"]
 
 
 # ? clean_numeric Is A Noop When No Numeric Columns Are Present
@@ -426,42 +426,42 @@ def test_clean_numeric_noop_without_numeric_columns() -> None:
 
 # ? clean_numeric Is Idempotent On Already Float64 Columns
 def test_clean_numeric_idempotent_on_float64() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": [1e-8, 0.05]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [1e-8, 0.05]}).lazy()
     once: pl.DataFrame = clean_numeric(lf).collect()
     twice: pl.DataFrame = clean_numeric(once.lazy()).collect()
-    assert twice["p value"].to_list() == [1e-8, 0.05]
-    assert twice.schema["p value"] == pl.Float64
+    assert twice["p_value"].to_list() == [1e-8, 0.05]
+    assert twice.schema["p_value"] == pl.Float64
 
 
 # ? format_numeric Renders P Value Columns In Scientific Notation
 def test_format_numeric_p_value_scientific() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": ["1e-8", "0.05", "0.001"], "adjusted p value": ["0.0001", "0.1", "0.2"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "0.001"], "adjusted_p_value": ["0.0001", "0.1", "0.2"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["p value"].to_list() == ["1.0000e-08", "5.0000e-02", "1.0000e-03"]
-    assert result["adjusted p value"].to_list() == ["1.0000e-04", "1.0000e-01", "2.0000e-01"]
-    assert result.schema["p value"] == pl.String
+    assert result["p_value"].to_list() == ["1.0000e-08", "5.0000e-02", "1.0000e-03"]
+    assert result["adjusted_p_value"].to_list() == ["1.0000e-04", "1.0000e-01", "2.0000e-01"]
+    assert result.schema["p_value"] == pl.String
 
 
 # ? format_numeric Renders Relationship Strength And Sample Size In Decimal General Format
 def test_format_numeric_decimal_general() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"relationship strength": ["0.85", "0.42", "0.1234"], "sample size": ["450", "1200", "7"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"relationship_strength": ["0.85", "0.42", "0.1234"], "sample_size": ["450", "1200", "7"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["relationship strength"].to_list() == ["0.85", "0.42", "0.1234"]
-    assert result["sample size"].to_list() == ["450", "1200", "7"]
+    assert result["relationship_strength"].to_list() == ["0.85", "0.42", "0.1234"]
+    assert result["sample_size"].to_list() == ["450", "1200", "7"]
 
 
 # ? format_numeric Preserves Nulls As Null
 def test_format_numeric_preserves_nulls() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": ["1e-8", "N/A", "0.05"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "N/A", "0.05"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["p value"].to_list() == ["1.0000e-08", None, "5.0000e-02"]
+    assert result["p_value"].to_list() == ["1.0000e-08", None, "5.0000e-02"]
 
 
 # ? format_numeric Cleans Floating Point Noise To Four Significant Figures
 def test_format_numeric_cleans_float_noise() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"relationship strength": ["0.85000000001", "0.41999999999"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"relationship_strength": ["0.85000000001", "0.41999999999"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["relationship strength"].to_list() == ["0.85", "0.42"]
+    assert result["relationship_strength"].to_list() == ["0.85", "0.42"]
 
 
 # ? format_numeric Is A Noop When No Numeric Columns Are Present
@@ -474,33 +474,33 @@ def test_format_numeric_noop_without_numeric_columns() -> None:
 
 # ? Cleaned And Formatted Null Numeric Values Are Stripped From NDJSON Rows
 def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "p value": ["1e-8", "N/A"], "relationship strength": ["0.85", "0.42"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "p_value": ["1e-8", "N/A"], "relationship_strength": ["0.85", "0.42"]}).lazy()
     formatted: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     rows: list[dict[str, Any]] = [strip_nulls(r) for r in formatted.iter_rows(named=True)]
-    assert rows[0] == {"subject": "BRCA1", "p value": "1.0000e-08", "relationship strength": "0.85"}
-    assert "p value" not in rows[1]
+    assert rows[0] == {"subject": "BRCA1", "p_value": "1.0000e-08", "relationship_strength": "0.85"}
+    assert "p_value" not in rows[1]
     assert rows[1]["subject"] == "TP53"
-    assert rows[1]["relationship strength"] == "0.42"
+    assert rows[1]["relationship_strength"] == "0.42"
 
 
 # ? compile_graph Emits Edges And Nodes After Float Formatting Config Removal
 def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     sub: Path = tmp_path / "sub.parquet"
-    pl.DataFrame({"subject": ["A", "B"], "object": ["X", "Y"], "predicate": ["r", "r"], "p value": ["1.0000e-08", "5.0000e-02"]}).write_parquet(sub)
+    pl.DataFrame({"subject": ["A", "B"], "object": ["X", "Y"], "predicate": ["r", "r"], "p_value": ["1.0000e-08", "5.0000e-02"]}).write_parquet(sub)
     lib.compile_graph([sub], "smoke", "1.0.0")
     edges: list[str] = (tmp_path / "smoke_1.0.0.edges.ndjson").read_text().strip().splitlines()
     nodes: list[str] = (tmp_path / "smoke_1.0.0.nodes.ndjson").read_text().strip().splitlines()
     assert len(edges) == 2
     assert all('"uuid"' in line for line in edges)
     flat: str = "\n".join(edges)
-    assert '"p value":"1.0000e-08"' in flat
+    assert '"p_value":"1.0000e-08"' in flat
     assert len(nodes) >= 1
 
 
 # ? sig Computes Significance On A Cleaned Float64 P Value Column
 def test_sig_works_on_cleaned_float64() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p value": ["1e-8", "0.5", "N/A"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.5", "N/A"]}).lazy()
     cleaned: pl.LazyFrame = clean_numeric(lf)
     result: pl.DataFrame = lib.sig(cleaned).collect()
     assert result["significant"].to_list() == ["YES", "NO", "UNSURE"]

@@ -79,39 +79,39 @@ template:
   # Statistical metadata as edge annotations
   annotations:
     # Fixed values
-    - annotation: sample size
+    - annotation: sample_size
       method: value
       encoding: 9
 
     # Column values
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: C  # Column C
 
     # Fixed method description
-    - annotation: multiple testing correction method
+    - annotation: multiple_testing_correction_method
       method: value
       encoding: Benjamini Hochberg
 
     # Column values (correlation coefficient)
-    - annotation: relationship strength
+    - annotation: relationship_strength
       method: column
       encoding: B  # Column B (Spearman rho)
 
     # Fixed method
-    - annotation: assertion method
+    - annotation: assertion_method
       method: value
       encoding: Spearman correlation
 
     # Freetext catch-all — anything that doesn't map cleanly to a structured
     # annotation (study design caveats, non-standard units, qualitative
     # observations) belongs here rather than being dropped.
-    - annotation: miscellaneous notes
+    - annotation: miscellaneous_notes
       method: value
       encoding: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction
 ```
 
-> **`miscellaneous notes` is a freetext escape hatch.** Use it whenever the source carries context you can't otherwise cleanly encode — assay variants, post-hoc qualifiers, "values are log-transformed", etc. It accepts `method: value` for a constant note across the whole table or `method: column` to pull per-row notes from the source.
+> **`miscellaneous_notes` is a freetext escape hatch.** Use it whenever the source carries context you can't otherwise cleanly encode — assay variants, post-hoc qualifiers, "values are log-transformed", etc. It accepts `method: value` for a constant note across the whole table or `method: column` to pull per-row notes from the source.
 
 ## Key Techniques
 
@@ -147,7 +147,7 @@ The subject field uses three regex transformations in sequence:
 ```
 `"Lactobacillus sp"` → `"Lactobacillus sp. "`
 
-> **Regex constraint:** Each `pattern` is handed to Polars `str.replace_all()` (Rust `regex` crate). **Backreferences (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not allowed** and will fail validation. Plain groups `(...)` and non-capturing groups `(?:...)` *are* supported. Express transformations as a sequence of simple anchored / character-class substitutions where possible — the pipeline above is a deliberate three-step chain. If the transformation can't be expressed without those unsupported features, capture the leftover context in a `miscellaneous notes` annotation rather than fighting the regex engine.
+> **Regex constraint:** Each `pattern` is handed to Polars `str.replace_all()` (Rust `regex` crate). **Backreferences (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not allowed** and will fail validation. Plain groups `(...)` and non-capturing groups `(?:...)` *are* supported. Express transformations as a sequence of simple anchored / character-class substitutions where possible — the pipeline above is a deliberate three-step chain. If the transformation can't be expressed without those unsupported features, capture the leftover context in a `miscellaneous_notes` annotation rather than fighting the regex engine.
 
 ### Taxonomic Filtering
 
@@ -169,12 +169,12 @@ Combines literal values and column references:
 ```yaml
 annotations:
   # Literal (same for all rows)
-  - annotation: sample size
+  - annotation: sample_size
     method: value
     encoding: 9
 
   # Column (varies per row)
-  - annotation: p value
+  - annotation: p_value
     method: column
     encoding: C
 ```
@@ -205,12 +205,12 @@ Lactobacillus rhamnosus --[correlated_with]--> 13C-tamoxifen
   "subject":"NCBITaxon:47715",
   "predicate":"biolink:correlated_with",
   "object":"CHEBI:41774",
-  "sample size":9,
-  "p value":0.001,
-  "multiple testing correction method":"Benjamini Hochberg",
-  "relationship strength":0.85,
-  "assertion method":"Spearman correlation",
-  "miscellaneous notes":"Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction"
+  "sample_size":9,
+  "p_value":0.001,
+  "multiple_testing_correction_method":"Benjamini Hochberg",
+  "relationship_strength":0.85,
+  "assertion_method":"Spearman correlation",
+  "miscellaneous_notes":"Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction"
 }
 ```
 
@@ -310,10 +310,10 @@ template:
           - Institute for Systems Biology
 
   annotations:
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: E
-    - annotation: relationship strength
+    - annotation: relationship_strength
       method: column
       encoding: C
 ```
@@ -380,7 +380,7 @@ sections:
     source:
       row_slice: [2, auto]
     annotations:
-      - annotation: relationship strength
+      - annotation: relationship_strength
         method: column
         encoding: B
 
@@ -391,7 +391,7 @@ sections:
     source:
       row_slice: [2, auto]
     annotations:
-      - annotation: relationship strength
+      - annotation: relationship_strength
         method: column
         encoding: C
 
@@ -402,7 +402,7 @@ sections:
     source:
       row_slice: [2, auto]
     annotations:
-      - annotation: relationship strength
+      - annotation: relationship_strength
         method: column
         encoding: D
 

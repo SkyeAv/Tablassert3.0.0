@@ -77,10 +77,10 @@ template:
           - Example Institute
         comment: Synthetic tutorial data
   annotations:
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: C
-    - annotation: sample size
+    - annotation: sample_size
       method: column
       encoding: D
 ```
@@ -154,8 +154,8 @@ head -n 2 TUTORIAL_KG_1.0.0.edges.ndjson
 
 Example output:
 ```json
-{"id":"uuid:...","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p value":0.001,"sample size":450}
-{"id":"uuid:...","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p value":0.0001,"sample size":1200}
+{"id":"uuid:...","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":0.001,"sample_size":450}
+{"id":"uuid:...","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p_value":0.0001,"sample_size":1200}
 ```
 
 ## Understanding the Transformation

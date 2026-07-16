@@ -20,7 +20,7 @@ def resolve(
   section_hash: Optional[str] = None,
   config_file: Optional[str] = None,
   column_context: bool = True,
-  tag: str = " two"
+  tag: str = "_two"
 ) -> pl.LazyFrame
 ```
 
@@ -75,7 +75,7 @@ Optional context fields used for operational logging when unmatched values are e
 
 Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the query result adds a category frequency score and prefers more frequent category hits.
 
-**`tag: str` (default: `" two"`)**
+**`tag: str` (default: `"_two"`)**
 
 Suffix appended to `col` to locate the `level_two` output column.
 
@@ -83,7 +83,7 @@ Suffix appended to `col` to locate the `level_two` output column.
 - `col` — the `level_one` output (whitespace stripped, lowercased)
 - `col + tag` — the `level_two` output (non-word characters removed via `\W+`)
 
-The default `" two"` matches `level_two`'s default tag.
+The default `"_two"` matches `level_two`'s default tag.
 
 ### Return Value
 
@@ -92,12 +92,12 @@ Returns a Polars LazyFrame with these columns added:
 | Column | Description | Example |
 |--------|-------------|---------|
 | `{col}` | CURIE identifier | `"HGNC:11998"` |
-| `{col} name` | Preferred entity name | `"TP53"` |
-| `{col} category` | Biolink category | `"biolink:Gene"` |
-| `{col} taxon` | NCBI Taxon ID | `"NCBITaxon:9606"` |
-| `{col} source` | Source database | `"HGNC"` |
-| `{col} source version` | Database version | `"2025-01"` |
-| `{col} nlp level` | NLP processing level | `1` or `2` |
+| `{col}_name` | Preferred entity name | `"TP53"` |
+| `{col}_category` | Biolink category | `"biolink:Gene"` |
+| `{col}_taxon` | NCBI Taxon ID | `"NCBITaxon:9606"` |
+| `{col}_source` | Source database | `"HGNC"` |
+| `{col}_source_version` | Database version | `"2025-01"` |
+| `{col}_nlp_level` | NLP processing level | `1` or `2` |
 
 ### DuckDB Query
 
@@ -151,8 +151,8 @@ result = resolve(
 
 # Result LazyFrame includes:
 # - gene_symbol: "HGNC:11998"
-# - gene_symbol name: "TP53"
-# - gene_symbol category: "biolink:Gene"
+# - gene_symbol_name: "TP53"
+# - gene_symbol_category: "biolink:Gene"
 # - etc.
 ```
 
@@ -180,7 +180,7 @@ lf = pl.LazyFrame({"gene": genes})
 
 # Apply NLP normalization (required before resolve)
 lf = level_one(lf, "gene")   # lowercase + strip
-lf = level_two(lf, "gene")   # remove non-word chars → "gene two" column
+lf = level_two(lf, "gene")   # remove non-word chars → "gene_two" column
 
 result = resolve(
     lf=lf,
@@ -191,7 +191,7 @@ result = resolve(
     log=False,
 ).collect()
 
-print(result.select(["gene", "gene name", "gene category"]))
+print(result.select(["gene", "gene_name", "gene_category"]))
 ```
 
 ### NLP Processing Levels
@@ -202,7 +202,7 @@ print(result.select(["gene", "gene name", "gene category"]))
 - Whitespace stripped, lowercased
 - Queried first; preferred for acronyms and gene symbols
 
-**`level_two` output** (column: `col + " two"`):
+**`level_two` output** (column: `col + "_two"`):
 - All non-word characters removed (`\W+` → `""`) from the `level_one` result
 - Used as fallback when `level_one` produces no match
 - Preferred for disease names and free text

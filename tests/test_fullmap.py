@@ -13,7 +13,7 @@ from tablassert.lib import to_store
 # ? query_distinct Returns Empty Matches Schema For Empty Terms
 def test_query_distinct_empty_terms() -> None:
     term: pl.Series = pl.Series("term", [], dtype=pl.String)
-    nlp_level: pl.Series = pl.Series("nlp level", [], dtype=pl.Int64)
+    nlp_level: pl.Series = pl.Series("nlp_level", [], dtype=pl.Int64)
     shard: pl.Series = pl.Series("shard", [], dtype=pl.Int64)
     lf: pl.LazyFrame = pl.DataFrame([term, nlp_level, shard]).lazy()
 
@@ -45,7 +45,7 @@ def test_empty_resolve_still_writes_store(tmp_path: Path, monkeypatch: pytest.Mo
 
     monkeypatch.setattr(lib, "logger", DummyLogger())
 
-    source: pl.DataFrame = pl.DataFrame({"subject": ["none", ""], "subject two": ["none", ""]})
+    source: pl.DataFrame = pl.DataFrame({"subject": ["none", ""], "subject_two": ["none", ""]})
     resolved: pl.LazyFrame = resolve(source.lazy(), "subject", [], log=False)
 
     out: Path = tmp_path / "empty_subgraph.parquet"

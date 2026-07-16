@@ -32,9 +32,9 @@ template:
           - Example Institute
         comment: Synthetic tutorial data for Tablassert documentation
   annotations:
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: C
-    - annotation: sample size
+    - annotation: sample_size
       method: column
       encoding: D

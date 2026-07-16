@@ -39,7 +39,7 @@ template:
         name: Your Name
         date: 01 JAN 2026
   annotations:
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: C
 ```
@@ -92,7 +92,7 @@ template:
         name: Your Name
         date: 15 FEB 2026
   annotations:
-    - annotation: interaction type
+    - annotation: interaction_type
       method: column
       encoding: C
     - annotation: assay
@@ -153,17 +153,17 @@ template:
         name: Your Name
         date: 01 MAR 2026
   annotations:
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: C
-    - annotation: relationship strength
+    - annotation: relationship_strength
       method: column
       encoding: B
-    - annotation: assertion method
+    - annotation: assertion_method
       method: value
       encoding: "Spearman correlation"
     # Freetext catch-all for context that doesn't fit a structured field.
-    - annotation: miscellaneous notes
+    - annotation: miscellaneous_notes
       method: value
       encoding: "FDR-corrected; samples pooled across two cohorts"
 ```
@@ -219,7 +219,7 @@ sections:
         prioritize:
           - Pathway
     annotations:
-      - annotation: pathway database
+      - annotation: pathway_database
         method: value
         encoding: "KEGG"
 
@@ -231,7 +231,7 @@ sections:
         prioritize:
           - Pathway
     annotations:
-      - annotation: pathway database
+      - annotation: pathway_database
         method: value
         encoding: "Reactome"
 ```
@@ -288,10 +288,10 @@ template:
         name: Your Name
         date: 01 MAY 2026
   annotations:
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: C
-    - annotation: sample size
+    - annotation: sample_size
       method: column
       encoding: D
 ```

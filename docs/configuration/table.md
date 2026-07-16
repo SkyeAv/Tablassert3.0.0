@@ -349,12 +349,12 @@ object:
   prefix: "CUSTOM:"  # "123" → "CUSTOM:123"
 ```
 
-**Output columns: `original <col>` vs `<col> table literal value`** - For every subject/object/qualifier node, the pipeline snapshots the cell value into two edge columns at different stages:
+**Output columns: `original_<col>` vs `<col>_table_literal_value`** - For every subject/object/qualifier node, the pipeline snapshots the cell value into two edge columns at different stages:
 
-- `<col> table literal value` - the **pristine source-cell value**, captured immediately after the column is read and *before* any `fill`, `explode_by`, `regex`, `remove`, `prefix`, `suffix`, or `transformations`. Emitted only when `method: column` (a `method: value` node has no table source).
-- `original <col>` - the **fully-transformed value**, captured *after* all of the above, i.e. the same text that is then normalized and resolved to a CURIE. Always present for subject/object/qualifier nodes.
+- `<col>_table_literal_value` - the **pristine source-cell value**, captured immediately after the column is read and *before* any `fill`, `explode_by`, `regex`, `remove`, `prefix`, `suffix`, or `transformations`. Emitted only when `method: column` (a `method: value` node has no table source).
+- `original_<col>` - the **fully-transformed value**, captured *after* all of the above, i.e. the same text that is then normalized and resolved to a CURIE. Always present for subject/object/qualifier nodes.
 
-Example: with `method: column`, `encoding: A`, `remove: ["^NA "]` over a cell `"NA BRCA1"`, `subject table literal value` is `"NA BRCA1"` while `original subject` is `"BRCA1"`. Annotations never emit a table-literal column.
+Example: with `method: column`, `encoding: A`, `remove: ["^NA "]` over a cell `"NA BRCA1"`, `subject_table_literal_value` is `"NA BRCA1"` while `original_subject` is `"BRCA1"`. Annotations never emit a table-literal column.
 
 #### Null Handling
 
@@ -461,32 +461,32 @@ Optional edge attributes (statistical metadata, notes, etc.).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `annotation` | String | Yes | Attribute name (e.g., `"p value"`, `"sample size"`). Underscores are automatically replaced with spaces and the result is trimmed of leading/trailing whitespace at parse time. |
+| `annotation` | String | Yes | Attribute name (e.g., `"p_value"`, `"sample_size"`). Lowercased and trimmed of leading/trailing whitespace at parse time; underscores are preserved (use snake_case). |
 | (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
 **Example:**
 ```yaml
 annotations:
-  - annotation: p value
+  - annotation: p_value
     method: column
     encoding: C  # Read from column C
 
-  - annotation: sample size
+  - annotation: sample_size
     method: value
     encoding: 450  # Literal value for all edges
 
-  - annotation: multiple testing correction method
+  - annotation: multiple_testing_correction_method
     method: value
     encoding: "Benjamini Hochberg"
 
   # Freetext catch-all for context that doesn't fit a structured field —
   # study caveats, units, post-hoc notes, anything you'd otherwise lose.
-  - annotation: miscellaneous notes
+  - annotation: miscellaneous_notes
     method: value
     encoding: "Values are log2 fold-change relative to vehicle control; n=3 biological replicates per arm"
 ```
 
-> **Tip:** When source data carries information that can't be cleanly mapped to a structured annotation (assay-specific caveats, non-standard units, qualitative observations), add a `miscellaneous notes` annotation rather than forcing it into another field or dropping it. It accepts both `method: value` (one note for the whole table) and `method: column` (per-row notes from the source).
+> **Tip:** When source data carries information that can't be cleanly mapped to a structured annotation (assay-specific caveats, non-standard units, qualitative observations), add a `miscellaneous_notes` annotation rather than forcing it into another field or dropping it. It accepts both `method: value` (one note for the whole table) and `method: column` (per-row notes from the source).
 
 ## Complete Example
 
@@ -524,7 +524,7 @@ template:
         date: 27 JAN 2026
 
   annotations:
-    - annotation: p value
+    - annotation: p_value
       method: column
       encoding: C
 ```

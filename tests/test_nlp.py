@@ -38,14 +38,14 @@ def test_level_one_preserves_other_columns() -> None:
 def test_level_two_removes_nonword() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"name": ["hello-world", "foo bar"]}).lazy()
     result: pl.DataFrame = level_two(lf, "name").collect()
-    assert result["name two"].to_list() == ["helloworld", "foobar"]
+    assert result["name_two"].to_list() == ["helloworld", "foobar"]
 
 
 # ? Level Two Creates Tagged Column
 def test_level_two_creates_tagged_column() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"name": ["hello"]}).lazy()
     result: pl.DataFrame = level_two(lf, "name").collect()
-    assert "name two" in result.columns
+    assert "name_two" in result.columns
     assert "name" in result.columns
 
 
@@ -53,7 +53,7 @@ def test_level_two_creates_tagged_column() -> None:
 def test_level_two_custom_regex() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"name": ["hello123world"]}).lazy()
     result: pl.DataFrame = level_two(lf, "name", regex=r"\d+").collect()
-    assert result["name two"].to_list() == ["helloworld"]
+    assert result["name_two"].to_list() == ["helloworld"]
 
 
 # ? Level Two With Custom Tag

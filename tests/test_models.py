@@ -165,8 +165,8 @@ def test_provenance_valid() -> None:
 
 # ? Annotation Valid Construction
 def test_annotation_valid() -> None:
-    a: Annotation = Annotation(annotation="p value", method="column", encoding="E")  # pyright: ignore
-    assert a.annotation == "p value"
+    a: Annotation = Annotation(annotation="p_value", method="column", encoding="E")  # pyright: ignore
+    assert a.annotation == "p_value"
     assert a.encoding == "E"
 
 
@@ -225,8 +225,8 @@ def test_section_with_annotations() -> None:
         statement={"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},
         provenance={"repo": "PMC", "publication": "PMC000"},
         annotations=[
-            {"annotation": "p value", "method": "column", "encoding": "E"},
-            {"annotation": "sample size", "method": "value", "encoding": 28},
+            {"annotation": "p_value", "method": "column", "encoding": "E"},
+            {"annotation": "sample_size", "method": "value", "encoding": 28},
         ],
     )
     assert len(section.annotations) == 2  # pyright: ignore
