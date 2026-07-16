@@ -179,6 +179,48 @@ def test_infores_single_and_tutorial() -> None:
     assert infores("CHEMBL") == "infores:chembl"
 
 
+# ? normalize Wraps Category In A List And Ensures biolink: Prefix
+def test_normalize_category_list_with_biolink_prefix() -> None:
+    edges: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["CURIE:1", "CURIE:2"],
+            "subject_name": ["Gene A", "Protein B"],
+            "subject_category": ["Gene", "biolink:Protein"],
+            "subject_taxon": ["NCBITaxon:9606", "NCBITaxon:9606"],
+            "subject_source": ["HGNC", "HGNC"],
+            "subject_source_version": ["1", "1"],
+        }
+    ).lazy()
+    nodes, _ = lib.normalize(edges, "subject")
+    result: list[Any] = sorted(nodes.collect()["category"].to_list())
+    assert result == [["biolink:Gene"], ["biolink:Protein"]]
+
+
+# ? normalize Keeps Null Categories Null For strip_nulls Removal
+def test_normalize_category_null_stays_null() -> None:
+    edges: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["CURIE:1"],
+            "subject_name": ["Gene A"],
+            "subject_category": pl.Series([None], dtype=pl.String),
+            "subject_taxon": ["NCBITaxon:9606"],
+            "subject_source": ["HGNC"],
+            "subject_source_version": ["1"],
+        }
+    ).lazy()
+    nodes, _ = lib.normalize(edges, "subject")
+    result: list[Any] = nodes.collect()["category"].to_list()
+    assert result == [None]
+
+
+# ? publications Exports Category Within A List
+def test_publications_category_is_list() -> None:
+    edges: pl.LazyFrame = pl.DataFrame({"publication": ["PMID:1"], "title": ["A Study"]}).lazy()
+    nodes, _ = lib.publications(edges)
+    result: list[Any] = nodes.collect()["category"].to_list()
+    assert result == [["biolink:Publication"]]
+
+
 # ? Tcode collect Emits resource_id Op When Graph Name Is Provided
 def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")

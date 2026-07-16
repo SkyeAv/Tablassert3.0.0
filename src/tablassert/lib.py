@@ -403,6 +403,15 @@ def normalize(
     # * Returns Partial Nodes And Modified Edges As LazyFrames
     cols: list[str] = [col, add(col, "_name"), add(col, "_category"), add(col, "_taxon"), add(col, "_source"), add(col, "_source_version")]
     nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
+    # ? Ensures Category Has biolink: Prefix
+    nodes = nodes.with_columns(
+        pl.when(pl.col("category").str.starts_with("biolink:"))
+        .then(pl.col("category"))
+        .otherwise(add(pl.lit("biolink:"), pl.col("category")))
+        .alias("category")
+    )
+    # ? Exports Category Within A List (Null Categories Stay Null For strip_nulls)
+    nodes = nodes.with_columns(pl.when(pl.col("category").is_not_null()).then(pl.concat_list(pl.col("category"))).alias("category"))
     edges_out: pl.LazyFrame = edges.drop(cols[1:])
     return nodes, edges_out
 
@@ -426,6 +435,8 @@ def publications(
     cols = [x for x in cols if x in edges.collect_schema().names()]
     nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
     nodes = nodes.with_columns(pl.lit("biolink:Publication").alias("category"))
+    # ? Exports Category Within A List
+    nodes = nodes.with_columns(pl.concat_list(pl.col("category")).alias("category"))
     edges_out: pl.LazyFrame = edges.drop(cols[1:])
     return nodes, edges_out
 
