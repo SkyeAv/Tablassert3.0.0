@@ -1,0 +1,22 @@
+[package]
+name = "tablassert-rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "tablassert_rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+md5 = "0.7"
+pyo3 = "0.29"
+serde_json = { version = "1", features = ["preserve_order"] }
+uuid = "1"
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+
+[dev-dependencies]
+tempfile = "3"

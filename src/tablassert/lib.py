@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt
 
+from tablassert import tablassert_rs
 from tablassert.enums import Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
@@ -24,15 +25,11 @@ from tablassert.utils import namespace_uuid
 if TYPE_CHECKING:
     import duckdb
     import numpy as np
-    import orjson
     import polars as pl
-    import xxhash
 else:
     duckdb = Lazy.load("duckdb")
     np = Lazy.load("numpy")
-    orjson = Lazy.load("orjson")
     pl = Lazy.load("polars")
-    xxhash = Lazy.load("xxhash")
 
 logger = cat("PIPELINE")
 
@@ -515,24 +512,7 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
     if p_out.is_file():
         p_out.unlink()
 
-    seen: set[bytes] = set()
-    with p_in.open("rb") as f_in, p_out.open("wb") as f_out:
-        for line in f_in:
-            r: object = orjson.loads(line)  # pyright: ignore
-            r = strip_nulls(r)
-
-            if r:
-                b: bytes = orjson.dumps(r)
-                h: bytes = xxhash.xxh32(b).digest()
-                if h not in seen:
-                    seen |= {h}
-
-                    if is_edges:
-                        r = label_edge(r)
-                        b = orjson.dumps(r)
-
-                    b = b + ("\n").encode("utf-8")
-                    f_out.write(b)
+    tablassert_rs.dedup_ndjson(p_in, p_out, is_edges, "TABLASSERT")
 
     p_in.unlink()
 

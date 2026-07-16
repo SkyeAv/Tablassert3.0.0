@@ -625,6 +625,34 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
     assert "PMID:123" not in nodes
 
 
+# ? dedup_stream Deduplicates And Strips Null Like Values From Node Streams
+def test_dedup_stream_nodes(tmp_path: Path) -> None:
+    p_in: Path = tmp_path / "nodes.ndjson.tmp"
+    p_in.write_text('{"id":"A","drop":"NA"}\n{"id":"A","drop":"NA"}\n{"id":"B"}\n')
+
+    lib.dedup_stream(p_in, is_edges=False)
+
+    assert not p_in.exists()  # ? temp input is removed
+    lines: list[str] = (tmp_path / "nodes.ndjson").read_text().strip().splitlines()
+    assert lines == ['{"id":"A"}', '{"id":"B"}']
+
+
+# ? dedup_stream Labels Edges With UUID Shaped ids And Deduplicates
+def test_dedup_stream_edges(tmp_path: Path) -> None:
+    import orjson
+
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text('{"subject":"A","object":"B","predicate":"r"}\n{"subject":"A","object":"B","predicate":"r"}\n')
+
+    lib.dedup_stream(p_in, is_edges=True)
+
+    assert not p_in.exists()
+    lines: list[str] = (tmp_path / "edges.ndjson").read_text().strip().splitlines()
+    assert len(lines) == 1  # ? duplicate edges collapse to one
+    row: dict = orjson.loads(lines[0])
+    assert "id" in row
+
+
 # ? sig Computes Significance On A Cleaned Float64 P Value Column
 def test_sig_works_on_cleaned_float64() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.5", "N/A"]}).lazy()

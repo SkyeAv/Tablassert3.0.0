@@ -17,6 +17,8 @@
 ## Verify Changes
 
 - Match the repo hooks before finishing: `uv run ruff check --fix .`, `uv run ruff format .`, `uv run pyright`, `uv run pytest`.
+- After editing Rust code or Python wrappers around Rust, rebuild the extension before pytest: `uv run maturin develop --manifest-path rust/Cargo.toml`, then `uv run pytest`.
+- Rust checks: `cargo fmt --check --manifest-path rust/Cargo.toml`, `cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path rust/Cargo.toml`.
 - Full hook run: `uv run pre-commit run --all-files` (ruff, ruff-format, pyright, pytest).
 - Focused test runs:
   - Single test: `uv run pytest tests/test_lib.py::test_name`
@@ -37,7 +39,7 @@
 
 ## Repo-Specific Gotchas
 
-- Heavy dependencies are lazy-loaded per module with `TYPE_CHECKING` + `lazy_loader`. Follow the existing pattern instead of importing heavy packages eagerly. Lazy-loaded: polars, duckdb, orjson, xxhash, polars_hash, yaml, httpx, pyexcel, onnxruntime, sentence_transformers.
+- Heavy dependencies are lazy-loaded per module with `TYPE_CHECKING` + `lazy_loader`. Follow the existing pattern instead of importing heavy packages eagerly. Lazy-loaded: polars, duckdb, xxhash, polars_hash, yaml, httpx, pyexcel, onnxruntime, sentence_transformers. The Rust extension ships prebuilt as `tablassert.tablassert_rs` (rebuild with `uv run maturin develop --manifest-path rust/Cargo.toml`).
 - `tests/conftest.py` autouse-mocks `httpx.head`, so model-URL validation tests never hit the network unless a test opts in.
 - Network-dependent tests are marked `@pytest.mark.network`; GPU QC tests are marked with both `network` and `gpu` in `tests/test_qc.py`.
 - QC runtime selection is strict in `src/tablassert/qc.py`: if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is unavailable, the code raises (error 06) instead of falling back to CPU. Install `tablassert[qc]` for CPU-only.
