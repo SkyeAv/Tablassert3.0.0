@@ -20,7 +20,6 @@ from tablassert.enums import (
     Predicates,
     Qualifiers,
     Repositories,
-    Syntaxes,
     Tokens,
 )
 
@@ -241,7 +240,6 @@ class Annotation(Encoding):
 
 class Section(TablaBase):
     # ? Pydantic "Section" Model And Coercion
-    syntax: Syntaxes = Field(Syntaxes.TC4, description="Section configuration syntax version.")
     source: Union[Excel, Text] = Field(..., description="Input source definition for reading tabular rows.")
     statement: Statement = Field(..., description="Subject-object statement mapping for this section.")
     provenance: Provenance = Field(..., description="Provenance metadata applied to all produced edges.")
@@ -250,7 +248,6 @@ class Section(TablaBase):
 
 class Graph(TablaBase):
     # ? Pydantic "Graph" Configuration
-    syntax: Syntaxes = Field(Syntaxes.GC3, description="Graph configuration syntax version.")
     name: str = Field(..., description="Graph name written into output metadata.")
     version: str = Field(..., description="Graph version label.")
     log: bool = Field(False, description="Whether to log unmatched entities and audit details during graph builds.")

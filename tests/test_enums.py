@@ -15,7 +15,6 @@ from tablassert.enums import (
     Predicates,
     Qualifiers,
     Repositories,
-    Syntaxes,
     Tokens,
 )
 
@@ -59,11 +58,6 @@ def test_encoding_methods_is_str_enum() -> None:
 def test_fill_methods_is_str_enum() -> None:
     assert issubclass(FillMethods, str)
     assert issubclass(FillMethods, Enum)
-
-
-def test_syntaxes_is_str_enum() -> None:
-    assert issubclass(Syntaxes, str)
-    assert issubclass(Syntaxes, Enum)
 
 
 def test_categories_is_str_enum() -> None:
@@ -115,11 +109,6 @@ def test_contributions_values() -> None:
     assert Contributions.TOOL == "tool"
 
 
-def test_syntaxes_values() -> None:
-    assert Syntaxes.TC4 == "TC4"
-    assert Syntaxes.GC3 == "GC3"
-
-
 def test_files_values() -> None:
     assert Files.TEXT == "text"
     assert Files.EXCEL == "excel"
@@ -150,7 +139,6 @@ def test_fill_methods_membership() -> None:
 def test_enum_compares_as_string() -> None:
     assert Tokens.AUTO == "auto"
     assert Repositories.PUBMED_CENTRAL == "PMC"
-    assert Syntaxes.TC4 == "TC4"
 
 
 # ? Category Has Expected Members

@@ -67,7 +67,6 @@ def test_fastmerge_in_place() -> None:
 def test_from_yaml_reads_file(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     assert isinstance(data, dict)
-    assert "syntax" in data
     assert "source" in data
 
 

@@ -15,7 +15,6 @@ from tablassert.models import Annotation, Encoding, Excel, Graph, NodeEncoding, 
 def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     section: Section = Section(**data)  # pyright: ignore
-    assert section.syntax == "TC4"
     assert section.source.kind == "text"
     assert section.statement.subject.encoding == "BRCA1"
     assert section.statement.object.encoding == "TP53"
@@ -28,22 +27,6 @@ def test_graph_qc_defaults_false() -> None:
         name="TEST", version="1.0.0", tables=[Path("./table.yaml")], datassert=Path("./datassert")
     )
     assert graph.qc is False
-
-
-# ? Graph Syntax Defaults To GC3
-def test_graph_syntax_defaults_gc3() -> None:
-    graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", tables=[Path("./table.yaml")], datassert=Path("./datassert")
-    )
-    assert graph.syntax == "GC3"
-
-
-# ? Graph Rejects Old GC2 Syntax
-def test_graph_rejects_gc2() -> None:
-    with pytest.raises(ValidationError):
-        Graph(  # pyright: ignore
-            syntax="GC2", name="TEST", version="1.0.0", tables=[Path("./table.yaml")], datassert=Path("./datassert")
-        )
 
 
 # ? Graph Rejects Removed Enrichment Databases

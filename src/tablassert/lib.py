@@ -431,8 +431,6 @@ class Tcode(Section):
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
                 (edge_category, ()),
                 [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)] if self.statement.qualifiers else None,
-                (value, ("syntax", self.syntax)),
-                (value, ("configuration_file", self.config.name)),
                 (value, ("repository", self.provenance.repo)),
                 (value, ("knowledge_level", self.provenance.knowledge_level)),
                 (value, ("agent_type", self.provenance.agent_type)),

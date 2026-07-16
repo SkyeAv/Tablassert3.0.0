@@ -1,4 +1,3 @@
-syntax: TC4
 source:
   url: https://example.com/test.tsv
   local: ./test.tsv

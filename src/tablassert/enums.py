@@ -53,11 +53,6 @@ class FillMethods(str, Enum):
     ONE = "one"
 
 
-class Syntaxes(str, Enum):
-    TC4 = "TC4"
-    GC3 = "GC3"
-
-
 class Categories(str, Enum):
     ACCESSIBLE_DNA_REGION = "AccessibleDnaRegion"
     ACTIVITY = "Activity"
