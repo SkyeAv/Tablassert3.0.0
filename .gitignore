@@ -24,3 +24,5 @@
 *.whl
 *dist/
 *.ledger/
+*target/
+*.so
