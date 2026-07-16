@@ -66,8 +66,8 @@ def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Toke
 def numeric_columns(names: list[str]) -> list[str]:
     # ? Returns Column Names That Should Be Coerced And Formatted As Numbers
     # * P Value Columns By Substring Plus Exact Relationship Strength And Sample Size
-    exact: set[str] = {"relationship strength", "sample size"}
-    return [c for c in names if ("p value" in c.lower()) or (c in exact)]
+    exact: set[str] = {"relationship_strength", "sample_size"}
+    return [c for c in names if ("p_value" in c.lower()) or (c in exact)]
 
 
 def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -89,7 +89,7 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
         df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
         mask: object = df[c].is_null().to_numpy()
         arr: object = df[c].to_numpy()
-        fmt: str = "{:.4e}" if "p value" in c.lower() else "{:.4g}"
+        fmt: str = "{:.4e}" if "p_value" in c.lower() else "{:.4g}"
         formatted: list[Optional[str]] = [None if m else fmt.format(float(v)) for v, m in zip(arr, mask)]  # pyright: ignore
         df = df.with_columns(pl.Series(c, formatted))
     return df.lazy()
@@ -126,7 +126,7 @@ def sig(
     lf: pl.LazyFrame,
     cutoff: float = 0.05,  # pyright: ignore
     threshold: float = 0.10,
-    col: str = "p val",
+    col: str = "p_value",
     out: str = "significant",
 ) -> pl.LazyFrame:
     # ? Creates The "significant" Column
@@ -152,7 +152,7 @@ def sig(
         return lf.with_columns(pl.lit("UNSURE").alias(out))
 
 
-def idx(lf: pl.LazyFrame, col: str = "row number") -> pl.LazyFrame:
+def idx(lf: pl.LazyFrame, col: str = "row_number") -> pl.LazyFrame:
     # ? Creates An Index Column Of Row Numbers
     return lf.with_row_index(col)
 
@@ -257,13 +257,13 @@ LIMIT 1
     year: Optional[str] = row.get("year")
 
     if first_author:
-        df = df.with_columns(pl.lit(first_author).alias("first author"))
+        df = df.with_columns(pl.lit(first_author).alias("first_author"))
     if journal:
         df = df.with_columns(pl.lit(journal).alias("journal"))
     if title:
         df = df.with_columns(pl.lit(title).alias("title"))
     if year:
-        df = df.with_columns(pl.lit(year).alias("year published"))
+        df = df.with_columns(pl.lit(year).alias("year_published"))
 
     return df.lazy()
 
@@ -290,7 +290,7 @@ LIMIT 1
 
     caption: Optional[str] = row.get("caption")
     if caption:
-        df = df.with_columns(pl.lit(caption).alias("file caption"))
+        df = df.with_columns(pl.lit(caption).alias("file_caption"))
 
     return df.lazy()
 
@@ -308,7 +308,7 @@ class Tcode(Section):
         return [
             (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
             (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
-            (column, (add(col, " table literal value"), col)) if (table_literal and eq(x.method, EncodingMethods.COLUMN)) else None,
+            (column, (add(col, "_table_literal_value"), col)) if (table_literal and eq(x.method, EncodingMethods.COLUMN)) else None,
             (fill, (col, x.fill)) if x.fill else None,
             (explode, (col, x.explode_by)) if x.explode_by else None,
             [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
@@ -322,7 +322,7 @@ class Tcode(Section):
         # ? Collect Helper For NodeEncoding Classes
         encoding: list[Any] = self.encoding(x, col, table_literal=True)
         node: list[Any] = [
-            (column, (add("original ", col), col)),
+            (column, (add("original_", col), col)),
             (level_one, (col,)),
             (level_two, (col,)),
             (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, self.log, self.store.stem, self.config.name, True)),
@@ -372,13 +372,13 @@ class Tcode(Section):
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
                 [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)] if self.statement.qualifiers else None,
                 (value, ("syntax", self.syntax)),
-                (value, ("configuration file", self.config.name)),
+                (value, ("configuration_file", self.config.name)),
                 (value, ("repository", self.provenance.repo)),
                 (value, ("resource_id", infores(self.name))) if self.name else None,
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
                 (value, ("url", str(self.source.url))),
-                (value, ("section hash", self.store.stem)),
-                (value, ("sheet name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
+                (value, ("section_hash", self.store.stem)),
+                (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (with_publication, (pubmed_db, self.provenance.publication)) if pubmed_db else None,
                 (with_captions, (pmc_db, self.provenance.publication, str(self.source.url))) if pmc_db else None,
                 (sig, ()),
@@ -395,11 +395,11 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]]) -> Path:
 
 
 def normalize(
-    edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source version"]
+    edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source_version"]
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     # ? Normalized Disparate Node Columns To A Unified Format And Removes Them From Edges
     # * Returns Partial Nodes And Modified Edges As LazyFrames
-    cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
+    cols: list[str] = [col, add(col, "_name"), add(col, "_category"), add(col, "_taxon"), add(col, "_source"), add(col, "_source_version")]
     nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
     edges_out: pl.LazyFrame = edges.drop(cols[1:])
     return nodes, edges_out
@@ -418,9 +418,9 @@ def infores(name: str) -> str:
 
 
 def publications(
-    edges: pl.LazyFrame, names: list[str] = ["id", "name", "first author", "journal", "year published"]
+    edges: pl.LazyFrame, names: list[str] = ["id", "name", "first_author", "journal", "year_published"]
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
-    cols: list[str] = ["publication", "title", "first author", "journal", "year published"]
+    cols: list[str] = ["publication", "title", "first_author", "journal", "year_published"]
     cols = [x for x in cols if x in edges.collect_schema().names()]
     nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
     nodes = nodes.with_columns(pl.lit("biolink:Publication").alias("category"))
@@ -490,7 +490,7 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
     for s in subgraphs:
         lf: pl.LazyFrame = pl.scan_parquet(s)
 
-        node_cols: list[str] = [col.replace("original ", "") for col in lf.collect_schema().names() if "original " in col]
+        node_cols: list[str] = [col.replace("original_", "") for col in lf.collect_schema().names() if "original_" in col]
         for col in node_cols:
             partial, lf = normalize(lf, col)
             subnodes.append(partial)
@@ -527,7 +527,7 @@ def resolve_many(
     series: pl.Series = pl.Series(col, entities)
     lf: pl.LazyFrame = series.to_frame().lazy()
 
-    lf = column(lf, add("original ", col), col)
+    lf = column(lf, add("original_", col), col)
     lf = level_one(lf, col)
     lf = level_two(lf, col)
 

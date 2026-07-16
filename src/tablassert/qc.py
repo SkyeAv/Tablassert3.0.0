@@ -115,8 +115,8 @@ def fullmap_audit(
     from rapidfuzz.process import cpdist
     from sklearn.metrics.pairwise import cosine_similarity
 
-    original: str = add("original ", col)
-    preferred: str = add(col, " name")
+    original: str = add("original_", col)
+    preferred: str = add(col, "_name")
     cols: list[str] = [col, original, preferred]
 
     # * Stage 1: Exact String Matching Or Is Curie (Can Stay Lazy Until Filter)

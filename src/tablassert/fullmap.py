@@ -44,14 +44,14 @@ def empty_matches(column_context: bool) -> pl.DataFrame:
 def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFrame:
     # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
     t1: pl.LazyFrame = lf.select(pl.col(l1).alias(col)).unique()
-    t1 = t1.with_columns(pl.lit(1).alias("nlp level"))
+    t1 = t1.with_columns(pl.lit(1).alias("nlp_level"))
 
     t2: pl.LazyFrame = lf.select(pl.col(l2).alias(col)).unique()
-    t2 = t2.with_columns(pl.lit(2).alias("nlp level"))
+    t2 = t2.with_columns(pl.lit(2).alias("nlp_level"))
 
     terms: pl.LazyFrame = pl.concat([t1, t2]).unique(subset=[col], keep="first")
 
-    bad: str = r"^\d+$|^(none|nan|na|null|unknown|not applicable|p value|variable|result|exposure|expression|symbol)$|^$"
+    bad: str = r"^\d+$|^(none|nan|na|null|unknown|not applicable|p_value|variable|result|exposure|expression|symbol)$|^$"
     terms = terms.filter(~pl.col(col).str.contains(bad))
     return terms.with_columns((plh.col(col).nchash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
 
@@ -67,7 +67,7 @@ def query_builder(prioritize: Optional[list[Categories]], avoid: Optional[list[C
         CU.TAXON_ID,
         SO.SOURCE_NAME,
         SO.SOURCE_VERSION,
-        PA."nlp level" AS NLP_LEVEL,
+        PA."nlp_level" AS NLP_LEVEL,
         CASE
             {priority_case}
             ELSE 50
@@ -145,7 +145,7 @@ def query_distinct(
 
 def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]) -> None:
     # * Log Unmatched Entities
-    level_one: pl.LazyFrame = terms.filter(pl.col("nlp level") == 1)
+    level_one: pl.LazyFrame = terms.filter(pl.col("nlp_level") == 1)
     antimatches: pl.LazyFrame = level_one.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
 
     # ! Collection Point: Requires Eager
@@ -166,7 +166,7 @@ def resolve(
     section_hash: Optional[str] = None,
     config_file: Optional[str] = None,
     column_context: bool = True,
-    tag: str = " two",
+    tag: str = "_two",
 ) -> pl.LazyFrame:
     # ? Case Dependant, Provenance Rich Name Entity Recognition
     l1: str = col
@@ -180,38 +180,38 @@ def resolve(
 
     # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
     df: pl.DataFrame = lf.collect()
-    result: pl.DataFrame = df.join(matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix=" l1")
+    result: pl.DataFrame = df.join(matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix="_l1")
 
     l2_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(2))
-    result = result.join(l2_matches, left_on=l2, right_on="term", how="left", suffix=" l2")
+    result = result.join(l2_matches, left_on=l2, right_on="term", how="left", suffix="_l2")
 
     result = result.with_columns(
         [
-            pl.when(pl.col("CURIE").is_not_null()).then(pl.col("CURIE")).otherwise(pl.col("CURIE l2")).alias(col),
+            pl.when(pl.col("CURIE").is_not_null()).then(pl.col("CURIE")).otherwise(pl.col("CURIE_l2")).alias(col),
             pl.when(pl.col("PREFERRED_NAME").is_not_null())
             .then(pl.col("PREFERRED_NAME"))
-            .otherwise(pl.col("PREFERRED_NAME l2"))
-            .alias(add(col, " name")),
+            .otherwise(pl.col("PREFERRED_NAME_l2"))
+            .alias(add(col, "_name")),
             pl.when(pl.col("CATEGORY_NAME").is_not_null())
             .then(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME")))
-            .otherwise(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME l2")))
-            .alias(add(col, " category")),
+            .otherwise(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME_l2")))
+            .alias(add(col, "_category")),
             pl.when(pl.col("TAXON_ID").is_not_null())
             .then(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID").cast(pl.String)))
-            .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID l2").cast(pl.String)))
-            .alias(add(col, " taxon")),
-            pl.when(pl.col("SOURCE_NAME").is_not_null()).then(pl.col("SOURCE_NAME")).otherwise(pl.col("SOURCE_NAME l2")).alias(add(col, " source")),
+            .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID_l2").cast(pl.String)))
+            .alias(add(col, "_taxon")),
+            pl.when(pl.col("SOURCE_NAME").is_not_null()).then(pl.col("SOURCE_NAME")).otherwise(pl.col("SOURCE_NAME_l2")).alias(add(col, "_source")),
             pl.when(pl.col("SOURCE_VERSION").is_not_null())
             .then(pl.col("SOURCE_VERSION"))
-            .otherwise(pl.col("SOURCE_VERSION l2"))
-            .alias(add(col, " source version")),
-            pl.when(pl.col("NLP_LEVEL").is_not_null()).then(pl.col("NLP_LEVEL")).otherwise(pl.col("NLP_LEVEL l2")).alias(add(col, " nlp level")),
+            .otherwise(pl.col("SOURCE_VERSION_l2"))
+            .alias(add(col, "_source_version")),
+            pl.when(pl.col("NLP_LEVEL").is_not_null()).then(pl.col("NLP_LEVEL")).otherwise(pl.col("NLP_LEVEL_l2")).alias(add(col, "_nlp_level")),
         ]
     )
 
-    result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l2)?$"))
-    result = result.select(pl.exclude(add(col, " two")))
-    result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
+    result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)(_l2)?$"))
+    result = result.select(pl.exclude(add(col, "_two")))
+    result = result.with_columns(pl.col(add(col, "_taxon")).replace("NCBITaxon:0", None))
     result = result.filter(pl.col(col).is_not_null())
 
     return result.lazy()

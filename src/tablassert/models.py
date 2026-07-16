@@ -30,7 +30,11 @@ else:
 
 class TablaBase(BaseModel):
     model_config: ConfigDict = ConfigDict(  # pyright: ignore
-        str_strip_whitespace=False, validate_assignment=True, use_enum_values=True, extra="forbid", populate_by_name=True
+        str_strip_whitespace=False,
+        validate_assignment=True,
+        use_enum_values=True,
+        extra="forbid",
+        populate_by_name=True
     )
 
 
@@ -230,7 +234,7 @@ class Annotation(Encoding):
     @field_validator("annotation", mode="after")
     @classmethod
     def clean_annotation(cls, annotation: str) -> str:
-        return annotation.replace("_", " ").strip()
+        return annotation.lower().strip()
 
 
 class Section(TablaBase):
@@ -251,7 +255,5 @@ class Graph(TablaBase):
     qc: bool = Field(False, description="Whether to run the QC audit stage during graph builds.")
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
     datassert: Path = Field(..., description="Base datassert directory containing data shard DuckDB files.", examples=[".datassert"])
-    pubmed_db: Optional[Path] = Field(
-        None, description="Optional PubMed sqlite database for publication metadata enrichment.", examples=[".datassert/pubmed.sqlite"]
-    )
+    pubmed_db: Optional[Path] = Field(None, description="Optional PubMed sqlite database for publication metadata enrichment.", examples=[".datassert/pubmed.sqlite"])
     pmc_db: Optional[Path] = Field(None, description="Optional PMC sqlite database for caption enrichment.", examples=[".datassert/pmc.sqlite"])
