@@ -247,13 +247,14 @@ def test_section_with_qualifiers() -> None:
 
 # ? Section With Annotations
 def test_section_with_annotations() -> None:
-    section: Section = Section(  # pyright: ignore
-        source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
-        statement={"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},
-        provenance={"repo": "PMC", "publication": "PMC000"},
-        annotations=[
+    data: dict[str, Any] = {
+        "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+        "statement": {"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},
+        "provenance": {"repo": "PMC", "publication": "PMC000"},
+        "annotations": [
             {"annotation": "p_value", "method": "column", "encoding": "E"},
             {"annotation": "sample_size", "method": "value", "encoding": 28},
         ],
-    )
+    }
+    section: Section = Section.model_validate(data)  # pyright: ignore
     assert len(section.annotations) == 2  # pyright: ignore

@@ -13,6 +13,11 @@ class Repositories(str, Enum):
     PUBMED = "PMID"
 
 
+class InformationResources(str, Enum):
+    PUBMED = "infores:pubmed"
+    PUBMED_CENTRAL = "infores:pubmed-central"
+
+
 class Contributions(str, Enum):
     CURATION = "curation"
     VALIDATION = "validation"

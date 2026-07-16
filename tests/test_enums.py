@@ -11,6 +11,7 @@ from tablassert.enums import (
     Files,
     FillMethods,
     Functions,
+    InformationResources,
     KnowledgeLevels,
     Predicates,
     Qualifiers,
@@ -28,6 +29,12 @@ def test_tokens_is_str_enum() -> None:
 def test_repositories_is_str_enum() -> None:
     assert issubclass(Repositories, str)
     assert issubclass(Repositories, Enum)
+
+
+# ? InformationResources Is str, Enum Subclass
+def test_information_resources_is_str_enum() -> None:
+    assert issubclass(InformationResources, str)
+    assert issubclass(InformationResources, Enum)
 
 
 def test_comparisons_is_str_enum() -> None:
@@ -95,6 +102,12 @@ def test_tokens_values() -> None:
 def test_repositories_values() -> None:
     assert Repositories.PUBMED_CENTRAL == "PMC"
     assert Repositories.PUBMED == "PMID"
+
+
+# ? InformationResources Values
+def test_information_resources_values() -> None:
+    assert InformationResources.PUBMED == "infores:pubmed"
+    assert InformationResources.PUBMED_CENTRAL == "infores:pubmed-central"
 
 
 def test_comparisons_values() -> None:

@@ -6,6 +6,7 @@ from typing import Any
 import polars as pl
 
 import tablassert.lib as lib
+from tablassert.enums import Repositories
 from tablassert.ingests import from_yaml
 from tablassert.lib import (
     Tcode,
@@ -200,6 +201,29 @@ def test_infores_screaming_snake() -> None:
 def test_infores_single_and_tutorial() -> None:
     assert infores("TUTORIAL_KG") == "infores:tutorial-kg"
     assert infores("CHEMBL") == "infores:chembl"
+
+
+# ? upstream_resource_ids Uses PubMed Central InfoRes For PMC Repositories
+def test_upstream_resource_ids_pmc() -> None:
+    assert lib.upstream_resource_ids(Repositories.PUBMED_CENTRAL) == ["infores:pubmed-central"]
+
+
+# ? upstream_resource_ids Uses PubMed InfoRes For PMID Repositories
+def test_upstream_resource_ids_pubmed() -> None:
+    assert lib.upstream_resource_ids(Repositories.PUBMED) == ["infores:pubmed"]
+
+
+# ? Tcode collect Adds Upstream Resource IDs From Provenance Repository
+def test_tcode_collect_adds_upstream_resource_ids(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if len(op[1]) > 0 and op[1][0] == "upstream_resource_ids"]
+    assert ops[0][1] == ("upstream_resource_ids", ["infores:pubmed-central"])
 
 
 # ? normalize Wraps Category In A List And Ensures biolink: Prefix
@@ -555,6 +579,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
             "original_subject": ["A", "B"],
             "object": ["X", "Y"],
             "predicate": ["r", "r"],
+            "upstream_resource_ids": [["infores:pubmed-central"], ["infores:pubmed-central"]],
             "p_value": ["1.0000e-08", "5.0000e-02"],
         }
     ).write_parquet(sub)
@@ -565,6 +590,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     assert all('"id"' in line for line in edges)
     flat: str = "\n".join(edges)
     assert '"p_value":"1.0000e-08"' in flat
+    assert '"upstream_resource_ids":["infores:pubmed-central"]' in flat
     assert len(nodes) >= 1
 
 

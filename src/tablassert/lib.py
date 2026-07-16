@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt
 
-from tablassert.enums import Categories, EdgeCategories, EncodingMethods, Files, Repositories, Tokens
+from tablassert.enums import Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
 from tablassert.models import Encoding, NodeEncoding, Section
@@ -432,6 +432,7 @@ class Tcode(Section):
                 (edge_category, ()),
                 [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)] if self.statement.qualifiers else None,
                 (value, ("repository", self.provenance.repo)),
+                (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
                 (value, ("knowledge_level", self.provenance.knowledge_level)),
                 (value, ("agent_type", self.provenance.agent_type)),
                 (value, ("resource_id", infores(self.name))) if self.name else None,
@@ -482,6 +483,13 @@ def publication_curie(repo: str, publication: str) -> str:
 def infores(name: str) -> str:
     # ? Builds An infores CURIE From A Graph Name In Lower Kebab Case
     return add("infores:", name.lower().replace("_", "-"))
+
+
+def upstream_resource_ids(repo: Repositories) -> list[str]:
+    # ? Maps Publication Repository To Translator InfoRes Upstream Source IDs
+    if eq(repo, Repositories.PUBMED_CENTRAL):
+        return [InformationResources.PUBMED_CENTRAL.value]
+    return [InformationResources.PUBMED.value]
 
 
 def label_edge(r: object, domain: str = "TABLASSERT", out: str = "id") -> object:
