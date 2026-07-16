@@ -374,6 +374,8 @@ class Tcode(Section):
                 (value, ("syntax", self.syntax)),
                 (value, ("configuration_file", self.config.name)),
                 (value, ("repository", self.provenance.repo)),
+                (value, ("knowledge_level", self.provenance.knowledge_level)),
+                (value, ("agent_type", self.provenance.agent_type)),
                 (value, ("resource_id", infores(self.name))) if self.name else None,
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
                 (value, ("url", str(self.source.url))),

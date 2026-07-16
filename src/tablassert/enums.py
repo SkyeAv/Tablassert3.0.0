@@ -513,3 +513,24 @@ class Qualifiers(str, Enum):
     SUBJECT_SPECIALIZATION_QUALIFIER = "subject_specialization_qualifier"
     TEMPORAL_CONTEXT_QUALIFIER = "temporal_context_qualifier"
     TEMPORAL_INTERVAL_QUALIFIER = "temporal_interval_qualifier"
+
+
+class KnowledgeLevels(str, Enum):
+    KNOWLEDGE_ASSERTION = "knowledge_assertion"
+    LOGICAL_ENTAILMENT = "logical_entailment"
+    NOT_PROVIDED = "not_provided"
+    OBSERVATION = "observation"
+    PREDICTION = "prediction"
+    STATISTICAL_ASSOCIATION = "statistical_association"
+    TEXT_CO_OCCURRENCE = "text_co_occurrence"
+
+
+class AgentTypes(str, Enum):
+    AUTOMATED_AGENT = "automated_agent"
+    COMPUTATIONAL_MODEL = "computational_model"
+    DATA_ANALYSIS_PIPELINE = "data_analysis_pipeline"
+    IMAGE_PROCESSING_AGENT = "image_processing_agent"
+    MANUAL_AGENT = "manual_agent"
+    MANUAL_VALIDATION_OF_AUTOMATED_AGENT = "manual_validation_of_automated_agent"
+    NOT_PROVIDED = "not_provided"
+    TEXT_MINING_AGENT = "text_mining_agent"

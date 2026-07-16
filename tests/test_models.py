@@ -161,6 +161,20 @@ def test_provenance_valid() -> None:
     )
     assert p.repo == "PMC"
     assert p.publication == "PMC0000000"
+    assert p.knowledge_level == "statistical_association"
+    assert p.agent_type == "data_analysis_pipeline"
+
+
+# ? Provenance Accepts Custom KL/AT Values
+def test_provenance_custom_knowledge_level_and_agent_type() -> None:
+    p: Provenance = Provenance(  # pyright: ignore
+        repo="PMID",  # pyright: ignore[reportArgumentType]
+        publication="12345678",
+        knowledge_level="prediction",  # pyright: ignore[reportArgumentType]
+        agent_type="computational_model",  # pyright: ignore[reportArgumentType]
+    )
+    assert p.knowledge_level == "prediction"
+    assert p.agent_type == "computational_model"
 
 
 # ? Annotation Valid Construction

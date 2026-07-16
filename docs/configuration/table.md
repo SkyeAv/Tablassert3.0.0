@@ -428,6 +428,8 @@ Required metadata about data source.
 |-------|------|----------|-------------|
 | `repo` | String | No | Repository. Defaults to `"PMC"`; allowed values are `"PMC"`, `"PMID"`. |
 | `publication` | String | Yes | Repository-local identifier emitted as a CURIE. For `repo: PMC` the value **must** start with `PMC` followed by digits (e.g., `"PMC11708054"`, `"PMC123"`) and is emitted under the `PMCID:` namespace as `PMCID:PMC...` (previously `PMC:PMC...`); for `repo: PMID` it is emitted as `PMID:<publication>` (e.g., `"11708054"` → `PMID:11708054`). The `repository` output column still records the raw `repo` value (`PMC`/`PMID`). |
+| `knowledge_level` | String | No | Biolink KL/AT knowledge level of produced edges. Defaults to `"statistical_association"`; allowed values are the `KnowledgeLevels` enum (e.g., `knowledge_assertion`, `logical_entailment`, `prediction`, `statistical_association`, `text_co_occurrence`, `observation`, `not_provided`). |
+| `agent_type` | String | No | Biolink KL/AT agent type responsible for produced edges. Defaults to `"data_analysis_pipeline"`; allowed values are the `AgentTypes` enum (e.g., `manual_agent`, `automated_agent`, `data_analysis_pipeline`, `computational_model`, `text_mining_agent`, `image_processing_agent`, `manual_validation_of_automated_agent`, `not_provided`). |
 | `contributors` | List[Contributor] | Yes | Curation information |
 
 **Contributor fields:**

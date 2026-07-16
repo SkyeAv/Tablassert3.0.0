@@ -9,12 +9,14 @@ import lazy_loader as Lazy
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
 from tablassert.enums import (
+    AgentTypes,
     Categories,
     Comparisons,
     EncodingMethods,
     Files,
     FillMethods,
     Functions,
+    KnowledgeLevels,
     Predicates,
     Qualifiers,
     Repositories,
@@ -212,6 +214,10 @@ class Statement(TablaBase):
 class Provenance(TablaBase):
     repo: Repositories = Field(Repositories.PUBMED_CENTRAL, description="Publication identifier namespace prefix.")
     publication: str = Field(..., description="Repository-local publication id appended as repo:publication.", examples=["12345678", "PMC1234567"])
+    knowledge_level: KnowledgeLevels = Field(
+        KnowledgeLevels.STATISTICAL_ASSOCIATION, description="Biolink KL/AT knowledge level applied to produced edges."
+    )
+    agent_type: AgentTypes = Field(AgentTypes.DATA_ANALYSIS_PIPELINE, description="Biolink KL/AT agent type responsible for produced edges.")
 
     @model_validator(mode="after")
     def is_valid_pmc_id(self: Self) -> Self:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import Enum
 
 from tablassert.enums import (
+    AgentTypes,
     Categories,
     Comparisons,
     Contributions,
@@ -10,6 +11,7 @@ from tablassert.enums import (
     Files,
     FillMethods,
     Functions,
+    KnowledgeLevels,
     Predicates,
     Qualifiers,
     Repositories,
@@ -77,6 +79,17 @@ def test_predicates_is_str_enum() -> None:
 def test_qualifiers_is_str_enum() -> None:
     assert issubclass(Qualifiers, str)
     assert issubclass(Qualifiers, Enum)
+
+
+# ? KnowledgeLevels And AgentTypes Are str, Enum Subclasses
+def test_knowledge_levels_is_str_enum() -> None:
+    assert issubclass(KnowledgeLevels, str)
+    assert issubclass(KnowledgeLevels, Enum)
+
+
+def test_agent_types_is_str_enum() -> None:
+    assert issubclass(AgentTypes, str)
+    assert issubclass(AgentTypes, Enum)
 
 
 # ? Enum Values Are Lowercase Strings
@@ -165,3 +178,21 @@ def test_predicates_has_related_to() -> None:
 # ? Qualifier Has Expected Members
 def test_qualifiers_has_disease_context() -> None:
     assert Qualifiers.DISEASE_CONTEXT_QUALIFIER == "disease_context_qualifier"
+
+
+# ? KnowledgeLevels Has Expected Members
+def test_knowledge_levels_has_statistical_association() -> None:
+    assert KnowledgeLevels.STATISTICAL_ASSOCIATION == "statistical_association"
+
+
+def test_knowledge_levels_has_not_provided() -> None:
+    assert KnowledgeLevels.NOT_PROVIDED == "not_provided"
+
+
+# ? AgentTypes Has Expected Members
+def test_agent_types_has_data_analysis_pipeline() -> None:
+    assert AgentTypes.DATA_ANALYSIS_PIPELINE == "data_analysis_pipeline"
+
+
+def test_agent_types_has_manual_agent() -> None:
+    assert AgentTypes.MANUAL_AGENT == "manual_agent"
