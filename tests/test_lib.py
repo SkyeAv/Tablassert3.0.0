@@ -7,7 +7,19 @@ import polars as pl
 
 import tablassert.lib as lib
 from tablassert.ingests import from_yaml
-from tablassert.lib import Tcode, clean_numeric, format_numeric, idxname, infores, label_edge, numeric_columns, strip_nulls
+from tablassert.lib import (
+    Tcode,
+    clean_numeric,
+    edge_category,
+    edge_tables,
+    format_numeric,
+    idxname,
+    infores,
+    label_edge,
+    numeric_columns,
+    parse_edge_name,
+    strip_nulls,
+)
 
 
 # ? idxname Converts Single Letter Columns
@@ -582,3 +594,67 @@ def test_sig_works_on_cleaned_float64() -> None:
     cleaned: pl.LazyFrame = clean_numeric(lf)
     result: pl.DataFrame = lib.sig(cleaned).collect()
     assert result["significant"].to_list() == ["YES", "NO", "UNSURE"]
+
+
+# ? edge_category Maps SmallMolecule + Disease To ChemicalEntityToDiseaseAssociation
+def test_edge_category_chemical_to_disease() -> None:
+    lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:SmallMolecule"], "object category": ["biolink:Disease"]})
+    result: pl.DataFrame = edge_category(lf).collect()
+    assert result["category"].to_list()[0] == ["biolink:ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation"]
+
+
+# ? edge_category Maps Gene + Disease To GeneToDiseaseAssociation
+def test_edge_category_gene_to_disease() -> None:
+    lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:Gene"], "object category": ["biolink:Disease"]})
+    result: pl.DataFrame = edge_category(lf).collect()
+    assert result["category"].to_list()[0] == ["biolink:GeneToDiseaseAssociation"]
+
+
+# ? edge_category Bridges Protein To Gene (No ProteinTo* Associations In Biolink)
+def test_edge_category_protein_to_disease() -> None:
+    lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:Protein"], "object category": ["biolink:Disease"]})
+    result: pl.DataFrame = edge_category(lf).collect()
+    assert result["category"].to_list()[0] == ["biolink:GeneToDiseaseAssociation"]
+
+
+# ? edge_category Falls Back To Generic Association For Unmapped Pairs
+def test_edge_category_unmapped_falls_back() -> None:
+    lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:Publication"], "object category": ["biolink:Pathway"]})
+    result: pl.DataFrame = edge_category(lf).collect()
+    assert result["category"].to_list()[0] == ["biolink:Association"]
+
+
+# ? edge_category Maps Drug + Disease Through ChemicalEntity Hierarchy
+def test_edge_category_drug_to_disease() -> None:
+    lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:Drug"], "object category": ["biolink:Disease"]})
+    result: pl.DataFrame = edge_category(lf).collect()
+    assert result["category"].to_list()[0] == ["biolink:ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation"]
+
+
+# ? edge_category Maps SequenceVariant + Disease Through Variant Role
+def test_edge_category_variant_to_disease() -> None:
+    lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:SequenceVariant"], "object category": ["biolink:Disease"]})
+    result: pl.DataFrame = edge_category(lf).collect()
+    assert result["category"].to_list()[0] == ["biolink:VariantToDiseaseAssociation"]
+
+
+# ? parse_edge_name Parses Standard Name
+def test_parse_edge_name_standard() -> None:
+    assert parse_edge_name("GeneToDiseaseAssociation") == ("Gene", ["Disease"])
+
+
+# ? parse_edge_name Splits Multi-Object Names On Or
+def test_parse_edge_name_multi_object() -> None:
+    assert parse_edge_name("ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation") == ("ChemicalEntity", ["Disease", "PhenotypicFeature"])
+
+
+# ? parse_edge_name Returns None For Non-Standard Names
+def test_parse_edge_name_no_to() -> None:
+    assert parse_edge_name("ChemicalGeneInteractionAssociation") is None
+
+
+# ? edge_tables Returns Same Object On Repeat Calls (Cached)
+def test_edge_tables_cached() -> None:
+    first: tuple[dict[str, str], dict[str, str]] = edge_tables()
+    second: tuple[dict[str, str], dict[str, str]] = edge_tables()
+    assert first is second

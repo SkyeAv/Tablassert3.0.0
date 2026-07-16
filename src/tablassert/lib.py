@@ -4,7 +4,7 @@ import math
 import operator
 from collections.abc import Iterable
 from contextlib import ExitStack
-from functools import reduce
+from functools import cache, reduce
 from operator import add, eq, le, lt
 from os.path import basename
 from pathlib import Path
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt
 
-from tablassert.enums import Categories, EncodingMethods, Files, Repositories, Tokens
+from tablassert.enums import Categories, EdgeCategories, EncodingMethods, Files, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
 from tablassert.models import Encoding, NodeEncoding, Section
@@ -35,6 +35,76 @@ else:
     xxhash = Lazy.load("xxhash")
 
 logger = cat("PIPELINE")
+
+CATEGORY_PARENT: dict[str, str] = {
+    # ? Biolink Is_A Chain -- Leaf To Parent Role For Association Name Matching
+    "SmallMolecule": "MolecularEntity",
+    "MolecularEntity": "ChemicalEntity",
+    "Drug": "MolecularMixture",
+    "MolecularMixture": "ChemicalMixture",
+    "ChemicalMixture": "ChemicalEntity",
+    "Protein": "Gene",
+    "SequenceVariant": "Variant",
+    "Haplotype": "Genotype",
+}
+
+
+def parse_edge_name(name: str) -> Optional[tuple[str, list[str]]]:
+    # ? Parses {Subject}To{Object}Association Into (Subject, [Object Roles])
+    name = name.removesuffix("Association")
+    if "To" not in name:
+        return None
+    subj: str = ""
+    rest: str = ""
+    subj, rest = name.split("To", 1)
+    return (subj, rest.split("Or"))
+
+
+@cache
+def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
+    # ? Generates And Caches CATEGORY_ROLE And EDGE_LOOKUP On First Call
+
+    # ? Flattened Leaf -> Root Role (Walks CATEGORY_PARENT Chain To Root)
+    CATEGORY_ROLE: dict[str, str] = {}
+    for leaf in CATEGORY_PARENT:
+        role: str = leaf
+        while role in CATEGORY_PARENT:
+            role = CATEGORY_PARENT[role]
+        CATEGORY_ROLE[leaf] = role
+
+    # ? Auto-Generated (Subject Role, Object Role) -> EdgeCategories
+    EDGE_MAP: dict[tuple[str, str], EdgeCategories] = {}
+    for ec in EdgeCategories:
+        if ec is not EdgeCategories.ASSOCIATION:
+            parsed: Optional[tuple[str, list[str]]] = parse_edge_name(ec.value)
+            if parsed is not None:
+                subj: str = ""
+                objs: list[str] = []
+                subj, objs = parsed
+                for obj in objs:
+                    EDGE_MAP[(subj, obj)] = ec
+
+    # ? Non-Standard Names -- Explicit Overrides
+    EDGE_MAP[("ChemicalEntity", "Gene")] = EdgeCategories.CHEMICAL_GENE_INTERACTION
+
+    # ? Flattened "subj_role|obj_role" -> biolink CURIE (For Polars replace_strict)
+    EDGE_LOOKUP: dict[str, str] = {f"{s}|{o}": add("biolink:", ec.value) for (s, o), ec in EDGE_MAP.items()}
+
+    return CATEGORY_ROLE, EDGE_LOOKUP
+
+
+def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # ? Adds Derived Edge Category Column Using Native Polars Replace Operations
+    cat_role: dict[str, str]
+    edge_lookup: dict[str, str]
+    cat_role, edge_lookup = edge_tables()
+    sr: pl.Expr = pl.col("subject category").str.replace("biolink:", "").replace(cat_role).fill_null("")
+    or_: pl.Expr = pl.col("object category").str.replace("biolink:", "").replace(cat_role).fill_null("")
+    return lf.with_columns(
+        pl.concat_list(
+            pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=add("biolink:", EdgeCategories.ASSOCIATION.value))
+        ).alias("category")
+    )
 
 
 def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
@@ -370,6 +440,7 @@ class Tcode(Section):
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
+                (edge_category, ()),
                 [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)] if self.statement.qualifiers else None,
                 (value, ("syntax", self.syntax)),
                 (value, ("configuration_file", self.config.name)),
