@@ -248,10 +248,7 @@ def pvalue_target(name: str) -> Optional[str]:
         return None
 
     is_adjusted: bool = (
-        core_padj
-        or core_qvalue
-        or bool(STANDALONE_ADJUSTED_PATTERN.search(name))
-        or (bool(CONTEXTUAL_ADJUSTED_PATTERN.search(name)) and has_core)
+        core_padj or core_qvalue or bool(STANDALONE_ADJUSTED_PATTERN.search(name)) or (bool(CONTEXTUAL_ADJUSTED_PATTERN.search(name)) and has_core)
     )
 
     if not (has_core or is_adjusted):
@@ -354,6 +351,7 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
     df.write_parquet(p)
 
     return p
+
 
 class Tcode(Section):
     # ? Extends Section To Compile A KG
