@@ -213,14 +213,6 @@ def test_normalize_category_null_stays_null() -> None:
     assert result == [None]
 
 
-# ? publications Exports Category Within A List
-def test_publications_category_is_list() -> None:
-    edges: pl.LazyFrame = pl.DataFrame({"publication": ["PMID:1"], "title": ["A Study"]}).lazy()
-    nodes, _ = lib.publications(edges)
-    result: list[Any] = nodes.collect()["category"].to_list()
-    assert result == [["biolink:Publication"]]
-
-
 # ? Tcode collect Emits resource_id Op When Graph Name Is Provided
 def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
@@ -529,7 +521,20 @@ def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
 def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     sub: Path = tmp_path / "sub.parquet"
-    pl.DataFrame({"subject": ["A", "B"], "object": ["X", "Y"], "predicate": ["r", "r"], "p_value": ["1.0000e-08", "5.0000e-02"]}).write_parquet(sub)
+    pl.DataFrame(
+        {
+            "subject": ["A", "B"],
+            "subject_name": ["Alpha", "Beta"],
+            "subject_category": ["gene", "gene"],
+            "subject_taxon": [None, None],
+            "subject_source": [None, None],
+            "subject_source_version": [None, None],
+            "original_subject": ["A", "B"],
+            "object": ["X", "Y"],
+            "predicate": ["r", "r"],
+            "p_value": ["1.0000e-08", "5.0000e-02"],
+        }
+    ).write_parquet(sub)
     lib.compile_graph([sub], "smoke", "1.0.0")
     edges: list[str] = (tmp_path / "smoke_1.0.0.edges.ndjson").read_text().strip().splitlines()
     nodes: list[str] = (tmp_path / "smoke_1.0.0.nodes.ndjson").read_text().strip().splitlines()
@@ -538,6 +543,37 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     flat: str = "\n".join(edges)
     assert '"p_value":"1.0000e-08"' in flat
     assert len(nodes) >= 1
+
+
+# ? compile_graph Keeps Qualifier And Publication Columns On Edges, Out Of Nodes
+def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: Any, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    sub: Path = tmp_path / "sub.parquet"
+    pl.DataFrame(
+        {
+            "subject": ["A"],
+            "subject_name": ["Alpha"],
+            "subject_category": ["gene"],
+            "subject_taxon": [None],
+            "subject_source": [None],
+            "subject_source_version": [None],
+            "original_subject": ["A"],
+            "object": ["X"],
+            "predicate": ["r"],
+            "disease_context_qualifier": ["MONDO:0005148"],
+            "original_disease_context_qualifier": ["MONDO:0005148"],
+            "publication": ["PMID:123"],
+        }
+    ).write_parquet(sub)
+    lib.compile_graph([sub], "qual", "1.0.0")
+    edges: str = (tmp_path / "qual_1.0.0.edges.ndjson").read_text()
+    nodes: str = (tmp_path / "qual_1.0.0.nodes.ndjson").read_text()
+    # ! Qualifier And Publication Stay On Edges
+    assert "MONDO:0005148" in edges
+    assert "PMID:123" in edges
+    # ! Neither Becomes A Node
+    assert "MONDO:0005148" not in nodes
+    assert "PMID:123" not in nodes
 
 
 # ? sig Computes Significance On A Cleaned Float64 P Value Column

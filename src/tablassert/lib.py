@@ -428,19 +428,6 @@ def infores(name: str) -> str:
     return add("infores:", name.lower().replace("_", "-"))
 
 
-def publications(
-    edges: pl.LazyFrame, names: list[str] = ["id", "name", "first_author", "journal", "year_published"]
-) -> tuple[pl.LazyFrame, pl.LazyFrame]:
-    cols: list[str] = ["publication", "title", "first_author", "journal", "year_published"]
-    cols = [x for x in cols if x in edges.collect_schema().names()]
-    nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
-    nodes = nodes.with_columns(pl.lit("biolink:Publication").alias("category"))
-    # ? Exports Category Within A List
-    nodes = nodes.with_columns(pl.concat_list(pl.col("category")).alias("category"))
-    edges_out: pl.LazyFrame = edges.drop(cols[1:])
-    return nodes, edges_out
-
-
 def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> object:
     # ? Gives Edges A Unique UUID In The Tablassert Namespace
     r[out] = namespace_uuid(domain, *r.values())  # pyright: ignore
@@ -503,13 +490,12 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
     for s in subgraphs:
         lf: pl.LazyFrame = pl.scan_parquet(s)
 
-        node_cols: list[str] = [col.replace("original_", "") for col in lf.collect_schema().names() if "original_" in col]
+        # ? Only subject and object become nodes; qualifier columns stay as edge attributes
+        originals: list[str] = [col.replace("original_", "") for col in lf.collect_schema().names() if "original_" in col]
+        node_cols: list[str] = [c for c in originals if c in ("subject", "object")]
         for col in node_cols:
             partial, lf = normalize(lf, col)
             subnodes.append(partial)
-
-        partial, lf = publications(lf)
-        subnodes.append(partial)
         subedges.append(lf)
 
     # ! Collection Point: Appending To Output Files
