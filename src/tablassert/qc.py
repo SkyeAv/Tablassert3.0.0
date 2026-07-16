@@ -45,15 +45,11 @@ def get_qc_provider(provider: Optional[Literal["cpu", "cuda"]] = None) -> tuple[
     if provider == "cpu":
         if has_cpu or has_cuda:
             return CPU_PROVIDER, None
-        raise RuntimeError(
-            "03 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda]."
-        )
+        raise RuntimeError("03 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
 
     if provider == "cuda":
         if not has_cuda:
-            raise RuntimeError(
-                "04 | QC requested CUDA runtime but onnxruntime-gpu is not installed. Install tablassert[qc-cuda]."
-            )
+            raise RuntimeError("04 | QC requested CUDA runtime but onnxruntime-gpu is not installed. Install tablassert[qc-cuda].")
         available: list[str] = ort.get_available_providers()  # pyright: ignore
         if CUDA_PROVIDER not in available:
             raise RuntimeError(
@@ -91,11 +87,11 @@ def get_biobert(provider: Optional[Literal["cpu", "cuda"]] = None) -> object:
         model_kwargs["provider_options"] = provider_options
 
     if MODEL.exists():
-        model: object = sentence_transformers.SentenceTransformer(
-            str(MODEL), backend=MODEL_BACKEND, model_kwargs=model_kwargs
-        )  # pyright: ignore
+        model: object = sentence_transformers.SentenceTransformer(str(MODEL), backend=MODEL_BACKEND, model_kwargs=model_kwargs)  # pyright: ignore
     else:
-        model = sentence_transformers.SentenceTransformer("pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=model_kwargs)  # pyright: ignore
+        model = sentence_transformers.SentenceTransformer(
+            "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=model_kwargs
+        )  # pyright: ignore
         MODEL.mkdir(parents=True, exist_ok=True)
         model.save(MODEL)  # pyright: ignore
 

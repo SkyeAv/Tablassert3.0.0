@@ -51,16 +51,12 @@ def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFr
 
     terms: pl.LazyFrame = pl.concat([t1, t2]).unique(subset=[col], keep="first")
 
-    bad: str = (
-        r"^\d+$|^(none|nan|na|null|unknown|not applicable|p value|variable|result|exposure|expression|symbol)$|^$"
-    )
+    bad: str = r"^\d+$|^(none|nan|na|null|unknown|not applicable|p value|variable|result|exposure|expression|symbol)$|^$"
     terms = terms.filter(~pl.col(col).str.contains(bad))
     return terms.with_columns((plh.col(col).nchash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
 
 
-def query_builder(
-    prioritize: Optional[list[Categories]], avoid: Optional[list[Categories]], taxon: Optional[str]
-) -> str:
+def query_builder(prioritize: Optional[list[Categories]], avoid: Optional[list[Categories]], taxon: Optional[str]) -> str:
     # ? Build Query With UNION For Better Index Utilization
     base: str = """
     SELECT
@@ -147,14 +143,10 @@ def query_distinct(
     return deduplicate_result(result, column_context)
 
 
-def log_unmatched(
-    col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]
-) -> None:
+def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]) -> None:
     # * Log Unmatched Entities
     level_one: pl.LazyFrame = terms.filter(pl.col("nlp level") == 1)
-    antimatches: pl.LazyFrame = level_one.join(
-        matches.lazy().select("term"), left_on="term", right_on="term", how="anti"
-    )
+    antimatches: pl.LazyFrame = level_one.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
 
     # ! Collection Point: Requires Eager
     unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
@@ -188,9 +180,7 @@ def resolve(
 
     # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
     df: pl.DataFrame = lf.collect()
-    result: pl.DataFrame = df.join(
-        matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix=" l1"
-    )
+    result: pl.DataFrame = df.join(matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix=" l1")
 
     l2_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(2))
     result = result.join(l2_matches, left_on=l2, right_on="term", how="left", suffix=" l2")
@@ -210,26 +200,16 @@ def resolve(
             .then(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID").cast(pl.String)))
             .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID l2").cast(pl.String)))
             .alias(add(col, " taxon")),
-            pl.when(pl.col("SOURCE_NAME").is_not_null())
-            .then(pl.col("SOURCE_NAME"))
-            .otherwise(pl.col("SOURCE_NAME l2"))
-            .alias(add(col, " source")),
+            pl.when(pl.col("SOURCE_NAME").is_not_null()).then(pl.col("SOURCE_NAME")).otherwise(pl.col("SOURCE_NAME l2")).alias(add(col, " source")),
             pl.when(pl.col("SOURCE_VERSION").is_not_null())
             .then(pl.col("SOURCE_VERSION"))
             .otherwise(pl.col("SOURCE_VERSION l2"))
             .alias(add(col, " source version")),
-            pl.when(pl.col("NLP_LEVEL").is_not_null())
-            .then(pl.col("NLP_LEVEL"))
-            .otherwise(pl.col("NLP_LEVEL l2"))
-            .alias(add(col, " nlp level")),
+            pl.when(pl.col("NLP_LEVEL").is_not_null()).then(pl.col("NLP_LEVEL")).otherwise(pl.col("NLP_LEVEL l2")).alias(add(col, " nlp level")),
         ]
     )
 
-    result = result.select(
-        pl.exclude(
-            r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l2)?$"
-        )
-    )
+    result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)( l2)?$"))
     result = result.select(pl.exclude(add(col, " two")))
     result = result.with_columns(pl.col(add(col, " taxon")).replace("NCBITaxon:0", None))
     result = result.filter(pl.col(col).is_not_null())

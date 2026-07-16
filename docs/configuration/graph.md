@@ -84,12 +84,11 @@ See [Datassert](../datassert.md) for installation, build commands, and database 
 **`pubmed_db: path`**
 
 Optional path to SQLite database with PubMed metadata:
-- MeSH terms
 - Authors
 - Journal information
 - Publication dates
 
-When provided, this enriches edges with MeSH annotations.
+When provided, this enriches edges with publication metadata.
 
 **`pmc_db: path`**
 
@@ -144,11 +143,11 @@ When you run `tablassert build graph.yaml`:
    - Download source file (if URL specified)
    - Apply transformations and resolve entities using `datassert`
    - Validate with the QC audit when `qc: true`
-   - Enrich with provenance: query `pubmed_db` (MeSH) and `pmc_db` (captions) when configured
+   - Enrich with provenance: query `pubmed_db` (publication metadata) and `pmc_db` (captions) when configured
 5. **Build subgraphs** - Compile each section's resolved data into a parquet file
 6. **Compile graph** - Aggregate all subgraph parquets and export `{name}_{version}.nodes.ndjson` / `.edges.ndjson`
 
-> Note: provenance enrichment (`with_mesh`/`with_captions`) and QC both run during the per-section Collect Instructions stage, *before* subgraphs are built — not as a separate post-aggregation step.
+> Note: provenance enrichment (`with_publication`/`with_captions`) and QC both run during the per-section Collect Instructions stage, *before* subgraphs are built — not as a separate post-aggregation step.
 
 ## Output Files
 

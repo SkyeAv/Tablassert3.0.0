@@ -456,9 +456,7 @@ class Predicates(str, Enum):
     SIMILAR_TO = "similar_to"
     STUDIED_TO_TREAT = "studied_to_treat"
     SUBCLASS_OF = "subclass_of"
-    SUBJECT_OF_TREATMENT_APPLICATION_OR_STUDY_FOR_TREATMENT_BY = (
-        "subject_of_treatment_application_or_study_for_treatment_by"
-    )
+    SUBJECT_OF_TREATMENT_APPLICATION_OR_STUDY_FOR_TREATMENT_BY = "subject_of_treatment_application_or_study_for_treatment_by"
     SUPERCLASS_OF = "superclass_of"
     TARGET_FOR = "target_for"
     TAXON_OF = "taxon_of"

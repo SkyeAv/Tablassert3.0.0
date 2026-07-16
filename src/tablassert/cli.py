@@ -24,8 +24,7 @@ else:
     pydantic = Lazy.load("pydantic")
 
 APP: cyclopts.App = cyclopts.App(
-    version=f"tablassert {get_version('tablassert')}",
-    help="Extract Knowledge Assertions From Tabular Data Into KGX NDJSON",
+    version=f"tablassert {get_version('tablassert')}", help="Extract Knowledge Assertions From Tabular Data Into KGX NDJSON"
 )
 
 
@@ -65,9 +64,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
         h: str = mkhash(s)
         start(f"CONFIG: {Path(s['config']).name} | HASH: {h}")
         try:
-            tcode.append(
-                Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc})
-            )
+            tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc, "name": g.name}))
         except pydantic.ValidationError as e:
             raise RuntimeError(
                 f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
@@ -75,10 +72,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
         advance()
 
     with ExitStack() as stack:
-        conns: list[object] = [
-            stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True))
-            for x in range(SHARDS)
-        ]
+        conns: list[object] = [stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True)) for x in range(SHARDS)]
 
         # * Collect Instructions (4/6)
         progress.stage(f"Collecting Instructions | Sections: {n}")

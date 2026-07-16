@@ -30,26 +30,16 @@ else:
 
 class TablaBase(BaseModel):
     model_config: ConfigDict = ConfigDict(  # pyright: ignore
-        str_strip_whitespace=False,
-        validate_assignment=True,
-        use_enum_values=True,
-        extra="forbid",
-        populate_by_name=True,
+        str_strip_whitespace=False, validate_assignment=True, use_enum_values=True, extra="forbid", populate_by_name=True
     )
 
 
 class Reindex(TablaBase):
-    column: str = Field(
-        ..., pattern=r"^[A-Z]{1,3}$", description="Source column letters used for row filtering.", examples=["A", "AA"]
-    )
+    column: str = Field(..., pattern=r"^[A-Z]{1,3}$", description="Source column letters used for row filtering.", examples=["A", "AA"])
     comparison: Comparisons = Field(
-        Comparisons.NE,
-        description="Comparison operator used in reindex filtering.",
-        examples=[Comparisons.NE, Comparisons.EQ, Comparisons.GT],
+        Comparisons.NE, description="Comparison operator used in reindex filtering.", examples=[Comparisons.NE, Comparisons.EQ, Comparisons.GT]
     )
-    comparator: Union[str, int, float] = Field(
-        ..., description="Right-side value compared against the selected column.", examples=["N/A", 0, 1.5]
-    )
+    comparator: Union[str, int, float] = Field(..., description="Right-side value compared against the selected column.", examples=["N/A", 0, 1.5])
 
     @model_validator(mode="after")
     def comparison_datatypes(self: Self) -> Self:
@@ -67,13 +57,12 @@ class Reindex(TablaBase):
 
         return self
 
+
 class BaseSource(TablaBase):
     local: Path = Field(..., description="Local path to read from or download into.")
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
 
-    rows: Optional[list[PositiveInt]] = Field(
-        None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]]
-    )
+    rows: Optional[list[PositiveInt]] = Field(None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]])
     row_slice: Optional[list[Union[PositiveInt, Literal[Tokens.AUTO]]]] = Field(
         None,
         description="Two-value row bounds [start, stop]; each value can be an index or 'auto'.",
@@ -102,15 +91,11 @@ class Excel(BaseSource):
 
 class Text(BaseSource):
     kind: Literal[Files.TEXT] = Field(Files.TEXT, description="Source kind; must be 'text'.")
-    delimiter: Optional[str] = Field(
-        ",", description="Field delimiter for headerless text/CSV scanning.", examples=[",", "\t", "|"]
-    )
+    delimiter: Optional[str] = Field(",", description="Field delimiter for headerless text/CSV scanning.", examples=[",", "\t", "|"])
 
 
 class Regex(TablaBase):
-    pattern: Union[int, float, str] = Field(
-        ..., description="Regex pattern passed to string replacement.", examples=["\\s+", "\\.$"]
-    )
+    pattern: Union[int, float, str] = Field(..., description="Regex pattern passed to string replacement.", examples=["\\s+", "\\.$"])
 
     @field_validator("pattern", mode="after")
     @classmethod
@@ -123,9 +108,7 @@ class Regex(TablaBase):
 
         return pattern
 
-    replacement: Union[int, float, str] = Field(
-        ..., description="Replacement value used when the pattern matches.", examples=[" ", "", 0]
-    )
+    replacement: Union[int, float, str] = Field(..., description="Replacement value used when the pattern matches.", examples=[" ", "", 0])
 
     @field_validator("replacement", mode="after")
     @classmethod
@@ -142,9 +125,7 @@ class Regex(TablaBase):
 class Math(TablaBase):
     function: Functions = Field(..., description="Math function applied during numeric transformation.")
     arguments: list[Union[Literal[Tokens.VALUES], float, int]] = Field(
-        ...,
-        description="Function arguments; use 'values' to inject the current value.",
-        examples=[[Tokens.VALUES, 2], [-1, Tokens.VALUES]],
+        ..., description="Function arguments; use 'values' to inject the current value.", examples=[[Tokens.VALUES, 2], [-1, Tokens.VALUES]]
     )
 
 
@@ -174,21 +155,15 @@ class Encoding(TablaBase):
         examples=[[{"pattern": "\\s+", "replacement": " "}, {"pattern": "\\.$", "replacement": ""}]],
     )
     fill: Optional[FillMethods] = Field(
-        None,
-        description="Null fill strategy applied after value extraction.",
-        examples=[FillMethods.FORWARD, FillMethods.ZERO],
+        None, description="Null fill strategy applied after value extraction.", examples=[FillMethods.FORWARD, FillMethods.ZERO]
     )
     remove: Optional[list[Union[int, float, str]]] = Field(
-        None,
-        description="Regex patterns removed from text (replace with empty string).",
-        examples=[["\\[\\d+\\]", "\\s+"]],
+        None, description="Regex patterns removed from text (replace with empty string).", examples=[["\\[\\d+\\]", "\\s+"]]
     )
 
     @field_validator("remove", mode="after")
     @classmethod
-    def polars_compatible_replacement(
-        cls, remove: Optional[list[Union[int, float, str]]]
-    ) -> Optional[list[Union[int, float, str]]]:
+    def polars_compatible_replacement(cls, remove: Optional[list[Union[int, float, str]]]) -> Optional[list[Union[int, float, str]]]:
         if remove:
             for r in remove:
                 try:
@@ -201,9 +176,7 @@ class Encoding(TablaBase):
 
     prefix: Optional[str] = Field(None, description="String prepended to the encoded value.")
     suffix: Optional[str] = Field(None, description="String appended to the encoded value.")
-    explode_by: Optional[str] = Field(
-        None, description="Delimiter used to split a value into multiple rows.", examples=[";", "|"]
-    )
+    explode_by: Optional[str] = Field(None, description="Delimiter used to split a value into multiple rows.", examples=[";", "|"])
     transformations: Optional[list[Math]] = Field(
         None,
         description="Ordered math operations applied to numeric values.",
@@ -212,18 +185,12 @@ class Encoding(TablaBase):
 
 
 class NodeEncoding(Encoding):
-    taxon: Optional[PositiveInt] = Field(
-        None, description="NCBI taxon id used to constrain gene-oriented mapping.", examples=[9606, 10090]
-    )
+    taxon: Optional[PositiveInt] = Field(None, description="NCBI taxon id used to constrain gene-oriented mapping.", examples=[9606, 10090])
     prioritize: Optional[list[Categories]] = Field(
-        None,
-        description="Biolink categories ranked higher during entity resolution.",
-        examples=[[Categories.GENE, Categories.PROTEIN]],
+        None, description="Biolink categories ranked higher during entity resolution.", examples=[[Categories.GENE, Categories.PROTEIN]]
     )
     avoid: Optional[list[Categories]] = Field(
-        None,
-        description="Biolink categories excluded during entity resolution.",
-        examples=[[Categories.DISEASE, Categories.PHENOTYPIC_FEATURE]],
+        None, description="Biolink categories excluded during entity resolution.", examples=[[Categories.DISEASE, Categories.PHENOTYPIC_FEATURE]]
     )
 
 
@@ -239,17 +206,12 @@ class Statement(TablaBase):
     subject: NodeEncoding = Field(..., description="Subject node encoding and mapping configuration.")
     object: NodeEncoding = Field(..., description="Object node encoding and mapping configuration.")
     predicate: Predicates = Field(Predicates.RELATED_TO, description="Predicate connecting subject and object nodes.")
-    qualifiers: Optional[list[Qualifier]] = Field(
-        None, description="Optional qualifier nodes attached to the statement."
-    )
+    qualifiers: Optional[list[Qualifier]] = Field(None, description="Optional qualifier nodes attached to the statement.")
+
 
 class Provenance(TablaBase):
     repo: Repositories = Field(Repositories.PUBMED_CENTRAL, description="Publication identifier namespace prefix.")
-    publication: str = Field(
-        ...,
-        description="Repository-local publication id appended as repo:publication.",
-        examples=["12345678", "PMC1234567"],
-    )
+    publication: str = Field(..., description="Repository-local publication id appended as repo:publication.", examples=["12345678", "PMC1234567"])
 
     @model_validator(mode="after")
     def is_valid_pmc_id(self: Self) -> Self:
@@ -261,10 +223,9 @@ class Provenance(TablaBase):
 
         return self
 
+
 class Annotation(Encoding):
-    annotation: str = Field(
-        ..., description="Output column name that receives this encoded annotation.", examples=["p_value", "cohort"]
-    )
+    annotation: str = Field(..., description="Output column name that receives this encoded annotation.", examples=["p_value", "cohort"])
 
     @field_validator("annotation", mode="after")
     @classmethod
@@ -278,9 +239,7 @@ class Section(TablaBase):
     source: Union[Excel, Text] = Field(..., description="Input source definition for reading tabular rows.")
     statement: Statement = Field(..., description="Subject-object statement mapping for this section.")
     provenance: Provenance = Field(..., description="Provenance metadata applied to all produced edges.")
-    annotations: Optional[list[Annotation]] = Field(
-        None, description="Optional extra encoded columns added to each row."
-    )
+    annotations: Optional[list[Annotation]] = Field(None, description="Optional extra encoded columns added to each row.")
 
 
 class Graph(TablaBase):
@@ -290,15 +249,9 @@ class Graph(TablaBase):
     version: str = Field(..., description="Graph version label.")
     log: bool = Field(False, description="Whether to log unmatched entities and audit details during graph builds.")
     qc: bool = Field(False, description="Whether to run the QC audit stage during graph builds.")
-    tables: list[Path] = Field(
-        ..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]]
-    )
-    datassert: Path = Field(
-        ..., description="Base datassert directory containing data shard DuckDB files.", examples=[".datassert"]
-    )
+    tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
+    datassert: Path = Field(..., description="Base datassert directory containing data shard DuckDB files.", examples=[".datassert"])
     pubmed_db: Optional[Path] = Field(
-        None, description="Optional PubMed sqlite database for MeSH enrichment.", examples=[".datassert/pubmed.sqlite"]
+        None, description="Optional PubMed sqlite database for publication metadata enrichment.", examples=[".datassert/pubmed.sqlite"]
     )
-    pmc_db: Optional[Path] = Field(
-        None, description="Optional PMC sqlite database for caption enrichment.", examples=[".datassert/pmc.sqlite"]
-    )
+    pmc_db: Optional[Path] = Field(None, description="Optional PMC sqlite database for caption enrichment.", examples=[".datassert/pmc.sqlite"])

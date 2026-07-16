@@ -10,16 +10,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.padding import Padding
 from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TaskID,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 if TYPE_CHECKING:
     from pydantic import ValidationError
@@ -80,16 +71,11 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
     def __enter__(self: "PipelineProgress") -> "PipelineProgress":
         self.console.line(1)
         self.live.start()
-        self.stage_task = self.progress.add_task(
-            description=f"STAGE 0/{self.total_stages} | STARTING", total=self.total_stages
-        )
+        self.stage_task = self.progress.add_task(description=f"STAGE 0/{self.total_stages} | STARTING", total=self.total_stages)
         return self
 
     def __exit__(
-        self: "PipelineProgress",
-        exc_type: Optional[type[BaseException]],
-        exc: Optional[BaseException],
-        tb: Optional[TracebackType],
+        self: "PipelineProgress", exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
     ) -> None:
         self.live.stop()
         self.console.line(1)
@@ -97,16 +83,10 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
     def stage(self: "PipelineProgress", name: str) -> None:
         self.stage_step += 1
         assert self.stage_task is not None
-        self.progress.update(
-            self.stage_task,
-            description=f"STAGE {self.stage_step}/{self.total_stages} | {name.upper()}",
-            completed=self.stage_step,
-        )
+        self.progress.update(self.stage_task, description=f"STAGE {self.stage_step}/{self.total_stages} | {name.upper()}", completed=self.stage_step)
         self.end_section_task()
 
-    def section_loop(
-        self: "PipelineProgress", total: int, label: str
-    ) -> tuple[Callable[[str], None], Callable[[], None]]:
+    def section_loop(self: "PipelineProgress", total: int, label: str) -> tuple[Callable[[str], None], Callable[[], None]]:
         # ? Returns A start Callback To Mark The In Flight Item And An advance Callback To Tick The Counter
         # ! start Updates The Description Without Incrementing So The Bar Shows The Item Being Processed
         self.end_section_task()

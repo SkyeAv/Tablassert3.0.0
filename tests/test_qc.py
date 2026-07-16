@@ -72,9 +72,7 @@ def test_get_biobert_threads_provider_options(monkeypatch: Any, tmp_path: Path) 
             return None
 
     monkeypatch.setattr(qc, "ort", DummyOrt())
-    monkeypatch.setattr(
-        qc, "sentence_transformers", type("DummyST", (), {"SentenceTransformer": DummySentenceTransformer})
-    )
+    monkeypatch.setattr(qc, "sentence_transformers", type("DummyST", (), {"SentenceTransformer": DummySentenceTransformer}))
     monkeypatch.setattr(qc, "get_qc_provider", lambda provider=None: (qc.CUDA_PROVIDER, {"device_id": 0}))
     monkeypatch.setattr(qc, "MODEL", tmp_path / ".onnxassert")
     monkeypatch.setattr(qc, "BIOBERT", {})

@@ -63,6 +63,7 @@ def test_syntaxes_is_str_enum() -> None:
     assert issubclass(Syntaxes, str)
     assert issubclass(Syntaxes, Enum)
 
+
 def test_categories_is_str_enum() -> None:
     assert issubclass(Categories, str)
     assert issubclass(Categories, Enum)
@@ -104,6 +105,7 @@ def test_contributions_values() -> None:
 def test_syntaxes_values() -> None:
     assert Syntaxes.TC4 == "TC4"
     assert Syntaxes.GC2 == "GC2"
+
 
 def test_files_values() -> None:
     assert Files.TEXT == "text"

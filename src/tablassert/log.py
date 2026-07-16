@@ -15,9 +15,7 @@ LOG_FORMAT: str = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {extra[category]} | {m
 
 logger.configure(extra={"category": "PIPELINE"})
 logger.remove()
-logger.add(
-    (LOGASSERT / "logassert.log"), level="INFO", format=LOG_FORMAT, rotation="100 MB", encoding="utf-8", mode="w"
-)
+logger.add((LOGASSERT / "logassert.log"), level="INFO", format=LOG_FORMAT, rotation="100 MB", encoding="utf-8", mode="w")
 
 
 def cat(name: str) -> "Logger":

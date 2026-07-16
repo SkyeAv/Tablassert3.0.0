@@ -52,20 +52,14 @@ def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
     return lf.with_columns(pl.col(x).alias(col))
 
 
-def math_op(
-    lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Tokens.VALUES], float, int]]
-) -> pl.LazyFrame:
+def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Tokens.VALUES], float, int]]) -> pl.LazyFrame:
     # ? Transform Values In A Column With The Math Module
     # ! Collection Point: Required For map_elements
     # * strict=False tolerates residual non numeric junk in numeric annotation columns
     df: pl.DataFrame = lf.collect()
     expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
     attr: Callable[[Any], Any] = getattr(math, func)
-    df = df.with_columns(
-        expr.map_elements(
-            lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args)), return_dtype=pl.Float64
-        ).alias(col)
-    )
+    df = df.with_columns(expr.map_elements(lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args)), return_dtype=pl.Float64).alias(col))
     return df.lazy()
 
 
@@ -233,8 +227,8 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
     return p
 
 
-def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
-    # ? Adds PubMedDB Related MeSH Annotations To LazyFrame
+def with_publication(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
+    # ? Adds PubMedDB Related Publication Metadata To LazyFrame
     # ! Collection Point: SQLite Query Then Per-Row Literal Assignment
     from sqlite_utils import Database
 
@@ -243,14 +237,11 @@ def with_mesh(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
     try:
         query: str = """
 SELECT
-  mesh.mesh_major,
-  mesh.mesh,
   info.firstauthor,
   info.journal,
   info.title,
   info.year
 FROM ids
-INNER JOIN mesh ON ids.pmid = mesh.pmid
 INNER JOIN info ON ids.pmid = info.pmid
 WHERE ids.alt = :curie OR ids.pmid = :curie
 LIMIT 1
@@ -258,10 +249,6 @@ LIMIT 1
         rows: list[dict[str, str]] = list(db.query(query, {"curie": curie})) or []
     finally:
         db.conn.close()  # pyright: ignore
-    all_ids: list[str] = [add("MESH:", x["mesh"]) for x in rows if x]
-    is_major: list[bool] = [eq(x["mesh_major"], "Y") for x in rows]
-    domain: list[str] = [x for x, y in zip(all_ids, is_major) if y]
-    mesh: list[str] = [x for x in all_ids if x not in domain]
 
     row: dict[str, str] = rows[0] if rows else {}
     first_author: Optional[str] = row.get("firstauthor")
@@ -269,10 +256,6 @@ LIMIT 1
     title: Optional[str] = row.get("title")
     year: Optional[str] = row.get("year")
 
-    if domain:
-        df = df.with_columns(pl.lit(domain).alias("domain"))
-    if mesh:
-        df = df.with_columns(pl.lit(mesh).alias("mesh"))
     if first_author:
         df = df.with_columns(pl.lit(first_author).alias("first author"))
     if journal:
@@ -318,14 +301,14 @@ class Tcode(Section):
     store: Path = Field(...)
     log: bool = Field(False)
     qc: bool = Field(False)
+    name: Optional[str] = Field(None)
 
     def encoding(self: Self, x: Encoding, col: str, table_literal: bool = False) -> list[Any]:
         # ? Collect Helper For Encoding Classes
         return [
             (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
             (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
-            (column, (add(col, " table literal value"), col))
-            if (table_literal and eq(x.method, EncodingMethods.COLUMN)) else None,
+            (column, (add(col, " table literal value"), col)) if (table_literal and eq(x.method, EncodingMethods.COLUMN)) else None,
             (fill, (col, x.fill)) if x.fill else None,
             (explode, (col, x.explode_by)) if x.explode_by else None,
             [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
@@ -359,9 +342,7 @@ class Tcode(Section):
                 result.append(x)
         return result
 
-    def collect(
-        self: Self, conns: list[object], pubmed_db: Optional[Path], pmc_db: Optional[Path]
-    ) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+    def collect(self: Self, conns: list[object], pubmed_db: Optional[Path], pmc_db: Optional[Path]) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
         # ? Code That Tells Tablassert What Actions To While Transforming Data
 
         if self.store.is_file():
@@ -389,15 +370,16 @@ class Tcode(Section):
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
-                [op for x in self.statement.qualifiers for op in self.node(x, add("biolink:", x.qualifier), conns)] if self.statement.qualifiers else None,
+                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)] if self.statement.qualifiers else None,
                 (value, ("syntax", self.syntax)),
                 (value, ("configuration file", self.config.name)),
                 (value, ("repository", self.provenance.repo)),
+                (value, ("resource_id", infores(self.name))) if self.name else None,
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
                 (value, ("url", str(self.source.url))),
                 (value, ("section hash", self.store.stem)),
                 (value, ("sheet name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
-                (with_mesh, (pubmed_db, self.provenance.publication)) if pubmed_db else None,
+                (with_publication, (pubmed_db, self.provenance.publication)) if pubmed_db else None,
                 (with_captions, (pmc_db, self.provenance.publication, str(self.source.url))) if pmc_db else None,
                 (sig, ()),
                 (trim, ()),
@@ -417,14 +399,7 @@ def normalize(
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     # ? Normalized Disparate Node Columns To A Unified Format And Removes Them From Edges
     # * Returns Partial Nodes And Modified Edges As LazyFrames
-    cols: list[str] = [
-        col,
-        add(col, " name"),
-        add(col, " category"),
-        add(col, " taxon"),
-        add(col, " source"),
-        add(col, " source version"),
-    ]
+    cols: list[str] = [col, add(col, " name"), add(col, " category"), add(col, " taxon"), add(col, " source"), add(col, " source version")]
     nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
     edges_out: pl.LazyFrame = edges.drop(cols[1:])
     return nodes, edges_out
@@ -435,6 +410,11 @@ def publication_curie(repo: str, publication: str) -> str:
     if eq(repo, Repositories.PUBMED_CENTRAL):
         return add("PMCID:", publication)
     return add(repo, add(":", publication))
+
+
+def infores(name: str) -> str:
+    # ? Builds An infores CURIE From A Graph Name In Lower Kebab Case
+    return add("infores:", name.lower().replace("_", "-"))
 
 
 def publications(
@@ -457,11 +437,7 @@ def label_edge(r: object, domain: str = "TABLASSERT", out: str = "uuid") -> obje
 def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) -> dict:
     # ? Removes Null Keys From NDJSON
     return {
-        k: [strip_nulls(i) if isinstance(i, dict) else i for i in v]
-        if isinstance(v, list)
-        else strip_nulls(v)
-        if isinstance(v, dict)
-        else v
+        k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v
         for k, v in r.items()  # pyright: ignore
         if v and str(v).strip().lower() not in bad
     }
@@ -514,9 +490,7 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
     for s in subgraphs:
         lf: pl.LazyFrame = pl.scan_parquet(s)
 
-        node_cols: list[str] = [
-            col.replace("original ", "") for col in lf.collect_schema().names() if "original " in col
-        ]
+        node_cols: list[str] = [col.replace("original ", "") for col in lf.collect_schema().names() if "original " in col]
         for col in node_cols:
             partial, lf = normalize(lf, col)
             subnodes.append(partial)
@@ -558,10 +532,7 @@ def resolve_many(
     lf = level_two(lf, col)
 
     with ExitStack() as stack:
-        conns: list[object] = [
-            stack.enter_context(duckdb.connect(datassert / "data" / f"{x}.duckdb", read_only=True))
-            for x in range(SHARDS)
-        ]
+        conns: list[object] = [stack.enter_context(duckdb.connect(datassert / "data" / f"{x}.duckdb", read_only=True)) for x in range(SHARDS)]
 
         lf = resolve(lf, col, conns, taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
         if qc:

@@ -8,18 +8,7 @@ from pydantic import ValidationError
 
 from tablassert.enums import Categories
 from tablassert.ingests import from_yaml
-from tablassert.models import (
-    Annotation,
-    Encoding,
-    Excel,
-    Graph,
-    NodeEncoding,
-    Provenance,
-    Reindex,
-    Section,
-    Statement,
-    Text,
-)
+from tablassert.models import Annotation, Encoding, Excel, Graph, NodeEncoding, Provenance, Reindex, Section, Statement, Text
 
 
 # ? Valid Minimal Text Section
@@ -98,9 +87,7 @@ def test_encoding_with_optional_fields() -> None:
 # ? Encoding With Regex
 def test_encoding_with_regex() -> None:
     enc: Encoding = Encoding(  # pyright: ignore
-        method="value",
-        encoding="test",
-        regex=[{"pattern": r"\s+", "replacement": " "}, {"pattern": r"\.$", "replacement": ""}],
+        method="value", encoding="test", regex=[{"pattern": r"\s+", "replacement": " "}, {"pattern": r"\.$", "replacement": ""}]
     )
     assert len(enc.regex) == 2  # pyright: ignore
     assert enc.regex[0].pattern == r"\s+"  # pyright: ignore
@@ -165,6 +152,7 @@ def test_reindex_numeric_comparator() -> None:
     ri: Reindex = Reindex(column="B", comparison="gt", comparator=0)  # pyright: ignore
     assert ri.comparator == 0
 
+
 # ? Provenance Valid Construction
 def test_provenance_valid() -> None:
     p: Provenance = Provenance(  # pyright: ignore
@@ -188,10 +176,7 @@ def test_section_rejects_extra_fields() -> None:
         Section(
             source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
             statement={"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},
-            provenance={
-                "repo": "PMC",
-                "publication": "PMC000",
-            },
+            provenance={"repo": "PMC", "publication": "PMC000"},
             unknown_field="bad",  # pyright: ignore
         )
 
@@ -213,10 +198,7 @@ def test_section_with_rows() -> None:
 # ? Section With Reindex
 def test_section_with_reindex() -> None:
     source: Text = Text(  # pyright: ignore
-        local=Path("./test.tsv"),
-        url="https://example.com/test.tsv",
-        kind="text",
-        reindex=[{"column": "A", "comparison": "ne", "comparator": ""}],
+        local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", reindex=[{"column": "A", "comparison": "ne", "comparator": ""}]
     )
     assert len(source.reindex) == 1  # pyright: ignore
     assert source.reindex[0].column == "A"  # pyright: ignore
@@ -231,10 +213,7 @@ def test_section_with_qualifiers() -> None:
             "object": {"method": "value", "encoding": "B"},
             "qualifiers": [{"qualifier": "disease_context_qualifier", "method": "value", "encoding": "MONDO:0005575"}],
         },
-        provenance={
-            "repo": "PMC",
-            "publication": "PMC000",
-        },
+        provenance={"repo": "PMC", "publication": "PMC000"},
     )
     assert len(section.statement.qualifiers) == 1  # pyright: ignore
 
@@ -244,10 +223,7 @@ def test_section_with_annotations() -> None:
     section: Section = Section(  # pyright: ignore
         source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
         statement={"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},
-        provenance={
-            "repo": "PMC",
-            "publication": "PMC000",
-        },
+        provenance={"repo": "PMC", "publication": "PMC000"},
         annotations=[
             {"annotation": "p value", "method": "column", "encoding": "E"},
             {"annotation": "sample size", "method": "value", "encoding": 28},

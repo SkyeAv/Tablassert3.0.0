@@ -7,7 +7,7 @@ import polars as pl
 
 import tablassert.lib as lib
 from tablassert.ingests import from_yaml
-from tablassert.lib import Tcode, clean_numeric, format_numeric, idxname, label_edge, numeric_columns, strip_nulls
+from tablassert.lib import Tcode, clean_numeric, format_numeric, idxname, infores, label_edge, numeric_columns, strip_nulls
 
 
 # ? idxname Converts Single Letter Columns
@@ -113,6 +113,7 @@ def test_label_edge_deterministic() -> None:
     result2: dict = label_edge(r2)  # pyright: ignore
     assert result1["uuid"] == result2["uuid"]
 
+
 # ? Tcode Allows Unresolved Value Encodings During Validation
 def test_tcode_model_allows_unresolved_value_encoding(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
@@ -167,15 +168,51 @@ def test_publication_curie_pubmed() -> None:
     assert lib.publication_curie("PMID", "11708054") == "PMID:11708054"
 
 
+# ? infores Lower Kebab Cases A Screaming Snake Graph Name With infores Prefix
+def test_infores_screaming_snake() -> None:
+    assert infores("MULTIOMICS_KG") == "infores:multiomics-kg"
+
+
+# ? infores Handles Single Word And Tutorial Graph Names
+def test_infores_single_and_tutorial() -> None:
+    assert infores("TUTORIAL_KG") == "infores:tutorial-kg"
+    assert infores("CHEMBL") == "infores:chembl"
+
+
+# ? Tcode collect Emits resource_id Op When Graph Name Is Provided
+def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "MULTIOMICS_KG"}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
+
+    assert len(rid_ops) == 1
+    assert rid_ops[0][1] == ("resource_id", "infores:multiomics-kg")
+
+
+# ? Tcode collect Omits resource_id Op When Graph Name Is Absent (Validate Path)
+def test_tcode_collect_omits_resource_id_when_unnamed(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
+
+    assert rid_ops == []
+
+
 # ? Tcode Captures Table Literal Value Before Regex For Column Encoded Nodes
 def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
-    data["statement"]["subject"] = {
-        "method": "column",
-        "encoding": "A",
-        "regex": [{"pattern": "\\s+", "replacement": " "}],
-    }
+    data["statement"]["subject"] = {"method": "column", "encoding": "A", "regex": [{"pattern": "\\s+", "replacement": " "}]}
     data["statement"]["object"] = {"method": "column", "encoding": "B"}
 
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -187,12 +224,8 @@ def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path)
     assert "subject table literal value" in targets
     assert "object table literal value" in targets
 
-    lit_idx: int = next(
-        i for i, op in enumerate(collected) if len(op[1]) > 0 and op[1][0] == "subject table literal value"
-    )
-    regex_idx: int = next(
-        i for i, op in enumerate(collected) if op[0].__name__ == "regex" and len(op[1]) > 0 and op[1][0] == "subject"
-    )
+    lit_idx: int = next(i for i, op in enumerate(collected) if len(op[1]) > 0 and op[1][0] == "subject table literal value")
+    regex_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "regex" and len(op[1]) > 0 and op[1][0] == "subject")
     assert lit_idx < regex_idx
 
 
@@ -231,13 +264,7 @@ def test_resolve_many_skips_qc(monkeypatch: Any, tmp_path: Path) -> None:
         return lf
 
     def fake_qc(
-        lf: pl.LazyFrame,
-        col: str,
-        section_hash: str,
-        config_file: str,
-        out: str = "passed",
-        log: bool = True,
-        provider: str | None = None,
+        lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True, provider: str | None = None
     ) -> pl.LazyFrame:
         calls.append(("qc", col, section_hash, config_file, out, log, provider))
         return lf
@@ -275,13 +302,7 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
         return lf
 
     def fake_qc(
-        lf: pl.LazyFrame,
-        col: str,
-        section_hash: str,
-        config_file: str,
-        out: str = "passed",
-        log: bool = True,
-        provider: str | None = None,
+        lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True, provider: str | None = None
     ) -> pl.LazyFrame:
         calls.append(("qc", col, section_hash, config_file, out, log, provider))
         return lf.with_columns(pl.lit("YES").alias(out))
@@ -366,9 +387,7 @@ def test_numeric_columns_case_insensitive() -> None:
 
 # ? clean_numeric Coerces Numeric And Scientific Notation Strings To Float64
 def test_clean_numeric_parses_numeric_and_scientific() -> None:
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"p value": ["1e-8", "0.05", "450"], "sample size": ["1200", "0.42", "-1.2"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p value": ["1e-8", "0.05", "450"], "sample size": ["1200", "0.42", "-1.2"]}).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
     assert result.schema["p value"] == pl.Float64
     assert result.schema["sample size"] == pl.Float64
@@ -388,9 +407,7 @@ def test_clean_numeric_nulls_non_numeric() -> None:
 
 # ? clean_numeric Leaves Non Matching Columns Untouched
 def test_clean_numeric_leaves_non_matching_untouched() -> None:
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"subject": ["BRCA1", "TP53"], "assertion method": ["ANOVA", "t-test"], "p value": ["0.05", "1e-8"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "assertion method": ["ANOVA", "t-test"], "p value": ["0.05", "1e-8"]}).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
     assert result.schema["subject"] == pl.String
     assert result.schema["assertion method"] == pl.String
@@ -418,9 +435,7 @@ def test_clean_numeric_idempotent_on_float64() -> None:
 
 # ? format_numeric Renders P Value Columns In Scientific Notation
 def test_format_numeric_p_value_scientific() -> None:
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"p value": ["1e-8", "0.05", "0.001"], "adjusted p value": ["0.0001", "0.1", "0.2"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p value": ["1e-8", "0.05", "0.001"], "adjusted p value": ["0.0001", "0.1", "0.2"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     assert result["p value"].to_list() == ["1.0000e-08", "5.0000e-02", "1.0000e-03"]
     assert result["adjusted p value"].to_list() == ["1.0000e-04", "1.0000e-01", "2.0000e-01"]
@@ -429,9 +444,7 @@ def test_format_numeric_p_value_scientific() -> None:
 
 # ? format_numeric Renders Relationship Strength And Sample Size In Decimal General Format
 def test_format_numeric_decimal_general() -> None:
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"relationship strength": ["0.85", "0.42", "0.1234"], "sample size": ["450", "1200", "7"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"relationship strength": ["0.85", "0.42", "0.1234"], "sample size": ["450", "1200", "7"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     assert result["relationship strength"].to_list() == ["0.85", "0.42", "0.1234"]
     assert result["sample size"].to_list() == ["450", "1200", "7"]
@@ -461,9 +474,7 @@ def test_format_numeric_noop_without_numeric_columns() -> None:
 
 # ? Cleaned And Formatted Null Numeric Values Are Stripped From NDJSON Rows
 def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"subject": ["BRCA1", "TP53"], "p value": ["1e-8", "N/A"], "relationship strength": ["0.85", "0.42"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "p value": ["1e-8", "N/A"], "relationship strength": ["0.85", "0.42"]}).lazy()
     formatted: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     rows: list[dict[str, Any]] = [strip_nulls(r) for r in formatted.iter_rows(named=True)]
     assert rows[0] == {"subject": "BRCA1", "p value": "1.0000e-08", "relationship strength": "0.85"}
@@ -476,9 +487,7 @@ def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
 def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     sub: Path = tmp_path / "sub.parquet"
-    pl.DataFrame(
-        {"subject": ["A", "B"], "object": ["X", "Y"], "predicate": ["r", "r"], "p value": ["1.0000e-08", "5.0000e-02"]}
-    ).write_parquet(sub)
+    pl.DataFrame({"subject": ["A", "B"], "object": ["X", "Y"], "predicate": ["r", "r"], "p value": ["1.0000e-08", "5.0000e-02"]}).write_parquet(sub)
     lib.compile_graph([sub], "smoke", "1.0.0")
     edges: list[str] = (tmp_path / "smoke_1.0.0.edges.ndjson").read_text().strip().splitlines()
     nodes: list[str] = (tmp_path / "smoke_1.0.0.nodes.ndjson").read_text().strip().splitlines()
