@@ -14,7 +14,7 @@ This page presents a real-world table configuration (ALAMV6.yaml) with annotatio
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
 
   # Data source: Excel file from PubMed Central
@@ -74,7 +74,7 @@ template:
         organizations:
           - Institute for Systems Biology
           - CalPoly SLO
-        comment: Manual Migration From TC2 to TC3 To Test Tablassert
+        comment: Manual Migration From TC2 to TC4 To Test Tablassert
 
   # Statistical metadata as edge annotations
   annotations:
@@ -220,7 +220,7 @@ Here's how you'd use sections if you wanted multiple predicates from the same so
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   source: {...}  # Same source
   provenance: {...}  # Same provenance
 
@@ -270,7 +270,7 @@ This pattern maps both subject and object from columns — both nodes require en
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   source:
     kind: excel
     url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
@@ -334,7 +334,7 @@ This pattern handles wide tables where each column encodes a different object (e
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   source:
     kind: excel
     url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx

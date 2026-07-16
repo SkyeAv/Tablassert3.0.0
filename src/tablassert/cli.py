@@ -80,7 +80,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
         instructions: list[Any] = []
         for x in tcode:
             start(format_section_oneline(x))
-            instructions.append(x.collect(conns, g.pubmed_db, g.pmc_db))  # pyright: ignore
+            instructions.append(x.collect(conns))  # pyright: ignore
             advance()
 
         # * Build Subgraphs (5/6)

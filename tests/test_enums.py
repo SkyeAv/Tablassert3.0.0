@@ -117,7 +117,7 @@ def test_contributions_values() -> None:
 
 def test_syntaxes_values() -> None:
     assert Syntaxes.TC4 == "TC4"
-    assert Syntaxes.GC2 == "GC2"
+    assert Syntaxes.GC3 == "GC3"
 
 
 def test_files_values() -> None:

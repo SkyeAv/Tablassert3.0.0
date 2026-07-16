@@ -145,7 +145,7 @@ def test_tcode_collect_threads_download_context(fixtures_path: Path) -> None:
         {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     first_op: tuple[Any, tuple[Any]] = collected[0]
 
     assert first_op[0].__name__ == "from_url"
@@ -174,7 +174,7 @@ def test_tcode_collect_skips_qc_by_default(fixtures_path: Path) -> None:
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     qc_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "fullmap_audit"]
 
     assert qc_ops == []
@@ -188,7 +188,7 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     qc_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "fullmap_audit"]
 
     assert len(qc_ops) == 2
@@ -259,7 +259,7 @@ def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "MULTIOMICS_KG"}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
 
     assert len(rid_ops) == 1
@@ -274,7 +274,7 @@ def test_tcode_collect_omits_resource_id_when_unnamed(fixtures_path: Path) -> No
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
 
     assert rid_ops == []
@@ -291,7 +291,7 @@ def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path)
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
     assert "subject_table_literal_value" in targets
     assert "object_table_literal_value" in targets
@@ -309,7 +309,7 @@ def test_tcode_table_literal_value_absent_for_value_encoding(fixtures_path: Path
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
     assert "subject_table_literal_value" not in targets
     assert "object_table_literal_value" not in targets
@@ -834,7 +834,7 @@ def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) 
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_pvalue_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 

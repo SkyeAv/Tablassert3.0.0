@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Breaking Changes
+- Replaced graph syntax `GC2` with `GC3`. Graph configurations now reject `syntax: GC2`.
+- Removed `pubmed_db` and `pmc_db` from graph configuration and removed the downstream PubMed metadata and PMC caption enrichment steps from graph builds.
+
 ## 7.5.2 - 2026-07-01
 
 ### Changed

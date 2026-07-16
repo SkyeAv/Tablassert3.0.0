@@ -8,7 +8,7 @@ A graph configuration file specifies:
 - Output knowledge graph name and version
 - Whether QC auditing runs during the build
 - List of table configurations to process
-- Database locations for entity resolution and provenance
+- Database location for entity resolution
 
 ## Schema
 
@@ -25,17 +25,15 @@ A graph configuration file specifies:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `syntax` | String | Configuration version. Defaults to `"GC2"` (also accepts `"TC3"`); overriding is not recommended. |
-| `pubmed_db` | Path | Path to SQLite PubMed metadata database |
-| `pmc_db` | Path | Path to SQLite PMC figure captions database |
+| `syntax` | String | Configuration version. Defaults to `"GC3"`; overriding is not recommended. |
 | `log` | Boolean | Log unmatched entities and audit details during graph builds |
 | `qc` | Boolean | Enable the QC audit stage during graph builds |
 
 ### Field Details
 
-**`syntax: "GC2"`**
+**`syntax: "GC3"`**
 
-Configuration syntax version. Defaults to `"GC2"` (the type also accepts `"TC3"`); overriding the default is not recommended.
+Configuration syntax version. Defaults to `"GC3"`; overriding the default is not recommended.
 
 **`name: string`**
 
@@ -81,21 +79,6 @@ Path to the [datassert](../datassert.md) directory for entity resolution. Tablas
 
 See [Datassert](../datassert.md) for installation, build commands, and database schema.
 
-**`pubmed_db: path`**
-
-Optional path to SQLite database with PubMed metadata:
-- Authors
-- Journal information
-- Publication dates
-
-When provided, this enriches edges with publication metadata.
-
-**`pmc_db: path`**
-
-Optional path to SQLite database with PubMed Central figure captions.
-
-When provided, this is used when provenance specifies PMC publications.
-
 ## Path Resolution
 
 Paths can be:
@@ -105,7 +88,7 @@ Paths can be:
 ## Minimal Example
 
 ```yaml
-syntax: GC2
+syntax: GC3
 name: MY_GRAPH
 version: 1.0.0
 log: true
@@ -113,14 +96,12 @@ qc: true
 tables:
   - ./my-table.yaml
 datassert: /data/datassert
-pubmed_db: /data/PubMed.db
-pmc_db: /data/PMCSuppCaptions.db
 ```
 
 ## Multi-Table Example
 
 ```yaml
-syntax: GC2
+syntax: GC3
 name: MULTIOMICS_KG
 version: UNSTABLE
 tables:
@@ -128,8 +109,6 @@ tables:
   - /configs/drug-targets.yaml
   - /configs/protein-interactions.yaml
 datassert: /databases/datassert
-pubmed_db: /databases/PubMed.db
-pmc_db: /databases/PMCSuppCaptions.db
 ```
 
 ## Processing Flow
@@ -143,12 +122,8 @@ When you run `tablassert build graph.yaml`:
    - Download source file (if URL specified)
    - Apply transformations and resolve entities using `datassert`
    - Validate with the QC audit when `qc: true`
-   - Enrich with provenance: query `pubmed_db` (publication metadata) and `pmc_db` (captions) when configured
 5. **Build subgraphs** - Compile each section's resolved data into a parquet file
 6. **Compile graph** - Aggregate all subgraph parquets and export `{name}_{version}.nodes.ndjson` / `.edges.ndjson`
-
-> Note: provenance enrichment (`with_publication`/`with_captions`) and QC both run during the per-section Collect Instructions stage, *before* subgraphs are built — not as a separate post-aggregation step.
-
 ## Output Files
 
 Given this configuration:
@@ -166,14 +141,12 @@ Produces:
 From MOKGV6.yaml:
 
 ```yaml
-syntax: GC2
+syntax: GC3
 name: MULTIOMICS_KG
 version: UNSTABLE
 tables:
   - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
 datassert: /local_raid1/sgoetz/CODE/DATASSERT/datassert
-pubmed_db: /local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
-pmc_db: /local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
 ```
 
 This processes a single table configuration (ALAMV6.yaml) into a knowledge graph named `MULTIOMICS_KG_UNSTABLE`.

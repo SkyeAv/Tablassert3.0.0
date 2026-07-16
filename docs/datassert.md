@@ -76,11 +76,11 @@ Each shard contains four tables:
 
 ## Usage in Graph Config
 
-The `datassert:` field in a GC2 graph configuration points to the directory containing the shards. Tablassert opens all 10 shards at startup and passes the connections to `resolve()`.
+The `datassert:` field in a GC3 graph configuration points to the directory containing the shards. Tablassert opens all 10 shards at startup and passes the connections to `resolve()`.
 
 ```yaml
-# graph-config.yaml (GC2)
-syntax: GC2
+# graph-config.yaml (GC3)
+syntax: GC3
 name: my-graph
 version: "1.0"
 datassert: /path/to/datassert/   # directory containing data/0..9.duckdb

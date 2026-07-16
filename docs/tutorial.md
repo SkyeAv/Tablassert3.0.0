@@ -7,7 +7,7 @@ This tutorial walks through building a simple knowledge graph from a CSV file of
 ## Prerequisites
 
 - Tablassert installed (see [Installation](installation.md))
-- Required database: datassert (`pubmed_db` and `pmc_db` are optional enrichments)
+- Required database: datassert
 - Basic familiarity with YAML
 
 ## The Data
@@ -44,7 +44,7 @@ Create `tutorial-table.yaml`:
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
   source:
     kind: text
@@ -97,14 +97,12 @@ template:
 Create `tutorial-graph.yaml`:
 
 ```yaml
-syntax: GC2
+syntax: GC3
 name: TUTORIAL_KG
 version: 1.0.0
 tables:
   - ./tutorial-table.yaml
 datassert: /path/to/datassert
-pubmed_db: /path/to/PubMed.db
-pmc_db: /path/to/PMCSuppCaptions.db
 ```
 
 **Important:** Replace the database paths with your actual paths.
@@ -112,7 +110,7 @@ pmc_db: /path/to/PMCSuppCaptions.db
 **What this does:**
 - **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson` and `TUTORIAL_KG_1.0.0.edges.ndjson`
 - **tables**: List of table configurations to process
-- **databases**: Path to the datassert directory, plus optional provenance databases
+- **datassert**: Path to the datassert directory for entity resolution
 
 ## Step 4: Run Tablassert
 

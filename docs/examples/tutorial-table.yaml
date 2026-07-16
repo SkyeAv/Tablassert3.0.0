@@ -1,5 +1,5 @@
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
   source:
     kind: text

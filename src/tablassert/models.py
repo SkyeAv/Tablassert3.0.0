@@ -250,14 +250,10 @@ class Section(TablaBase):
 
 class Graph(TablaBase):
     # ? Pydantic "Graph" Configuration
-    syntax: Syntaxes = Field(Syntaxes.GC2, description="Graph configuration syntax version.")
+    syntax: Syntaxes = Field(Syntaxes.GC3, description="Graph configuration syntax version.")
     name: str = Field(..., description="Graph name written into output metadata.")
     version: str = Field(..., description="Graph version label.")
     log: bool = Field(False, description="Whether to log unmatched entities and audit details during graph builds.")
     qc: bool = Field(False, description="Whether to run the QC audit stage during graph builds.")
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
     datassert: Path = Field(..., description="Base datassert directory containing data shard DuckDB files.", examples=[".datassert"])
-    pubmed_db: Optional[Path] = Field(
-        None, description="Optional PubMed sqlite database for publication metadata enrichment.", examples=[".datassert/pubmed.sqlite"]
-    )
-    pmc_db: Optional[Path] = Field(None, description="Optional PMC sqlite database for caption enrichment.", examples=[".datassert/pmc.sqlite"])

@@ -10,7 +10,7 @@ Transform a gene-disease association table into KGX-compliant edges with statist
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
   source:
     kind: text
@@ -61,7 +61,7 @@ Extract drug-target relationships from a curated interaction database.
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
   source:
     kind: text
@@ -116,7 +116,7 @@ Extract microbe-metabolite correlations with taxonomic name cleaning.
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
   source:
     kind: excel
@@ -185,7 +185,7 @@ Map genes to multiple pathways from a single source using sections.
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   source:
     kind: text
     local: ./gene-pathways.csv
@@ -252,7 +252,7 @@ Filter rows based on column values before entity resolution.
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
   source:
     kind: text
@@ -312,7 +312,7 @@ Process hierarchical data where parent values propagate down through empty cells
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
   source:
     kind: text

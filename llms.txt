@@ -4,7 +4,7 @@
 This file is for two audiences: (1) YAML configuration authors and (2) package contributors.
 When source code and prose docs disagree, treat `src/tablassert/models.py` and `src/tablassert/cli.py` as the current authority.
 If you encounter older configurations, migrate `dbssert` to `datassert` (directory path).
-Current CLI behavior opens shard files at `datassert/data/{0..11}.duckdb`.
+Current CLI behavior opens shard files at `datassert/data/{0..9}.duckdb`.
 
 ## Quickstart
 - [README](README.md): high-level overview, install snippets, and one-command graph build.
@@ -13,10 +13,10 @@ Current CLI behavior opens shard files at `datassert/data/{0..11}.duckdb`.
 - [Tutorial](docs/tutorial.md): first end-to-end run from CSV input to KGX NDJSON output.
 
 ## YAML Authoring
-- [Table Configuration Reference](docs/configuration/table.md): TC3 schema, template/sections patterns, and field semantics.
-- [Graph Configuration Reference](docs/configuration/graph.md): GC2 graph config fields and orchestration model.
-- [Tutorial Table Example](docs/examples/tutorial-table.yaml): minimal working TC3 table configuration.
-- [Tutorial Graph Example](docs/examples/tutorial-graph.yaml): minimal GC2 graph configuration.
+- [Table Configuration Reference](docs/configuration/table.md): TC4 schema, template/sections patterns, and field semantics.
+- [Graph Configuration Reference](docs/configuration/graph.md): GC3 graph config fields and orchestration model.
+- [Tutorial Table Example](docs/examples/tutorial-table.yaml): minimal working TC4 table configuration.
+- [Tutorial Graph Example](docs/examples/tutorial-graph.yaml): minimal GC3 graph configuration.
 - [Advanced Example](docs/configuration/advanced-example.md): complex regex, filtering, annotations, and section overrides.
 
 ## CLI and Runtime

@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from contextlib import ExitStack
 from functools import cache, reduce
 from operator import add, eq, le, lt
-from os.path import basename
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
@@ -356,75 +355,6 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
 
     return p
 
-
-def with_publication(lf: pl.LazyFrame, pubmed_db: Path, curie: str) -> pl.LazyFrame:
-    # ? Adds PubMedDB Related Publication Metadata To LazyFrame
-    # ! Collection Point: SQLite Query Then Per-Row Literal Assignment
-    from sqlite_utils import Database
-
-    df: pl.DataFrame = lf.collect()
-    db: object = Database(pubmed_db)
-    try:
-        query: str = """
-SELECT
-  info.firstauthor,
-  info.journal,
-  info.title,
-  info.year
-FROM ids
-INNER JOIN info ON ids.pmid = info.pmid
-WHERE ids.alt = :curie OR ids.pmid = :curie
-LIMIT 1
-"""
-        rows: list[dict[str, str]] = list(db.query(query, {"curie": curie})) or []
-    finally:
-        db.conn.close()  # pyright: ignore
-
-    row: dict[str, str] = rows[0] if rows else {}
-    first_author: Optional[str] = row.get("firstauthor")
-    journal: Optional[str] = row.get("journal")
-    title: Optional[str] = row.get("title")
-    year: Optional[str] = row.get("year")
-
-    if first_author:
-        df = df.with_columns(pl.lit(first_author).alias("first_author"))
-    if journal:
-        df = df.with_columns(pl.lit(journal).alias("journal"))
-    if title:
-        df = df.with_columns(pl.lit(title).alias("title"))
-    if year:
-        df = df.with_columns(pl.lit(year).alias("year_published"))
-
-    return df.lazy()
-
-
-def with_captions(lf: pl.LazyFrame, pmc_db: Path, curie: str, url: str) -> pl.LazyFrame:
-    # ? Adds PMC Caption Annotations To LazyFrame With Filename Heuristic
-    # ! Collection Point: SQLite Query Then Literal Assignment
-    from sqlite_utils import Database
-
-    df: pl.DataFrame = lf.collect()
-    db: object = Database(pmc_db)
-    try:
-        filename: str = basename(url)
-        query: str = """
-SELECT caption
-FROM captions
-WHERE pmc = :curie AND file = :filename
-LIMIT 1
-"""
-        rows: list[dict[str, str]] = list(db.query(query, {"curie": curie, "filename": filename})) or []
-    finally:
-        db.conn.close()  # pyright: ignore
-    row: dict[str, str] = rows[0] if rows else {}
-
-    caption: Optional[str] = row.get("caption")
-    if caption:
-        df = df.with_columns(pl.lit(caption).alias("file_caption"))
-
-    return df.lazy()
-
-
 class Tcode(Section):
     # ? Extends Section To Compile A KG
     config: Path = Field(...)
@@ -472,7 +402,7 @@ class Tcode(Section):
                 result.append(x)
         return result
 
-    def collect(self: Self, conns: list[object], pubmed_db: Optional[Path], pmc_db: Optional[Path]) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+    def collect(self: Self, conns: list[object]) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
         # ? Code That Tells Tablassert What Actions To While Transforming Data
 
         if self.store.is_file():
@@ -513,8 +443,6 @@ class Tcode(Section):
                 (value, ("url", str(self.source.url))),
                 (value, ("section_hash", self.store.stem)),
                 (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
-                (with_publication, (pubmed_db, self.provenance.publication)) if pubmed_db else None,
-                (with_captions, (pmc_db, self.provenance.publication, str(self.source.url))) if pmc_db else None,
                 (sig, ()),
                 (trim, ()),
                 (format_numeric, ()),

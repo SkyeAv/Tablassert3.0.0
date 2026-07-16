@@ -30,6 +30,36 @@ def test_graph_qc_defaults_false() -> None:
     assert graph.qc is False
 
 
+# ? Graph Syntax Defaults To GC3
+def test_graph_syntax_defaults_gc3() -> None:
+    graph: Graph = Graph(  # pyright: ignore
+        name="TEST", version="1.0.0", tables=[Path("./table.yaml")], datassert=Path("./datassert")
+    )
+    assert graph.syntax == "GC3"
+
+
+# ? Graph Rejects Old GC2 Syntax
+def test_graph_rejects_gc2() -> None:
+    with pytest.raises(ValidationError):
+        Graph(  # pyright: ignore
+            syntax="GC2", name="TEST", version="1.0.0", tables=[Path("./table.yaml")], datassert=Path("./datassert")
+        )
+
+
+# ? Graph Rejects Removed Enrichment Databases
+def test_graph_rejects_removed_enrichment_databases() -> None:
+    data: dict[str, Any] = {
+        "name": "TEST",
+        "version": "1.0.0",
+        "tables": [Path("./table.yaml")],
+        "datassert": Path("./datassert"),
+        "pubmed_db": Path("./PubMed.db"),
+        "pmc_db": Path("./PMCSuppCaptions.db"),
+    }
+    with pytest.raises(ValidationError):
+        Graph.model_validate(data)
+
+
 # ? Graph Accepts Explicit QC True
 def test_graph_qc_true() -> None:
     graph: Graph = Graph(  # pyright: ignore

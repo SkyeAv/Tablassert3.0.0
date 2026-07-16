@@ -21,7 +21,7 @@ Use when processing a single table with one output.
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   source: {...}
   statement: {...}
   provenance: {...}
@@ -33,7 +33,7 @@ Use when processing variations of the same data (different columns, predicates, 
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   source: {...}  # Shared by all sections
   provenance: {...}  # Shared by all sections
 
@@ -81,10 +81,10 @@ sections:
 **Scalars:** Section replaces template
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
 
 sections:
-  - syntax: GC2  # Valid values are TC3 (default) and GC2; overriding is not recommended
+  - syntax: GC3  # Valid values are TC4 (default) and GC3; overriding is not recommended
 ```
 
 ### Use Cases
@@ -126,7 +126,7 @@ sections:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `syntax` | String | No | Configuration version. Defaults to `"TC3"`. |
+| `syntax` | String | No | Configuration version. Defaults to `"TC4"`. |
 | `status` | String | No | Development status. Defaults to `"alpha"`; allowed values are `"alpha"`, `"beta"`, `"primetime"`. |
 
 ### Source
@@ -454,7 +454,7 @@ provenance:
       organizations:
         - Institute for Systems Biology
         - CalPoly SLO
-      comment: Migrated from TC2 to TC3
+      comment: Migrated from TC2 to TC4
 ```
 
 ### Annotations
@@ -496,7 +496,7 @@ Minimal table configuration:
 
 ```yaml
 template:
-  syntax: TC3
+  syntax: TC4
   status: alpha
 
   source:
