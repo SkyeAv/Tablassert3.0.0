@@ -5,6 +5,7 @@ import operator
 import re
 from collections.abc import Iterable
 from contextlib import ExitStack
+from datetime import date
 from functools import cache, reduce
 from operator import add, eq, le, lt
 from os.path import basename
@@ -249,10 +250,7 @@ def pvalue_target(name: str) -> Optional[str]:
         return None
 
     is_adjusted: bool = (
-        core_padj
-        or core_qvalue
-        or bool(STANDALONE_ADJUSTED_PATTERN.search(name))
-        or (bool(CONTEXTUAL_ADJUSTED_PATTERN.search(name)) and has_core)
+        core_padj or core_qvalue or bool(STANDALONE_ADJUSTED_PATTERN.search(name)) or (bool(CONTEXTUAL_ADJUSTED_PATTERN.search(name)) and has_core)
     )
 
     if not (has_core or is_adjusted):
@@ -510,6 +508,7 @@ class Tcode(Section):
                 (value, ("agent_type", self.provenance.agent_type)),
                 (value, ("resource_id", infores(self.name))) if self.name else None,
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
+                (value, ("update_date", date.today().isoformat())),
                 (value, ("url", str(self.source.url))),
                 (value, ("section_hash", self.store.stem)),
                 (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore

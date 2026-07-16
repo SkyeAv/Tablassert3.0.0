@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -137,19 +138,19 @@ def test_label_edge_different_data() -> None:
     assert result1["id"] != result2["id"]
 
 
-# ? Tcode collect Threads Downloader Context Into from_url
-def test_tcode_collect_threads_download_context(fixtures_path: Path) -> None:
+# ? Tcode collect Starts Text Sources With Csv Reader
+def test_tcode_collect_starts_text_sources_with_csv_reader(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "number": 7, "config": fixtures_path / "minimal_section.yaml", "store": store}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
     first_op: tuple[Any, tuple[Any]] = collected[0]
 
-    assert first_op[0].__name__ == "from_url"
-    assert first_op[1] == ("https://example.com/test.tsv", Path("test.tsv"), "minimal_section.yaml", "sectionhash")
+    assert first_op[0].__name__ == "csv"
+    assert first_op[1] == ("\t",)
 
 
 # ? Tcode Allows Unresolved Value Encodings During Validation
@@ -194,6 +195,26 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
     assert len(qc_ops) == 2
     assert qc_ops[0][1] == ("subject", "sectionhash", "minimal_section.yaml", "passed", True)
     assert qc_ops[1][1] == ("object", "sectionhash", "minimal_section.yaml", "passed", True)
+
+
+# ? Tcode collect Adds Biolink Update Date Edge Value
+def test_tcode_collect_adds_update_date_value(monkeypatch: Any, fixtures_path: Path) -> None:
+    class FixedDate:
+        @classmethod
+        def today(cls) -> date:
+            return date(2026, 7, 16)
+
+    monkeypatch.setattr(lib, "date", FixedDate)
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    update_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and op[1][0] == "update_date"]
+
+    assert update_ops == [(lib.value, ("update_date", "2026-07-16"))]
 
 
 # ? publication_curie Uses PMCID Namespace For PubMed Central
@@ -571,6 +592,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
             "object": ["X", "Y"],
             "predicate": ["r", "r"],
             "p_value": ["1.0000e-08", "5.0000e-02"],
+            "update_date": ["2026-07-16", "2026-07-16"],
         }
     ).write_parquet(sub)
     lib.compile_graph([sub], "smoke", "1.0.0")
@@ -580,6 +602,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     assert all('"id"' in line for line in edges)
     flat: str = "\n".join(edges)
     assert '"p_value":"1.0000e-08"' in flat
+    assert '"update_date":"2026-07-16"' in flat
     assert len(nodes) >= 1
 
 
