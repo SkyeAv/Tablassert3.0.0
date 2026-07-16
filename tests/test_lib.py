@@ -10,6 +10,7 @@ from tablassert.ingests import from_yaml
 from tablassert.lib import (
     Tcode,
     clean_numeric,
+    coerce_pvalue_columns,
     edge_category,
     edge_tables,
     format_numeric,
@@ -18,6 +19,7 @@ from tablassert.lib import (
     label_edge,
     numeric_columns,
     parse_edge_name,
+    pvalue_target,
     strip_nulls,
 )
 
@@ -658,3 +660,158 @@ def test_edge_tables_cached() -> None:
     first: tuple[dict[str, str], dict[str, str]] = edge_tables()
     second: tuple[dict[str, str], dict[str, str]] = edge_tables()
     assert first is second
+
+
+# ? pvalue_target Matches Common P Value Spellings
+def test_pvalue_target_matches_common_spellings() -> None:
+    names: list[str] = ["p value", "p-value", "p.value", "pvalue", "P VALUE", "p vals", "p-values", "P"]
+    for n in names:
+        assert pvalue_target(n) == "p_value", n
+
+
+# ? pvalue_target Matches Bare P And Padj Style Conventions Found In Real GWAS/DESeq2 Data
+def test_pvalue_target_matches_bare_p_and_padj_conventions() -> None:
+    plain: list[str] = ["p SMR", "smr p", "p eQTL", "eqtl p", "gwas p", "fisher combined p", "log p"]
+    for n in plain:
+        assert pvalue_target(n) == "p_value", n
+
+    adjusted: list[str] = ["padj", "p.adj", "adj.P.Val"]
+    for n in adjusted:
+        assert pvalue_target(n) == "adjusted_p_value", n
+
+
+# ? pvalue_target Detects Adjusted P Value Variants
+def test_pvalue_target_detects_adjusted_variants() -> None:
+    names: list[str] = ["adjusted p value", "adjusted-p-value", "adj p value"]
+    for n in names:
+        assert pvalue_target(n) == "adjusted_p_value", n
+
+
+# ? pvalue_target Detects Broader Adjustment Synonyms
+def test_pvalue_target_detects_broader_adjustment_synonyms() -> None:
+    names: list[str] = [
+        "FDR",
+        "Bonferroni",
+        "Holm",
+        "false discovery rate",
+        "q value",
+        "q-value",
+        "bonferroni pval",
+        "corrected p value",
+        "corrected q value",
+    ]
+    for n in names:
+        assert pvalue_target(n) == "adjusted_p_value", n
+
+
+# ? pvalue_target Does Not Treat Bare Corrected As Adjusted Without A P/Q Value Token
+def test_pvalue_target_bare_corrected_is_not_treated_as_adjusted() -> None:
+    assert pvalue_target("corrected age") is None
+    assert pvalue_target("batch corrected expression") is None
+
+
+# ? pvalue_target Does Not Treat Bare Adjusted As Adjusted P Value Without A P/Q Value Token
+# * Regression For A Real False Positive Found Auditing Production KGX Output: "fully adjusted HR"
+# * Is An Adjusted Hazard Ratio, Not A P Value
+def test_pvalue_target_bare_adjusted_without_pvalue_context_is_not_treated_as_adjusted() -> None:
+    assert pvalue_target("fully adjusted HR") is None
+    assert pvalue_target("adjusted odds ratio") is None
+
+
+# ? pvalue_target Excludes Significance Flag Columns
+# * Regression For A Real False Positive Found Auditing Production KGX Output: "bonferroni significance"
+# * Is A Categorical Flag Like sig()'s Own "significant" Column, Not The Numeric Value
+def test_pvalue_target_excludes_significance_flag_columns() -> None:
+    names: list[str] = ["bonferroni significance", "nominal significance", "age significance flag", "significant"]
+    for n in names:
+        assert pvalue_target(n) is None, n
+
+
+# ? pvalue_target Excludes Bare Q And Q Statistic Columns
+# * Bare "Q" Is Deliberately Not Treated As Q Value Like Since Real Data Also Uses It For
+# * Cochran's Q Test Statistic, Unrelated To Storey's Q Value
+def test_pvalue_target_excludes_bare_q_and_q_statistic_columns() -> None:
+    names: list[str] = ["Q degrees of freedom", "heterogeneity statistic Q", "Cochran Q statistic"]
+    for n in names:
+        assert pvalue_target(n) is None, n
+
+
+# ? pvalue_target Excludes Unrelated Columns
+def test_pvalue_target_excludes_unrelated_columns() -> None:
+    names: list[str] = [
+        "sample size",
+        "relationship strength",
+        "subject",
+        "cohort",
+        "top value",
+        "group value",
+        "hazard ratio",
+        "odds ratio",
+        "probe id",
+        "beta",
+        "standard error",
+    ]
+    for n in names:
+        assert pvalue_target(n) is None, n
+
+
+# ? pvalue_target Does Not Conflate Unadjusted With Adjusted
+def test_pvalue_target_unadjusted_prefix_not_treated_as_adjusted() -> None:
+    assert pvalue_target("unadjusted p value") == "p_value"
+    assert pvalue_target("unadjusted HR") is None
+
+
+# ? coerce_pvalue_columns Renames A Single P Value Column
+def test_coerce_pvalue_columns_renames_single_p_value_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p value": [0.01, 0.05]}).lazy()
+    result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert "p_value" in result.columns
+    assert "p value" not in result.columns
+    assert result["p_value"].to_list() == [0.01, 0.05]
+
+
+# ? coerce_pvalue_columns Renames Both P Value And Adjusted P Value Columns Together
+def test_coerce_pvalue_columns_renames_both_p_value_and_adjusted() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p value": [0.01], "adjusted p value": [0.2]}).lazy()
+    result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert result["p_value"].to_list() == [0.01]
+    assert result["adjusted_p_value"].to_list() == [0.2]
+
+
+# ? coerce_pvalue_columns Picks The Best Fuzzy Match Among Multiple Candidates
+def test_coerce_pvalue_columns_picks_best_fuzzy_match_among_multiple_candidates() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"log p value": [0.9], "p value": [0.01]}).lazy()
+    result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert result["p_value"].to_list() == [0.01]
+    assert result["log p value"].to_list() == [0.9]
+
+
+# ? coerce_pvalue_columns Is A Noop Without P Value Like Columns
+def test_coerce_pvalue_columns_noop_without_pvalue_columns() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1"], "cohort": ["adult"]}).lazy()
+    result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert result.columns == ["subject", "cohort"]
+
+
+# ? coerce_pvalue_columns Is A Noop When Already Canonically Named
+def test_coerce_pvalue_columns_noop_when_already_canonical() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01]}).lazy()
+    result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert result.columns == ["p_value"]
+    assert result["p_value"].to_list() == [0.01]
+
+
+# ? Tcode Coerces P Value Columns After Annotations And Before clean_numeric
+# * So Downstream numeric_columns/sig/format_numeric See Already Canonical p_value/adjusted_p_value Names
+def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([], None, None)  # pyright: ignore
+    coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_pvalue_columns")
+    clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
+
+    assert coerce_idx < clean_idx

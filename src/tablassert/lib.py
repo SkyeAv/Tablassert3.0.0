@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import operator
+import re
 from collections.abc import Iterable
 from contextlib import ExitStack
 from functools import cache, reduce
@@ -222,6 +223,65 @@ def sig(
         return lf.with_columns(pl.lit("UNSURE").alias(out))
 
 
+PVALUE_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bp[\s_\-.]*val(?:ue)?s?\b")
+QVALUE_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bq[\s_\-.]*val(?:ue)?s?\b")
+PADJ_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bp[\s_\-.]*adj(?:usted)?\b")
+BARE_P_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bp\b")
+STANDALONE_ADJUSTED_PATTERN: re.Pattern = re.compile(r"(?i)\b(?:fdr|bonferroni|holm|false discovery rate)\b")
+CONTEXTUAL_ADJUSTED_PATTERN: re.Pattern = re.compile(r"(?i)\b(?:adj(?:usted)?|corrected)\b")
+SIGNIFICANCE_FLAG_PATTERN: re.Pattern = re.compile(r"(?i)significan")
+
+
+def pvalue_target(name: str) -> Optional[str]:
+    # ? Maps A Column Name To Its Canonical Biolink Compliant Target Name
+    # * Word Boundary Anchored So "Group Value" Style Substrings Are Not Falsely Matched
+    # * Bare "P" And "padj"/"p.adj" Cover Common GWAS/DESeq2 Conventions
+    # * "Adj"/"Adjusted"/"Corrected" Only Count Alongside A P/Q Value Token Since They Are
+    # * Generic Words Also Used For Adjusted Hazard/Odds Ratios, Unlike Fdr/Bonferroni/Holm
+    # * "Significance"/"Significant" Columns Are Categorical Flags, Not The Numeric Value, So
+    # * They Are Excluded Unless A P/Q Value Token Is Also Present
+    core_pvalue: bool = bool(PVALUE_TOKEN_PATTERN.search(name)) or bool(BARE_P_TOKEN_PATTERN.search(name))
+    core_qvalue: bool = bool(QVALUE_TOKEN_PATTERN.search(name))
+    core_padj: bool = bool(PADJ_TOKEN_PATTERN.search(name))
+    has_core: bool = core_pvalue or core_qvalue or core_padj
+
+    if SIGNIFICANCE_FLAG_PATTERN.search(name) and not has_core:
+        return None
+
+    is_adjusted: bool = (
+        core_padj
+        or core_qvalue
+        or bool(STANDALONE_ADJUSTED_PATTERN.search(name))
+        or (bool(CONTEXTUAL_ADJUSTED_PATTERN.search(name)) and has_core)
+    )
+
+    if not (has_core or is_adjusted):
+        return None
+    return "adjusted_p_value" if is_adjusted else "p_value"
+
+
+def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # ? Renames P Value Like Columns To Biolink KGX Compliant p_value / adjusted_p_value
+    # * Picks A Single Best Fuzzy Match Per Target When Multiple Candidates Exist
+    from rapidfuzz import fuzz
+
+    names: list[str] = lf.collect_schema().names()
+    buckets: dict[str, list[str]] = {}
+    for n in names:
+        target: Optional[str] = pvalue_target(n)
+        if target:
+            buckets.setdefault(target, []).append(n)
+
+    renames: dict[str, str] = {}
+    for target, candidates in buckets.items():
+        reference: str = target.replace("_", " ")
+        chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+        if chosen != target:
+            renames[chosen] = target
+
+    return lf.rename(renames) if renames else lf
+
+
 def idx(lf: pl.LazyFrame, col: str = "row_number") -> pl.LazyFrame:
     # ? Creates An Index Column Of Row Numbers
     return lf.with_row_index(col)
@@ -436,6 +496,7 @@ class Tcode(Section):
                 if self.source.reindex
                 else None,
                 [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
+                (coerce_pvalue_columns, ()),
                 (clean_numeric, ()),
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
