@@ -109,6 +109,11 @@ def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
     return lf.with_columns(pl.lit(x).alias(col))
 
 
+def source_record_urls(lf: pl.LazyFrame, url: str) -> pl.LazyFrame:
+    # ? Adds Biolink/Translator Source Record URLs As A List Column
+    return lf.with_columns(pl.concat_list(pl.lit(url)).alias("source_record_urls"))
+
+
 def contributor_values(lf: pl.LazyFrame, col: str, contributors: list[dict[str, Any]]) -> pl.LazyFrame:
     # ? Adds Nested Contributors Fields To Column
     return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col))  # pyright: ignore
@@ -434,7 +439,7 @@ class Tcode(Section):
                 (value, ("agent_type", self.provenance.agent_type)),
                 (value, ("resource_id", infores(self.name))) if self.name else None,
                 (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
-                (value, ("url", str(self.source.url))),
+                (source_record_urls, (str(self.source.url),)),
                 (value, ("section_hash", self.store.stem)),
                 (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (sig, ()),

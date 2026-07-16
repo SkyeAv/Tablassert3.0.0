@@ -289,6 +289,27 @@ def test_tcode_collect_omits_resource_id_when_unnamed(fixtures_path: Path) -> No
     assert rid_ops == []
 
 
+# ? Tcode Emits Source Record URLs As A List Column
+def test_tcode_collect_emits_source_record_urls_list(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "source_record_urls"]
+    url_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "url"]
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"]}).lazy()
+    result: pl.DataFrame = source_ops[0][0](lf, *source_ops[0][1]).collect()
+
+    assert len(source_ops) == 1
+    assert url_ops == []
+    assert "source_record_urls" in result.columns
+    assert "url" not in result.columns
+    assert result["source_record_urls"].to_list() == [["https://example.com/test.tsv"]]
+
+
 # ? Tcode Captures Table Literal Value Before Regex For Column Encoded Nodes
 def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
