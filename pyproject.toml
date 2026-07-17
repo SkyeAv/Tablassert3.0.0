@@ -63,7 +63,7 @@ build-backend = "maturin"
 
 [tool.maturin]
 python-source = "src"
-module-name = "tablassert.tablassert_rs"
+module-name = "tablassert.rs"
 bindings = "pyo3"
 manifest-path = "rust/Cargo.toml"
 features = ["extension-module"]

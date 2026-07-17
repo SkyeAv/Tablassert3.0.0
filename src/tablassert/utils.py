@@ -7,7 +7,7 @@ from uuid import UUID, uuid3
 
 import lazy_loader as Lazy
 
-from tablassert import tablassert_rs
+from tablassert import rs
 
 if TYPE_CHECKING:
     import polars as pl
@@ -41,4 +41,4 @@ def basespace(domain: str) -> UUID:
 def namespace_uuid(domain: Any, *values: list[Any]) -> str:
     domain = str(domain)
     clean: list[str] = [str(x) for x in values if x]  # pyright: ignore
-    return tablassert_rs.namespace_uuid(domain, clean)
+    return rs.namespace_uuid(domain, clean)

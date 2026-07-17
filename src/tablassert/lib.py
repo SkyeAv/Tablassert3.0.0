@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt
 
-from tablassert import tablassert_rs
+from tablassert import rs
 from tablassert.enums import Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
@@ -517,7 +517,7 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
     if p_out.is_file():
         p_out.unlink()
 
-    tablassert_rs.dedup_ndjson(p_in, p_out, is_edges, "TABLASSERT")
+    rs.dedup_ndjson(p_in, p_out, is_edges, "TABLASSERT")
 
     p_in.unlink()
 

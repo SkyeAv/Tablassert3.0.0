@@ -82,11 +82,11 @@ def test_namespace_uuid_no_values() -> None:
 
 # ? graph_uuid Returns A Stable UUID Shaped String For A JSON Row
 def test_graph_uuid_returns_stable_uuid() -> None:
-    from tablassert import tablassert_rs
+    from tablassert import rs
 
     row: str = '{"subject":"A","object":"B","predicate":"r"}'
-    a: str = tablassert_rs.graph_uuid(None, row)
-    b: str = tablassert_rs.graph_uuid(None, row)
+    a: str = rs.graph_uuid(None, row)
+    b: str = rs.graph_uuid(None, row)
     assert a == b
     assert isinstance(a, str)
     assert len(a) == 36  # ? Standard UUID string length
