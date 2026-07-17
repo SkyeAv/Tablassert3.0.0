@@ -115,7 +115,7 @@ def fullmap_audit(
     from rapidfuzz.process import cpdist
     from sklearn.metrics.pairwise import cosine_similarity
 
-    original: str = add("original_", col)
+    original: str = add(col, "_pre_resolution")
     preferred: str = add(col, "_name")
     cols: list[str] = [col, original, preferred]
 

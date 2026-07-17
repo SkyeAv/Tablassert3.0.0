@@ -349,12 +349,12 @@ object:
   prefix: "CUSTOM:"  # "123" → "CUSTOM:123"
 ```
 
-**Output columns: `original_<col>` vs `<col>_table_literal_value`** - For every subject/object/qualifier node, the pipeline snapshots the cell value into two edge columns at different stages:
+**Output columns: `original_<col>` vs `<col>_pre_resolution`** - For every subject/object/qualifier node, the pipeline snapshots the cell value into two columns at different stages:
 
-- `<col>_table_literal_value` - the **pristine source-cell value**, captured immediately after the column is read and *before* any `fill`, `explode_by`, `regex`, `remove`, `prefix`, `suffix`, or `transformations`. Emitted only when `method: column` (a `method: value` node has no table source).
-- `original_<col>` - the **fully-transformed value**, captured *after* all of the above, i.e. the same text that is then normalized and resolved to a CURIE. Always present for subject/object/qualifier nodes.
+- `original_<col>` - the **pristine source value**, captured immediately after the column is read (or the literal is set for `method: value`) and *before* any `fill`, `explode_by`, `regex`, `remove`, `prefix`, `suffix`, or `transformations`. Emitted for both `method: value` and `method: column`. Present in final edge output.
+- `<col>_pre_resolution` - the **fully-transformed value**, captured *after* all of the above, i.e. the same text that is then normalized and resolved to a CURIE. **Internal only**: used by QC (`fullmap_audit`) and as the node marker in `compile_graph`; stripped from final edge output.
 
-Example: with `method: column`, `encoding: A`, `remove: ["^NA "]` over a cell `"NA BRCA1"`, `subject_table_literal_value` is `"NA BRCA1"` while `original_subject` is `"BRCA1"`. Annotations never emit a table-literal column.
+Example: with `method: column`, `encoding: A`, `remove: ["^NA "]` over a cell `"NA BRCA1"`, `original_subject` is `"NA BRCA1"` while `subject_pre_resolution` is `"BRCA1"`. Annotations never emit either column.
 
 #### Null Handling
 

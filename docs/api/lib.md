@@ -101,7 +101,7 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 1. **Series construction** — Wraps the input iterable in a `pl.Series` with the given column name, then converts to a single-column `pl.LazyFrame`.
 
-2. **Original column capture** — Copies the raw input column into `original_{col}` via `column(lf, add("original_", col), col)` so the pre-normalization text is preserved in the output.
+2. **Original column capture** — Copies the raw input column into `original_{col}` (pristine source value) via `column(lf, add("original_", col), col)`, and into `{col}_pre_resolution` (the value fed to resolution) via `column(lf, add(col, "_pre_resolution"), col)`. The `original_{col}` column is returned; `{col}_pre_resolution` is used internally for QC and dropped from the result to mirror edge output.
 
 3. **NLP normalization** — Applies `level_one()` (whitespace stripping + lowercasing) and `level_two()` (non-word character removal via `\W+`) to produce the two normalized columns required by `resolve()`.
 

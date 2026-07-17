@@ -29,7 +29,7 @@ def fullmap_audit(
 Input LazyFrame containing entity resolution results.
 
 Expected columns:
-- `original_{col}` - Original text string
+- `{col}_pre_resolution` - Original text string
 - `{col}` - Resolved CURIE
 - `{col}_name` - Preferred entity name
 
@@ -38,7 +38,7 @@ Expected columns:
 Base column name for entity resolution.
 
 Example: If `col="subject"`, looks for:
-- `"original_subject"`
+- `"subject_pre_resolution"`
 - `"subject"`
 - `"subject_name"`
 
@@ -166,7 +166,7 @@ import polars as pl
 lf = pl.scan_parquet("resolved.parquet")
 
 # Expected columns:
-# - original_subject
+# - subject_pre_resolution
 # - subject (CURIE)
 # - subject_name
 

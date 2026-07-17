@@ -368,7 +368,7 @@ class Tcode(Section):
         return [
             (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
             (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
-            (column, (add(col, "_table_literal_value"), col)) if (table_literal and eq(x.method, EncodingMethods.COLUMN)) else None,
+            (column, (add("original_", col), col)) if table_literal else None,
             (fill, (col, x.fill)) if x.fill else None,
             (explode, (col, x.explode_by)) if x.explode_by else None,
             [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
@@ -382,7 +382,7 @@ class Tcode(Section):
         # ? Collect Helper For NodeEncoding Classes
         encoding: list[Any] = self.encoding(x, col, table_literal=True)
         node: list[Any] = [
-            (column, (add("original_", col), col)),
+            (column, (add(col, "_pre_resolution"), col)),
             (level_one, (col,)),
             (level_two, (col,)),
             (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, self.log, self.store.stem, self.config.name, True)),
@@ -538,11 +538,13 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
         lf: pl.LazyFrame = pl.scan_parquet(s)
 
         # ? Only subject and object become nodes; qualifier columns stay as edge attributes
-        originals: list[str] = [col.replace("original_", "") for col in lf.collect_schema().names() if "original_" in col]
+        originals: list[str] = [c.removesuffix("_pre_resolution") for c in lf.collect_schema().names() if c.endswith("_pre_resolution")]
         node_cols: list[str] = [c for c in originals if c in ("subject", "object")]
         for col in node_cols:
             partial, lf = normalize(lf, col)
             subnodes.append(partial)
+        # ? Drop Internal Pre-Resolution Snapshot Columns From Final Edges
+        lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
         subedges.append(lf)
 
     # ! Collection Point: Appending To Output Files
@@ -574,6 +576,7 @@ def resolve_many(
     lf: pl.LazyFrame = series.to_frame().lazy()
 
     lf = column(lf, add("original_", col), col)
+    lf = column(lf, add(col, "_pre_resolution"), col)
     lf = level_one(lf, col)
     lf = level_two(lf, col)
 
@@ -585,4 +588,6 @@ def resolve_many(
             lf = fullmap_audit(lf, col, "", "", log=qc)
 
     df: pl.DataFrame = lf.collect()
+    # ? Drop Internal Pre-Resolution Snapshot Columns To Mirror Edge Output
+    df = df.drop([c for c in df.columns if c.endswith("_pre_resolution")])
     return df.to_dicts()

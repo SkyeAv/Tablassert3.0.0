@@ -310,8 +310,8 @@ def test_tcode_collect_emits_source_record_urls_list(fixtures_path: Path) -> Non
     assert result["source_record_urls"].to_list() == [["https://example.com/test.tsv"]]
 
 
-# ? Tcode Captures Table Literal Value Before Regex For Column Encoded Nodes
-def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path) -> None:
+# ? Tcode Captures Original Value Before Regex For Column Encoded Nodes
+def test_tcode_original_value_before_regex_for_columns(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     data["statement"]["subject"] = {"method": "column", "encoding": "A", "regex": [{"pattern": "\\s+", "replacement": " "}]}
@@ -323,16 +323,16 @@ def test_tcode_table_literal_value_before_regex_for_columns(fixtures_path: Path)
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
-    assert "subject_table_literal_value" in targets
-    assert "object_table_literal_value" in targets
+    assert "original_subject" in targets
+    assert "original_object" in targets
 
-    lit_idx: int = next(i for i, op in enumerate(collected) if len(op[1]) > 0 and op[1][0] == "subject_table_literal_value")
+    lit_idx: int = next(i for i, op in enumerate(collected) if len(op[1]) > 0 and op[1][0] == "original_subject")
     regex_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "regex" and len(op[1]) > 0 and op[1][0] == "subject")
     assert lit_idx < regex_idx
 
 
-# ? Tcode Omits Table Literal Value For Value Encoded Nodes
-def test_tcode_table_literal_value_absent_for_value_encoding(fixtures_path: Path) -> None:
+# ? Tcode Emits Original Value For Value Encoded Nodes
+def test_tcode_original_value_present_for_value_encoding(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -341,8 +341,8 @@ def test_tcode_table_literal_value_absent_for_value_encoding(fixtures_path: Path
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
-    assert "subject_table_literal_value" not in targets
-    assert "object_table_literal_value" not in targets
+    assert "original_subject" in targets
+    assert "original_object" in targets
 
 
 # ? resolve_many Skips QC When Disabled
@@ -597,7 +597,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
             "subject_taxon": [None, None],
             "subject_source": [None, None],
             "subject_source_version": [None, None],
-            "original_subject": ["A", "B"],
+            "subject_pre_resolution": ["A", "B"],
             "object": ["X", "Y"],
             "predicate": ["r", "r"],
             "upstream_resource_ids": [["infores:pubmed-central"], ["infores:pubmed-central"]],
@@ -612,6 +612,8 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     flat: str = "\n".join(edges)
     assert '"p_value":"1.0000e-08"' in flat
     assert '"upstream_resource_ids":["infores:pubmed-central"]' in flat
+    # ! Internal Pre-Resolution Snapshot Is Stripped From Final Edges
+    assert "_pre_resolution" not in flat
     assert len(nodes) >= 1
 
 
@@ -627,11 +629,11 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
             "subject_taxon": [None],
             "subject_source": [None],
             "subject_source_version": [None],
-            "original_subject": ["A"],
+            "subject_pre_resolution": ["A"],
             "object": ["X"],
             "predicate": ["r"],
             "disease_context_qualifier": ["MONDO:0005148"],
-            "original_disease_context_qualifier": ["MONDO:0005148"],
+            "disease_context_qualifier_pre_resolution": ["MONDO:0005148"],
             "publication": ["PMID:123"],
         }
     ).write_parquet(sub)
@@ -641,6 +643,8 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
     # ! Qualifier And Publication Stay On Edges
     assert "MONDO:0005148" in edges
     assert "PMID:123" in edges
+    # ! Internal Pre-Resolution Snapshots Are Stripped From Final Edges
+    assert "_pre_resolution" not in edges
     # ! Neither Becomes A Node
     assert "MONDO:0005148" not in nodes
     assert "PMID:123" not in nodes
