@@ -246,10 +246,28 @@ class Section(TablaBase):
     annotations: Optional[list[Annotation]] = Field(None, description="Optional extra encoded columns added to each row.")
 
 
+DEFAULT_RIG_CONTRIBUTIONS: list[str] = ["Tablassert: KGX and RIG generation"]
+DEFAULT_RIG_UI_EXPLANATION: str = (
+    "Source Tablassert data provides assertions derived from configured tabular records. "
+    "The source record used to create this Translator edge was transformed into a "
+    "Biolink association using the subject, predicate, object, provenance, and "
+    "annotation mappings declared in Tablassert's Table Configuration."
+)
+
+
+def default_rig_contributions() -> list[str]:
+    return DEFAULT_RIG_CONTRIBUTIONS.copy()
+
+
 class Graph(TablaBase):
     # ? Pydantic "Graph" Configuration
     name: str = Field(..., description="Graph name written into output metadata.")
     version: str = Field(..., description="Graph version label.")
+    description: str = Field(..., description="Source scope description written into generated Resource Ingest Guides.")
+    contributions: list[str] = Field(
+        default_factory=default_rig_contributions, description="Resource Ingest Guide contribution statements for graph provenance."
+    )
+    ui_explanation: str = Field(DEFAULT_RIG_UI_EXPLANATION, description="Resource Ingest Guide explanation applied to generated edge type metadata.")
     log: bool = Field(False, description="Whether to log unmatched entities and audit details during graph builds.")
     qc: bool = Field(False, description="Whether to run the QC audit stage during graph builds.")
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])

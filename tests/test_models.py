@@ -8,7 +8,19 @@ from pydantic import ValidationError
 
 from tablassert.enums import Categories
 from tablassert.ingests import from_yaml
-from tablassert.models import Annotation, Encoding, Excel, Graph, NodeEncoding, Provenance, Reindex, Section, Statement, Text
+from tablassert.models import (
+    DEFAULT_RIG_UI_EXPLANATION,
+    Annotation,
+    Encoding,
+    Excel,
+    Graph,
+    NodeEncoding,
+    Provenance,
+    Reindex,
+    Section,
+    Statement,
+    Text,
+)
 
 
 # ? Valid Minimal Text Section
@@ -24,9 +36,18 @@ def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
 # ? Graph QC Defaults To False
 def test_graph_qc_defaults_false() -> None:
     graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", tables=[Path("./table.yaml")], datassert=Path("./datassert")
+        name="TEST", version="1.0.0", description="Test graph", tables=[Path("./table.yaml")], datassert=Path("./datassert")
     )
     assert graph.qc is False
+
+
+# ? Graph RIG Defaults Are Declared In The Model
+def test_graph_rig_defaults() -> None:
+    graph: Graph = Graph(  # pyright: ignore
+        name="TEST", version="1.0.0", description="Test graph", tables=[Path("./table.yaml")], datassert=Path("./datassert")
+    )
+    assert graph.contributions == ["Tablassert: KGX and RIG generation"]
+    assert graph.ui_explanation == DEFAULT_RIG_UI_EXPLANATION
 
 
 # ? Graph Rejects Removed Enrichment Databases
@@ -34,6 +55,7 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
     data: dict[str, Any] = {
         "name": "TEST",
         "version": "1.0.0",
+        "description": "Test graph",
         "tables": [Path("./table.yaml")],
         "datassert": Path("./datassert"),
         "pubmed_db": Path("./PubMed.db"),
@@ -46,7 +68,7 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
 # ? Graph Accepts Explicit QC True
 def test_graph_qc_true() -> None:
     graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", qc=True, tables=[Path("./table.yaml")], datassert=Path("./datassert")
+        name="TEST", version="1.0.0", description="Test graph", qc=True, tables=[Path("./table.yaml")], datassert=Path("./datassert")
     )
     assert graph.qc is True
 

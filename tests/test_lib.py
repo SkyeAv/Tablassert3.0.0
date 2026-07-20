@@ -601,15 +601,25 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
             "subject_source": [None, None],
             "subject_source_version": [None, None],
             "subject_pre_resolution": ["A", "B"],
-            "object": ["X", "Y"],
+            "object": ["HGNC:1", "HGNC:2"],
+            "object_name": ["Xray", "Yankee"],
+            "object_category": ["disease", "disease"],
+            "object_taxon": [None, None],
+            "object_source": [None, None],
+            "object_source_version": [None, None],
+            "object_pre_resolution": ["X", "Y"],
             "predicate": ["r", "r"],
             "upstream_resource_ids": [["infores:pubmed-central"], ["infores:pubmed-central"]],
+            "knowledge_level": ["knowledge_assertion", "knowledge_assertion"],
+            "agent_type": ["manual_agent", "manual_agent"],
+            "resource_id": ["infores:smoke", "infores:smoke"],
             "p_value": ["1.0000e-08", "5.0000e-02"],
         }
     ).write_parquet(sub)
-    lib.compile_graph([sub], "smoke", "1.0.0")
+    lib.compile_graph([sub], "smoke", "1.0.0", "Smoke graph", None, "Custom UI explanation", None)
     edges: list[str] = (tmp_path / "smoke_1.0.0.edges.ndjson").read_text().strip().splitlines()
     nodes: list[str] = (tmp_path / "smoke_1.0.0.nodes.ndjson").read_text().strip().splitlines()
+    rig: dict[str, Any] = lib.strip_nulls(from_yaml(tmp_path / "smoke_1.0.0.RIG.yaml"))
     assert len(edges) == 2
     assert all('"id"' in line for line in edges)
     flat: str = "\n".join(edges)
@@ -618,6 +628,21 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     # ! Internal Pre-Resolution Snapshot Is Stripped From Final Edges
     assert "_pre_resolution" not in flat
     assert len(nodes) >= 1
+    assert rig["name"] == "smoke v1.0.0"
+    assert rig["source_info"]["infores_id"] == "infores:smoke"  # pyright: ignore
+    assert rig["source_info"]["description"] == "Smoke graph"  # pyright: ignore
+    assert rig["source_info"]["data_access_locations"] == ["smoke_1.0.0.nodes.ndjson", "smoke_1.0.0.edges.ndjson"]  # pyright: ignore
+    assert rig["ingest_info"]["relevant_files"] == ["smoke_1.0.0.nodes.ndjson", "smoke_1.0.0.edges.ndjson"]  # pyright: ignore
+    assert rig["provenance_info"]["contributions"] == ["Tablassert: KGX and RIG generation"]  # pyright: ignore
+    edge_type: dict[str, Any] = rig["target_info"]["edge_type_info"][0]  # pyright: ignore
+    assert edge_type["subject_categories"] == ["biolink:gene"]
+    assert edge_type["predicates"] == ["r"]
+    assert edge_type["object_categories"] == ["biolink:disease"]
+    assert edge_type["primary_knowledge_sources"] == ["infores:pubmed-central", "infores:smoke"]
+    assert edge_type["ui_explanation"] == "Custom UI explanation"
+    node_types: list[dict[str, Any]] = rig["target_info"]["node_type_info"]  # pyright: ignore
+    assert {x["node_category"] for x in node_types} == {"biolink:gene", "biolink:disease"}
+    assert any(x["source_identifier_types"] == ["HGNC"] for x in node_types)
 
 
 # ? compile_graph Keeps Qualifier And Publication Columns On Edges, Out Of Nodes

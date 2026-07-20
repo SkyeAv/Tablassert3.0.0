@@ -96,7 +96,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
     progress.stage(f"Compiling Graph | Sections: {n}")
     start, advance = progress.section_loop(1, "Graph")
     start(f"NAME: {g.name} | VERSION: {g.version}")
-    compile_graph(subgraphs, g.name, g.version)
+    compile_graph(subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables)
     advance()
 
     logger.info(f"BUILD DONE | SECTIONS: {n} | NAME: {g.name} | VERSION: {g.version}")

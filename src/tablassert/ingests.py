@@ -42,6 +42,12 @@ def from_yaml(p: Path) -> object:
         return yaml.load(f, Loader=CLoader)
 
 
+def to_yaml(p: Path, data: object) -> None:
+    # ? Writes Dict-Like Data To YAML Preserving Declared Key Order
+    with p.open("w") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
+
+
 def to_sections(instructions: dict[str, Any], table: Path) -> list[list[dict[str, Any]]]:
     # ? Converts Dict To Sections
     template: dict[str, Any] = instructions.get("template", {})

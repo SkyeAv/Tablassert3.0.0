@@ -17,7 +17,7 @@ from tablassert import rs
 from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
-from tablassert.models import Encoding, NodeEncoding, Section
+from tablassert.models import DEFAULT_RIG_UI_EXPLANATION, Encoding, NodeEncoding, Section, default_rig_contributions
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
 from tablassert.utils import namespace_uuid
@@ -32,6 +32,13 @@ else:
     pl = Lazy.load("polars")
 
 logger = cat("PIPELINE")
+
+TERMS_OF_USE_WARNING: str = (
+    "Terms of use and license information for the upstream sources used to create this KGX were not declared in the "
+    "Tablassert graph configuration. Translator source-ingest guidance expects source owners to assess terms of use "
+    "before publication or downstream ingest; review the upstream source terms and replace this generated warning with "
+    "explicit license or terms information when known."
+)
 
 CATEGORY_PARENT: dict[str, str] = {
     # ? Biolink Is_A Chain -- Leaf To Parent Role For Association Name Matching
@@ -513,6 +520,158 @@ def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) ->
     }
 
 
+def as_list(v: object) -> list[object]:
+    # ? Coerces Scalar And List-Like Values Into A Plain List
+    if isinstance(v, list):
+        return v
+    if v is None:
+        return []
+    return [v]
+
+
+def normalize_biolink_category(v: object) -> Optional[str]:
+    # ? Normalizes Category Strings For RIG Target Summaries
+    if not isinstance(v, str) or not v:
+        return None
+    if v.startswith("biolink:"):
+        return v
+    return add("biolink:", v)
+
+
+def curie_prefix(v: object) -> Optional[str]:
+    # ? Extracts Compact Identifier Prefixes For RIG Node Type Summaries
+    if not isinstance(v, str) or ":" not in v:
+        return None
+    prefix: str = v.split(":", 1)[0]
+    return prefix or None
+
+
+def clean_values(values: list[object]) -> list[str]:
+    # ? Removes Empty Values And Deduplicates Stringified RIG Summary Values
+    out: list[str] = []
+    for value in values:
+        for item in as_list(value):
+            if item is None:
+                continue
+            text: str = str(item).strip()
+            if not text or text.lower() in {"na", "nan", "null", "none"}:
+                continue
+            out.append(text)
+    return sorted(set(out))
+
+
+def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: Optional[str]) -> list[dict[str, object]]:
+    # ? Summarizes Raw Edge Columns Into RIG Edge Type Metadata Before Node Normalization
+    names: list[str] = lf.collect_schema().names()
+    wanted: list[str] = [
+        c
+        for c in [
+            "subject_category",
+            "predicate",
+            "object_category",
+            "knowledge_level",
+            "agent_type",
+            "primary_knowledge_source",
+            "primary_knowledge_sources",
+            "resource_id",
+            "upstream_resource_ids",
+        ]
+        if c in names
+    ]
+    if not wanted:
+        return []
+
+    rows: list[dict[str, Any]] = lf.select(wanted).unique().collect().to_dicts()
+    info: list[dict[str, object]] = []
+    for row in rows:
+        primary_sources: list[str] = clean_values(
+            add(
+                add(as_list(row.get("primary_knowledge_source")), as_list(row.get("primary_knowledge_sources"))),
+                add(as_list(row.get("resource_id")), as_list(row.get("upstream_resource_ids"))),
+            )
+        )
+        edge_type: dict[str, object] = strip_nulls(
+            {
+                "subject_categories": clean_values([normalize_biolink_category(v) for v in as_list(row.get("subject_category"))]),
+                "predicates": clean_values(as_list(row.get("predicate"))),
+                "object_categories": clean_values([normalize_biolink_category(v) for v in as_list(row.get("object_category"))]),
+                "knowledge_level": row.get("knowledge_level"),
+                "agent_type": row.get("agent_type"),
+                "primary_knowledge_sources": primary_sources,
+                "source_files": [edges_path.name],
+                "ui_explanation": ui_explanation or DEFAULT_RIG_UI_EXPLANATION,
+            }
+        )
+        if edge_type:
+            info.append(edge_type)
+    return info
+
+
+def rig_node_type_info(nodes: list[dict[str, object]]) -> list[dict[str, object]]:
+    # ? Summarizes Normalized Nodes Into RIG Node Type Metadata
+    buckets: dict[str, set[str]] = {}
+    for node in nodes:
+        prefixes: list[str] = clean_values([curie_prefix(node.get("id"))])
+        for category in clean_values([normalize_biolink_category(v) for v in as_list(node.get("category"))]):
+            buckets.setdefault(category, set()).update(prefixes)
+
+    return [strip_nulls({"node_category": category, "source_identifier_types": sorted(prefixes)}) for category, prefixes in sorted(buckets.items())]
+
+
+def unique_dicts(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    # ? Deduplicates Small RIG Summary Dictionaries Without Adding A New Dependency
+    seen: set[str] = set()
+    out: list[dict[str, object]] = []
+    for row in rows:
+        key: str = str(row)
+        if key not in seen:
+            seen.add(key)
+            out.append(row)
+    return out
+
+
+def compile_rig(
+    name: str,
+    version: str,
+    description: Optional[str],
+    contributions: Optional[list[str]],
+    ui_explanation: Optional[str],
+    tables: Optional[list[Path]],
+    nodes_path: Path,
+    edges_path: Path,
+    node_type_info: list[dict[str, object]],
+    edge_type_info: list[dict[str, object]],
+) -> None:
+    # ? Writes Translator Resource Ingest Guide Metadata Alongside KGX Outputs
+    from tablassert.ingests import to_yaml
+
+    rig_path: Path = Path(f"./{name}_{version}.RIG.yaml")
+    rig: dict[str, object] = strip_nulls(
+        {
+            "name": f"{name} v{version}",
+            "source_info": {
+                "infores_id": infores(name),
+                "name": name,
+                "description": description or f"{name} KGX generated by Tablassert.",
+                "data_provision_mechanisms": ["file_download"],
+                "data_formats": ["kgx"],
+                "data_access_locations": [nodes_path.name, edges_path.name],
+                "source_status": "unknown",
+                "terms_of_use_info": {"terms_of_use_description": TERMS_OF_USE_WARNING},
+            },
+            "ingest_info": {
+                "ingest_categories": ["translator_knowledge_creator"],
+                "utility": "Tablassert converts configured tabular source data into KGX nodes and edges for Translator ingestion.",
+                "relevant_files": [nodes_path.name, edges_path.name],
+                "included_content": "KGX nodes and edges generated from the graph's configured Tablassert table inputs.",
+            },
+            "provenance_info": {"contributions": contributions or default_rig_contributions()},
+            "target_info": {"edge_type_info": edge_type_info, "node_type_info": node_type_info},
+        }
+    )
+    to_yaml(rig_path, rig)
+
+
 def dedup_stream(p_in: Path, is_edges: bool) -> None:
     # ? Removes Null Values From And Deduplicates NDJSON
     # * Also Adds UUIDs To Edges
@@ -560,7 +719,15 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.with_columns(combined.alias("supporting_text")).drop(unknown)
 
 
-def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
+def compile_graph(
+    subgraphs: list[Path],
+    name: str,
+    version: str,
+    description: Optional[str] = None,
+    contributions: Optional[list[str]] = None,
+    ui_explanation: Optional[str] = None,
+    tables: Optional[list[Path]] = None,
+) -> None:
     # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
     p: Path = Path(f"./{name}_{version}.tmp")
 
@@ -574,8 +741,10 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
 
     subnodes: list[pl.LazyFrame] = []
     subedges: list[pl.LazyFrame] = []
+    edge_type_info: list[dict[str, object]] = []
     for s in subgraphs:
         lf: pl.LazyFrame = pl.scan_parquet(s)
+        edge_type_info.extend(rig_edge_type_info(lf, e.with_suffix(""), ui_explanation))
 
         # ? Only subject and object become nodes; qualifier columns stay as edge attributes
         originals: list[str] = [c.removesuffix("_pre_resolution") for c in lf.collect_schema().names() if c.endswith("_pre_resolution")]
@@ -589,9 +758,11 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
         subedges.append(lf)
 
     # ! Collection Point: Appending To Output Files
+    node_rows: list[dict[str, object]] = []
     with n.open("a") as f:
         for subnode in subnodes:
             eagernode: pl.DataFrame = subnode.collect().unique()
+            node_rows.extend(eagernode.to_dicts())
             eagernode.write_ndjson(f)
 
     with e.open("a") as f:
@@ -601,6 +772,18 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
 
     dedup_stream(e, is_edges=True)
     dedup_stream(n, is_edges=False)
+    compile_rig(
+        name,
+        version,
+        description,
+        contributions,
+        ui_explanation,
+        tables,
+        n.with_suffix(""),
+        e.with_suffix(""),
+        rig_node_type_info(node_rows),
+        unique_dicts(edge_type_info),
+    )
 
 
 def resolve_many(

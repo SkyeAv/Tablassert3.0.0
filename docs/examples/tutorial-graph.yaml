@@ -1,6 +1,7 @@
 syntax: GC3
 name: TUTORIAL_KG
 version: 1.0.0
+description: Tutorial knowledge graph built from configured tabular source data.
 tables:
   - ./docs/examples/tutorial-table.yaml
 datassert: /path/to/datassert
