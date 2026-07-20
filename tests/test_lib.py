@@ -427,14 +427,14 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
 def test_sig_prefers_exact_p_value_column() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01, 0.1], "adjusted_p_value": [0.5, 0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["significant"]) == ["YES", "NO"]
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant", "biolink:suggestive"]
 
 
 # ? sig Falls Back To Non-Exact P-Value Column When No Exact Match
 def test_sig_uses_non_exact_p_value_column() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"adjusted_p_value": [0.01, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["significant"]) == ["YES", "NO"]
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant", "biolink:suggestive"]
 
 
 # ? sig Picks Closest Match When Multiple Non-Exact Columns Present
@@ -442,28 +442,55 @@ def test_sig_picks_closest_non_exact_match() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"log_p_value": [0.01], "adjusted_p_value_corrected": [0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     # "log_p_value" has higher fuzz.ratio to "p_value" than "adjusted_p_value_corrected"
-    assert list(result["significant"]) == ["YES"]
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant"]
 
 
-# ? sig Returns UNSURE When No P-Value Column Exists
-def test_sig_returns_unsure_with_no_p_value_column() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"gene": ["BRCA1"]}).lazy()
+# ? sig Omits The Qualifier Column When No P-Value Column Exists (Biolink Class Rule)
+# * Edges Are Retained; The Qualifier Is Simply Absent (Not Set)
+def test_sig_omits_qualifier_with_no_p_value_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"gene": ["BRCA1", "TP53"]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["significant"]) == ["UNSURE"]
+    assert "statistical_significance_qualifier" not in result.columns
+    assert result.height == 2
 
 
-# ? sig Marks Null P-Values As UNSURE
-def test_sig_marks_null_as_unsure() -> None:
+# ? sig Emits Null (Not UNSURE) For Null P-Values; Edges Are Retained
+def test_sig_marks_null_as_null_qualifier() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [None, 0.01, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["significant"]) == ["UNSURE", "YES", "NO"]
+    assert list(result["statistical_significance_qualifier"]) == [None, "biolink:strongly_significant", "biolink:suggestive"]
 
 
-# ? sig Marks P-Values Between Cutoff And Threshold As INCONCLUSIVE
-def test_sig_marks_inconclusive_band() -> None:
+# ? sig Maps The 0.05 < p <= 0.10 Band To biolink:suggestive
+def test_sig_marks_suggestive_band() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01, 0.07, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["significant"]) == ["YES", "INCONCLUSIVE", "NO"]
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant", "biolink:suggestive", "biolink:suggestive"]
+
+
+# ? sig Maps p <= 0.001 To biolink:very_strongly_significant (Boundary Included)
+def test_sig_very_strongly_significant_band() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [1e-8, 0.001, 0.002]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["statistical_significance_qualifier"]) == [
+        "biolink:very_strongly_significant",
+        "biolink:very_strongly_significant",
+        "biolink:strongly_significant",
+    ]
+
+
+# ? sig Maps The 0.01 < p <= 0.05 Band To biolink:significant (Boundary Included)
+def test_sig_significant_band_boundary() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.05, 0.06]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:significant", "biolink:suggestive"]
+
+
+# ? sig Maps p > 0.10 To biolink:not_significant
+def test_sig_not_significant_band() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.11, 0.5]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:not_significant", "biolink:not_significant"]
 
 
 # ? numeric_columns Matches Any Column With P Value In The Name
@@ -711,7 +738,7 @@ def test_sig_works_on_cleaned_float64() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.5", "N/A"]}).lazy()
     cleaned: pl.LazyFrame = clean_numeric(lf)
     result: pl.DataFrame = lib.sig(cleaned).collect()
-    assert result["significant"].to_list() == ["YES", "NO", "UNSURE"]
+    assert result["statistical_significance_qualifier"].to_list() == ["biolink:very_strongly_significant", "biolink:not_significant", None]
 
 
 # ? edge_category Maps SmallMolecule + Disease To ChemicalEntityToDiseaseAssociation
@@ -836,9 +863,16 @@ def test_pvalue_target_bare_adjusted_without_pvalue_context_is_not_treated_as_ad
 
 # ? pvalue_target Excludes Significance Flag Columns
 # * Regression For A Real False Positive Found Auditing Production KGX Output: "bonferroni significance"
-# * Is A Categorical Flag Like sig()'s Own "significant" Column, Not The Numeric Value
+# * Is A Categorical Flag Like sig()'s Own "statistical_significance_qualifier" Column, Not The Numeric Value
 def test_pvalue_target_excludes_significance_flag_columns() -> None:
-    names: list[str] = ["bonferroni significance", "nominal significance", "age significance flag", "significant"]
+    names: list[str] = [
+        "bonferroni significance",
+        "nominal significance",
+        "age significance flag",
+        "significant",
+        "statistical_significance_qualifier",
+        "statistical significance qualifier",
+    ]
     for n in names:
         assert pvalue_target(n) is None, n
 
@@ -988,11 +1022,11 @@ def test_fold_unknown_multiple_columns_sorted() -> None:
             # ! Deliberately Listed Out Of Sort Order To Verify Output Is Sorted By Column Name
             "extracted_from_row_number": ["7"],
             "sheet_name": ["Sheet1"],
-            "significant": ["yes"],
+            "miscellaneous_flag": ["yes"],
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
-    assert out["supporting_text"].to_list() == [["extracted_from_row_number: 7", "sheet_name: Sheet1", "significant: yes"]]
+    assert out["supporting_text"].to_list() == [["extracted_from_row_number: 7", "miscellaneous_flag: yes", "sheet_name: Sheet1"]]
 
 
 # ? fold_unknown_to_supporting_text Skips Null And Empty String Values
@@ -1058,9 +1092,56 @@ def test_fold_unknown_preserves_qualifier_columns() -> None:
     assert "anatomical_context_qualifier" in out.columns
 
 
+# ? PR #1770 Supporting Study Metadata Slots Survive As Top Level Edge Fields, Not Folded
+def test_fold_unknown_preserves_supporting_study_metadata_slots() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["B"],
+            "predicate": ["related_to"],
+            "has_supporting_studies": [["PMID:1"]],
+            "supporting_study_method_types": [["case-control"]],
+            "supporting_study_method_description": ["linear regression adjusted for age"],
+            "supporting_study_size": [12000],
+            "supporting_study_cohort": ["FINNGEN"],
+            "supporting_study_date_range": ["2018-2023"],
+            "supporting_study_context": ["European ancestry"],
+            "miscellaneous_notes": ["see smith et al"],
+        }
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    # ! Only The Genuinely Unknown Column Is Folded Into supporting_text
+    assert out["supporting_text"].to_list() == [["miscellaneous_notes: see smith et al"]]
+    # ! Every PR #1770 Supporting Study Slot Survives As A Top Level Edge Field
+    for col in (
+        "has_supporting_studies",
+        "supporting_study_method_types",
+        "supporting_study_method_description",
+        "supporting_study_size",
+        "supporting_study_cohort",
+        "supporting_study_date_range",
+        "supporting_study_context",
+    ):
+        assert col in out.columns
+
+
 # ? ALLOWED_EDGE_FIELDS Covers Intentional Tablassert Output Columns
 def test_allowed_edge_fields_covers_tablassert_pipeline_columns() -> None:
     for col in ("publications", "upstream_resource_ids", "source_record_urls", "p_value", "supporting_text"):
+        assert col in ALLOWED_EDGE_FIELDS
+
+
+# ? PR #1770 Supporting Study Metadata Slots Are Recognized Biolist Edge Fields, Not Folded
+def test_allowed_edge_fields_covers_supporting_study_metadata_slots() -> None:
+    for col in (
+        "has_supporting_studies",
+        "supporting_study_method_types",
+        "supporting_study_method_description",
+        "supporting_study_size",
+        "supporting_study_cohort",
+        "supporting_study_date_range",
+        "supporting_study_context",
+    ):
         assert col in ALLOWED_EDGE_FIELDS
 
 

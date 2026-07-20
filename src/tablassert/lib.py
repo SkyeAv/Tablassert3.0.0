@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterable
 from contextlib import ExitStack
 from functools import cache, reduce
-from operator import add, eq, le, lt
+from operator import add, eq, le
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
@@ -206,34 +206,34 @@ def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
     return lf.explode(col)
 
 
-def sig(
-    lf: pl.LazyFrame,
-    cutoff: float = 0.05,  # pyright: ignore
-    threshold: float = 0.10,
-    col: str = "p_value",
-    out: str = "significant",
-) -> pl.LazyFrame:
-    # ? Creates The "significant" Column
+def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_significance_qualifier") -> pl.LazyFrame:
+    # ? Creates The "statistical_significance_qualifier" Column (Biolink PR #1766)
+    # * Five-Band Cascade Matches StatisticalSignificanceQualifierEnum Verbatim;
+    # * Boundaries Are Hardcoded Because The Enum Definitions Are Canonical
+    # ! Edges Are Never Dropped: No P-Value Column -> Qualifier Absent; Null P-Value -> Null Qualifier
     from rapidfuzz import fuzz
 
     names: list[str] = lf.collect_schema().names()
     candidates: list[str] = [c for c in names if col in c]
     chosen: Optional[str] = max(candidates, key=lambda c: fuzz.ratio(c, col)) if candidates else None
-    if chosen is not None:
-        expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
-        cond: pl.Expr = le(expr, cutoff)
-        cutoff: pl.Expr = (
-            pl.when(expr.is_null())
-            .then(pl.lit("UNSURE"))
-            .when(cond)
-            .then(pl.lit("YES"))
-            .when(lt(expr, threshold))
-            .then(pl.lit("INCONCLUSIVE"))
-            .otherwise(pl.lit("NO"))
-        )
-        return lf.with_columns(cutoff.alias(out))
-    else:
-        return lf.with_columns(pl.lit("UNSURE").alias(out))
+    if chosen is None:
+        # ! Biolink Class Rule: Qualifier May Only Be Set When p_value/adjusted_p_value Is Populated
+        return lf
+    expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
+    band: pl.Expr = (
+        pl.when(expr.is_null())
+        .then(pl.lit(None, dtype=pl.String))
+        .when(le(expr, 0.001))
+        .then(pl.lit("biolink:very_strongly_significant"))
+        .when(le(expr, 0.01))
+        .then(pl.lit("biolink:strongly_significant"))
+        .when(le(expr, 0.05))
+        .then(pl.lit("biolink:significant"))
+        .when(le(expr, 0.10))
+        .then(pl.lit("biolink:suggestive"))
+        .otherwise(pl.lit("biolink:not_significant"))
+    )
+    return lf.with_columns(band.alias(out))
 
 
 PVALUE_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bp[\s_\-.]*val(?:ue)?s?\b")
