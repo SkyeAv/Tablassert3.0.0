@@ -43,7 +43,6 @@
 - `tests/conftest.py` autouse-mocks `httpx.head`, so model-URL validation tests never hit the network unless a test opts in.
 - Network-dependent tests are marked `@pytest.mark.network`; GPU QC tests are marked with both `network` and `gpu` in `tests/test_qc.py`.
 - QC runtime selection is strict in `src/tablassert/qc.py`: if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is unavailable, the code raises (error 06) instead of falling back to CPU. Install `tablassert[qc]` for CPU-only.
-- Downloader behavior in `src/tablassert/downloader.py` is two-path: `direct()` via `httpx` for known file URLs, `browser()` via Playwright fallback for browser-only sources. Keep payload-validation and cleanup tests intact when changing it.
 
 ## Conventions That Matter Here
 

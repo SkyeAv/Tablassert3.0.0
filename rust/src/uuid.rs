@@ -1,4 +1,3 @@
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use serde_json::Value;
 use uuid::Uuid;
@@ -49,16 +48,6 @@ pub fn uuid_for_json_object(domain: &str, value: &Value) -> Option<String> {
 #[pyfunction]
 pub fn namespace_uuid(domain: String, values: Vec<String>) -> String {
     uuid_from_parts(&domain, values)
-}
-
-#[pyfunction]
-#[pyo3(signature = (domain, row_json))]
-pub fn graph_uuid(domain: Option<String>, row_json: String) -> PyResult<String> {
-    let domain: String = domain.unwrap_or_else(|| "TABLASSERT".to_string());
-    let value: Value =
-        serde_json::from_str(&row_json).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-    uuid_for_json_object(&domain, &value)
-        .ok_or_else(|| PyRuntimeError::new_err("expected JSON object"))
 }
 
 #[cfg(test)]

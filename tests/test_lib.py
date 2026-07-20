@@ -19,7 +19,6 @@ from tablassert.lib import (
     idx,
     idxname,
     infores,
-    label_edge,
     numeric_columns,
     parse_edge_name,
     publications,
@@ -114,33 +113,6 @@ def test_strip_nulls_whitespace() -> None:
     assert len(result) == 0
 
 
-# ? label_edge Assigns UUID Under Domain
-def test_label_edge_assigns_uuid() -> None:
-    r: dict[str, Any] = {"subject": "A", "object": "B", "predicate": "treats"}
-    result: dict = label_edge(r)  # pyright: ignore
-    assert "id" in result
-    assert isinstance(result["id"], str)
-    assert len(result["id"]) == 36  # ? Standard UUID string length
-
-
-# ? label_edge UUID Is Deterministic
-def test_label_edge_deterministic() -> None:
-    r1: dict[str, Any] = {"subject": "A", "object": "B", "predicate": "treats"}
-    r2: dict[str, Any] = {"subject": "A", "object": "B", "predicate": "treats"}
-    result1: dict = label_edge(r1)  # pyright: ignore
-    result2: dict = label_edge(r2)  # pyright: ignore
-    assert result1["id"] == result2["id"]
-
-
-# ? label_edge Different Data Produces Different UUIDs
-def test_label_edge_different_data() -> None:
-    r1: dict[str, Any] = {"subject": "A", "predicate": "treats"}
-    r2: dict[str, Any] = {"subject": "B", "predicate": "treats"}
-    result1: dict = label_edge(r1)  # pyright: ignore
-    result2: dict = label_edge(r2)  # pyright: ignore
-    assert result1["id"] != result2["id"]
-
-
 # ? Tcode Allows Unresolved Value Encodings During Validation
 def test_tcode_model_allows_unresolved_value_encoding(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
@@ -183,6 +155,20 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
     assert len(qc_ops) == 2
     assert qc_ops[0][1] == ("subject", "sectionhash", "minimal_section.yaml", "passed", True)
     assert qc_ops[1][1] == ("object", "sectionhash", "minimal_section.yaml", "passed", True)
+
+
+# ? Tcode collect Passes The Local Source Path Through To The csv Reader
+def test_tcode_collect_passes_local_path_to_csv_reader(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    csv_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "csv"]
+
+    assert csv_ops[0][1] == (tcode_model.source.local, tcode_model.source.delimiter)  # pyright: ignore
 
 
 # ? publication_curie Uses PMCID Namespace For PubMed Central

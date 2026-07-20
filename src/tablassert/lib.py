@@ -20,7 +20,6 @@ from tablassert.log import cat
 from tablassert.models import DEFAULT_RIG_UI_EXPLANATION, Encoding, NodeEncoding, Section, default_rig_contributions
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
-from tablassert.utils import namespace_uuid
 
 if TYPE_CHECKING:
     import duckdb
@@ -124,11 +123,6 @@ def source_record_urls(lf: pl.LazyFrame, url: str) -> pl.LazyFrame:
 def publications(lf: pl.LazyFrame, curie: str) -> pl.LazyFrame:
     # ? Adds Publication CURIE As A Biolink-Compliant list[str] Column
     return lf.with_columns(pl.concat_list(pl.lit(curie)).alias("publications"))
-
-
-def contributor_values(lf: pl.LazyFrame, col: str, contributors: list[dict[str, Any]]) -> pl.LazyFrame:
-    # ? Adds Nested Contributors Fields To Column
-    return lf.with_columns(pl.lit([x.model_dump() for x in contributors]).alias(col))  # pyright: ignore
 
 
 def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
@@ -425,8 +419,8 @@ class Tcode(Section):
         else:
             # * Returns A List Of: (Function, (Arguments))
             tcode: Optional[list[Any]] = [
-                (csv, (self.source.delimiter,)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
-                (excel, (self.source.sheet,)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
+                (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
+                (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (idx, ()),
                 (crop, (self.source.row_slice,)) if self.source.row_slice else None,
                 (pick, (self.source.rows,)) if self.source.rows else None,
@@ -503,12 +497,6 @@ def upstream_resource_ids(repo: Repositories) -> list[str]:
     if eq(repo, Repositories.PUBMED_CENTRAL):
         return [InformationResources.PUBMED_CENTRAL.value]
     return [InformationResources.PUBMED.value]
-
-
-def label_edge(r: object, domain: str = "TABLASSERT", out: str = "id") -> object:
-    # ? Gives Edges A Unique UUID In The Tablassert Namespace
-    r[out] = namespace_uuid(domain, *r.values())  # pyright: ignore
-    return r
 
 
 def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) -> dict:

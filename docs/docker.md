@@ -50,8 +50,6 @@ docker run --rm \
 All dependencies ship in the base install, so the Docker image includes:
 
 - **Quality control** — The QC pipeline in `src/tablassert/qc.py` runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (`fuzz.ratio` >= 20 or `partial_token_sort_ratio` >= 30), then BioBERT sentence embeddings with cosine similarity (threshold >= 0.2). The ONNX model is cached in `.onnxassert/` (line 24).
-- **Web downloads** — `src/tablassert/downloader.py` uses Playwright to download remote files with retry logic.
-- **Legacy Excel** — `modernize_xls()` in `src/tablassert/downloader.py` converts `.xls` files using pyexcel.
 
 ## Persistent Data Directories
 
