@@ -6,21 +6,64 @@ on:
       - main
     paths:
       - pyproject.toml
+
+permissions:
+  contents: read
+
 jobs:
-  publish:
+  sdist:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+      - name: Build sdist
+        run: uv build --sdist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  wheels:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python interpreters
+        uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.11
+            3.12
+            3.13
+            3.14
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          args: --release
-      - name: Build sdist
-        run: uv build --sdist
+          command: build
+          args: --release --find-interpreter --locked --compatibility pypi --out dist
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+  publish:
+    needs: [sdist, wheels]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
