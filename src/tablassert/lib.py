@@ -14,7 +14,7 @@ import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt
 
 from tablassert import rs
-from tablassert.enums import Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
+from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import SHARDS, resolve
 from tablassert.log import cat
 from tablassert.models import Encoding, NodeEncoding, Section
@@ -112,6 +112,11 @@ def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
 def source_record_urls(lf: pl.LazyFrame, url: str) -> pl.LazyFrame:
     # ? Adds Biolink/Translator Source Record URLs As A List Column
     return lf.with_columns(pl.concat_list(pl.lit(url)).alias("source_record_urls"))
+
+
+def publications(lf: pl.LazyFrame, curie: str) -> pl.LazyFrame:
+    # ? Adds Publication CURIE As A Biolink-Compliant list[str] Column
+    return lf.with_columns(pl.concat_list(pl.lit(curie)).alias("publications"))
 
 
 def contributor_values(lf: pl.LazyFrame, col: str, contributors: list[dict[str, Any]]) -> pl.LazyFrame:
@@ -280,9 +285,10 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.rename(renames) if renames else lf
 
 
-def idx(lf: pl.LazyFrame, col: str = "row_number") -> pl.LazyFrame:
-    # ? Creates An Index Column Of Row Numbers
-    return lf.with_row_index(col)
+def idx(lf: pl.LazyFrame, col: str = "extracted_from_row_number") -> pl.LazyFrame:
+    # ? Creates A 1-Based Index Column Recording The Original Source Row
+    # * Matches Pre-8.0.0 Behavior; Folded Into supporting_text By compile_graph
+    return lf.with_row_index(col, offset=1)
 
 
 def csv(p: Path, sep: str) -> pl.LazyFrame:
@@ -437,7 +443,7 @@ class Tcode(Section):
                 (value, ("knowledge_level", self.provenance.knowledge_level)),
                 (value, ("agent_type", self.provenance.agent_type)),
                 (value, ("resource_id", infores(self.name))) if self.name else None,
-                (value, ("publication", publication_curie(self.provenance.repo, self.provenance.publication))),
+                (publications, (publication_curie(self.provenance.repo, self.provenance.publication),)),
                 (source_record_urls, (str(self.source.url),)),
                 (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (sig, ()),
@@ -520,6 +526,40 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
     p_in.unlink()
 
 
+def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # ? Folds Any Non-Biolink Edge Column Into supporting_text As "col: value" Strings
+    # * Stays Fully Lazy; Null/Blank Values Produce No Entry; Sorted For Deterministic Output
+    # * Existing list[str] supporting_text Has Derived Entries Appended (Never Clobbered);
+    # * Scalar supporting_text (E.G. A method: value Annotation) Is Coerced To list[str] First
+    schema: pl.Schema = lf.collect_schema()
+    schema_names: list[str] = schema.names()
+    unknown: list[str] = sorted(c for c in schema_names if c not in ALLOWED_EDGE_FIELDS)
+    if not unknown:
+        return lf
+
+    parts: list[pl.Expr] = []
+    for col in unknown:
+        s: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars()
+        blank: pl.Expr = s.is_null() | (s.str.len_chars() == 0)
+        entry: pl.Expr = pl.when(blank).then(pl.lit(None, dtype=pl.String)).otherwise(pl.concat_str([pl.lit(f"{col}: "), s]))
+        parts.append(entry)
+
+    derived: pl.Expr = pl.concat_list(parts).list.drop_nulls()
+
+    if "supporting_text" in schema_names:
+        # ? Coerce Scalar supporting_text To list[str] First, Then Append Derived Entries
+        existing: pl.Expr
+        if isinstance(schema["supporting_text"], pl.List):
+            existing = pl.col("supporting_text")
+        else:
+            existing = pl.concat_list(pl.col("supporting_text"))
+        combined: pl.Expr = existing.list.concat(derived).list.drop_nulls()
+    else:
+        combined = derived
+
+    return lf.with_columns(combined.alias("supporting_text")).drop(unknown)
+
+
 def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
     # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
     p: Path = Path(f"./{name}_{version}.tmp")
@@ -545,6 +585,7 @@ def compile_graph(subgraphs: list[Path], name: str, version: str) -> None:
             subnodes.append(partial)
         # ? Drop Internal Pre-Resolution Snapshot Columns From Final Edges
         lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
+        lf = fold_unknown_to_supporting_text(lf)
         subedges.append(lf)
 
     # ! Collection Point: Appending To Output Files

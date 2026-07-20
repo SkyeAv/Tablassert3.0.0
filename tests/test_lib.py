@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import polars as pl
 
 import tablassert.lib as lib
-from tablassert.enums import Repositories
+from tablassert.enums import ALLOWED_EDGE_FIELDS, Repositories
 from tablassert.ingests import from_yaml
 from tablassert.lib import (
     Tcode,
@@ -14,12 +14,15 @@ from tablassert.lib import (
     coerce_pvalue_columns,
     edge_category,
     edge_tables,
+    fold_unknown_to_supporting_text,
     format_numeric,
+    idx,
     idxname,
     infores,
     label_edge,
     numeric_columns,
     parse_edge_name,
+    publications,
     pvalue_target,
     strip_nulls,
 )
@@ -634,13 +637,13 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
             "predicate": ["r"],
             "disease_context_qualifier": ["MONDO:0005148"],
             "disease_context_qualifier_pre_resolution": ["MONDO:0005148"],
-            "publication": ["PMID:123"],
+            "publications": [["PMID:123"]],
         }
     ).write_parquet(sub)
     lib.compile_graph([sub], "qual", "1.0.0")
     edges: str = (tmp_path / "qual_1.0.0.edges.ndjson").read_text()
     nodes: str = (tmp_path / "qual_1.0.0.nodes.ndjson").read_text()
-    # ! Qualifier And Publication Stay On Edges
+    # ! Qualifier And Publications Stay On Edges
     assert "MONDO:0005148" in edges
     assert "PMID:123" in edges
     # ! Internal Pre-Resolution Snapshots Are Stripped From Final Edges
@@ -903,3 +906,162 @@ def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) 
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
     assert coerce_idx < clean_idx
+
+
+# ? publications() Wraps A CURIE Literal As A Single Element list[str] Column
+def test_publications_wraps_curie_as_list() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"]}).lazy()
+    out: pl.DataFrame = publications(lf, "PMID:42").collect()
+    assert out.schema["publications"] == pl.List(pl.String)
+    assert out["publications"].to_list() == [["PMID:42"]]
+
+
+# ? idx Emits A 1-Based Column Named extracted_from_row_number
+def test_idx_emits_one_based_extracted_from_row_number() -> None:
+    lf: pl.LazyFrame = pl.LazyFrame({"a": ["x", "y", "z"]})
+    out: pl.DataFrame = idx(lf).collect()
+    assert "extracted_from_row_number" in out.columns
+    assert out["extracted_from_row_number"].to_list() == [1, 2, 3]
+
+
+# ? fold_unknown_to_supporting_text Is A Noop When Every Column Is On The Allow List
+def test_fold_unknown_noop_when_all_allowed() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["B"],
+            "predicate": ["related_to"],
+            "p_value": [0.01],
+            "severity_qualifier": ["severe"],
+            "publications": [["PMID:1"]],
+        }
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    # ! Nothing Folded, No supporting_text Column Created
+    assert "supporting_text" not in out.columns
+    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "severity_qualifier", "publications"}
+
+
+# ? fold_unknown_to_supporting_text Folds A Single Unknown Column As "col: value"
+def test_fold_unknown_single_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "miscellaneous_notes": ["see smith et al"]}
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    assert "miscellaneous_notes" not in out.columns
+    assert out.schema["supporting_text"] == pl.List(pl.String)
+    assert out["supporting_text"].to_list() == [["miscellaneous_notes: see smith et al"]]
+
+
+# ? fold_unknown_to_supporting_text Folds Multiple Columns In Deterministic Sorted Order
+def test_fold_unknown_multiple_columns_sorted() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["B"],
+            "predicate": ["related_to"],
+            # ! Deliberately Listed Out Of Sort Order To Verify Output Is Sorted By Column Name
+            "extracted_from_row_number": ["7"],
+            "sheet_name": ["Sheet1"],
+            "significant": ["yes"],
+        }
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    assert out["supporting_text"].to_list() == [["extracted_from_row_number: 7", "sheet_name: Sheet1", "significant: yes"]]
+
+
+# ? fold_unknown_to_supporting_text Skips Null And Empty String Values
+def test_fold_unknown_skips_null_and_blank() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A", "B", "C"],
+            "object": ["X", "Y", "Z"],
+            "predicate": ["related_to", "related_to", "related_to"],
+            "miscellaneous_notes": ["present", None, "   "],
+        }
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    rows: list[list[Optional[str]]] = out["supporting_text"].to_list()
+    assert rows[0] == ["miscellaneous_notes: present"]
+    # ! Null And Whitespace Only Both Yield An Empty List
+    assert rows[1] == []
+    assert rows[2] == []
+
+
+# ? fold_unknown_to_supporting_text Appends To Existing list[str] supporting_text
+def test_fold_unknown_appends_to_existing_list_supporting_text() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["B"],
+            "predicate": ["related_to"],
+            "supporting_text": [["method: fisher exact"]],
+            "miscellaneous_notes": ["see smith et al"],
+        }
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    assert out["supporting_text"].to_list() == [["method: fisher exact", "miscellaneous_notes: see smith et al"]]
+
+
+# ? fold_unknown_to_supporting_text Coerces Scalar supporting_text To list[str] Then Appends
+def test_fold_unknown_coerces_scalar_supporting_text() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "supporting_text": ["plain summary"], "miscellaneous_notes": ["extra"]}
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    assert out.schema["supporting_text"] == pl.List(pl.String)
+    assert out["supporting_text"].to_list() == [["plain summary", "miscellaneous_notes: extra"]]
+
+
+# ? fold_unknown_to_supporting_text Never Folds Known Qualifier Columns
+def test_fold_unknown_preserves_qualifier_columns() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["B"],
+            "predicate": ["related_to"],
+            "disease_context_qualifier": ["MONDO:0005148"],
+            "severity_qualifier": ["severe"],
+            "anatomical_context_qualifier": ["UBERON:0000061"],
+        }
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+    # ! No supporting_text Column Materialized Because Nothing Was Foldable
+    assert "supporting_text" not in out.columns
+    assert "disease_context_qualifier" in out.columns
+    assert "severity_qualifier" in out.columns
+    assert "anatomical_context_qualifier" in out.columns
+
+
+# ? ALLOWED_EDGE_FIELDS Covers Intentional Tablassert Output Columns
+def test_allowed_edge_fields_covers_tablassert_pipeline_columns() -> None:
+    for col in ("publications", "upstream_resource_ids", "source_record_urls", "p_value", "supporting_text"):
+        assert col in ALLOWED_EDGE_FIELDS
+
+
+# ? compile_graph Folds Non Allow List Annotation Columns Into supporting_text On Edges
+def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatch: Any, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    sub: Path = tmp_path / "sub.parquet"
+    pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["X"],
+            "predicate": ["related_to"],
+            "miscellaneous_notes": ["see smith et al"],
+            "extracted_from_row_number": ["7"],
+            "p_value": [0.01],
+            "publications": [["PMID:1"]],
+        }
+    ).write_parquet(sub)
+    lib.compile_graph([sub], "fold", "1.0.0")
+    edges: str = (tmp_path / "fold_1.0.0.edges.ndjson").read_text()
+    # ! Folded Columns No Longer Appear As Top Level JSON Keys On The Edge Object
+    assert '"miscellaneous_notes":' not in edges
+    assert '"extracted_from_row_number":' not in edges
+    # ! But Their Values Survive Inside supporting_text
+    assert "miscellaneous_notes: see smith et al" in edges
+    assert "extracted_from_row_number: 7" in edges
+    # ! Real Biolist Fields Survive As Top Level Fields
+    assert '"p_value":0.01' in edges or '"p_value": 0.01' in edges
+    assert "PMID:1" in edges

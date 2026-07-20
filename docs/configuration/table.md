@@ -481,14 +481,29 @@ annotations:
     method: value
     encoding: "Benjamini Hochberg"
 
-  # Freetext catch-all for context that doesn't fit a structured field —
-  # study caveats, units, post-hoc notes, anything you'd otherwise lose.
-  - annotation: miscellaneous_notes
+  # Descriptive name of your choice — folded into `supporting_text` on output.
+  - annotation: log2fc_relative_to_vehicle_control
     method: value
     encoding: "Values are log2 fold-change relative to vehicle control; n=3 biological replicates per arm"
 ```
 
-> **Tip:** When source data carries information that can't be cleanly mapped to a structured annotation (assay-specific caveats, non-standard units, qualitative observations), add a `miscellaneous_notes` annotation rather than forcing it into another field or dropping it. It accepts both `method: value` (one note for the whole table) and `method: column` (per-row notes from the source).
+#### Allow-list and auto-folding
+
+Annotation names fall into two groups at build time:
+
+- **Biolink-native slots** — names matching a [Biolink Association](https://biolink.github.io/biolink-model/) slot (e.g. `p_value`, `sample_size`, `knowledge_level`, `adjusted_p_value`, `supporting_text`, `publications`, the qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim.
+- **Tablassert pipeline fields** — `upstream_resource_ids`, `source_record_urls`.
+
+Any other annotation name is treated as **supporting context**. At the end of `compile_graph`, tablassert sweeps the edge columns: for each non-allow-listed name it emits `"name: value"` entries into the edge's `supporting_text` (a `list[str]`), then drops the original column. Behavior worth knowing:
+
+- **Pick descriptive names.** Whatever string you choose becomes the prefix in `supporting_text`, so `log2fc_relative_to_vehicle_control` reads as `"log2fc_relative_to_vehicle_control: 1.4"` on the edge. Avoid generic names like `notes` or `value`.
+- **Null and blank cells produce no entry.** Whitespace-only values are treated as blank.
+- **Existing `supporting_text` is preserved.** If an annotation named `supporting_text` is already on the edge (Biolink-native slot), folded entries are appended to it rather than replacing it. Scalar values are coerced to a single-element list first.
+- **Ordering is stable.** Folded entries are sorted alphabetically by column name.
+
+This means nothing in your source data is silently dropped: context that doesn't map to a structured Biolink slot travels along inside `supporting_text` instead.
+
+In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance, and it folds into `supporting_text` like any other non-allow-list column (e.g. `"extracted_from_row_number: 42"`).
 
 ## Complete Example
 

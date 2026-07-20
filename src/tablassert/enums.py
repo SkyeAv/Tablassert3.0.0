@@ -536,6 +536,96 @@ class AgentTypes(str, Enum):
     TEXT_MINING_AGENT = "text_mining_agent"
 
 
+ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
+    [
+        # ? Core Edge Identity (Association + Entity Inheritance)
+        "id",
+        "iri",
+        "category",
+        "type",
+        "name",
+        "description",
+        "has_attribute",
+        "deprecated",
+        # ? NamedThing Carryover (Id/Name/Taxon Slots Used By normalize())
+        "provided_by",
+        "xref",
+        "full_name",
+        "synonym",
+        "exact_synonym",
+        "broad_synonym",
+        "narrow_synonym",
+        "related_synonym",
+        "equivalent_identifiers",
+        "information_content",
+        "taxon",
+        # ? Core Association Slots
+        "subject",
+        "predicate",
+        "object",
+        "negated",
+        "qualifier",
+        "qualifiers",
+        "relation",
+        "sources",
+        "has_evidence_of_type",
+        "has_evidence",
+        # ? Knowledge Source / Provenance
+        "knowledge_source",
+        "primary_knowledge_source",
+        "aggregator_knowledge_source",
+        # ? Interpretation
+        "knowledge_level",
+        "agent_type",
+        # ? Timepoint
+        "timepoint",
+        # ? Original Source Passthrough
+        "original_subject",
+        "original_predicate",
+        "original_object",
+        "subject_feature_name",
+        "object_feature_name",
+        # ? Denormalized Subject/Object Closures
+        "subject_category",
+        "object_category",
+        "subject_closure",
+        "object_closure",
+        "subject_category_closure",
+        "object_category_closure",
+        "subject_namespace",
+        "object_namespace",
+        "subject_label_closure",
+        "object_label_closure",
+        # ? Evidence
+        "retrieval_source_ids",
+        "publications",
+        "supporting_text",
+        "supporting_documents",
+        "has_supporting_studies",
+        "update_date",
+        "has_confidence_score",
+        "elevate_to_prediction",
+        "evidence_count",
+        "evidence_direction",
+        "evidence_type",
+        "semmed_agreement_count",
+        "p_value",
+        "adjusted_p_value",
+        "relationship_strength",
+        "sample_size",
+        # ! Tablassert Pipeline Fields -- Intentional, Tested Output, Not Literal Association Slots
+        "upstream_resource_ids",
+        "source_record_urls",
+    ]
+) | {q.value for q in Qualifiers}
+# ? Authoritative biolink-compliant edge column allow-list. Any column on an edge frame
+# ? that is not in this set is folded into the `supporting_text` list[str] field by
+# ? `lib.fold_unknown_to_supporting_text()` as a "column: value" string. Qualifier slot
+# ? names are unioned from the `Qualifiers` enum (the same enum `Qualifier.qualifier`
+# ? validates against in models.py), so this list never needs a second hand-maintained
+# ? copy of qualifier names.
+
+
 class EdgeCategories(str, Enum):
     # ? Biolink Association Subclasses For Auto-Derived Edge Categories
     ASSOCIATION = "Association"
