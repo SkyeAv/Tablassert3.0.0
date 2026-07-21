@@ -109,7 +109,11 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=tablassert --cov-report=term-missing"
 markers = ["network: requires internet", "gpu: requires CUDAExecutionProvider"]
+
+[tool.coverage.run]
+source = ["src/tablassert"]
 
 [tool.ruff]
 line-length = 150

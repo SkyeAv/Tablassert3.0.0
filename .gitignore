@@ -24,3 +24,4 @@
 *.ledger/
 *target/
 *.so
+*.coverage
