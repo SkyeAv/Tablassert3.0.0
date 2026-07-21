@@ -108,14 +108,14 @@ def query_distinct(
     return deduplicate_result(result, column_context)
 
 
-def fullmap_db_path(datassert: Path) -> Path:
-    # ? Resolves Existing Datassert Base Paths To The Embedded Redb File
-    if datassert.is_file() or datassert.suffix == ".redb":
-        return datassert
-    direct: Path = datassert / "fullmap.redb"
+def fullmap_db_path(fullmap: Path) -> Path:
+    # ? Resolves Existing Fullmap Base Paths To The Embedded Redb File
+    if fullmap.is_file() or fullmap.suffix == ".redb":
+        return fullmap
+    direct: Path = fullmap / "fullmap.redb"
     if direct.is_file():
         return direct
-    return datassert / "data" / "fullmap.redb"
+    return fullmap / "data" / "fullmap.redb"
 
 
 def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]) -> None:

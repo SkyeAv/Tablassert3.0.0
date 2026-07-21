@@ -275,4 +275,4 @@ class Graph(TablaBase):
     )
     ui_explanation: str = Field(DEFAULT_RIG_UI_EXPLANATION, description="Resource Ingest Guide explanation applied to generated edge type metadata.")
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
-    datassert: Path = Field(..., description="Base datassert directory or fullmap redb file for entity resolution.", examples=[".datassert"])
+    fullmap: Path = Field(..., description="Base fullmap directory or fullmap redb file for entity resolution.", examples=[".fullmap"])

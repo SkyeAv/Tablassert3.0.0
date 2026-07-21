@@ -7,7 +7,7 @@ This tutorial walks through building a simple knowledge graph from a CSV file of
 ## Prerequisites
 
 - Tablassert installed (see [Installation](installation.md))
-- Required database: datassert
+- Required database: fullmap
 - Basic familiarity with YAML
 
 ## The Data
@@ -102,7 +102,7 @@ name: TUTORIAL_KG
 version: 1.0.0
 tables:
   - ./tutorial-table.yaml
-datassert: /path/to/datassert
+fullmap: /path/to/fullmap
 ```
 
 **Important:** Replace the database paths with your actual paths.
@@ -110,12 +110,12 @@ datassert: /path/to/datassert
 **What this does:**
 - **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson` and `TUTORIAL_KG_1.0.0.edges.ndjson`
 - **tables**: List of table configurations to process
-- **datassert**: Path to the datassert directory for entity resolution
+- **fullmap**: Path to the fullmap redb file (or base directory) for entity resolution
 
 ## Step 4: Run Tablassert
 
 ```bash
-tablassert build tutorial-graph.yaml
+tablassert build-graph tutorial-graph.yaml
 ```
 
 **What happens:**

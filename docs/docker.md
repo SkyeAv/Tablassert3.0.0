@@ -24,25 +24,25 @@ docker run --rm ghcr.io/skyeav/tablassert:latest --version
 
 ## Building a Knowledge Graph
 
-The primary CLI command is `build`, which reads a graph configuration YAML file and produces KGX-compliant NDJSON output.
+The primary CLI command is `build-graph`, which reads a graph configuration YAML file and produces KGX-compliant NDJSON output.
 
 ```bash
 docker run --rm \
   -v /path/to/config:/data \
-  -v /path/to/datassert:/datassert \
+  -v /path/to/fullmap:/fullmap \
   ghcr.io/skyeav/tablassert:latest \
-  build /data/graph-config.yaml
+  build-graph /data/graph-config.yaml
 ```
 
 ## Verifying Table Configuration
 
-The `validate` command validates a table configuration YAML against the schema without running a full build.
+The `validate-table` command validates a table configuration YAML against the schema without running a full build.
 
 ```bash
 docker run --rm \
   -v /path/to/config:/data \
   ghcr.io/skyeav/tablassert:latest \
-  validate /data/table-config.yaml
+  validate-table /data/table-config.yaml
 ```
 
 ## Included Capabilities
@@ -68,19 +68,18 @@ Example:
 ```bash
 docker run --rm \
   -v ./config:/data \
-  -v ./datassert:/datassert \
+  -v ./fullmap:/fullmap \
   -v ./.tablassert:/app/.tablassert \
   -w /app \
   ghcr.io/skyeav/tablassert:latest \
-  build /data/graph-config.yaml
+  build-graph /data/graph-config.yaml
 ```
 
 ## Runtime Considerations
 
-- **Datassert path** — The graph configuration YAML specifies the `datassert` path for the entity-resolution database. Ensure it is accessible inside the container.
+- **Fullmap path** — The graph configuration YAML specifies the `fullmap` path (a redb file, or base directory containing one) for the entity-resolution database. Ensure it is accessible inside the container.
 - **Multiprocessing** — `src/tablassert/cli.py` uses `multiprocessing.Pool` for parallel table loading and section extraction.
-- **DuckDB connections** — An `ExitStack` in `src/tablassert/cli.py` opens read-only connections to all 10 Datassert DuckDB shards concurrently.
-- **Entity resolution** — The `fullmap` module (`src/tablassert/fullmap.py`) shards terms across 10 DuckDB shards (`SHARDS = 10`) using xxhash64.
+- **Entity resolution** — The `fullmap` module (`src/tablassert/fullmap.py`) queries a single embedded redb file built by `tablassert build-fullmap`; see [Fullmap](fullmap.md) for the schema and build pipeline.
 - **Text normalization** — `src/tablassert/nlp.py` provides `level_one` (strip + lowercase) and `level_two` (regex-based cleanup).
 
 ## CI/CD Integration

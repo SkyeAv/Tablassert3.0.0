@@ -82,7 +82,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
             raise SectionValidationError(graph_configuration_file, h, flatten_pydantic_error(e)) from e
         advance()
 
-    db: Path = fullmap_db_path(g.datassert)
+    db: Path = fullmap_db_path(g.fullmap)
 
     # * Collect Instructions (4/6)
     progress.stage("Collecting Instructions")
@@ -159,7 +159,7 @@ def run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
 
 
 def babel_urls(version: str, endpoints: tuple[str, ...], pattern: re.Pattern[str]) -> list[tuple[str, str]]:
-    # ? Discover BABEL files using the same RENCI directory-listing convention as Datassert.
+    # ? Discover BABEL files using the same RENCI directory-listing convention as the legacy Datassert tool this replaces.
     out: list[tuple[str, str]] = []
     for endpoint in endpoints:
         listing_url: str = f"{BABEL_BASE}/{version}/{endpoint}"
@@ -227,8 +227,8 @@ def download_babel_inputs(version: str, cache: Path) -> tuple[list[Path], list[P
     return classes, synonyms
 
 
-@APP.command
-def build(
+@APP.command(name="build-graph")
+def build_graph(
     graph_configuration_file: Path,
     release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False,
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
@@ -238,16 +238,16 @@ def build(
     run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log)
 
 
-@APP.command
-def validate(table_configuration_file: Path) -> None:
+@APP.command(name="validate-table")
+def validate_table(table_configuration_file: Path) -> None:
     """Validate section syntax from a YAML configuration file."""
     run(3, validate_pipeline, table_configuration_file)
 
 
 @APP.command(name="build-fullmap")
 def build_fullmap(
-    output: Path = Path("./datassert/data/fullmap.redb"),
-    cache: Path = Path("./datassert/downloads/fullmap"),
+    output: Path = Path("./fullmap/data/fullmap.redb"),
+    cache: Path = Path("./fullmap/downloads/fullmap"),
     version: str = BABEL_VERSION,
     threads: Optional[int] = None,
     write_batch_size: int = 50_000,

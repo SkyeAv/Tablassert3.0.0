@@ -190,7 +190,7 @@ def test_lookup_threads_match(fullmap_db: Path) -> None:
     assert single == multi
 
 
-# ? Datassert Base Path Helper Supports File, Direct Base, And data/fullmap.redb
+# ? Fullmap Base Path Helper Supports File, Direct Base, And data/fullmap.redb
 def test_fullmap_db_path_variants(tmp_path: Path, fullmap_db: Path) -> None:
     direct: Path = tmp_path / "fullmap.redb"
     direct.write_bytes(fullmap_db.read_bytes())
@@ -218,7 +218,7 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
     assert rows[0]["CURIE"] == "HGNC:1100"
 
 
-# ? BABEL URL Discovery Mirrors Datassert Constants And Exclusions
+# ? BABEL URL Discovery Mirrors Fullmap Constants And Exclusions
 def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
     class HasFullUrl(Protocol):
         full_url: str

@@ -888,7 +888,7 @@ def compile_graph(
 def resolve_many(
     col: str,
     entities: Iterable[str],
-    datassert: Path,
+    fullmap: Path,
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
@@ -903,7 +903,7 @@ def resolve_many(
     lf = level_one(lf, col)
     lf = level_two(lf, col)
 
-    lf = resolve(lf, col, fullmap_db_path(datassert), taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
+    lf = resolve(lf, col, fullmap_db_path(fullmap), taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
     if qc:
         lf = fullmap_audit(lf, col, "", "", log=qc)
 

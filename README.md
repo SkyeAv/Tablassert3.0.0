@@ -9,7 +9,7 @@ Extract knowledge assertions from tabular data into NCATS Translator-compliant K
 
 ```bash
 pip install tablassert
-tablassert build config.yaml
+tablassert build-graph config.yaml
 ```
 
 **[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
@@ -38,9 +38,9 @@ docker pull ghcr.io/skyeav/tablassert:latest
 
 docker run --rm \
   -v /path/to/config:/data \
-  -v /path/to/datassert:/datassert \
+  -v /path/to/fullmap:/fullmap \
   ghcr.io/skyeav/tablassert:latest \
-  build /data/graph-config.yaml
+  build-graph /data/graph-config.yaml
 ```
 
 </details>
@@ -51,11 +51,11 @@ docker run --rm \
 from pathlib import Path
 from tablassert.lib import resolve_many
 
-# Resolve gene names to CURIEs against a datassert database
+# Resolve gene names to CURIEs against a fullmap database
 results = resolve_many(
     col="gene",
     entities=["TP53", "BRCA1", "EGFR"],
-    datassert=Path("/path/to/datassert"),
+    fullmap=Path("/path/to/fullmap"),
     taxon="9606",
 )
 
@@ -66,7 +66,7 @@ for row in results:
 # EGFR → HGNC:3236 (EGFR)
 ```
 
-Point `resolve_many()` at a datassert database and resolve any iterable of entity strings to CURIEs — no LazyFrame setup, NLP preprocessing, or DuckDB connection management required. For full pipeline builds with YAML configuration, use `tablassert build config.yaml`.
+Point `resolve_many()` at a fullmap database and resolve any iterable of entity strings to CURIEs — no LazyFrame setup or NLP preprocessing required. For full pipeline builds with YAML configuration, use `tablassert build-graph config.yaml`.
 
 ## Key Features
 
@@ -74,7 +74,7 @@ Point `resolve_many()` at a datassert database and resolve any iterable of entit
 - **Entity Resolution** — Maps text to biological entities (genes, diseases, chemicals)
 - **Quality Control** — Optional three-stage validation (exact → fuzzy → BERT embeddings)
 - **KGX Compliance** — NCATS Translator-compatible NDJSON output
-- **Performance** — Lazy evaluation pipelines with Polars and DuckDB-accelerated entity resolution
+- **Performance** — Lazy evaluation pipelines with Polars and an embedded redb-accelerated entity resolution database
 
 ## Contributing
 

@@ -1,12 +1,12 @@
 # Batch Resolution (lib)
 
-The `lib` module exposes `resolve_many()`, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction, NLP preprocessing, or DuckDB shard management.
+The `lib` module exposes `resolve_many()`, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction or NLP preprocessing.
 
-It wraps the lower-level [`resolve()`](fullmap.md) pipeline — preserving the original input text, applying `level_one` and `level_two` normalization, opening all 10 DuckDB shard connections, executing entity resolution, optionally running the QC audit (when `qc=True`), and returning results as a plain Python list of row dictionaries.
+It wraps the lower-level [`resolve()`](fullmap.md) pipeline — preserving the original input text, applying `level_one` and `level_two` normalization, querying the embedded fullmap redb database, executing entity resolution, optionally running the QC audit (when `qc=True`), and returning results as a plain Python list of row dictionaries.
 
 ## resolve_many()
 
-Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the datassert database, then returns resolved CURIEs and metadata as a list of row dictionaries.
+Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the fullmap database, then returns resolved CURIEs and metadata as a list of row dictionaries.
 
 ### Function Signature
 
@@ -14,7 +14,7 @@ Standalone batch entity resolution function. Accepts a column name, an iterable 
 def resolve_many(
     col: str,
     entities: Iterable[str],
-    datassert: Path,
+    fullmap: Path,
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
@@ -33,15 +33,15 @@ For example, if `col="gene"`, each returned row dictionary will contain keys lik
 
 **`entities: Iterable[str]`**
 
-An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the datassert synonym database. Accepts any iterable — lists, tuples, generators, sets, etc.
+An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the fullmap synonym database. Accepts any iterable — lists, tuples, generators, sets, etc.
 
 Examples: `["TP53", "BRCA1", "EGFR"]`, `("aspirin", "ibuprofen")`, or a generator expression.
 
-**`datassert: Path`**
+**`fullmap: Path`**
 
-Filesystem path to the root of the datassert database directory. The function expects a `data/` subdirectory containing 10 DuckDB shard files (`0.duckdb` through `9.duckdb`).
+Filesystem path to the fullmap redb file, or a base directory containing it (resolved via `fullmap_db_path()` — see [Fullmap](../fullmap.md)).
 
-Each shard contains:
+The database contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
 - Biolink categories
@@ -105,9 +105,9 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 3. **NLP normalization** — Applies `level_one()` (whitespace stripping + lowercasing) and `level_two()` (non-word character removal via `\W+`) to produce the two normalized columns required by `resolve()`.
 
-4. **DuckDB connection management** — Opens all 10 shard connections inside a `contextlib.ExitStack`, ensuring every connection is properly closed when resolution completes or if an error occurs.
+4. **Path resolution** — Resolves the `fullmap` argument to the actual redb file via `fullmap_db_path()`.
 
-5. **Entity resolution** — Delegates to `fullmap.resolve()` which queries the sharded DuckDB database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.
+5. **Entity resolution** — Delegates to `fullmap.resolve()` which queries the embedded redb database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.
 
 6. **QC audit (optional)** — When `qc=True`, runs `fullmap_audit()` on the resolved LazyFrame. Rows that fail all three audit stages are dropped from the result.
 
@@ -123,12 +123,12 @@ from typing import Any
 from tablassert.lib import resolve_many
 from tablassert.enums import Categories
 
-datassert: Path = Path("/path/to/datassert")
+fullmap: Path = Path("/path/to/fullmap")
 
 result: list[dict[str, Any]] = resolve_many(
     col="gene",
     entities=["TP53", "BRCA1", "EGFR", "KRAS"],
-    datassert=datassert,
+    fullmap=fullmap,
     taxon="9606",
     prioritize=[Categories.GENE],
 )
@@ -145,12 +145,12 @@ from typing import Any
 from tablassert.lib import resolve_many
 from tablassert.enums import Categories
 
-datassert: Path = Path("/path/to/datassert")
+fullmap: Path = Path("/path/to/fullmap")
 
 result: list[dict[str, Any]] = resolve_many(
     col="disease",
     entities=["diabetes mellitus", "breast cancer", "alzheimer disease"],
-    datassert=datassert,
+    fullmap=fullmap,
     avoid=[Categories.GENE, Categories.PROTEIN],
 )
 
@@ -165,12 +165,12 @@ from pathlib import Path
 from typing import Any
 from tablassert.lib import resolve_many
 
-datassert: Path = Path("/path/to/datassert")
+fullmap: Path = Path("/path/to/fullmap")
 
 result: list[dict[str, Any]] = resolve_many(
     col="chemical",
     entities=["aspirin", "metformin", "ibuprofen"],
-    datassert=datassert,
+    fullmap=fullmap,
     column_context=False,
 )
 ```
@@ -183,12 +183,12 @@ from pathlib import Path
 from typing import Any
 from tablassert.lib import resolve_many
 
-datassert: Path = Path("/path/to/datassert")
+fullmap: Path = Path("/path/to/fullmap")
 
 result: list[dict[str, Any]] = resolve_many(
     col="gene",
     entities=["TP53", "BRCA1"],
-    datassert=datassert,
+    fullmap=fullmap,
     taxon="9606",
 )
 
@@ -207,7 +207,7 @@ for row in result:
 | **Module** | `tablassert.lib` | `tablassert.fullmap` |
 | **Input** | Plain iterable of strings | Pre-normalized `pl.LazyFrame` |
 | **NLP** | Applied automatically | Must be applied upstream |
-| **Connections** | Managed internally via `ExitStack` | Must be opened externally |
+| **Path resolution** | Resolved internally via `fullmap_db_path()` | Caller must pass the resolved redb path |
 | **Output** | `list[dict[str, Any]]` | `pl.LazyFrame` |
 | **Logging** | Uses default (`log=True`) | Configurable |
 | **Context params** | `column_context` exposed; `section_hash`, `config_file`, `tag` not exposed | Fully configurable |
@@ -232,14 +232,13 @@ Both levels are queried during resolution. Level one (exact case-insensitive mat
 
 ### Error Handling
 
-- If the `datassert` path does not contain the expected shard files, `duckdb.connect()` will raise an `IOException`.
+- If the `fullmap` path does not resolve to a valid redb file, or the file's schema tag doesn't match the expected version, the Rust extension raises a `RuntimeError`.
 - If `entities` is empty, the function returns `[]`.
-- The `ExitStack` ensures all 10 DuckDB connections are closed even if resolution raises an exception.
 - Unresolved entities are silently filtered from the output (logged at INFO level by default via `resolve()`).
 
 ## Integration
 
-`resolve_many()` is a self-contained entry point. It does not require any prior setup beyond having a datassert database available. For full pipeline builds, use the CLI (`tablassert build`) which orchestrates resolution through the `Tcode` class.
+`resolve_many()` is a self-contained entry point. It does not require any prior setup beyond having a fullmap database available. For full pipeline builds, use the CLI (`tablassert build-graph`) which orchestrates resolution through the `Tcode` class.
 
 ## Next Steps
 

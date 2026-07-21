@@ -19,7 +19,7 @@ A graph configuration file specifies:
 | `name` | String | Knowledge graph name (used in output filename) |
 | `version` | String | Knowledge graph version (used in output filename) |
 | `tables` | List[Path] | Paths to table configuration YAML files |
-| `datassert` | Path | Path to datassert directory containing DuckDB shards |
+| `fullmap` | Path | Path to the fullmap redb file, or a base directory containing it |
 
 ### Optional Fields
 
@@ -69,20 +69,20 @@ Each table config defines:
 
 See [Table Configuration](table.md) for details.
 
-**`datassert: path`**
+**`fullmap: path`**
 
-Path to the [datassert](../datassert.md) directory for entity resolution. Tablassert opens 10 shard files from `datassert/data/{0..9}.duckdb`. This database contains:
+Path to the [fullmap](../fullmap.md) redb file for entity resolution, or a base directory containing it. Tablassert resolves the actual file via `fullmap_db_path()`. This database contains:
 - Synonym mappings (text → CURIE)
 - Biolink categories
 - Taxonomic information
 - Source provenance (which database provided the mapping)
 
-See [Datassert](../datassert.md) for installation, build commands, and database schema.
+See [Fullmap](../fullmap.md) for build commands and database schema.
 
 ## Path Resolution
 
 Paths can be:
-- **Absolute:** `/home/user/data/datassert`
+- **Absolute:** `/home/user/data/fullmap`
 - **Relative to the current working directory:** `./tables/table1.yaml` (note: paths are resolved against the process CWD, not the graph-config file location — there is no config-relative resolver)
 
 ## Minimal Example
@@ -95,7 +95,7 @@ log: true
 qc: true
 tables:
   - ./my-table.yaml
-datassert: /data/datassert
+fullmap: /data/fullmap
 ```
 
 ## Multi-Table Example
@@ -108,19 +108,19 @@ tables:
   - /configs/gene-disease-associations.yaml
   - /configs/drug-targets.yaml
   - /configs/protein-interactions.yaml
-datassert: /databases/datassert
+fullmap: /databases/fullmap
 ```
 
 ## Processing Flow
 
-When you run `tablassert build graph.yaml`:
+When you run `tablassert build-graph graph.yaml`:
 
 1. **Load graph configuration** - Parse YAML, validate schema
 2. **Load table configurations** - Parse each YAML in `tables`
 3. **Extract sections** - Expand templates into per-section `Tcode` instances
 4. **Collect instructions (per section):**
    - Download source file (if URL specified)
-   - Apply transformations and resolve entities using `datassert`
+   - Apply transformations and resolve entities using `fullmap`
    - Validate with the QC audit when `qc: true`
 5. **Build subgraphs** - Compile each section's resolved data into a parquet file
 6. **Compile graph** - Aggregate all subgraph parquets and export `{name}_{version}.nodes.ndjson` / `.edges.ndjson`
@@ -146,7 +146,7 @@ name: MULTIOMICS_KG
 version: UNSTABLE
 tables:
   - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
-datassert: /local_raid1/sgoetz/CODE/DATASSERT/datassert
+fullmap: /local_raid1/sgoetz/CODE/FULLMAP/fullmap
 ```
 
 This processes a single table configuration (ALAMV6.yaml) into a knowledge graph named `MULTIOMICS_KG_UNSTABLE`.
@@ -154,5 +154,5 @@ This processes a single table configuration (ALAMV6.yaml) into a knowledge graph
 ## Next Steps
 
 - **[Table Configuration](table.md)** - Learn how to define table transformations
-- **[Datassert](../datassert.md)** - Entity-resolution database installation and build
+- **[Fullmap](../fullmap.md)** - Entity-resolution database build and schema
 - **[Tutorial](../tutorial.md)** - Complete example walkthrough

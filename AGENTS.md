@@ -7,8 +7,9 @@
   - `--extra qc` / `--extra qc-cuda` — installs `onnxruntime` / `onnxruntime-gpu` for QC (strict runtime behavior below).
   - `--extra rt` — runtime-compatible Polars build for CPUs missing required SIMD instructions.
 - CLI entrypoint is `tablassert.cli:APP`. Real user commands:
-  - `uv run tablassert build <graph.yaml>` — 6 pipeline stages.
-  - `uv run tablassert validate <table.yaml>` — 3 stages, syntax-only.
+  - `uv run tablassert build-graph <graph.yaml>` — 6 pipeline stages.
+  - `uv run tablassert validate-table <table.yaml>` — 3 stages, syntax-only.
+  - `uv run tablassert build-fullmap` — builds the embedded `fullmap.redb` entity-resolution database from BABEL exports.
 
 ## Source of Truth
 
@@ -28,14 +29,14 @@
 
 ## High-Value Structure
 
-- `src/tablassert/cli.py` is the wiring layer: `build()` → `build_pipeline()`, `validate()` → `validate_pipeline()`.
+- `src/tablassert/cli.py` is the wiring layer: `build_graph()` → `build_pipeline()`, `validate_table()` → `validate_pipeline()`.
 - `src/tablassert/ingests.py` loads YAML and expands table configs into section dicts.
 - `src/tablassert/lib.py` is the core pipeline:
   - `Tcode.collect()` builds the per-section operation list.
   - `compile_subgraph()` executes that list into parquet.
   - `compile_graph()` aggregates subgraph parquets into KGX NDJSON.
   - `resolve_many()` is the direct library API for batch entity resolution.
-- Entity resolution uses DuckDB shard files at `<datassert>/data/{0..9}.duckdb`, opened read-only. `datassert` is a required `Path` field on the `Graph` model (not a fixed location); `src/tablassert/fullmap.py` hardcodes `SHARDS = 10`.
+- Entity resolution queries a single embedded redb file (`fullmap.redb`), resolved via `fullmap_db_path()`. `fullmap` is a required `Path` field on the `Graph` model (not a fixed location) — it accepts either the redb file directly or a base directory.
 
 ## Repo-Specific Gotchas
 

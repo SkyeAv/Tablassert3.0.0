@@ -1,6 +1,6 @@
 # CLI Reference
 
-Tablassert provides two commands.
+Tablassert provides three commands.
 
 ## version
 
@@ -24,14 +24,14 @@ Prints the installed Tablassert version to stdout and exits. This is a flag on t
 
 ---
 
-## build
+## build-graph
 
 Build a knowledge graph from a YAML configuration file.
 
 ### Synopsis
 
 ```bash
-tablassert build <graph_configuration_file>
+tablassert build-graph <graph_configuration_file>
 ```
 
 ### Options
@@ -43,12 +43,12 @@ tablassert build <graph_configuration_file>
 ### Example
 
 ```bash
-tablassert build /path/to/MOKGV6.yaml
+tablassert build-graph /path/to/MOKGV6.yaml
 ```
 
 ### Description
 
-This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through datassert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.
+This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through fullmap, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.
 
 The process executes in parallel stages with a three-row live progress block (logs print above the live block):
 
@@ -93,14 +93,14 @@ See [Graph Configuration](configuration/graph.md) for details on the YAML schema
 
 ---
 
-## validate
+## validate-table
 
 Validate section syntax from a YAML configuration file.
 
 ### Synopsis
 
 ```bash
-tablassert validate <table_configuration_file>
+tablassert validate-table <table_configuration_file>
 ```
 
 ### Options
@@ -112,7 +112,7 @@ tablassert validate <table_configuration_file>
 ### Example
 
 ```bash
-tablassert validate /path/to/table-config.yaml
+tablassert validate-table /path/to/table-config.yaml
 ```
 
 ### Description
@@ -128,6 +128,38 @@ See [Table Configuration](configuration/table.md) for details on the YAML schema
 
 ---
 
+## build-fullmap
+
+Build an embedded fullmap redb database from BABEL export files.
+
+### Synopsis
+
+```bash
+tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>] [--threads <n>] [--write-batch-size <n>]
+```
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--output` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
+| `--cache` | Path | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
+| `--version` | str | No | current BABEL release | BABEL release version to fetch |
+| `--threads` | int | No | `None` | Worker threads for staging/writing |
+| `--write-batch-size` | int | No | `50000` | Row batch size for staged writes |
+
+### Example
+
+```bash
+tablassert build-fullmap --output /data/fullmap/fullmap.redb
+```
+
+### Description
+
+This command downloads BABEL class and synonym files from RENCI, stages them, and builds a single embedded `fullmap.redb` file used for entity resolution during `build-graph`. See [Fullmap](fullmap.md) for the full data pipeline, output schema, and graph-config usage.
+
+---
+
 ## Examples
 
 ### Check Version
@@ -139,25 +171,31 @@ tablassert --version
 ### Build Knowledge Graph
 
 ```bash
-tablassert build my-graph.yaml
+tablassert build-graph my-graph.yaml
 ```
 
 ### Validate Table Configuration
 
 ```bash
-tablassert validate table-config.yaml
+tablassert validate-table table-config.yaml
+```
+
+### Build Fullmap Database
+
+```bash
+tablassert build-fullmap
 ```
 
 ## Workflow
 
 1. **Create table configuration** - Define data sources and transformations
 2. **Create graph configuration** - Define output name, table configs, databases
-3. **Validate table config** - `tablassert validate table.yaml`
-4. **Build knowledge graph** - `tablassert build graph.yaml`
+3. **Validate table config** - `tablassert validate-table table.yaml`
+4. **Build knowledge graph** - `tablassert build-graph graph.yaml`
 5. **Process executes:**
    - Downloads files from URLs (if needed)
    - Applies transformations to each table
-   - Resolves entities using datassert
+   - Resolves entities using fullmap
    - Validates mappings with QC pipeline
    - Aggregates subgraphs into NDJSON
 
@@ -165,3 +203,4 @@ tablassert validate table-config.yaml
 
 - **[Tutorial](tutorial.md)** - Complete example walkthrough
 - **[Configuration Guide](configuration/graph.md)** - YAML configuration reference
+- **[Fullmap](fullmap.md)** - Entity-resolution database build and schema

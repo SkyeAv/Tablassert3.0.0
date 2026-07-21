@@ -4,7 +4,7 @@ The `fullmap` module provides entity resolution functionality, mapping text stri
 
 ## resolve()
 
-Primary entity resolution function using DuckDB queries against the datassert database.
+Primary entity resolution function, querying the embedded fullmap redb database.
 
 ### Function Signature
 
@@ -12,7 +12,7 @@ Primary entity resolution function using DuckDB queries against the datassert da
 def resolve(
   lf: pl.LazyFrame,
   col: str,
-  conns: list[object],
+  db: Path,
   taxon: Optional[str] = None,
   prioritize: Optional[list[Categories]] = None,
   avoid: Optional[list[Categories]] = None,
@@ -20,7 +20,8 @@ def resolve(
   section_hash: Optional[str] = None,
   config_file: Optional[str] = None,
   column_context: bool = True,
-  tag: str = "_two"
+  tag: str = "_two",
+  threads: Optional[int] = None,
 ) -> pl.LazyFrame
 ```
 
@@ -28,17 +29,17 @@ def resolve(
 
 **`lf: pl.LazyFrame`**
 
-Input LazyFrame containing the data to process. Internally collected at explicit collection points for DuckDB queries and joins.
+Input LazyFrame containing the data to process. Internally collected at explicit collection points for redb lookups and joins.
 
 **`col: str`**
 
 Column name containing text strings to resolve.
 
-**`conns: list[object]`**
+**`db: Path`**
 
-List of 10 DuckDB shard connections to the datassert database.
+Path to the fullmap redb file (already resolved — see `fullmap_db_path()` and [Fullmap](../fullmap.md)).
 
-Each shard contains:
+The database contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
 - Biolink categories
@@ -85,6 +86,10 @@ Suffix appended to `col` to locate the `level_two` output column.
 
 The default `"_two"` matches `level_two`'s default tag.
 
+**`threads: Optional[int]` (default: `None`)**
+
+Optional worker-thread count passed through to the Rust lookup for parallel term batching.
+
 ### Return Value
 
 Returns a Polars LazyFrame with these columns added:
@@ -99,11 +104,11 @@ Returns a Polars LazyFrame with these columns added:
 | `{col}_source_version` | Database version | `"2025-01"` |
 | `{col}_nlp_level` | NLP processing level | `1` or `2` |
 
-### DuckDB Query
+### Lookup Pipeline
 
-The function executes a SQL query that:
+The function:
 
-1. **Builds an in-memory term table** by collecting terms from both NLP levels, deduplicating by keeping first occurrences for deterministic ordering, and registering them in DuckDB as `PARQUET` via `conn.register("PARQUET", df.to_arrow())`.
+1. **Builds an in-memory term table** by collecting terms from both NLP levels and deduplicating by keeping first occurrences for deterministic ordering, then looks them up against the redb `records` table via the Rust `lookup_fullmap_terms()` extension function.
 
 2. **Ranks matches** by:
    - Category priority (if `prioritize` specified)
@@ -120,17 +125,13 @@ The function executes a SQL query that:
 ### Example Usage
 
 ```python
+from pathlib import Path
 from tablassert.fullmap import resolve
 from tablassert.enums import Categories
-import duckdb
 import polars as pl
 
-# Open all 10 shard connections
-datassert_dir = "/path/to/datassert"
-conns = [
-    duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
-    for i in range(10)
-]
+# Path to the fullmap redb file
+db = Path("/path/to/fullmap/data/fullmap.redb")
 
 # LazyFrame with data to resolve
 lf = pl.scan_parquet("data.parquet")
@@ -139,7 +140,7 @@ lf = pl.scan_parquet("data.parquet")
 result = resolve(
   lf=lf,
   col="gene_symbol",
-  conns=conns,
+  db=db,
   taxon="9606",  # Human only
   prioritize=[Categories.Gene],
   avoid=[Categories.Protein],
@@ -161,18 +162,14 @@ result = resolve(
 A common entry point for programmatic use is resolving a plain Python list of terms:
 
 ```python
-import duckdb
+from pathlib import Path
 import polars as pl
 from tablassert.fullmap import resolve
 from tablassert.nlp import level_one, level_two
 from tablassert.enums import Categories
 
-# Open all 10 shard connections
-datassert_dir = "/path/to/datassert"
-conns = [
-    duckdb.connect(f"{datassert_dir}/data/{i}.duckdb", read_only=True)
-    for i in range(10)
-]
+# Path to the fullmap redb file
+db = Path("/path/to/fullmap/data/fullmap.redb")
 
 # Map a list of gene symbols to CURIEs
 genes = ["TP53", "BRCA1", "EGFR", "KRAS"]
@@ -185,7 +182,7 @@ lf = level_two(lf, "gene")   # remove non-word chars → "gene_two" column
 result = resolve(
     lf=lf,
     col="gene",
-    conns=conns,
+    db=db,
     taxon="9606",               # Human only
     prioritize=[Categories.Gene],
     log=False,

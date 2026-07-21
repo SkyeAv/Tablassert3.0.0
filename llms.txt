@@ -1,10 +1,10 @@
 # Tablassert
-> Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON using declarative YAML, DuckDB-backed entity resolution, and staged quality control.
+> Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON using declarative YAML, embedded redb-backed entity resolution, and staged quality control.
 
 This file is for two audiences: (1) YAML configuration authors and (2) package contributors.
 When source code and prose docs disagree, treat `src/tablassert/models.py` and `src/tablassert/cli.py` as the current authority.
-If you encounter older configurations, migrate `dbssert` to `datassert` (directory path).
-Current CLI behavior opens shard files at `datassert/data/{0..9}.duckdb`.
+If you encounter older configurations, migrate `datassert:` to `fullmap:` (the graph-config field pointing at the entity-resolution database).
+Current CLI behavior queries a single embedded redb file at `fullmap/data/fullmap.redb`.
 
 ## Quickstart
 - [README](README.md): high-level overview, install snippets, and one-command graph build.
@@ -23,7 +23,7 @@ Current CLI behavior opens shard files at `datassert/data/{0..9}.duckdb`.
 - [CLI Entry Point](src/tablassert/cli.py): command implementations and build pipeline stages.
 - [Pydantic Models](src/tablassert/models.py): authoritative schema for `Section` and `Graph`.
 - [YAML Ingestion](src/tablassert/ingests.py): `from_yaml()`, `to_sections()`, and template/section merge behavior.
-- [Datassert Guide](docs/datassert.md): entity-resolution database background and shard context.
+- [Fullmap Guide](docs/fullmap.md): entity-resolution database build pipeline and redb schema.
 
 ## Contributor Development
 - [Contributing Guide](CONTRIBUTING.md): setup, style conventions, checks, and PR expectations.
@@ -34,7 +34,7 @@ Current CLI behavior opens shard files at `datassert/data/{0..9}.duckdb`.
 
 ## Implementation Map
 - [Core Pipeline](src/tablassert/lib.py): extraction transforms, statement assembly, and graph compilation.
-- [Entity Resolution](src/tablassert/fullmap.py): shard-parallel synonym resolution and ranking logic.
+- [Entity Resolution](src/tablassert/fullmap.py): embedded redb synonym resolution and ranking logic.
 - [Quality Control](src/tablassert/qc.py): exact, fuzzy, and BioBERT validation stages.
 - [Normalization](src/tablassert/nlp.py): text normalization levels and preprocessing helpers.
 - [Enums Catalog](src/tablassert/enums.py): allowed values for syntax, predicates, categories, repositories, and transforms.

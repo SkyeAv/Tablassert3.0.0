@@ -36,7 +36,7 @@ def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
 # ? Graph RIG Defaults Are Declared In The Model
 def test_graph_rig_defaults() -> None:
     graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", description="Test graph", tables=[Path("./table.yaml")], datassert=Path("./datassert")
+        name="TEST", version="1.0.0", description="Test graph", tables=[Path("./table.yaml")], fullmap=Path("./fullmap")
     )
     assert graph.contributions == ["Tablassert: KGX and RIG generation"]
     assert graph.ui_explanation == DEFAULT_RIG_UI_EXPLANATION
@@ -49,7 +49,7 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
         "version": "1.0.0",
         "description": "Test graph",
         "tables": [Path("./table.yaml")],
-        "datassert": Path("./datassert"),
+        "fullmap": Path("./fullmap"),
         "pubmed_db": Path("./PubMed.db"),
         "pmc_db": Path("./PMCSuppCaptions.db"),
     }
@@ -57,14 +57,14 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
         Graph.model_validate(data)
 
 
-# ? Graph Rejects QC And Log Keys (Moved To `build` CLI Flags)
+# ? Graph Rejects QC And Log Keys (Moved To `build-graph` CLI Flags)
 def test_graph_rejects_qc_and_log_keys() -> None:
     data: dict[str, Any] = {
         "name": "TEST",
         "version": "1.0.0",
         "description": "Test graph",
         "tables": [Path("./table.yaml")],
-        "datassert": Path("./datassert"),
+        "fullmap": Path("./fullmap"),
         "qc": True,
         "log": True,
     }

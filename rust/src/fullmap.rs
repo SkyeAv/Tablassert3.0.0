@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn level_normalization_matches_datassert_shape() {
+    fn level_normalization_matches_fullmap_shape() {
         assert_eq!(level_one("BRCA-1"), "brca-1");
         assert_eq!(level_two("brca-1"), "brca1");
     }
