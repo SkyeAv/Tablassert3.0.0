@@ -49,18 +49,19 @@ docker run --rm \
 
 All dependencies ship in the base install, so the Docker image includes:
 
-- **Quality control** — The QC pipeline in `src/tablassert/qc.py` runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (`fuzz.ratio` >= 20 or `partial_token_sort_ratio` >= 30), then BioBERT sentence embeddings with cosine similarity (threshold >= 0.2). The ONNX model is cached in `.onnxassert/` (line 24).
+- **Quality control** — The QC pipeline in `src/tablassert/qc.py` runs a three-stage audit: exact match, then fuzzy matching via rapidfuzz (`fuzz.ratio` >= 20 or `partial_token_sort_ratio` >= 30), then BioBERT sentence embeddings with cosine similarity (threshold >= 0.2). The ONNX model is cached in `.tablassert/onnx/` (line 25).
 
 ## Persistent Data Directories
 
-Mount these volumes to persist data across container runs:
+Mount a single volume at `.tablassert/` to persist all working artifacts across container runs. The subdirectories (`store/`, `log/`, `onnx/`) are auto-created on first use.
 
-| Directory | Source | Purpose |
+| Subdirectory | Source | Purpose |
 |---|---|---|
-| `.storassert/` | `src/tablassert/utils.py:17` — `STORE` | Intermediate Parquet storage for compiled subgraphs |
-| `.logassert/` | `src/tablassert/log.py` | Loguru log files with 100 MB rotation |
-| `.onnxassert/` | `src/tablassert/qc.py:24` — `MODEL` | Cached ONNX/BioBERT model |
-| `.cachassert/` | `src/tablassert/models.py:76` — `CACHE` | diskcache store for URL-validation memoization |
+| `.tablassert/store/` | `src/tablassert/utils.py:14` — `STORE` | Intermediate Parquet storage for compiled subgraphs |
+| `.tablassert/log/` | `src/tablassert/log.py:13` — `LOGASSERT` | Loguru log files (`tablassert.log`) with 100 MB rotation |
+| `.tablassert/onnx/` | `src/tablassert/qc.py:25` — `MODEL` | Cached ONNX/BioBERT model |
+
+All three paths are derived from `utils.BASE = Path("./.tablassert")`.
 
 Example:
 
@@ -68,10 +69,7 @@ Example:
 docker run --rm \
   -v ./config:/data \
   -v ./datassert:/datassert \
-  -v ./.storassert:/app/.storassert \
-  -v ./.logassert:/app/.logassert \
-  -v ./.onnxassert:/app/.onnxassert \
-  -v ./.cachassert:/app/.cachassert \
+  -v ./.tablassert:/app/.tablassert \
   -w /app \
   ghcr.io/skyeav/tablassert:latest \
   build /data/graph-config.yaml

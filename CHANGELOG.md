@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file.
 ### Breaking Changes
 - Replaced graph syntax `GC2` with `GC3`. Graph configurations now reject `syntax: GC2`.
 - Removed `pubmed_db` and `pmc_db` from graph configuration and removed the downstream PubMed metadata and PMC caption enrichment steps from graph builds.
+- Consolidated the four scattered hidden working directories (`.storassert/`, `.logassert/`, `.onnxassert/`, and the previously-documented-but-removed `.cachassert/`) into a single parent `.tablassert/` with three intuitively-named subdirectories: `.tablassert/store/` (intermediate parquet, `utils.STORE`), `.tablassert/log/` (loguru sink, `log.LOGASSERT`), and `.tablassert/onnx/` (cached ONNX/BioBERT model, `qc.MODEL`). All three paths are now derived from a single `utils.BASE = Path("./.tablassert")` constant. The loguru sink file was renamed from `logassert.log` to `tablassert.log`. Any external tooling, Docker volume mounts, or log tailers pointed at the old paths need to be updated; the on-disk content is auto-regenerated on the next run (parquet is reproducible, the ONNX model re-downloads if `.tablassert/onnx/` is not pre-populated).
 
 ## 7.5.2 - 2026-07-01
 

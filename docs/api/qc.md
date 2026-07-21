@@ -147,7 +147,7 @@ BioBERT is lazy-loaded on first use and cached globally for the lifetime of the 
 # ? Lazy-loads BioBERT once on first batch audit call, then caches globally
 ```
 
-**Cache location:** Downloaded model files are cached on disk in `.onnxassert/`, and the loaded model object is cached in memory for the lifetime of the process.
+**Cache location:** Downloaded model files are cached on disk in `.tablassert/onnx/`, and the loaded model object is cached in memory for the lifetime of the process.
 
 **Cache strategy:** BioBERT model loaded once on first batch audit, then reused globally
 

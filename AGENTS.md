@@ -55,4 +55,4 @@
 
 ## Side Effects
 
-- The package writes working artifacts to hidden dirs in the repo root, each defined in code: `.storassert/` (`utils.STORE`), `.logassert/` (`log.LOGASSERT`), `.cachassert/` (`models.CACHE`), `.onnxassert/` (`qc.MODEL`).
+- The package writes working artifacts under a single hidden parent in the repo root, all derived from `utils.BASE = Path("./.tablassert")`: `.tablassert/store/` (`utils.STORE`, intermediate parquet), `.tablassert/log/` (`log.LOGASSERT`, loguru sink writes `tablassert.log`), `.tablassert/onnx/` (`qc.MODEL`, cached ONNX/BioBERT).

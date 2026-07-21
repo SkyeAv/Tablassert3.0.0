@@ -7,10 +7,8 @@
 *.pytest_cache/
 *plans/
 *specs/
-*.storassert/
-*.logassert/
+*.tablassert/
 *DATALAKE/
-*.onnxassert/
 *.claude/
 *.envrc
 *venv/

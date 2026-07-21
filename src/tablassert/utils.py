@@ -10,7 +10,8 @@ if TYPE_CHECKING:
 else:
     xxhash = Lazy.load("xxhash")
 
-STORE: Path = Path("./.storassert")
+BASE: Path = Path("./.tablassert")
+STORE: Path = BASE / "store"
 STORE.mkdir(parents=True, exist_ok=True)
 
 

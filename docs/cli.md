@@ -87,7 +87,7 @@ Final output files are written to the current working directory as:
 - `{name}_{version}.nodes.ndjson` - Node file (entities)
 - `{name}_{version}.edges.ndjson` - Edge file (relationships)
 
-Intermediate parquet artifacts are written to `.storassert/` during section processing.
+Intermediate parquet artifacts are written to `.tablassert/store/` during section processing.
 
 See [Graph Configuration](configuration/graph.md) for details on the YAML schema.
 

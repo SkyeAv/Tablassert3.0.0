@@ -18,10 +18,11 @@ else:
     pl = Lazy.load("polars")
 
 from tablassert.log import cat
+from tablassert.utils import BASE
 
 logger = cat("QC")
 
-MODEL: Path = Path("./.onnxassert/")
+MODEL: Path = BASE / "onnx"
 MODEL_BACKEND: Literal["onnx"] = "onnx"
 CPU_PROVIDER: str = "CPUExecutionProvider"
 CUDA_PROVIDER: str = "CUDAExecutionProvider"
