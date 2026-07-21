@@ -33,14 +33,6 @@ def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
     assert section.provenance.repo == "PMC"
 
 
-# ? Graph QC Defaults To False
-def test_graph_qc_defaults_false() -> None:
-    graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", description="Test graph", tables=[Path("./table.yaml")], datassert=Path("./datassert")
-    )
-    assert graph.qc is False
-
-
 # ? Graph RIG Defaults Are Declared In The Model
 def test_graph_rig_defaults() -> None:
     graph: Graph = Graph(  # pyright: ignore
@@ -65,12 +57,19 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
         Graph.model_validate(data)
 
 
-# ? Graph Accepts Explicit QC True
-def test_graph_qc_true() -> None:
-    graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", description="Test graph", qc=True, tables=[Path("./table.yaml")], datassert=Path("./datassert")
-    )
-    assert graph.qc is True
+# ? Graph Rejects QC And Log Keys (Moved To `build` CLI Flags)
+def test_graph_rejects_qc_and_log_keys() -> None:
+    data: dict[str, Any] = {
+        "name": "TEST",
+        "version": "1.0.0",
+        "description": "Test graph",
+        "tables": [Path("./table.yaml")],
+        "datassert": Path("./datassert"),
+        "qc": True,
+        "log": True,
+    }
+    with pytest.raises(ValidationError):
+        Graph.model_validate(data)
 
 
 # ? Valid Minimal Excel Section

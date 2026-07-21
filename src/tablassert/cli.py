@@ -25,7 +25,7 @@ APP: cyclopts.App = cyclopts.App(
 )
 
 
-def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False) -> None:
+def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False, qc: bool = False, log: bool = False) -> None:
     # ? Build A Knowledge Graph From A Configuration File
     from tablassert.fullmap import fullmap_db_path
     from tablassert.ingests import from_yaml, to_sections
@@ -61,7 +61,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
         h: str = mkhash(s)
         start(f"{Path(str(s['config'])).stem} · {h[:8]}")
         try:
-            tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc, "release": release, "name": g.name}))
+            tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": log, "qc": qc, "release": release, "name": g.name}))
         except pydantic.ValidationError as e:
             raise RuntimeError(
                 f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
@@ -147,9 +147,14 @@ def run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
 
 
 @APP.command
-def build(graph_configuration_file: Path, release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False) -> None:
+def build(
+    graph_configuration_file: Path,
+    release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False,
+    qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
+    log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
+) -> None:
     """Build a knowledge graph from a YAML configuration file."""
-    run(6, build_pipeline, graph_configuration_file, release=release)
+    run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log)
 
 
 @APP.command

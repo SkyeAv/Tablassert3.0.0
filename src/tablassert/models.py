@@ -268,7 +268,5 @@ class Graph(TablaBase):
         default_factory=default_rig_contributions, description="Resource Ingest Guide contribution statements for graph provenance."
     )
     ui_explanation: str = Field(DEFAULT_RIG_UI_EXPLANATION, description="Resource Ingest Guide explanation applied to generated edge type metadata.")
-    log: bool = Field(False, description="Whether to log unmatched entities and audit details during graph builds.")
-    qc: bool = Field(False, description="Whether to run the QC audit stage during graph builds.")
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
     datassert: Path = Field(..., description="Base datassert directory or fullmap redb file for entity resolution.", examples=[".datassert"])
