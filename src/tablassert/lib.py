@@ -336,6 +336,16 @@ def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: Union[str, int, floa
     return df.filter(op(expr, comp))
 
 
+def drop_not_significant(lf: pl.LazyFrame, col: str = "statistical_significance_qualifier") -> pl.LazyFrame:
+    # ? Release-Mode Row Filter: Drops Edges Whose Significance Qualifier Is biolink:not_significant
+    # ! Only Filters When The Qualifier Column Exists; No-Op For Sections Without A p_value Column
+    # ! ne_missing Keeps Null Qualifiers (Null P-Value -> Null Qualifier -> Kept, Not Dropped)
+    names: list[str] = lf.collect_schema().names()
+    if col not in names:
+        return lf
+    return lf.filter(pl.col(col).cast(pl.String).ne_missing("biolink:not_significant"))
+
+
 def idxname(col: Any) -> str:
     # ? Converts Excel Style Column Names To Polars Column Names
     scol: str = str(col)
@@ -368,6 +378,7 @@ class Tcode(Section):
     store: Path = Field(...)
     log: bool = Field(False)
     qc: bool = Field(False)
+    release: bool = Field(False)
     name: Optional[str] = Field(None)
 
     def encoding(self: Self, x: Encoding, col: str, table_literal: bool = False) -> list[Any]:
@@ -448,6 +459,7 @@ class Tcode(Section):
                 (source_record_urls, (str(self.source.url),)),
                 (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
                 (sig, ()),
+                (drop_not_significant, ()) if self.release else None,
                 (trim, ()),
                 (format_numeric, ()),
                 (to_store, (self.store, self.config.name)),

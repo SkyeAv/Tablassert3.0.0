@@ -14,6 +14,7 @@ from tablassert.lib import (
     Tcode,
     clean_numeric,
     coerce_pvalue_columns,
+    drop_not_significant,
     edge_category,
     edge_tables,
     fold_unknown_to_supporting_text,
@@ -527,6 +528,42 @@ def test_sig_not_significant_band() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.11, 0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     assert list(result["statistical_significance_qualifier"]) == ["biolink:not_significant", "biolink:not_significant"]
+
+
+# ? drop_not_significant Removes biolink:not_significant Rows While Keeping Null Qualifiers
+def test_drop_not_significant_removes_band_keeps_nulls() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["a", "b", "c", "d"],
+            "statistical_significance_qualifier": ["biolink:significant", "biolink:not_significant", None, "biolink:suggestive"],
+        }
+    ).lazy()
+    result: pl.DataFrame = drop_not_significant(lf).collect()
+    assert list(result["subject"]) == ["a", "c", "d"]
+    assert "biolink:not_significant" not in list(result["statistical_significance_qualifier"])
+
+
+# ? drop_not_significant Is A No-Op When The Qualifier Column Is Absent
+def test_drop_not_significant_noop_without_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b"]}).lazy()
+    result: pl.DataFrame = drop_not_significant(lf).collect()
+    assert result.shape == (2, 1)
+    assert list(result["subject"]) == ["a", "b"]
+
+
+# ? drop_not_significant Keeps Every Band Except biolink:not_significant
+def test_drop_not_significant_keeps_all_other_bands() -> None:
+    bands: list[Optional[str]] = [
+        "biolink:very_strongly_significant",
+        "biolink:strongly_significant",
+        "biolink:significant",
+        "biolink:suggestive",
+        "biolink:not_significant",
+        None,
+    ]
+    lf: pl.LazyFrame = pl.DataFrame({"q": bands}).lazy()
+    result: pl.DataFrame = drop_not_significant(lf, col="q").collect()
+    assert list(result["q"]) == [b for b in bands if b != "biolink:not_significant"]
 
 
 # ? numeric_columns Matches Any Column With P Value In The Name

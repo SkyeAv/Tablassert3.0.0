@@ -5,7 +5,7 @@ from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Annotated, TYPE_CHECKING, Any
 
 import cyclopts
 import lazy_loader as Lazy
@@ -28,7 +28,7 @@ APP: cyclopts.App = cyclopts.App(
 )
 
 
-def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress") -> None:
+def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False) -> None:
     # ? Build A Knowledge Graph From A Configuration File
     from tablassert.fullmap import SHARDS
     from tablassert.ingests import from_yaml, to_sections
@@ -64,7 +64,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress")
         h: str = mkhash(s)
         start(f"CONFIG: {Path(s['config']).name} | HASH: {h}")
         try:
-            tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc, "name": g.name}))
+            tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc, "release": release, "name": g.name}))
         except pydantic.ValidationError as e:
             raise RuntimeError(
                 f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
@@ -135,22 +135,22 @@ def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgres
     logger.info(f"VALIDATE DONE | SECTIONS: {n} | CONFIG: {table_configuration_file.name}")
 
 
-def run(stages: int, fn: Any, arg: Path) -> None:
+def run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
     from tablassert.log import LOG_FORMAT, logger
     from tablassert.progress import PipelineProgress
 
     with PipelineProgress(total_stages=stages) as progress:
         sink_id: int = logger.add(progress.log_sink, level="INFO", format=LOG_FORMAT)
         try:
-            fn(arg, progress)
+            fn(arg, progress, **kwargs)
         finally:
             logger.remove(sink_id)
 
 
 @APP.command
-def build(graph_configuration_file: Path) -> None:
+def build(graph_configuration_file: Path, release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False) -> None:
     """Build a knowledge graph from a YAML configuration file."""
-    run(6, build_pipeline, graph_configuration_file)
+    run(6, build_pipeline, graph_configuration_file, release=release)
 
 
 @APP.command
