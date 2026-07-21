@@ -595,4 +595,116 @@ mod tests {
         assert_eq!(rows[0].1[0].curie, "HGNC:1100");
         assert_eq!(rows[0].1[0].source_version, "test-version");
     }
+
+    #[test]
+    fn build_fullmap_db_rejects_empty_synonym_list() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+
+        let err = build_fullmap_db(
+            output,
+            Vec::new(),
+            Vec::new(),
+            "test-version".to_string(),
+            Some(1),
+            1,
+        )
+        .expect_err("empty synonyms should fail");
+
+        assert!(err
+            .to_string()
+            .contains("at least one synonym file is required"));
+    }
+
+    #[test]
+    fn builds_records_from_alias_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("BABEL.ndjson");
+        let output = dir.path().join("fullmap.redb");
+
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        writeln!(
+            synonym_file,
+            r#"{{"id":"MONDO:1","name":"Alias disease","names":["Alias disease"],"categories":["biolink:Disease"],"taxon":["NCBITaxon:0"]}}"#
+        )
+        .unwrap();
+
+        build_fullmap_db(
+            output.clone(),
+            Vec::new(),
+            vec![synonyms],
+            "test-version".to_string(),
+            Some(1),
+            1,
+        )
+        .unwrap();
+        let rows = lookup_terms(output, vec!["alias disease".to_string()], Some(1)).unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1[0].curie, "MONDO:1");
+        assert_eq!(rows[0].1[0].preferred_name, "Alias disease");
+        assert_eq!(rows[0].1[0].category_name, "Disease");
+    }
+
+    #[test]
+    fn build_fullmap_db_does_not_index_banned_name_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("HGNC.ndjson");
+        let output = dir.path().join("fullmap.redb");
+
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        writeln!(
+            synonym_file,
+            r#"{{"curie":"HGNC:1","preferred_name":"GENE1","names":["hypothetical protein","GENE1"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+        )
+        .unwrap();
+
+        build_fullmap_db(
+            output.clone(),
+            Vec::new(),
+            vec![synonyms],
+            "test-version".to_string(),
+            Some(1),
+            1,
+        )
+        .unwrap();
+        let rows = lookup_terms(
+            output,
+            vec!["hypothetical protein".to_string(), "gene1".to_string()],
+            Some(1),
+        )
+        .unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "gene1");
+    }
+
+    #[test]
+    fn build_fullmap_db_cleans_quoted_names_before_indexing() {
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("HGNC.ndjson");
+        let output = dir.path().join("fullmap.redb");
+
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        writeln!(
+            synonym_file,
+            r#"{{"curie":"HGNC:2","preferred_name":"'Quoted Gene'","names":["\"Quoted Gene\""],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+        )
+        .unwrap();
+
+        build_fullmap_db(
+            output.clone(),
+            Vec::new(),
+            vec![synonyms],
+            "test-version".to_string(),
+            Some(1),
+            1,
+        )
+        .unwrap();
+        let rows = lookup_terms(output, vec!["quoted gene".to_string()], Some(1)).unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1[0].preferred_name, "Quoted Gene");
+    }
 }

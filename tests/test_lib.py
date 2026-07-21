@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Self, cast
 
 import polars as pl
 
+import tablassert.cli as cli
 import tablassert.lib as lib
+from tablassert import rs
 from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, Repositories
 from tablassert.fullmap import ResolveSpec
 from tablassert.ingests import from_yaml
@@ -29,6 +32,88 @@ from tablassert.lib import (
     study_size_target,
     strip_nulls,
 )
+
+
+def fake_fullmap_row(term: str, curie: str, name: str, category: str, taxon: int = 0) -> dict[str, object]:
+    """Build a fake fullmap lookup row using the Rust extension return schema."""
+    return {
+        "term": term,
+        "CURIE": curie,
+        "PREFERRED_NAME": name,
+        "CATEGORY_NAME": category,
+        "TAXON_ID": taxon,
+        "SOURCE_NAME": "TEST",
+        "SOURCE_VERSION": "1",
+    }
+
+
+def install_fake_fullmap(monkeypatch: Any, rows: dict[str, list[dict[str, object]]]) -> list[list[str]]:
+    """Monkeypatch fullmap lookup and return captured term batches."""
+    calls: list[list[str]] = []
+
+    def fake_lookup(db: Path, terms: list[str], threads: Optional[int] = None, return_format: str = "rows") -> list[dict[str, object]]:
+        del db, threads, return_format
+        calls.append(terms)
+        return [row for term in terms for row in rows.get(term, [])]
+
+    monkeypatch.setattr(rs, "lookup_fullmap_terms", fake_lookup)
+    return calls
+
+
+def write_text_section(tmp_path: Path, name: str, section: dict[str, object], rows: list[str]) -> tuple[Path, Path]:
+    """Write a source TSV and matching table YAML for a test section."""
+    from tablassert.ingests import to_yaml
+
+    table_path: Path = tmp_path / f"{name}.yaml"
+    source_path: Path = tmp_path / f"{name}.tsv"
+    source_path.write_text("\n".join(rows) + "\n")
+    source_config: object = section.get("source", {})
+    source_overrides: dict[str, object] = source_config if isinstance(source_config, dict) else {}
+    section["source"] = {"url": f"https://example.com/{name}.tsv", "local": str(source_path), "kind": "text", "delimiter": "\t", **source_overrides}
+    to_yaml(table_path, section)
+    return table_path, source_path
+
+
+class DummyProgress:
+    """Minimal progress reporter for build_pipeline smoke tests."""
+
+    def __init__(self) -> None:
+        self.stages: list[str] = []
+        self.sections: list[str] = []
+        self.sub_steps: list[str] = []
+
+    def stage(self, name: str) -> None:
+        self.stages.append(name)
+
+    def section_loop(self, n: int, label: str) -> tuple[Any, Any, Any]:
+        del n, label
+
+        def start(name: str) -> None:
+            self.sections.append(name)
+
+        def advance() -> None:
+            return None
+
+        def sub_step(name: str) -> None:
+            self.sub_steps.append(name)
+
+        return start, advance, sub_step
+
+
+class SyncPool:
+    """Synchronous drop-in replacement for multiprocessing.Pool in tests."""
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        del exc_type, exc, traceback
+
+    def map(self, fn: Any, items: list[Any]) -> list[Any]:
+        return [fn(item) for item in items]
+
+    def starmap(self, fn: Any, items: object) -> list[Any]:
+        return [fn(*item) for item in items]  # pyright: ignore
 
 
 def test_idxname_single_letter() -> None:
@@ -1390,3 +1475,213 @@ def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatc
     # real biolist fields survive as top level fields
     assert '"p_value":0.01' in edges or '"p_value": 0.01' in edges
     assert "PMID:1" in edges
+
+
+def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Path) -> None:
+    """compile_subgraph resolves value-encoded subject/object nodes into parquet output."""
+    rows: dict[str, list[dict[str, object]]] = {
+        "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
+        "tp53": [fake_fullmap_row("tp53", "HGNC:11998", "TP53", "Gene", 9606)],
+    }
+    calls: list[list[str]] = install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "value_nodes",
+        {
+            "statement": {"subject": {"method": "value", "encoding": "BRCA1"}, "object": {"method": "value", "encoding": "TP53"}},
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["ignored"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "value_nodes.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "TEST_KG"})  # pyright: ignore
+
+    result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
+    result: dict[str, Any] = pl.read_parquet(result_path).row(0, named=True)
+
+    assert calls == [["brca1", "tp53"]]
+    assert result_path == store
+    assert result["subject"] == "HGNC:1100"
+    assert result["subject_name"] == "BRCA1"
+    assert result["subject_category"] == "biolink:Gene"
+    assert result["object"] == "HGNC:11998"
+    assert result["object_name"] == "TP53"
+    assert result["predicate"] == "biolink:related_to"
+    assert result["publications"] == ["PMCID:PMC0000000"]
+    assert result["resource_id"] == "infores:test-kg"
+
+
+def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch: Any, tmp_path: Path) -> None:
+    """compile_subgraph applies column encodings, regex cleanup, aliases, and numeric formatting."""
+    rows: dict[str, list[dict[str, object]]] = {
+        "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
+        "tp53": [fake_fullmap_row("tp53", "HGNC:11998", "TP53", "Gene", 9606)],
+    }
+    install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "column_cleanup",
+        {
+            "statement": {
+                "subject": {"method": "column", "encoding": "A", "regex": [{"pattern": "\\s+", "replacement": ""}], "remove": ["-", "\\[.*\\]"]},
+                "object": {"method": "column", "encoding": "B", "remove": ["\\s+"]},
+            },
+            "annotations": [
+                {"annotation": "P Value", "method": "column", "encoding": "C"},
+                {"annotation": "sample size", "method": "column", "encoding": "D"},
+                {"annotation": "miscellaneous_notes", "method": "column", "encoding": "E"},
+            ],
+            "provenance": {"repo": "PMID", "publication": "12345"},
+        },
+        ["BRCA-1 [alias]\tTP 53\t1e-8\t1200\tkept note"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "column_cleanup.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store})  # pyright: ignore
+
+    result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
+    result: dict[str, Any] = pl.read_parquet(result_path).row(0, named=True)
+
+    assert result["subject"] == "HGNC:1100"
+    assert result["original_subject"] == "BRCA-1 [alias]"
+    assert result["object"] == "HGNC:11998"
+    assert result["original_object"] == "TP 53"
+    assert result["p_value"] == "1.0000e-08"
+    assert result["supporting_study_size"] == "1200"
+    assert result["statistical_significance_qualifier"] == "biolink:very_strongly_significant"
+    assert result["miscellaneous_notes"] == "kept note"
+    assert result["publications"] == ["PMID:12345"]
+
+
+def test_compile_subgraph_e2e_release_drops_rows_before_fullmap_lookup(monkeypatch: Any, tmp_path: Path) -> None:
+    """release-mode subgraph compilation drops not-significant rows before resolution."""
+    rows: dict[str, list[dict[str, object]]] = {
+        "keptgene": [fake_fullmap_row("keptgene", "HGNC:1", "KEPTGENE", "Gene", 9606)],
+        "keptdisease": [fake_fullmap_row("keptdisease", "MONDO:1", "Kept disease", "Disease", 0)],
+        "droppedgene": [fake_fullmap_row("droppedgene", "HGNC:2", "DROPPEDGENE", "Gene", 9606)],
+        "droppeddisease": [fake_fullmap_row("droppeddisease", "MONDO:2", "Dropped disease", "Disease", 0)],
+    }
+    calls: list[list[str]] = install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "release_drop",
+        {
+            "statement": {"subject": {"method": "column", "encoding": "A"}, "object": {"method": "column", "encoding": "B"}},
+            "annotations": [{"annotation": "p_value", "method": "column", "encoding": "C"}],
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["DroppedGene\tDroppedDisease\t0.5", "KeptGene\tKeptDisease\t0.01"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "release_drop.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "release": True})  # pyright: ignore
+
+    result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
+    result: pl.DataFrame = pl.read_parquet(result_path)
+    looked_up: set[str] = set(calls[0])
+
+    assert result.height == 1
+    assert result["subject"].to_list() == ["HGNC:1"]
+    assert result["object"].to_list() == ["MONDO:1"]
+    assert result["statistical_significance_qualifier"].to_list() == ["biolink:strongly_significant"]
+    assert "droppedgene" not in looked_up
+    assert "droppeddisease" not in looked_up
+
+
+def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypatch: Any, tmp_path: Path) -> None:
+    """resolved qualifiers survive graph export as edge attributes without creating nodes."""
+    monkeypatch.chdir(tmp_path)
+    rows: dict[str, list[dict[str, object]]] = {
+        "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
+        "disease x": [fake_fullmap_row("disease x", "MONDO:0000001", "Disease X", "Disease", 0)],
+        "homo sapiens": [fake_fullmap_row("homo sapiens", "NCBITaxon:9606", "Homo sapiens", "OrganismTaxon", 9606)],
+    }
+    install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "qualifier",
+        {
+            "statement": {
+                "subject": {"method": "value", "encoding": "BRCA1"},
+                "object": {"method": "value", "encoding": "Disease X"},
+                "qualifiers": [{"qualifier": "species_context_qualifier", "method": "value", "encoding": "Homo sapiens"}],
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["ignored"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "qualifier.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "QUAL_KG"})  # pyright: ignore
+
+    subgraph: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
+    assert pl.read_parquet(subgraph)["species_context_qualifier"].to_list() == ["NCBITaxon:9606"]
+
+    lib.compile_graph([subgraph], "qual", "1.0.0")
+    edges: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.edges.ndjson").read_text().splitlines()]
+    nodes: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.nodes.ndjson").read_text().splitlines()]
+
+    assert edges[0]["species_context_qualifier"] == "NCBITaxon:9606"
+    assert all("species_context_qualifier_pre_resolution" not in edge for edge in edges)
+    assert {node["id"] for node in nodes} == {"HGNC:1100", "MONDO:0000001"}
+    assert "NCBITaxon:9606" not in {node["id"] for node in nodes}
+
+
+def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, tmp_path: Path) -> None:
+    """build_pipeline runs all six stages and emits KGX/RIG using a monkeypatched fullmap DB."""
+    from tablassert.ingests import to_yaml
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
+    monkeypatch.setattr(cli, "Pool", SyncPool)
+    rows: dict[str, list[dict[str, object]]] = {
+        "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
+        "tp53": [fake_fullmap_row("tp53", "HGNC:11998", "TP53", "Gene", 9606)],
+    }
+    install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "pipeline_table",
+        {
+            "statement": {"subject": {"method": "value", "encoding": "BRCA1"}, "object": {"method": "value", "encoding": "TP53"}},
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["ignored"],
+    )
+    table_data: Any = from_yaml(table_path)
+    to_yaml(table_path, {"template": table_data})
+    graph_path: Path = tmp_path / "graph.yaml"
+    to_yaml(
+        graph_path,
+        {
+            "name": "PIPELINE_KG",
+            "version": "0.1.0",
+            "description": "Pipeline smoke graph.",
+            "tables": [str(table_path)],
+            "fullmap": str(tmp_path / "fullmap.redb"),
+        },
+    )
+    progress: DummyProgress = DummyProgress()
+
+    cli.build_pipeline(graph_path, cast(Any, progress), release=False, qc=False, log=False)
+    edge_rows: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "PIPELINE_KG_0.1.0.edges.ndjson").read_text().splitlines()]
+    node_rows: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "PIPELINE_KG_0.1.0.nodes.ndjson").read_text().splitlines()]
+    rig: dict[str, Any] = from_yaml(tmp_path / "PIPELINE_KG_0.1.0.RIG.yaml")  # pyright: ignore
+
+    assert progress.stages == [
+        "Loading Tables",
+        "Extracting Sections",
+        "Building TCode",
+        "Collecting Instructions",
+        "Building Subgraphs",
+        "Compiling Graph",
+    ]
+    assert len(edge_rows) == 1
+    assert edge_rows[0]["subject"] == "HGNC:1100"
+    assert edge_rows[0]["object"] == "HGNC:11998"
+    assert edge_rows[0]["upstream_resource_ids"] == ["infores:pubmed-central"]
+    assert {row["id"] for row in node_rows} == {"HGNC:1100", "HGNC:11998"}
+    assert rig["name"] == "PIPELINE_KG v0.1.0"
+    edge_type: dict[str, Any] = rig["target_info"]["edge_type_info"][0]  # pyright: ignore
+    assert edge_type["primary_knowledge_sources"] == ["infores:pipeline-kg", "infores:pubmed-central"]

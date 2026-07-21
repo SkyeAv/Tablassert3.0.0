@@ -116,4 +116,63 @@ mod tests {
         let id = value.get("id").and_then(Value::as_str).expect("edge id");
         Uuid::parse_str(id).expect("valid UUID");
     }
+
+    #[test]
+    fn dedup_ndjson_duplicate_edges_get_stable_single_id() {
+        let dir = tempdir().expect("tempdir");
+        let input = dir.path().join("edges.ndjson.tmp");
+        let output = dir.path().join("edges.ndjson");
+        fs::write(
+            &input,
+            concat!(
+                "{\"subject\":\"A\",\"object\":\"B\",\"predicate\":\"r\"}\n",
+                "{\"subject\":\"A\",\"object\":\"B\",\"predicate\":\"r\"}\n"
+            ),
+        )
+        .expect("write input");
+
+        dedup_ndjson(input, output.clone(), true, Some("TABLASSERT".to_string()))
+            .expect("dedup edges");
+
+        let lines: Vec<String> = fs::read_to_string(output)
+            .expect("read output")
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(lines.len(), 1);
+        let value: Value = serde_json::from_str(&lines[0]).expect("json");
+        let id = value.get("id").and_then(Value::as_str).expect("edge id");
+        Uuid::parse_str(id).expect("valid UUID");
+    }
+
+    #[test]
+    fn dedup_ndjson_strips_nested_null_like_values() {
+        let dir = tempdir().expect("tempdir");
+        let input = dir.path().join("nodes.ndjson.tmp");
+        let output = dir.path().join("nodes.ndjson");
+        fs::write(
+            &input,
+            "{\"id\":\"A\",\"meta\":{\"drop\":\"none\",\"keep\":\"yes\"},\"items\":[{\"x\":\"NA\",\"y\":\"z\"}]}\n",
+        )
+        .expect("write input");
+
+        dedup_ndjson(input, output.clone(), false, None).expect("dedup nodes");
+
+        let line = fs::read_to_string(output).expect("read output");
+        let value: Value = serde_json::from_str(line.trim()).expect("json");
+        assert_eq!(value["meta"], serde_json::json!({"keep":"yes"}));
+        assert_eq!(value["items"], serde_json::json!([{"y":"z"}]));
+    }
+
+    #[test]
+    fn dedup_ndjson_empty_object_only_writes_empty_output() {
+        let dir = tempdir().expect("tempdir");
+        let input = dir.path().join("nodes.ndjson.tmp");
+        let output = dir.path().join("nodes.ndjson");
+        fs::write(&input, "{}\n{\"drop\":\"NA\"}\n").expect("write input");
+
+        dedup_ndjson(input, output.clone(), false, None).expect("dedup nodes");
+
+        assert_eq!(fs::read_to_string(output).expect("read output"), "");
+    }
 }

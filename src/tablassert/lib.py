@@ -124,8 +124,11 @@ def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
     cat_role: dict[str, str]
     edge_lookup: dict[str, str]
     cat_role, edge_lookup = edge_tables()
-    sr: pl.Expr = pl.col("subject category").str.replace("biolink:", "").replace(cat_role).fill_null("")
-    or_: pl.Expr = pl.col("object category").str.replace("biolink:", "").replace(cat_role).fill_null("")
+    names: list[str] = lf.collect_schema().names()
+    subject_col: str = "subject_category" if "subject_category" in names else "subject category"
+    object_col: str = "object_category" if "object_category" in names else "object category"
+    sr: pl.Expr = pl.col(subject_col).str.replace("biolink:", "").replace(cat_role).fill_null("")
+    or_: pl.Expr = pl.col(object_col).str.replace("biolink:", "").replace(cat_role).fill_null("")
     return lf.with_columns(
         pl.concat_list(
             pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=add("biolink:", EdgeCategories.ASSOCIATION.value))
