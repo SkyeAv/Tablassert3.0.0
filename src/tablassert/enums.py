@@ -619,7 +619,6 @@ ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
         "adjusted_p_value",
         "statistical_significance_qualifier",
         "relationship_strength",
-        "sample_size",
         # ! Tablassert Pipeline Fields -- Intentional, Tested Output, Not Literal Association Slots
         "upstream_resource_ids",
         "source_record_urls",

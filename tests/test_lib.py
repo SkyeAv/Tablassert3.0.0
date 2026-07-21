@@ -14,6 +14,7 @@ from tablassert.lib import (
     Tcode,
     clean_numeric,
     coerce_pvalue_columns,
+    coerce_study_size_columns,
     drop_not_significant,
     edge_category,
     edge_tables,
@@ -26,6 +27,7 @@ from tablassert.lib import (
     parse_edge_name,
     publications,
     pvalue_target,
+    study_size_target,
     strip_nulls,
 )
 
@@ -574,12 +576,13 @@ def test_numeric_columns_matches_p_value_substring() -> None:
     assert "subject" not in result
 
 
-# ? numeric_columns Matches Exact Relationship Strength And Sample Size Names
+# ? numeric_columns Matches Exact Relationship Strength And Study Size Names
 def test_numeric_columns_matches_exact_names() -> None:
-    names: list[str] = ["relationship_strength", "sample_size", "cohort"]
+    names: list[str] = ["relationship_strength", "sample_size", "supporting_study_size", "cohort"]
     result: list[str] = numeric_columns(names)
     assert "relationship_strength" in result
     assert "sample_size" in result
+    assert "supporting_study_size" in result
     assert "cohort" not in result
 
 
@@ -592,12 +595,12 @@ def test_numeric_columns_case_insensitive() -> None:
 
 # ? clean_numeric Coerces Numeric And Scientific Notation Strings To Float64
 def test_clean_numeric_parses_numeric_and_scientific() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "450"], "sample_size": ["1200", "0.42", "-1.2"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "450"], "supporting_study_size": ["1200", "0.42", "-1.2"]}).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
     assert result.schema["p_value"] == pl.Float64
-    assert result.schema["sample_size"] == pl.Float64
+    assert result.schema["supporting_study_size"] == pl.Float64
     assert result["p_value"].to_list() == [1e-8, 0.05, 450.0]
-    assert result["sample_size"].to_list() == [1200.0, 0.42, -1.2]
+    assert result["supporting_study_size"].to_list() == [1200.0, 0.42, -1.2]
 
 
 # ? clean_numeric Drops Non Numeric Entries To Null
@@ -647,12 +650,12 @@ def test_format_numeric_p_value_scientific() -> None:
     assert result.schema["p_value"] == pl.String
 
 
-# ? format_numeric Renders Relationship Strength And Sample Size In Decimal General Format
+# ? format_numeric Renders Relationship Strength And Study Size In Decimal General Format
 def test_format_numeric_decimal_general() -> None:
-    lf: pl.LazyFrame = pl.DataFrame({"relationship_strength": ["0.85", "0.42", "0.1234"], "sample_size": ["450", "1200", "7"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"relationship_strength": ["0.85", "0.42", "0.1234"], "supporting_study_size": ["450", "1200", "7"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     assert result["relationship_strength"].to_list() == ["0.85", "0.42", "0.1234"]
-    assert result["sample_size"].to_list() == ["450", "1200", "7"]
+    assert result["supporting_study_size"].to_list() == ["450", "1200", "7"]
 
 
 # ? format_numeric Preserves Nulls As Null
@@ -1024,6 +1027,88 @@ def test_coerce_pvalue_columns_noop_when_already_canonical() -> None:
     assert result["p_value"].to_list() == [0.01]
 
 
+# ? study_size_target Matches Common Study Size Spellings
+def test_study_size_target_matches_common_spellings() -> None:
+    names: list[str] = ["n", "N", "sample_size", "sample size", "sample-size", "sample.size", "samplesize", "study size", "cohort size"]
+    for n in names:
+        assert study_size_target(n) == "supporting_study_size", n
+
+
+# ? study_size_target Matches Count Synonyms With Explicit Sample/Study Context
+def test_study_size_target_matches_count_synonyms() -> None:
+    names: list[str] = [
+        "sample_count",
+        "sample count",
+        "number of samples",
+        "num_samples",
+        "n_samples",
+        "samples_n",
+        "total_n",
+        "total n",
+        "participant_count",
+        "participants",
+        "enrollment",
+        "enrollment_count",
+    ]
+    for n in names:
+        assert study_size_target(n) == "supporting_study_size", n
+
+
+# ? study_size_target Excludes False Positives Without Explicit Study Size Meaning
+def test_study_size_target_excludes_false_positives() -> None:
+    names: list[str] = [
+        "sample_id",
+        "sample_name",
+        "sample_type",
+        "gene",
+        "mean",
+        "normalized_count",
+        "nucleotide",
+        "cohort",
+        "population",
+        "subject",
+        "object",
+        "predicate",
+    ]
+    for n in names:
+        assert study_size_target(n) is None, n
+
+
+# ? coerce_study_size_columns Renames Bare N To supporting_study_size
+def test_coerce_study_size_columns_renames_n_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"n": [120, 450]}).lazy()
+    result: pl.DataFrame = coerce_study_size_columns(lf).collect()
+    assert "supporting_study_size" in result.columns
+    assert "n" not in result.columns
+    assert result["supporting_study_size"].to_list() == [120, 450]
+
+
+# ? coerce_study_size_columns Renames sample_size To supporting_study_size
+def test_coerce_study_size_columns_renames_sample_size_column() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"sample_size": [1200]}).lazy()
+    result: pl.DataFrame = coerce_study_size_columns(lf).collect()
+    assert result.columns == ["supporting_study_size"]
+    assert result["supporting_study_size"].to_list() == [1200]
+
+
+# ? coerce_study_size_columns Picks The Best Candidate And Leaves Others Untouched
+def test_coerce_study_size_columns_picks_best_candidate() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"n": [9], "sample size": [1200], "participants": [1250]}).lazy()
+    result: pl.DataFrame = coerce_study_size_columns(lf).collect()
+    assert result["supporting_study_size"].to_list() == [1200]
+    assert result["n"].to_list() == [9]
+    assert result["participants"].to_list() == [1250]
+
+
+# ? coerce_study_size_columns Is A Noop When Already Canonically Named
+def test_coerce_study_size_columns_noop_when_already_canonical() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"supporting_study_size": [1200], "sample_size": [999]}).lazy()
+    result: pl.DataFrame = coerce_study_size_columns(lf).collect()
+    assert result.columns == ["supporting_study_size", "sample_size"]
+    assert result["supporting_study_size"].to_list() == [1200]
+    assert result["sample_size"].to_list() == [999]
+
+
 # ? Tcode Coerces P Value Columns After Annotations And Before clean_numeric
 # * So Downstream numeric_columns/sig/format_numeric See Already Canonical p_value/adjusted_p_value Names
 def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) -> None:
@@ -1038,6 +1123,33 @@ def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) 
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
     assert coerce_idx < clean_idx
+
+
+# ? Tcode Coerces Study Size Columns After Annotations And Before clean_numeric
+# * So Downstream numeric_columns/format_numeric See Already Canonical supporting_study_size Names
+def test_tcode_collect_coerces_study_size_before_clean_numeric(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_size_columns")
+    clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
+
+    assert coerce_idx < clean_idx
+
+
+# ? Study Size Aliases Become Top-Level Supporting Study Size Fields Before Unknown Folding
+def test_coerced_study_size_alias_survives_unknown_folding() -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "sample_size": [12000], "miscellaneous_notes": ["note"]}
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(coerce_study_size_columns(lf)).collect()
+    assert out["supporting_study_size"].to_list() == [12000]
+    assert "sample_size" not in out.columns
+    assert out["supporting_text"].to_list() == [["miscellaneous_notes: note"]]
 
 
 # ? publications() Wraps A CURIE Literal As A Single Element list[str] Column

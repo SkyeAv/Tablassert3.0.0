@@ -143,8 +143,8 @@ def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Toke
 
 def numeric_columns(names: list[str]) -> list[str]:
     # ? Returns Column Names That Should Be Coerced And Formatted As Numbers
-    # * P Value Columns By Substring Plus Exact Relationship Strength And Sample Size
-    exact: set[str] = {"relationship_strength", "sample_size"}
+    # * P Value Columns By Substring Plus Exact Strength And Study Size Fields
+    exact: set[str] = {"relationship_strength", "sample_size", "supporting_study_size"}
     return [c for c in names if ("p_value" in c.lower()) or (c in exact)]
 
 
@@ -284,6 +284,53 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             renames[chosen] = target
 
     return lf.rename(renames) if renames else lf
+
+
+STUDY_SIZE_EXACT_PATTERN: re.Pattern = re.compile(
+    r"(?i)^(?:n|total[\s_\-.]*n|sample[\s_\-.]*size|samplesize|study[\s_\-.]*size|cohort[\s_\-.]*size|supporting[\s_\-.]*study[\s_\-.]*size)$"
+)
+STUDY_SIZE_COUNT_PATTERN: re.Pattern = re.compile(
+    r"(?i)\b(?:samples?|participants?|subjects?|individuals?|patients?|cases?|enrollment)[\s_\-.]*(?:n|count|number|size)\b"
+)
+STUDY_SIZE_PREFIX_PATTERN: re.Pattern = re.compile(
+    r"(?i)\b(?:n|num|number|count|total)[\s_\-.]*(?:of[\s_\-.]*)?(?:samples?|participants?|subjects?|individuals?|patients?|cases?)\b"
+)
+STUDY_SIZE_SUFFIX_PATTERN: re.Pattern = re.compile(r"(?i)\b(?:samples?|participants?|subjects?|individuals?|patients?|cases?)[\s_\-.]*n\b")
+STUDY_SIZE_SINGLETON_PATTERN: re.Pattern = re.compile(r"(?i)^(?:participants|enrollment)$")
+
+
+def study_size_target(name: str) -> Optional[str]:
+    # ? Maps Study Size Like Column Names To The Canonical Supporting Study Size Slot
+    # * Bare "n" Is Allowed, But Other Matches Need Explicit Sample/Study Size Context
+    if STUDY_SIZE_EXACT_PATTERN.search(name):
+        return "supporting_study_size"
+    if STUDY_SIZE_COUNT_PATTERN.search(name):
+        return "supporting_study_size"
+    if STUDY_SIZE_PREFIX_PATTERN.search(name):
+        return "supporting_study_size"
+    if STUDY_SIZE_SUFFIX_PATTERN.search(name):
+        return "supporting_study_size"
+    if STUDY_SIZE_SINGLETON_PATTERN.search(name):
+        return "supporting_study_size"
+    return None
+
+
+def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # ? Renames Study Size Like Columns To Biolink KGX Compliant supporting_study_size
+    # * Picks A Single Best Fuzzy Match And Leaves Other Candidate Columns Untouched
+    from rapidfuzz import fuzz
+
+    names: list[str] = lf.collect_schema().names()
+    candidates: list[str] = [n for n in names if study_size_target(n)]
+    if not candidates:
+        return lf
+
+    target: str = "supporting_study_size"
+    reference: str = target.replace("_", " ")
+    chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+    if chosen == target:
+        return lf
+    return lf.rename({chosen: target})
 
 
 def idx(lf: pl.LazyFrame, col: str = "extracted_from_row_number") -> pl.LazyFrame:
@@ -445,6 +492,7 @@ class Tcode(Section):
                 else None,
                 [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
                 (coerce_pvalue_columns, ()),
+                (coerce_study_size_columns, ()),
                 (clean_numeric, ()),
                 self.node(self.statement.subject, "subject", conns),
                 self.node(self.statement.object, "object", conns),
