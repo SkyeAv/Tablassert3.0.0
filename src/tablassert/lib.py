@@ -37,7 +37,7 @@ TERMS_OF_USE_WARNING: str = (
 )
 
 CATEGORY_PARENT: dict[str, str] = {
-    # ? Biolink Is_A Chain -- Leaf To Parent Role For Association Name Matching
+    # Biolink is_a chain -- leaf to parent role for association name matching.
     "SmallMolecule": "MolecularEntity",
     "MolecularEntity": "ChemicalEntity",
     "Drug": "MolecularMixture",
@@ -50,7 +50,16 @@ CATEGORY_PARENT: dict[str, str] = {
 
 
 def parse_edge_name(name: str) -> Optional[tuple[str, list[str]]]:
-    # ? Parses {Subject}To{Object}Association Into (Subject, [Object Roles])
+    """Parse ``{Subject}To{Object}Association`` into ``(subject, [object roles])``.
+
+    Args:
+        name: Edge category name (e.g. ``ChemicalEntityToGeneOrProteinAssociation``).
+
+    Returns:
+        Tuple of ``(subject_role, object_roles)`` with the trailing
+        ``Association`` suffix removed and object side split on ``Or``, or
+        ``None`` if ``name`` does not contain ``"To"``.
+    """
     name = name.removesuffix("Association")
     if "To" not in name:
         return None
@@ -62,9 +71,16 @@ def parse_edge_name(name: str) -> Optional[tuple[str, list[str]]]:
 
 @cache
 def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
-    # ? Generates And Caches CATEGORY_ROLE And EDGE_LOOKUP On First Call
+    """Generate and cache ``CATEGORY_ROLE`` and ``EDGE_LOOKUP`` on first call.
 
-    # ? Flattened Leaf -> Root Role (Walks CATEGORY_PARENT Chain To Root)
+    Returns:
+        Tuple of ``(CATEGORY_ROLE, EDGE_LOOKUP)`` where ``CATEGORY_ROLE`` maps
+        each ``CATEGORY_PARENT`` leaf to its root role (via the parent chain),
+        and ``EDGE_LOOKUP`` maps ``"subj_role|obj_role"`` to the biolink CURIE
+        of the corresponding ``EdgeCategories`` value (falling back to explicit
+        overrides and ultimately to ``biolink:Association``).
+    """
+    # Flattened leaf -> root role (walks CATEGORY_PARENT chain to root).
     CATEGORY_ROLE: dict[str, str] = {}
     for leaf in CATEGORY_PARENT:
         role: str = leaf
@@ -72,7 +88,7 @@ def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
             role = CATEGORY_PARENT[role]
         CATEGORY_ROLE[leaf] = role
 
-    # ? Auto-Generated (Subject Role, Object Role) -> EdgeCategories
+    # Auto-generated (subject role, object role) -> EdgeCategories.
     EDGE_MAP: dict[tuple[str, str], EdgeCategories] = {}
     for ec in EdgeCategories:
         if ec is not EdgeCategories.ASSOCIATION:
@@ -84,17 +100,27 @@ def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
                 for obj in objs:
                     EDGE_MAP[(subj, obj)] = ec
 
-    # ? Non-Standard Names -- Explicit Overrides
+    # Non-standard names -- explicit overrides.
     EDGE_MAP[("ChemicalEntity", "Gene")] = EdgeCategories.CHEMICAL_GENE_INTERACTION
 
-    # ? Flattened "subj_role|obj_role" -> biolink CURIE (For Polars replace_strict)
+    # Flattened "subj_role|obj_role" -> biolink CURIE (for polars replace_strict).
     EDGE_LOOKUP: dict[str, str] = {f"{s}|{o}": add("biolink:", ec.value) for (s, o), ec in EDGE_MAP.items()}
 
     return CATEGORY_ROLE, EDGE_LOOKUP
 
 
 def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
-    # ? Adds Derived Edge Category Column Using Native Polars Replace Operations
+    """Add the derived ``category`` column using native polars replace operations.
+
+    Args:
+        lf: Source LazyFrame with ``subject category`` and ``object category``
+            columns (biolink-prefixed).
+
+    Returns:
+        LazyFrame with a new list-typed ``category`` column containing the
+        resolved biolink edge-category CURIE (falling back to
+        ``biolink:Association`` when no specific mapping matches).
+    """
     cat_role: dict[str, str]
     edge_lookup: dict[str, str]
     cat_role, edge_lookup = edge_tables()
@@ -108,29 +134,79 @@ def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
-    # ? Creates A New Column With A Literal Value
+    """Add a new column populated with a literal string value.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Name of the new column.
+        x: Literal string value to populate every row with.
+
+    Returns:
+        LazyFrame with the new literal column appended.
+    """
     return lf.with_columns(pl.lit(x).alias(col))
 
 
 def source_record_urls(lf: pl.LazyFrame, url: str) -> pl.LazyFrame:
-    # ? Adds Biolink/Translator Source Record URLs As A List Column
+    """Add Biolink/Translator ``source_record_urls`` as a single-element list column.
+
+    Args:
+        lf: Source LazyFrame.
+        url: Source record URL to record for every row.
+
+    Returns:
+        LazyFrame with the new list column appended.
+    """
     return lf.with_columns(pl.concat_list(pl.lit(url)).alias("source_record_urls"))
 
 
 def publications(lf: pl.LazyFrame, curie: str) -> pl.LazyFrame:
-    # ? Adds Publication CURIE As A Biolink-Compliant list[str] Column
+    """Add a publication CURIE as a Biolink-compliant ``list[str]`` column.
+
+    Args:
+        lf: Source LazyFrame.
+        curie: Publication CURIE (e.g. ``PMCID:PMC1234567``).
+
+    Returns:
+        LazyFrame with the new ``publications`` list column appended.
+    """
     return lf.with_columns(pl.concat_list(pl.lit(curie)).alias("publications"))
 
 
 def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
-    # ? Creates A New Column With From An Old Column
+    """Add a new column copied from an existing column.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Name of the new column.
+        x: Name of the source column to copy.
+
+    Returns:
+        LazyFrame with the new column appended.
+    """
     return lf.with_columns(pl.col(x).alias(col))
 
 
 def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Tokens.VALUES], float, int]]) -> pl.LazyFrame:
-    # ? Transform Values In A Column With The Math Module
-    # ! Collection Point: Required For map_elements
-    # * strict=False tolerates residual non numeric junk in numeric annotation columns
+    """Transform values in a column using a ``math`` module function.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Column to transform in place.
+        func: Name of a callable on the stdlib ``math`` module.
+        args: Argument list, where ``"values"`` is replaced by the current
+            cell value.
+
+    Returns:
+        New LazyFrame (collected eagerly, then re-lazied) with the transformed
+        column.
+
+    Notes:
+        Collection point: required for ``map_elements``. ``strict=False``
+        tolerates residual non-numeric junk in numeric annotation columns.
+    """
+    # Collection point: required for map_elements.
+    # strict=False tolerates residual non-numeric junk in numeric annotation columns.
     df: pl.DataFrame = lf.collect()
     expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
     attr: Callable[[Any], Any] = getattr(math, func)
@@ -139,15 +215,34 @@ def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Toke
 
 
 def numeric_columns(names: list[str]) -> list[str]:
-    # ? Returns Column Names That Should Be Coerced And Formatted As Numbers
-    # * P Value Columns By Substring Plus Exact Strength And Study Size Fields
+    """Return column names that should be coerced and formatted as numbers.
+
+    P-value columns by substring plus the exact ``relationship_strength`` and
+    study-size fields.
+
+    Args:
+        names: Schema column names to filter.
+
+    Returns:
+        Subset of ``names`` destined for numeric coercion/formatting.
+    """
+    # P-value columns by substring plus exact strength and study-size fields.
     exact: set[str] = {"relationship_strength", "sample_size", "supporting_study_size"}
     return [c for c in names if ("p_value" in c.lower()) or (c in exact)]
 
 
 def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
-    # ? Coerces Numeric Annotation Columns To Float64 Dropping Non Numeric Values To Null
-    # * Only Touches P Value Relationship Strength And Sample Size Columns
+    """Coerce numeric annotation columns to Float64, dropping non-numeric values to null.
+
+    Only touches p-value, relationship-strength and sample-size columns.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        LazyFrame with the matched columns cast to Float64 (no-op if none match).
+    """
+    # Only touches p-value, relationship-strength and sample-size columns.
     cols: list[str] = numeric_columns(lf.collect_schema().names())
     if not cols:
         return lf
@@ -155,9 +250,24 @@ def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
-    # ? Formats Numeric Annotation Columns As Strings With Controlled Notation
-    # ! Collection Point: numpy Batch Formatting Required For Notation Control
-    # * P Value Columns Use Scientific Notation Others Use Decimal General Format
+    """Format numeric annotation columns as strings with controlled notation.
+
+    P-value columns use scientific notation (``{:.4e}``); all others use
+    decimal general format (``{:.4g}``). Null values stay null.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        New LazyFrame (eagerly collected then re-lazied) with matched columns
+        formatted as strings.
+
+    Notes:
+        Collection point: numpy batch formatting is required for notation
+        control across the full column at once.
+    """
+    # Collection point: numpy batch formatting required for notation control.
+    # P-value columns use scientific notation; others use decimal general format.
     df: pl.DataFrame = lf.collect()
     cols: list[str] = numeric_columns(df.columns)
     for c in cols:
@@ -191,24 +301,54 @@ def fill(lf: pl.LazyFrame, col: str, method: str) -> pl.LazyFrame:
 
 
 def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
-    # ? Explodes A Row With Items Into Many Unique Rows By A Delimiter
+    """Explode one row with delimited items into many rows.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Column whose string values should be split.
+        delimiter: Delimiter to split on.
+
+    Returns:
+        LazyFrame with one row per item (the split column becomes a list
+        before the explode).
+    """
     expr: pl.Expr = pl.col(col).cast(pl.String).str.split(delimiter)
     lf = lf.with_columns(expr.alias(col))
     return lf.explode(col)
 
 
 def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_significance_qualifier") -> pl.LazyFrame:
-    # ? Creates The "statistical_significance_qualifier" Column (Biolink PR #1766)
-    # * Five-Band Cascade Matches StatisticalSignificanceQualifierEnum Verbatim;
-    # * Boundaries Are Hardcoded Because The Enum Definitions Are Canonical
-    # ! Edges Are Never Dropped: No P-Value Column -> Qualifier Absent; Null P-Value -> Null Qualifier
+    """Create the ``statistical_significance_qualifier`` column (Biolink PR #1766).
+
+    Picks the closest fuzzy-matching p-value-like column when the exact name
+    is missing, then buckets the value into one of five significance bands.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Reference column name to fuzzy-match against.
+        out: Output qualifier column name.
+
+    Returns:
+        LazyFrame with the new qualifier column. No-op when no p-value-like
+        column is present.
+
+    Notes:
+        Five-band cascade matches ``StatisticalSignificanceQualifierEnum``
+        verbatim. Boundaries are hardcoded because the enum definitions are
+        canonical.
+
+    Warnings:
+        Edges are never dropped here. No p-value column → qualifier absent;
+        null p-value → null qualifier. The qualifier may only be set when
+        ``p_value``/``adjusted_p_value`` is populated (Biolink class rule).
+    """
     from rapidfuzz import fuzz
 
     names: list[str] = lf.collect_schema().names()
     candidates: list[str] = [c for c in names if col in c]
     chosen: Optional[str] = max(candidates, key=lambda c: fuzz.ratio(c, col)) if candidates else None
     if chosen is None:
-        # ! Biolink Class Rule: Qualifier May Only Be Set When p_value/adjusted_p_value Is Populated
+        # Biolink class rule: qualifier may only be set when p_value/adjusted_p_value is populated.
         return lf
     expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
     band: pl.Expr = (
@@ -237,13 +377,25 @@ SIGNIFICANCE_FLAG_PATTERN: re.Pattern = re.compile(r"(?i)significan")
 
 
 def pvalue_target(name: str) -> Optional[str]:
-    # ? Maps A Column Name To Its Canonical Biolink Compliant Target Name
-    # * Word Boundary Anchored So "Group Value" Style Substrings Are Not Falsely Matched
-    # * Bare "P" And "padj"/"p.adj" Cover Common GWAS/DESeq2 Conventions
-    # * "Adj"/"Adjusted"/"Corrected" Only Count Alongside A P/Q Value Token Since They Are
-    # * Generic Words Also Used For Adjusted Hazard/Odds Ratios, Unlike Fdr/Bonferroni/Holm
-    # * "Significance"/"Significant" Columns Are Categorical Flags, Not The Numeric Value, So
-    # * They Are Excluded Unless A P/Q Value Token Is Also Present
+    """Map a column name to its canonical Biolink-compliant target name.
+
+    Args:
+        name: Raw source column name.
+
+    Returns:
+        ``"p_value"``, ``"adjusted_p_value"``, or ``None`` if the name does
+        not look like a p/q-value column.
+
+    Notes:
+        Word-boundary anchored so "Group value" style substrings are not
+        falsely matched. Bare ``"P"`` and ``"padj"``/``"p.adj"`` cover common
+        GWAS/DESeq2 conventions. ``"adj"``/``"adjusted"``/``"corrected"``
+        only count alongside a p/q-value token, since they are generic words
+        also used for adjusted hazard/odds ratios (unlike
+        ``fdr``/``bonferroni``/``holm``). ``"significance"``/``"significant"``
+        columns are categorical flags, not the numeric value, so they are
+        excluded unless a p/q-value token is also present.
+    """
     core_pvalue: bool = bool(PVALUE_TOKEN_PATTERN.search(name)) or bool(BARE_P_TOKEN_PATTERN.search(name))
     core_qvalue: bool = bool(QVALUE_TOKEN_PATTERN.search(name))
     core_padj: bool = bool(PADJ_TOKEN_PATTERN.search(name))
@@ -262,8 +414,17 @@ def pvalue_target(name: str) -> Optional[str]:
 
 
 def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
-    # ? Renames P Value Like Columns To Biolink KGX Compliant p_value / adjusted_p_value
-    # * Picks A Single Best Fuzzy Match Per Target When Multiple Candidates Exist
+    """Rename p-value-like columns to Biolink KGX-compliant ``p_value`` / ``adjusted_p_value``.
+
+    Picks a single best fuzzy match per target when multiple candidates exist.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        LazyFrame with the chosen columns renamed (no-op if no candidates).
+    """
+    # Picks a single best fuzzy match per target when multiple candidates exist.
     from rapidfuzz import fuzz
 
     names: list[str] = lf.collect_schema().names()
@@ -297,8 +458,18 @@ STUDY_SIZE_SINGLETON_PATTERN: re.Pattern = re.compile(r"(?i)^(?:participants|enr
 
 
 def study_size_target(name: str) -> Optional[str]:
-    # ? Maps Study Size Like Column Names To The Canonical Supporting Study Size Slot
-    # * Bare "n" Is Allowed, But Other Matches Need Explicit Sample/Study Size Context
+    """Map study-size-like column names to the canonical ``supporting_study_size`` slot.
+
+    Bare ``"n"`` is allowed, but other matches need explicit sample/study-size
+    context.
+
+    Args:
+        name: Raw source column name.
+
+    Returns:
+        ``"supporting_study_size"`` when the name matches any of the
+        study-size patterns, else ``None``.
+    """
     if STUDY_SIZE_EXACT_PATTERN.search(name):
         return "supporting_study_size"
     if STUDY_SIZE_COUNT_PATTERN.search(name):
@@ -313,8 +484,18 @@ def study_size_target(name: str) -> Optional[str]:
 
 
 def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
-    # ? Renames Study Size Like Columns To Biolink KGX Compliant supporting_study_size
-    # * Picks A Single Best Fuzzy Match And Leaves Other Candidate Columns Untouched
+    """Rename study-size-like columns to Biolink KGX-compliant ``supporting_study_size``.
+
+    Picks a single best fuzzy match and leaves other candidate columns
+    untouched.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        LazyFrame with the chosen column renamed (no-op if no match).
+    """
+    # Picks a single best fuzzy match and leaves other candidate columns untouched.
     from rapidfuzz import fuzz
 
     names: list[str] = lf.collect_schema().names()
@@ -331,18 +512,46 @@ def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def idx(lf: pl.LazyFrame, col: str = "extracted_from_row_number") -> pl.LazyFrame:
-    # ? Creates A 1-Based Index Column Recording The Original Source Row
-    # * Matches Pre-8.0.0 Behavior; Folded Into supporting_text By compile_graph
+    """Create a 1-based index column recording the original source row.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Name of the new index column.
+
+    Returns:
+        LazyFrame with the index column appended.
+
+    Notes:
+        Matches pre-8.0.0 behavior; folded into ``supporting_text`` by
+        ``compile_graph``.
+    """
     return lf.with_row_index(col, offset=1)
 
 
 def csv(p: Path, sep: str) -> pl.LazyFrame:
-    # ? Reads Source From CSV And TSV As LazyFrame
+    """Read a CSV or TSV source as a LazyFrame.
+
+    Args:
+        p: Path to the delimited text file.
+        sep: Column delimiter character.
+
+    Returns:
+        LazyFrame over the file (no header inference; all columns raw).
+    """
     return pl.scan_csv(source=p, separator=sep, has_header=False, infer_schema_length=None, truncate_ragged_lines=True)
 
 
 def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
-    # ? Reads Source From Excel As LazyFrame
+    """Read an Excel sheet as a LazyFrame.
+
+    Args:
+        p: Path to the workbook.
+        sheet: Sheet name to read.
+        engine: Polars Excel engine name.
+
+    Returns:
+        LazyFrame over the sheet contents (no header inference).
+    """
     df: pl.DataFrame = pl.read_excel(
         source=p,
         sheet_name=sheet,
@@ -354,8 +563,20 @@ def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
 
 
 def crop(lf: pl.LazyFrame, row_slice: list[Union[NonNegativeInt, Literal[Tokens.AUTO]]]) -> pl.LazyFrame:
-    # ? Takes A Slice From A LazyFrame
-    # ! Collection Point: Requires Height Calculation
+    """Take a contiguous slice from a LazyFrame.
+
+    Args:
+        lf: Source LazyFrame.
+        row_slice: Two-element ``[start, stop]`` list, where either bound may
+            be the literal ``Tokens.AUTO`` sentinel.
+
+    Returns:
+        LazyFrame restricted to the requested row range.
+
+    Notes:
+        Collection point: height must be computed eagerly to resolve
+        ``Tokens.AUTO`` bounds.
+    """
     df: pl.DataFrame = lf.collect()
     n: int = df.select(pl.len()).item()
     start: Union[int, Literal[Tokens.AUTO]] = row_slice[0]
@@ -367,23 +588,56 @@ def crop(lf: pl.LazyFrame, row_slice: list[Union[NonNegativeInt, Literal[Tokens.
 
 
 def pick(lf: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
-    # ? Picks A List Of Rows From A LazyFrame
-    # ! Collection Point: take() Requires Eager, Relazy After
+    """Pick an explicit list of rows from a LazyFrame.
+
+    Args:
+        lf: Source LazyFrame.
+        rows: Row indices to retain.
+
+    Returns:
+        LazyFrame containing only the requested rows, in the given order.
+
+    Notes:
+        Collection point: ``take()`` requires an eager frame, so the result
+        is re-lazied afterwards.
+    """
     df: pl.DataFrame = lf.collect()
     df = df.select(pl.all().take(indices=rows))  # pyright: ignore
     return df.lazy()
 
 
 def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: Union[str, int, float], cast: bool = True) -> pl.LazyFrame:
-    # ? Reindex A LazyFrame Based On A Condition
+    """Reindex a LazyFrame by filtering rows on a column condition.
+
+    Args:
+        df: Source LazyFrame.
+        col: Column to compare.
+        op: Binary comparison callable (e.g. ``operator.lt``).
+        comp: Right-hand comparison value.
+        cast: When True, cast ``col`` to Float64 before comparison.
+
+    Returns:
+        LazyFrame containing only rows where ``op(col, comp)`` is true.
+    """
     expr: pl.Expr = pl.col(col).cast(pl.Float64) if cast else pl.col(col)
     return df.filter(op(expr, comp))
 
 
 def drop_not_significant(lf: pl.LazyFrame, col: str = "statistical_significance_qualifier") -> pl.LazyFrame:
-    # ? Release-Mode Row Filter: Drops Edges Whose Significance Qualifier Is biolink:not_significant
-    # ! Only Filters When The Qualifier Column Exists; No-Op For Sections Without A p_value Column
-    # ! ne_missing Keeps Null Qualifiers (Null P-Value -> Null Qualifier -> Kept, Not Dropped)
+    """Drop release-mode edges whose significance qualifier is ``biolink:not_significant``.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Significance qualifier column name.
+
+    Returns:
+        LazyFrame with non-significant edges removed.
+
+    Notes:
+        Only filters when the qualifier column exists; no-op for sections
+        without a ``p_value`` column. ``ne_missing`` keeps null qualifiers
+        (null p-value → null qualifier → kept, not dropped).
+    """
     names: list[str] = lf.collect_schema().names()
     if col not in names:
         return lf
@@ -391,7 +645,14 @@ def drop_not_significant(lf: pl.LazyFrame, col: str = "statistical_significance_
 
 
 def idxname(col: Any) -> str:
-    # ? Converts Excel Style Column Names To Polars Column Names
+    """Convert Excel-style column letters (e.g. ``"AA"``) to a polars-style ``column_<n>`` name.
+
+    Args:
+        col: Excel column letter (or any value whose ``str`` form is one).
+
+    Returns:
+        ``f"column_{idx}"`` where ``idx`` is the 1-based column number.
+    """
     scol: str = str(col)
     idx: int = 0
     for char in scol:
@@ -401,12 +662,32 @@ def idxname(col: Any) -> str:
 
 
 def trim(lf: pl.LazyFrame, regex: str = r"^column_\d+$") -> pl.LazyFrame:
-    # ? Removes Columns With The Excel Naming Conventions From LazyFrame
+    """Remove columns whose names match the Excel-style ``column_<n>`` convention.
+
+    Args:
+        lf: Source LazyFrame.
+        regex: Column-name pattern to drop.
+
+    Returns:
+        LazyFrame with matching columns excluded.
+    """
     return lf.select(pl.exclude(regex))
 
 
 def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
-    # ? collect and write section parquet; warn if result is empty
+    """Collect and write a section LazyFrame to a parquet file.
+
+    Args:
+        lf: Section LazyFrame to materialize.
+        p: Destination parquet path.
+        config_name: Human-readable section name used in the empty-row warning.
+
+    Returns:
+        The parquet path written.
+
+    Notes:
+        Warns when the collected frame has zero rows.
+    """
     df: pl.DataFrame = lf.collect()
 
     if df.height == 0:
@@ -417,7 +698,8 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
 
 
 class Tcode(Section):
-    # ? Extends Section To Compile A KG
+    """Extend ``Section`` with the per-section operation list that compiles a knowledge graph."""
+
     config: Path = Field(...)
     store: Path = Field(...)
     log: bool = Field(False)
@@ -426,7 +708,21 @@ class Tcode(Section):
     name: Optional[str] = Field(None)
 
     def encoding(self: Self, x: Encoding, col: str, table_literal: bool = False) -> list[Any]:
-        # ? Collect Helper For Encoding Classes
+        """Collect helper for Encoding classes.
+
+        Builds the ordered list of (callable, args) tuples that implement an
+        ``Encoding`` against a single column.
+
+        Args:
+            x: Encoding configuration.
+            col: Target column name.
+            table_literal: When True, also emit a tuple preserving the raw
+                column under an ``original_`` prefix.
+
+        Returns:
+            Flat list of ``Any`` items (tuples or lists of tuples, possibly
+            containing ``None`` placeholders) ready for ``clean`` to filter.
+        """
         return [
             (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
             (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
@@ -441,13 +737,33 @@ class Tcode(Section):
         ]
 
     def node_prep(self: Self, x: NodeEncoding, col: str) -> list[Any]:
-        # ? Collect Helper For NodeEncoding Classes -- Encoding Plus NLP Normalization, Before resolve_batch
+        """Collect helper for NodeEncoding classes.
+
+        Encoding plus NLP normalization, before ``resolve_batch``.
+
+        Args:
+            x: NodeEncoding configuration.
+            col: Target column name.
+
+        Returns:
+            Combined list of encoding tuples plus the pre-resolution column
+            copy and ``level_one``/``level_two`` normalization tuples.
+        """
         encoding: list[Any] = self.encoding(x, col, table_literal=True)
         prep: list[Any] = [(column, (add(col, "_pre_resolution"), col)), (level_one, (col,)), (level_two, (col,))]
         return add(encoding, prep)
 
     def clean(self: Self, tcode: list[tuple[Callable, Any]]) -> list[tuple[Callable, tuple[Any]]]:
-        # ? Cleans Tcode So It Can Be Used With reduce From functools
+        """Clean a Tcode list so it can be used with ``reduce`` from functools.
+
+        Args:
+            tcode: Raw list possibly containing ``None`` placeholders and
+                nested lists of tuples.
+
+        Returns:
+            Flat list of ``(callable, tuple[Any, ...])`` pairs with falsy
+            entries removed.
+        """
         result: list[tuple[Callable, tuple[Any]]] = []
         for x in tcode:
             if not x:
@@ -459,14 +775,22 @@ class Tcode(Section):
         return result
 
     def collect(self: Self, db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
-        # ? Code That Tells Tablassert What Actions To While Transforming Data
+        """Build the ordered operation list that drives section transformation.
 
+        Args:
+            db: Path to the fullmap redb used for entity resolution.
+
+        Returns:
+            Either the existing store path (quick exit when the subgraph
+            parquet is already present), or a cleaned list of
+            ``(callable, args)`` tuples consumed by ``compile_subgraph``.
+        """
         if self.store.is_file():
-            # * Quick Exit If Subgraph Already Exists
+            # Quick exit if subgraph already exists.
             return self.store
 
         else:
-            # * Subject/Object/Qualifiers Share One resolve_batch Call Instead Of One Per Column
+            # Subject/object/qualifiers share one resolve_batch call instead of one per column.
             node_columns: list[tuple[NodeEncoding, str]] = [
                 (self.statement.subject, "subject"),
                 (self.statement.object, "object"),
@@ -474,7 +798,7 @@ class Tcode(Section):
             ]
             specs: list[ResolveSpec] = [ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid) for x, col in node_columns]
 
-            # * Returns A List Of: (Function, (Arguments))
+            # Returns a list of: (function, (arguments)).
             tcode: Optional[list[Any]] = [
                 (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
                 (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
@@ -493,7 +817,7 @@ class Tcode(Section):
                 (coerce_pvalue_columns, ()),
                 (coerce_study_size_columns, ()),
                 (clean_numeric, ()),
-                # * Drop Insignificant Rows Before They Ever Reach The Expensive Fullmap Resolution Below
+                # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
                 (sig, ()),
                 (drop_not_significant, ()) if self.release else None,
                 [self.node_prep(x, col) for x, col in node_columns],
@@ -516,7 +840,7 @@ class Tcode(Section):
 
 
 PHASE_OF: dict[Callable, str] = {
-    # ? Maps Each Tcode Op Callable To A Short Lowercase Phase Label For Progress UX
+    # Maps each Tcode op callable to a short lowercase phase label for progress UX.
     csv: "load",
     excel: "load",
     idx: "load",
@@ -548,7 +872,16 @@ _VALUE_PROVENANCE_COLS: frozenset[str] = frozenset({"upstream_resource_ids", "kn
 
 
 def _phase_of(fn: Callable, args: tuple[Any, ...]) -> str:
-    # ? Resolves The Phase Label For An Op, Handling value() Specially Since It Spans Phases
+    """Resolve the phase label for an op, handling ``value()`` specially since it spans phases.
+
+    Args:
+        fn: Op callable.
+        args: Op argument tuple.
+
+    Returns:
+        Short lowercase phase label (e.g. ``"load"``, ``"resolve"``,
+        ``"edge"``); falls back to ``UNKNOWN_PHASE`` when unrecognized.
+    """
     if fn is value:
         col: str = str(args[0]) if args else ""
         if col == "predicate":
@@ -560,7 +893,16 @@ def _phase_of(fn: Callable, args: tuple[Any, ...]) -> str:
 
 
 def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Optional[Callable[[str], None]] = None) -> Path:
-    # ? Executes Tcode To Build Subgraphs As Parquets; on_phase Fires When The Phase Label Changes
+    """Execute a Tcode operation list to build a subgraph parquet.
+
+    Args:
+        tcode: Cleaned list of ``(callable, args)`` tuples from ``Tcode.collect``.
+        on_phase: Optional callback fired when the phase label changes,
+            used to drive progress UX.
+
+    Returns:
+        Path to the written subgraph parquet.
+    """
     last_phase: Optional[str] = None
     acc: Union[pl.LazyFrame, Path, None] = None
     for op in tcode:
@@ -578,44 +920,88 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Opti
 def normalize(
     edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source_version"]
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
-    # ? Normalized Disparate Node Columns To A Unified Format And Removes Them From Edges
-    # * Returns Partial Nodes And Modified Edges As LazyFrames
+    """Normalize disparate node columns into a unified format and remove them from edges.
+
+    Args:
+        edges: Source edges LazyFrame containing ``<col>``, ``<col>_name``,
+            ``<col>_category``, ``<col>_taxon``, ``<col>_source``, and
+            ``<col>_source_version`` columns.
+        col: Base node column name (e.g. ``"subject"``).
+        names: Output column names for the produced nodes frame.
+
+    Returns:
+        Tuple of ``(partial_nodes, modified_edges)`` as LazyFrames.
+    """
     cols: list[str] = [col, add(col, "_name"), add(col, "_category"), add(col, "_taxon"), add(col, "_source"), add(col, "_source_version")]
     nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
-    # ? Ensures Category Has biolink: Prefix
+    # Ensures category has biolink: prefix.
     nodes = nodes.with_columns(
         pl.when(pl.col("category").str.starts_with("biolink:"))
         .then(pl.col("category"))
         .otherwise(add(pl.lit("biolink:"), pl.col("category")))
         .alias("category")
     )
-    # ? Exports Category Within A List (Null Categories Stay Null For strip_nulls)
+    # Exports category within a list (null categories stay null for strip_nulls).
     nodes = nodes.with_columns(pl.when(pl.col("category").is_not_null()).then(pl.concat_list(pl.col("category"))).alias("category"))
     edges_out: pl.LazyFrame = edges.drop(cols[1:])
     return nodes, edges_out
 
 
 def publication_curie(repo: str, publication: str) -> str:
-    # ? Builds The Publication CURIE; PMCID Namespace For PubMed Central
+    """Build the publication CURIE.
+
+    Uses the ``PMCID:`` namespace for PubMed Central and ``<REPO>:`` for
+    other repositories.
+
+    Args:
+        repo: Repository identifier (a ``Repositories`` enum value).
+        publication: Publication identifier (e.g. PMID or PMCID).
+
+    Returns:
+        CURIE string of the form ``"<prefix>:<publication>"``.
+    """
     if eq(repo, Repositories.PUBMED_CENTRAL):
         return add("PMCID:", publication)
     return add(repo, add(":", publication))
 
 
 def infores(name: str) -> str:
-    # ? Builds An infores CURIE From A Graph Name In Lower Kebab Case
+    """Build an infores CURIE from a graph name in lower kebab case.
+
+    Args:
+        name: Graph name (typically snake_case).
+
+    Returns:
+        ``"infores:<kebab-name>"``.
+    """
     return add("infores:", name.lower().replace("_", "-"))
 
 
 def upstream_resource_ids(repo: Repositories) -> list[str]:
-    # ? Maps Publication Repository To Translator InfoRes Upstream Source IDs
+    """Map a publication repository to Translator infores upstream source IDs.
+
+    Args:
+        repo: Repository enum value.
+
+    Returns:
+        Single-element list containing the matching infores identifier.
+    """
     if eq(repo, Repositories.PUBMED_CENTRAL):
         return [InformationResources.PUBMED_CENTRAL.value]
     return [InformationResources.PUBMED.value]
 
 
 def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) -> dict:
-    # ? Removes Null Keys From NDJSON
+    """Remove null keys from an NDJSON-style record.
+
+    Args:
+        r: Object expected to be a dict (other types are not stripped).
+        bad: Lowercased strings treated as null-equivalent.
+
+    Returns:
+        Dict with falsy and ``bad``-valued keys removed; recurses into
+        nested dicts and lists.
+    """
     return {
         k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v
         for k, v in r.items()  # pyright: ignore
@@ -624,7 +1010,15 @@ def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) ->
 
 
 def as_list(v: object) -> list[object]:
-    # ? Coerces Scalar And List-Like Values Into A Plain List
+    """Coerce scalar and list-like values into a plain list.
+
+    Args:
+        v: Any value.
+
+    Returns:
+        The original list for lists, ``[]`` for ``None``, otherwise a
+        single-element list wrapping the value.
+    """
     if isinstance(v, list):
         return v
     if v is None:
@@ -633,7 +1027,15 @@ def as_list(v: object) -> list[object]:
 
 
 def normalize_biolink_category(v: object) -> Optional[str]:
-    # ? Normalizes Category Strings For RIG Target Summaries
+    """Normalize category strings for RIG target summaries.
+
+    Args:
+        v: Raw category value.
+
+    Returns:
+        Category with a ``biolink:`` prefix, or ``None`` for empty/non-string
+        input.
+    """
     if not isinstance(v, str) or not v:
         return None
     if v.startswith("biolink:"):
@@ -642,7 +1044,14 @@ def normalize_biolink_category(v: object) -> Optional[str]:
 
 
 def curie_prefix(v: object) -> Optional[str]:
-    # ? Extracts Compact Identifier Prefixes For RIG Node Type Summaries
+    """Extract compact identifier prefixes for RIG node type summaries.
+
+    Args:
+        v: CURIE string (e.g. ``"CHEBI:1234"``).
+
+    Returns:
+        Prefix portion (``"CHEBI"``), or ``None`` when no prefix is present.
+    """
     if not isinstance(v, str) or ":" not in v:
         return None
     prefix: str = v.split(":", 1)[0]
@@ -650,7 +1059,14 @@ def curie_prefix(v: object) -> Optional[str]:
 
 
 def clean_values(values: list[object]) -> list[str]:
-    # ? Removes Empty Values And Deduplicates Stringified RIG Summary Values
+    """Remove empty values and deduplicate stringified RIG summary values.
+
+    Args:
+        values: Raw values, possibly nested in lists.
+
+    Returns:
+        Sorted, deduplicated list of non-empty stringified values.
+    """
     out: list[str] = []
     for value in values:
         for item in as_list(value):
@@ -664,7 +1080,18 @@ def clean_values(values: list[object]) -> list[str]:
 
 
 def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: Optional[str]) -> list[dict[str, object]]:
-    # ? Summarizes Raw Edge Columns Into RIG Edge Type Metadata Before Node Normalization
+    """Summarize raw edge columns into RIG edge type metadata before node normalization.
+
+    Args:
+        lf: Edges LazyFrame to summarize.
+        edges_path: Path of the edges file (recorded under ``source_files``).
+        ui_explanation: Optional human-readable explanation; falls back to
+            ``DEFAULT_RIG_UI_EXPLANATION`` when unset.
+
+    Returns:
+        List of per-edge-type dicts, or an empty list when none of the
+        expected columns are present.
+    """
     names: list[str] = lf.collect_schema().names()
     wanted: list[str] = [
         c
@@ -711,7 +1138,14 @@ def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: Optio
 
 
 def rig_node_type_info(nodes: list[dict[str, object]]) -> list[dict[str, object]]:
-    # ? Summarizes Normalized Nodes Into RIG Node Type Metadata
+    """Summarize normalized nodes into RIG node type metadata.
+
+    Args:
+        nodes: List of node dicts with ``id`` and ``category`` keys.
+
+    Returns:
+        Sorted list of ``{"node_category", "source_identifier_types"}`` dicts.
+    """
     buckets: dict[str, set[str]] = {}
     for node in nodes:
         prefixes: list[str] = clean_values([curie_prefix(node.get("id"))])
@@ -722,7 +1156,14 @@ def rig_node_type_info(nodes: list[dict[str, object]]) -> list[dict[str, object]
 
 
 def unique_dicts(rows: list[dict[str, object]]) -> list[dict[str, object]]:
-    # ? Deduplicates Small RIG Summary Dictionaries Without Adding A New Dependency
+    """Deduplicate small RIG summary dictionaries without adding a new dependency.
+
+    Args:
+        rows: List of dict rows.
+
+    Returns:
+        New list preserving first-occurrence order with duplicates removed.
+    """
     seen: set[str] = set()
     out: list[dict[str, object]] = []
     for row in rows:
@@ -745,7 +1186,20 @@ def compile_rig(
     node_type_info: list[dict[str, object]],
     edge_type_info: list[dict[str, object]],
 ) -> None:
-    # ? Writes Translator Resource Ingest Guide Metadata Alongside KGX Outputs
+    """Write Translator Resource Ingest Guide metadata alongside KGX outputs.
+
+    Args:
+        name: Graph name.
+        version: Graph version string.
+        description: Optional human-readable description.
+        contributions: Optional contributor list; falls back to defaults.
+        ui_explanation: Optional edge-type UI explanation (passed through).
+        tables: Optional source table paths (unused; kept for API symmetry).
+        nodes_path: Path of the nodes file (recorded in the RIG).
+        edges_path: Path of the edges file (recorded in the RIG).
+        node_type_info: Precomputed node type summaries.
+        edge_type_info: Precomputed edge type summaries.
+    """
     from tablassert.ingests import to_yaml
 
     rig_path: Path = Path(f"./{name}_{version}.RIG.yaml")
@@ -776,8 +1230,19 @@ def compile_rig(
 
 
 def dedup_stream(p_in: Path, is_edges: bool) -> None:
-    # ? Removes Null Values From And Deduplicates NDJSON
-    # * Also Adds UUIDs To Edges
+    """Remove null values from and deduplicate an NDJSON stream.
+
+    Args:
+        p_in: Path to the input ``.ndjson.tmp`` file.
+        is_edges: When True, also add UUIDs to edges via the Rust deduper.
+
+    Notes:
+        Also adds UUIDs to edges.
+
+    Returns:
+        ``None``; writes the deduplicated stream alongside ``p_in`` with no
+        ``.tmp`` suffix, then deletes ``p_in``.
+    """
     p_out: Path = p_in.with_suffix("")
 
     if p_out.is_file():
@@ -789,10 +1254,22 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
 
 
 def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
-    # ? Folds Any Non-Biolink Edge Column Into supporting_text As "col: value" Strings
-    # * Stays Fully Lazy; Null/Blank Values Produce No Entry; Sorted For Deterministic Output
-    # * Existing list[str] supporting_text Has Derived Entries Appended (Never Clobbered);
-    # * Scalar supporting_text (E.G. A method: value Annotation) Is Coerced To list[str] First
+    """Fold any non-Biolink edge column into ``supporting_text`` as ``col: value`` strings.
+
+    Args:
+        lf: Edges LazyFrame possibly carrying non-allowed columns.
+
+    Returns:
+        LazyFrame with all non-allowed columns folded into ``supporting_text``
+        and dropped.
+
+    Notes:
+        Stays fully lazy; null/blank values produce no entry; sorted for
+        deterministic output. Existing ``list[str]`` ``supporting_text`` has
+        derived entries appended (never clobbered); scalar
+        ``supporting_text`` (e.g. a ``method: value`` annotation) is coerced
+        to ``list[str]`` first.
+    """
     schema: pl.Schema = lf.collect_schema()
     schema_names: list[str] = schema.names()
     unknown: list[str] = sorted(c for c in schema_names if c not in ALLOWED_EDGE_FIELDS)
@@ -809,7 +1286,7 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
     derived: pl.Expr = pl.concat_list(parts).list.drop_nulls()
 
     if "supporting_text" in schema_names:
-        # ? Coerce Scalar supporting_text To list[str] First, Then Append Derived Entries
+        # Coerce scalar supporting_text to list[str] first, then append derived entries.
         existing: pl.Expr
         if isinstance(schema["supporting_text"], pl.List):
             existing = pl.col("supporting_text")
@@ -831,10 +1308,25 @@ def compile_graph(
     ui_explanation: Optional[str] = None,
     tables: Optional[list[Path]] = None,
 ) -> None:
-    # ? Aggregates Parquets For NDJSON KGX Export Using Lazy Scan
+    """Aggregate subgraph parquets for NDJSON KGX export using a lazy scan.
+
+    Args:
+        subgraphs: List of section parquet paths to merge.
+        name: Graph name (used for output file stems and the RIG).
+        version: Graph version string.
+        description: Optional human-readable description for the RIG.
+        contributions: Optional contributor list for the RIG.
+        ui_explanation: Optional UI explanation for the RIG.
+        tables: Optional source table list for the RIG.
+
+    Returns:
+        ``None``; writes ``<name>_<version>.nodes.ndjson``,
+        ``<name>_<version>.edges.ndjson``, and ``<name>_<version>.RIG.yaml``
+        in the current working directory.
+    """
     p: Path = Path(f"./{name}_{version}.tmp")
 
-    e: Path = p.with_suffix(".edges.ndjson.tmp")  # ! For Labeling
+    e: Path = p.with_suffix(".edges.ndjson.tmp")  # For labeling.
     if e.exists():
         e.unlink()
 
@@ -849,18 +1341,18 @@ def compile_graph(
         lf: pl.LazyFrame = pl.scan_parquet(s)
         edge_type_info.extend(rig_edge_type_info(lf, e.with_suffix(""), ui_explanation))
 
-        # ? Only subject and object become nodes; qualifier columns stay as edge attributes
+        # Only subject and object become nodes; qualifier columns stay as edge attributes.
         originals: list[str] = [c.removesuffix("_pre_resolution") for c in lf.collect_schema().names() if c.endswith("_pre_resolution")]
         node_cols: list[str] = [c for c in originals if c in ("subject", "object")]
         for col in node_cols:
             partial, lf = normalize(lf, col)
             subnodes.append(partial)
-        # ? Drop Internal Pre-Resolution Snapshot Columns From Final Edges
+        # Drop internal pre-resolution snapshot columns from final edges.
         lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
         lf = fold_unknown_to_supporting_text(lf)
         subedges.append(lf)
 
-    # ! Collection Point: Appending To Output Files
+    # Collection point: appending to output files.
     node_rows: list[dict[str, object]] = []
     with n.open("a") as f:
         for subnode in subnodes:
@@ -899,6 +1391,22 @@ def resolve_many(
     qc: bool = False,
     column_context: bool = True,
 ) -> list[dict[str, Any]]:
+    """Resolve a batch of raw entity strings to Biolink-normalized records.
+
+    Args:
+        col: Source column name to normalize.
+        entities: Raw entity strings to resolve.
+        fullmap: Path to ``fullmap.redb`` (or its parent directory).
+        taxon: Optional NCBITaxon constraint.
+        prioritize: Optional Biolink categories preferred on ties.
+        avoid: Optional Biolink categories deprioritized on ties.
+        qc: When True, attach fullmap audit metadata to the result.
+        column_context: Forwarded to ``resolve``.
+
+    Returns:
+        List of dicts mirroring a one-row-per-entity resolved frame, with
+        internal pre-resolution snapshot columns dropped to match edge output.
+    """
     series: pl.Series = pl.Series(col, entities)
     lf: pl.LazyFrame = series.to_frame().lazy()
 
@@ -912,6 +1420,6 @@ def resolve_many(
         lf = fullmap_audit(lf, col, "", "", log=qc)
 
     df: pl.DataFrame = lf.collect()
-    # ? Drop Internal Pre-Resolution Snapshot Columns To Mirror Edge Output
+    # Drop internal pre-resolution snapshot columns to mirror edge output.
     df = df.drop([c for c in df.columns if c.endswith("_pre_resolution")])
     return df.to_dicts()

@@ -245,7 +245,8 @@ class Annotation(Encoding):
 
 
 class Section(TablaBase):
-    # ? Pydantic "Section" Model And Coercion
+    """Pydantic section model and coercion target for a single table configuration."""
+
     source: Union[Excel, Text] = Field(..., description="Input source definition for reading tabular rows.")
     statement: Statement = Field(..., description="Subject-object statement mapping for this section.")
     provenance: Provenance = Field(..., description="Provenance metadata applied to all produced edges.")
@@ -266,7 +267,8 @@ def default_rig_contributions() -> list[str]:
 
 
 class Graph(TablaBase):
-    # ? Pydantic "Graph" Configuration
+    """Pydantic graph configuration model."""
+
     name: str = Field(..., description="Graph name written into output metadata.")
     version: str = Field(..., description="Graph version label.")
     description: str = Field(..., description="Source scope description written into generated Resource Ingest Guides.")

@@ -5,17 +5,17 @@ from pathlib import Path
 from uuid import UUID
 
 
-# ? namespace_uuid Returns A UUID Shaped String
 def test_namespace_uuid_returns_uuid() -> None:
+    """namespace_uuid returns a UUID shaped string."""
     from tablassert import rs
 
     result: str = rs.namespace_uuid("domain", ["a", "b"])
     assert isinstance(result, str)
-    UUID(result)  # ? valid UUID shape
+    UUID(result)  # valid UUID shape
 
 
-# ? dedup_ndjson Strips Null Like Values And Deduplicates Node Lines
 def test_dedup_ndjson_deduplicates_nodes(tmp_path: Path) -> None:
+    """dedup_ndjson strips null like values and deduplicates node lines."""
     from tablassert import rs
 
     p_in: Path = tmp_path / "nodes.ndjson.tmp"
@@ -27,8 +27,8 @@ def test_dedup_ndjson_deduplicates_nodes(tmp_path: Path) -> None:
     assert p_out.read_text() == '{"id":"A"}\n'
 
 
-# ? dedup_ndjson Labels Edges With A UUID Shaped id
 def test_dedup_ndjson_labels_edges(tmp_path: Path) -> None:
+    """dedup_ndjson labels edges with a UUID shaped id."""
     from tablassert import rs
 
     p_in: Path = tmp_path / "edges.ndjson.tmp"
@@ -38,4 +38,4 @@ def test_dedup_ndjson_labels_edges(tmp_path: Path) -> None:
     rs.dedup_ndjson(p_in, p_out, True, "TABLASSERT")
 
     row: dict = json.loads(p_out.read_text())
-    UUID(row["id"])  # ? edge id is a valid UUID
+    UUID(row["id"])  # edge id is a valid UUID

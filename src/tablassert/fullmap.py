@@ -19,7 +19,15 @@ else:
 
 
 def empty_matches(column_context: bool) -> pl.DataFrame:
-    # ? Creates Empty Fullmap Matches DataFrame With Query Schema
+    """Build an empty fullmap matches DataFrame using the canonical query schema.
+
+    Args:
+        column_context: When ``True``, add the ``FREQUENCY`` column used by
+            column-context ranking.
+
+    Returns:
+        Zero-row DataFrame with the fullmap matches schema.
+    """
     schema: dict[str, object] = {
         "term": pl.String,
         "CURIE": pl.String,
@@ -39,7 +47,22 @@ def empty_matches(column_context: bool) -> pl.DataFrame:
 
 
 def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFrame:
-    # ? Extract Unique Terms From Two Text Normalization Columns As LazyFrame
+    """Extract unique terms from two text-normalization columns as a LazyFrame.
+
+    Each input column is de-duplicated independently and tagged with its NLP
+    level (1 for ``l1``, 2 for ``l2``), then concatenated and de-duplicated
+    again keeping the first (lowest-level) occurrence. Purely numeric values,
+    common null sentinels, and a fixed list of generic labels are dropped.
+
+    Args:
+        lf: Source LazyFrame.
+        l1: Level-one (lightly normalized) column name.
+        l2: Level-two (heavily normalized) column name.
+        col: Output column name for the unified term.
+
+    Returns:
+        LazyFrame with one ``col`` column plus ``nlp_level``.
+    """
     t1: pl.LazyFrame = lf.select(pl.col(l1).alias(col)).unique()
     t1 = t1.with_columns(pl.lit(1).alias("nlp_level"))
 
@@ -54,6 +77,19 @@ def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFr
 
 
 def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFrame:
+    """Sort and de-duplicate fullmap matches so each term keeps its best row.
+
+    When ``column_context`` is set, a per-category ``FREQUENCY`` column is
+    attached and used as a high-priority tiebreaker (more common categories
+    first).
+
+    Args:
+        result: Joined matches with a ``CATEGORY_NAME`` column.
+        column_context: Whether to compute/use the frequency tiebreaker.
+
+    Returns:
+        DataFrame with one row per ``term``.
+    """
     sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
     descending: list[bool] = [False, False, False]
 
@@ -76,8 +112,23 @@ def filter_and_rank(
     avoid: Optional[list[Categories]],
     column_context: bool,
 ) -> pl.DataFrame:
-    # ? Joins Already-Fetched Redb Rows Against One Column's Own Terms, Then Filters/Ranks/Dedups
-    # * Split Out Of query_distinct So resolve_batch Can Reuse One Shared Redb Fetch Per Column
+    """Join already-fetched redb rows against one column's own terms, then filter, rank, and dedup.
+
+    Split out of ``query_distinct`` so ``resolve_batch`` can reuse one shared
+    redb fetch per column.
+
+    Args:
+        raw: Rows looked up from the fullmap redb.
+        terms: Distinct terms for the column being resolved (from ``distinct``).
+        taxon: Optional taxon filter applied to gene-category matches.
+        prioritize: Categories to boost in ranking.
+        avoid: Categories to drop entirely.
+        column_context: Whether to compute/use category frequency as a tiebreaker.
+
+    Returns:
+        Ranked matches DataFrame with one row per term.
+    """
+    # Split out of query_distinct so resolve_batch can reuse one shared redb fetch per column.
     if raw.height == 0:
         return empty_matches(column_context)
 
@@ -111,8 +162,24 @@ def query_distinct(
     column_context: bool,
     threads: Optional[int] = None,
 ) -> pl.DataFrame:
-    # ? Query The Embedded Fullmap Database For Distinct Terms
-    # * Added Column Prioritization Logic From 4.2.0
+    """Query the embedded fullmap database for distinct terms.
+
+    Args:
+        lf: LazyFrame of distinct terms (output of ``distinct``).
+        db: Path to the fullmap redb file.
+        taxon: Optional taxon filter applied to gene-category matches.
+        prioritize: Categories to boost in ranking.
+        avoid: Categories to drop entirely.
+        column_context: Whether to compute/use category frequency as a tiebreaker.
+        threads: Optional thread count forwarded to the Rust lookup.
+
+    Returns:
+        Ranked matches DataFrame (empty schema if no terms or no hits).
+
+    Notes:
+        Added column prioritization logic from 4.2.0.
+    """
+    # Added column prioritization logic from 4.2.0.
     terms: pl.DataFrame = lf.collect()
     if terms.height == 0:
         return empty_matches(column_context)
@@ -125,7 +192,18 @@ def query_distinct(
 
 
 def fullmap_db_path(fullmap: Path) -> Path:
-    # ? Resolves Existing Fullmap Base Paths To The Embedded Redb File
+    """Resolve a ``fullmap`` model field to the embedded redb file path.
+
+    Accepts either the redb file directly or a base directory. When given a
+    directory, checks for ``<dir>/fullmap.redb`` first, then falls back to
+    ``<dir>/data/fullmap.redb``.
+
+    Args:
+        fullmap: File path or base directory from the ``Graph.fullmap`` field.
+
+    Returns:
+        Resolved path to ``fullmap.redb``.
+    """
     if fullmap.is_file() or fullmap.suffix == ".redb":
         return fullmap
     direct: Path = fullmap / "fullmap.redb"
@@ -135,11 +213,20 @@ def fullmap_db_path(fullmap: Path) -> Path:
 
 
 def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]) -> None:
-    # * Log Unmatched Entities
+    """Log level-one terms that did not resolve to any CURIE.
+
+    Args:
+        col: Column being resolved (for log context).
+        terms: Distinct terms with their NLP level.
+        matches: Matches actually resolved for this column.
+        section_hash: Short section hash (for log context).
+        config_file: Originating config file (for log context).
+    """
+    # Log unmatched entities.
     level_one: pl.LazyFrame = terms.filter(pl.col("nlp_level") == 1)
     antimatches: pl.LazyFrame = level_one.join(matches.lazy().select("term"), left_on="term", right_on="term", how="anti")
 
-    # ! Collection Point: Requires Eager
+    # Collection point: requires eager.
     unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
     if unnmatched.height > 0:
         for term in unnmatched.get_column("term").to_list():
@@ -147,12 +234,32 @@ def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_
 
 
 def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "_two") -> pl.LazyFrame:
-    # ? Joins Ranked Fullmap Matches Back Into lf For One Column, Coalescing Level One/Two Hits
-    # * Split Out Of resolve So resolve_batch Can Apply Per-Column Matches From One Shared Redb Fetch
+    """Join ranked fullmap matches back into ``lf`` for one column.
+
+    Coalesces level-one and level-two hits per row (level one wins when
+    present) and emits derived ``<col>_name``, ``<col>_category``,
+    ``<col>_taxon``, ``<col>_source``, ``<col>_source_version`` and
+    ``<col>_nlp_level`` columns.
+
+    Args:
+        lf: Source LazyFrame (will be collected eagerly for the join).
+        col: Column being resolved.
+        matches: Ranked matches for this column from ``filter_and_rank``.
+        tag: Suffix used to derive the level-two column name.
+
+    Returns:
+        New LazyFrame with resolved columns; rows whose ``col`` did not match
+        are dropped.
+
+    Notes:
+        Split out of ``resolve`` so ``resolve_batch`` can apply per-column
+        matches from one shared redb fetch.
+    """
+    # Split out of resolve so resolve_batch can apply per-column matches from one shared redb fetch.
     l1: str = col
     l2: str = add(l1, tag)
 
-    # ! Collection Point: Join After Redb Query, Then Re-Lazy
+    # Collection point: join after redb query, then re-lazy.
     df: pl.DataFrame = lf.collect()
     result: pl.DataFrame = df.join(matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix="_l1")
 
@@ -192,7 +299,8 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
 
 
 class ResolveSpec(NamedTuple):
-    # ? One Node Column's Resolution Settings For resolve_batch
+    """One node column's resolution settings for ``resolve_batch``."""
+
     col: str
     taxon: Optional[str] = None
     prioritize: Optional[list[Categories]] = None
@@ -210,9 +318,28 @@ def resolve_batch(
     tag: str = "_two",
     threads: Optional[int] = None,
 ) -> pl.LazyFrame:
-    # ? Resolves Multiple Node Columns (Subject/Object/Qualifiers) Against One Shared Redb Fetch
-    # * Each Column Still Gets Its Own Taxon/Prioritize/Avoid Filtering And Its Own Join Back Into lf;
-    # * Only The Redb Round Trip Itself (rs.lookup_fullmap_terms) Is Pooled Across Columns
+    """Resolve multiple node columns against one shared redb fetch.
+
+    Each column still gets its own taxon/prioritize/avoid filtering and its own
+    join back into ``lf``; only the redb round trip itself
+    (``rs.lookup_fullmap_terms``) is pooled across columns.
+
+    Args:
+        lf: Source LazyFrame.
+        specs: One ``ResolveSpec`` per column to resolve.
+        db: Path to the fullmap redb file.
+        log: When ``True``, log unmatched level-one terms.
+        section_hash: Short section hash (for log context).
+        config_file: Originating config file (for log context).
+        column_context: Whether to compute/use category frequency as a tiebreaker.
+        tag: Suffix used to derive level-two column names.
+        threads: Optional thread count forwarded to the Rust lookup.
+
+    Returns:
+        LazyFrame with resolved columns added.
+    """
+    # Each column still gets its own taxon/prioritize/avoid filtering and its own join back into lf;
+    # only the redb round trip itself (rs.lookup_fullmap_terms) is pooled across columns.
     if not specs:
         return lf
 
@@ -249,7 +376,28 @@ def resolve(
     tag: str = "_two",
     threads: Optional[int] = None,
 ) -> pl.LazyFrame:
-    # ? Case Dependant, Provenance Rich Name Entity Recognition -- Single-Column Convenience Wrapper
+    """Case-dependent, provenance-rich named-entity recognition (single-column wrapper).
+
+    Thin convenience wrapper around ``resolve_batch`` for callers resolving a
+    single column.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Column to resolve.
+        db: Path to the fullmap redb file.
+        taxon: Optional taxon filter applied to gene-category matches.
+        prioritize: Categories to boost in ranking.
+        avoid: Categories to drop entirely.
+        log: When ``True``, log unmatched level-one terms.
+        section_hash: Short section hash (for log context).
+        config_file: Originating config file (for log context).
+        column_context: Whether to compute/use category frequency as a tiebreaker.
+        tag: Suffix used to derive the level-two column name.
+        threads: Optional thread count forwarded to the Rust lookup.
+
+    Returns:
+        LazyFrame with resolved columns added.
+    """
     return resolve_batch(
         lf,
         [ResolveSpec(col, taxon, prioritize, avoid)],

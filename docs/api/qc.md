@@ -141,11 +141,7 @@ Lazy-loaded on first `fullmap_audit()` call that reaches the embedding stage, th
 
 ### Model Caching
 
-BioBERT is lazy-loaded on first use and cached globally for the lifetime of the process:
-
-```python
-# ? Lazy-loads BioBERT once on first batch audit call, then caches globally
-```
+BioBERT is lazy-loaded on first use and cached globally for the lifetime of the process.
 
 **Cache location:** Downloaded model files are cached on disk in `.tablassert/onnx/`, and the loaded model object is cached in memory for the lifetime of the process.
 

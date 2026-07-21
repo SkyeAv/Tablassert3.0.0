@@ -23,8 +23,8 @@ from tablassert.models import (
 )
 
 
-# ? Valid Minimal Text Section
 def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
+    """valid minimal text section."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     section: Section = Section(**data)  # pyright: ignore
     assert section.source.kind == "text"
@@ -33,8 +33,8 @@ def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
     assert section.provenance.repo == "PMC"
 
 
-# ? Graph RIG Defaults Are Declared In The Model
 def test_graph_rig_defaults() -> None:
+    """graph RIG defaults are declared in the model."""
     graph: Graph = Graph(  # pyright: ignore
         name="TEST", version="1.0.0", description="Test graph", tables=[Path("./table.yaml")], fullmap=Path("./fullmap")
     )
@@ -42,8 +42,8 @@ def test_graph_rig_defaults() -> None:
     assert graph.ui_explanation == DEFAULT_RIG_UI_EXPLANATION
 
 
-# ? Graph Rejects Removed Enrichment Databases
 def test_graph_rejects_removed_enrichment_databases() -> None:
+    """graph rejects removed enrichment databases."""
     data: dict[str, Any] = {
         "name": "TEST",
         "version": "1.0.0",
@@ -57,8 +57,8 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
         Graph.model_validate(data)
 
 
-# ? Graph Rejects QC And Log Keys (Moved To `build-graph` CLI Flags)
 def test_graph_rejects_qc_and_log_keys() -> None:
+    """graph rejects QC and log keys (moved to `build-graph` CLI flags)."""
     data: dict[str, Any] = {
         "name": "TEST",
         "version": "1.0.0",
@@ -72,43 +72,43 @@ def test_graph_rejects_qc_and_log_keys() -> None:
         Graph.model_validate(data)
 
 
-# ? Valid Minimal Excel Section
 def test_excel_source_valid() -> None:
+    """valid minimal excel section."""
     source: Excel = Excel(local=Path("./test.xlsx"), url="https://example.com/test.xlsx", kind="excel", sheet="Sheet1")  # pyright: ignore
     assert source.kind == "excel"
     assert source.sheet == "Sheet1"
 
 
-# ? Valid Text Source
 def test_text_source_valid() -> None:
+    """valid text source."""
     source: Text = Text(local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", delimiter="\t")  # pyright: ignore
     assert source.kind == "text"
     assert source.delimiter == "\t"
 
 
-# ? Invalid Section Missing Required Source
 def test_section_missing_source_raises(fixtures_path: Path) -> None:
+    """invalid section missing required source."""
     data: Any = from_yaml(fixtures_path / "invalid_section_missing_source.yaml")
     with pytest.raises(ValidationError):
         Section(**data)
 
 
-# ? Encoding With Value Method
 def test_encoding_value_method() -> None:
+    """encoding with value method."""
     enc: Encoding = Encoding(method="value", encoding="BRCA1")  # pyright: ignore
     assert enc.method == "value"
     assert enc.encoding == "BRCA1"
 
 
-# ? Encoding With Column Method
 def test_encoding_column_method() -> None:
+    """encoding with column method."""
     enc: Encoding = Encoding(method="column", encoding="A")  # pyright: ignore
     assert enc.method == "column"
     assert enc.encoding == "A"
 
 
-# ? Encoding With Optional Fields
 def test_encoding_with_optional_fields() -> None:
+    """encoding with optional fields."""
     enc: Encoding = Encoding(  # pyright: ignore
         method="value", encoding="test", prefix="PREFIX:", suffix=":SUFFIX", fill="forward", explode_by=";"
     )
@@ -118,8 +118,8 @@ def test_encoding_with_optional_fields() -> None:
     assert enc.explode_by == ";"
 
 
-# ? Encoding With Regex
 def test_encoding_with_regex() -> None:
+    """encoding with regex."""
     enc: Encoding = Encoding(  # pyright: ignore
         method="value", encoding="test", regex=[{"pattern": r"\s+", "replacement": " "}, {"pattern": r"\.$", "replacement": ""}]
     )
@@ -127,14 +127,14 @@ def test_encoding_with_regex() -> None:
     assert enc.regex[0].pattern == r"\s+"  # pyright: ignore
 
 
-# ? Encoding With Remove Patterns
 def test_encoding_with_remove() -> None:
+    """encoding with remove patterns."""
     enc: Encoding = Encoding(method="value", encoding="test", remove=[r"\[\d+\]", r"\s+"])  # pyright: ignore
     assert len(enc.remove) == 2  # pyright: ignore
 
 
-# ? Encoding With Transformations
 def test_encoding_with_transformations() -> None:
+    """encoding with transformations."""
     enc: Encoding = Encoding(  # pyright: ignore
         method="value", encoding=2.0, transformations=[{"function": "pow", "arguments": ["values", 2]}]
     )
@@ -142,14 +142,14 @@ def test_encoding_with_transformations() -> None:
     assert enc.transformations[0].function == "pow"  # pyright: ignore
 
 
-# ? NodeEncoding With Taxon
 def test_node_encoding_with_taxon() -> None:
+    """NodeEncoding with taxon."""
     node: NodeEncoding = NodeEncoding(method="value", encoding="BRCA1", taxon=9606)  # pyright: ignore
     assert node.taxon == 9606
 
 
-# ? NodeEncoding With Prioritize And Avoid
 def test_node_encoding_with_prioritize_avoid() -> None:
+    """NodeEncoding with prioritize and avoid."""
     node: NodeEncoding = NodeEncoding(  # pyright: ignore
         method="value", encoding="BRCA1", prioritize=[Categories.GENE, Categories.PROTEIN], avoid=[Categories.DISEASE]
     )
@@ -157,38 +157,38 @@ def test_node_encoding_with_prioritize_avoid() -> None:
     assert len(node.avoid) == 1  # pyright: ignore
 
 
-# ? Statement With Default Predicate
 def test_statement_default_predicate() -> None:
+    """statement with default predicate."""
     stmt: Statement = Statement(  # pyright: ignore
         subject={"method": "value", "encoding": "A"}, object={"method": "value", "encoding": "B"}
     )
     assert stmt.predicate == "related_to"
 
 
-# ? Statement With Explicit Predicate
 def test_statement_explicit_predicate() -> None:
+    """statement with explicit predicate."""
     stmt: Statement = Statement(  # pyright: ignore
         subject={"method": "value", "encoding": "A"}, object={"method": "value", "encoding": "B"}, predicate="treats"
     )
     assert stmt.predicate == "treats"
 
 
-# ? Reindex Valid Construction
 def test_reindex_valid() -> None:
+    """reindex valid construction."""
     ri: Reindex = Reindex(column="A", comparison="ne", comparator="")  # pyright: ignore
     assert ri.column == "A"
     assert ri.comparison == "ne"
     assert ri.comparator == ""
 
 
-# ? Reindex With Numeric Comparator
 def test_reindex_numeric_comparator() -> None:
+    """reindex with numeric comparator."""
     ri: Reindex = Reindex(column="B", comparison="gt", comparator=0)  # pyright: ignore
     assert ri.comparator == 0
 
 
-# ? Provenance Valid Construction
 def test_provenance_valid() -> None:
+    """provenance valid construction."""
     p: Provenance = Provenance(  # pyright: ignore
         repo="PMC",  # pyright: ignore[reportArgumentType]
         publication="PMC0000000",
@@ -199,8 +199,8 @@ def test_provenance_valid() -> None:
     assert p.agent_type == "data_analysis_pipeline"
 
 
-# ? Provenance Accepts Custom KL/AT Values
 def test_provenance_custom_knowledge_level_and_agent_type() -> None:
+    """provenance accepts custom KL/AT values."""
     p: Provenance = Provenance(  # pyright: ignore
         repo="PMID",  # pyright: ignore[reportArgumentType]
         publication="12345678",
@@ -211,15 +211,15 @@ def test_provenance_custom_knowledge_level_and_agent_type() -> None:
     assert p.agent_type == "computational_model"
 
 
-# ? Annotation Valid Construction
 def test_annotation_valid() -> None:
+    """annotation valid construction."""
     a: Annotation = Annotation(annotation="p_value", method="column", encoding="E")  # pyright: ignore
     assert a.annotation == "p_value"
     assert a.encoding == "E"
 
 
-# ? Section Rejects Extra Fields
 def test_section_rejects_extra_fields() -> None:
+    """section rejects extra fields."""
     with pytest.raises(ValidationError):
         Section(
             source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
@@ -229,22 +229,22 @@ def test_section_rejects_extra_fields() -> None:
         )
 
 
-# ? Section With Row Slice
 def test_section_with_row_slice() -> None:
+    """section with row slice."""
     source: Text = Text(  # pyright: ignore
         local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", row_slice=[2, "auto"]
     )
     assert source.row_slice == [2, "auto"]
 
 
-# ? Section With Rows
 def test_section_with_rows() -> None:
+    """section with rows."""
     source: Text = Text(local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", rows=[1, 2, 5])  # pyright: ignore
     assert source.rows == [1, 2, 5]
 
 
-# ? Section With Reindex
 def test_section_with_reindex() -> None:
+    """section with reindex."""
     source: Text = Text(  # pyright: ignore
         local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", reindex=[{"column": "A", "comparison": "ne", "comparator": ""}]
     )
@@ -252,8 +252,8 @@ def test_section_with_reindex() -> None:
     assert source.reindex[0].column == "A"  # pyright: ignore
 
 
-# ? Section With Qualifiers
 def test_section_with_qualifiers() -> None:
+    """section with qualifiers."""
     section: Section = Section(  # pyright: ignore
         source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
         statement={
@@ -266,8 +266,8 @@ def test_section_with_qualifiers() -> None:
     assert len(section.statement.qualifiers) == 1  # pyright: ignore
 
 
-# ? Section With Annotations
 def test_section_with_annotations() -> None:
+    """section with annotations."""
     data: dict[str, Any] = {
         "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
         "statement": {"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},

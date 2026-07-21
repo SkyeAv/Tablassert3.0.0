@@ -26,7 +26,18 @@ BIOBERT: dict[str, object] = {}
 
 
 def get_biobert() -> object:
-    # ? Lazy-loads BioBERT once on first batch audit call, then caches globally
+    """Lazy-load the BioBERT sentence-transformer once, then cache it globally.
+
+    Loads from the local cache at ``MODEL`` when present; otherwise downloads
+    ``pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb`` and saves it for
+    future runs.
+
+    Returns:
+        The cached ``SentenceTransformer`` instance.
+
+    Raises:
+        QcRuntimeMissingError: If ``sentence_transformers`` is not installed.
+    """
     if "model" in BIOBERT:
         return BIOBERT["model"]
     try:
@@ -45,9 +56,38 @@ def get_biobert() -> object:
 
 
 def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True) -> pl.LazyFrame:
-    # ? Ensures Fullmap Correct Processes Strings To CURIES
-    # * Deletes Suspected Errors
-    # ! Collection Point: Pending Pairs Require Eager
+    """Audit that fullmap correctly processed source strings into CURIEs.
+
+    Runs a three-stage cascade that progressively filters out correct
+    resolutions and leaves suspected errors behind:
+
+    1. Exact match between pre-resolution text and the resolved preferred
+       name, or the source value already looks like a CURIE, or the resolved
+       preferred name matches a small allow-list of exception prefixes.
+    2. Fuzzy string similarity (RapidFuzz ratio / partial token sort).
+    3. BioBERT embedding cosine similarity for the remaining rows.
+
+    Rows that fail every stage are treated as QC rejects and dropped from the
+    output LazyFrame; when ``log`` is set, each reject is logged with the
+    CURIE, original text, preferred name, and similarity scores.
+
+    Args:
+        lf: Source LazyFrame. Must expose ``col``, ``{col}_pre_resolution`` and
+            ``{col}_name`` columns.
+        col: Node column being audited.
+        section_hash: Short section hash (for log context).
+        config_file: Originating config file (for log context).
+        out: Name of the boolean pass/fail column produced internally.
+        log: When ``True``, log rejected CURIEs at INFO level.
+
+    Returns:
+        LazyFrame containing only rows whose ``col`` value passed QC.
+
+    Notes:
+        Collection point: pending pairs are handled eagerly because each stage
+        needs the full set of survivors to batch-similarity-score them.
+    """
+    # Stage 0: deletes suspected errors.
     from rapidfuzz import fuzz
     from rapidfuzz.process import cpdist
     from sklearn.metrics.pairwise import cosine_similarity
@@ -56,7 +96,8 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     preferred: str = add(col, "_name")
     cols: list[str] = [col, original, preferred]
 
-    # * Stage 1: Exact String Matching Or Is Curie (Can Stay Lazy Until Filter)
+    # Stage 1: exact string matching or is CURIE (can stay lazy until filter).
+    # Collection point: pending pairs require eager.
     df: pl.DataFrame = lf.collect()
     pairs: pl.DataFrame = df.select(cols).unique()
     pairs = pairs.with_columns(eq(pl.col(cols[1]), pl.col(cols[2])).alias(out))
@@ -84,7 +125,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
-    # * Stage 2: Fuzzy Matching Via RapidFuzz (Batched)
+    # Stage 2: fuzzy matching via RapidFuzz (batched).
     originals: list[str] = pending.get_column(cols[1]).to_list()
     preferreds: list[str] = pending.get_column(cols[2]).to_list()
 
@@ -100,11 +141,11 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
-    # * Quick Exit If No Rows Need BioBERT QC
+    # Quick exit if no rows need BioBERT QC.
     if pending.height == 0:
         return df.join(passed.select(col), on=col, how="semi").lazy()
 
-    # * Stage 3: BioBERT Embeddings (Batched)
+    # Stage 3: BioBERT embeddings (batched).
     originals = pending.get_column(cols[1]).to_list()
     preferreds = pending.get_column(cols[2]).to_list()
 
@@ -121,7 +162,7 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
-    # * Add Logging For Failed CURIES
+    # Log rejected CURIEs.
     if log and pending.height > 0:
         has_bert: bool = "bert_similarity" in pending.columns
         curies: list[str] = pending.get_column(col).to_list()

@@ -20,8 +20,8 @@ from tablassert.enums import (
 )
 
 
-# ? All Enums Are str, Enum Subclasses
 def test_tokens_is_str_enum() -> None:
+    """all enums are str, enum subclasses."""
     assert issubclass(Tokens, str)
     assert issubclass(Tokens, Enum)
 
@@ -31,8 +31,8 @@ def test_repositories_is_str_enum() -> None:
     assert issubclass(Repositories, Enum)
 
 
-# ? InformationResources Is str, Enum Subclass
 def test_information_resources_is_str_enum() -> None:
+    """InformationResources is str, enum subclass."""
     assert issubclass(InformationResources, str)
     assert issubclass(InformationResources, Enum)
 
@@ -82,8 +82,8 @@ def test_qualifiers_is_str_enum() -> None:
     assert issubclass(Qualifiers, Enum)
 
 
-# ? KnowledgeLevels And AgentTypes Are str, Enum Subclasses
 def test_knowledge_levels_is_str_enum() -> None:
+    """KnowledgeLevels and AgentTypes are str, enum subclasses."""
     assert issubclass(KnowledgeLevels, str)
     assert issubclass(KnowledgeLevels, Enum)
 
@@ -93,8 +93,8 @@ def test_agent_types_is_str_enum() -> None:
     assert issubclass(AgentTypes, Enum)
 
 
-# ? Enum Values Are Lowercase Strings
 def test_tokens_values() -> None:
+    """enum values are lowercase strings."""
     assert Tokens.AUTO == "auto"
     assert Tokens.VALUES == "values"
 
@@ -104,8 +104,8 @@ def test_repositories_values() -> None:
     assert Repositories.PUBMED == "PMID"
 
 
-# ? InformationResources Values
 def test_information_resources_values() -> None:
+    """InformationResources values."""
     assert InformationResources.PUBMED == "infores:pubmed"
     assert InformationResources.PUBMED_CENTRAL == "infores:pubmed-central"
 
@@ -127,8 +127,8 @@ def test_files_values() -> None:
     assert Files.EXCEL == "excel"
 
 
-# ? Enum Membership
 def test_comparisons_membership() -> None:
+    """enum membership."""
     names: list[str] = [e.value for e in Comparisons]
     assert "gt" in names
     assert "ge" in names
@@ -148,14 +148,14 @@ def test_fill_methods_membership() -> None:
     assert len(names) == 7
 
 
-# ? Enum String Comparison
 def test_enum_compares_as_string() -> None:
+    """enum string comparison."""
     assert Tokens.AUTO == "auto"
     assert Repositories.PUBMED_CENTRAL == "PMC"
 
 
-# ? Category Has Expected Members
 def test_categories_has_gene() -> None:
+    """category has expected members."""
     assert Categories.GENE == "Gene"
 
 
@@ -167,8 +167,8 @@ def test_categories_has_protein() -> None:
     assert Categories.PROTEIN == "Protein"
 
 
-# ? Predicate Has Expected Members
 def test_predicates_has_treats() -> None:
+    """predicate has expected members."""
     assert Predicates.TREATS == "treats"
 
 
@@ -176,13 +176,13 @@ def test_predicates_has_related_to() -> None:
     assert Predicates.RELATED_TO == "related_to"
 
 
-# ? Qualifier Has Expected Members
 def test_qualifiers_has_disease_context() -> None:
+    """qualifier has expected members."""
     assert Qualifiers.DISEASE_CONTEXT_QUALIFIER == "disease_context_qualifier"
 
 
-# ? KnowledgeLevels Has Expected Members
 def test_knowledge_levels_has_statistical_association() -> None:
+    """KnowledgeLevels has expected members."""
     assert KnowledgeLevels.STATISTICAL_ASSOCIATION == "statistical_association"
 
 
@@ -190,8 +190,8 @@ def test_knowledge_levels_has_not_provided() -> None:
     assert KnowledgeLevels.NOT_PROVIDED == "not_provided"
 
 
-# ? AgentTypes Has Expected Members
 def test_agent_types_has_data_analysis_pipeline() -> None:
+    """AgentTypes has expected members."""
     assert AgentTypes.DATA_ANALYSIS_PIPELINE == "data_analysis_pipeline"
 
 

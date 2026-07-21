@@ -538,7 +538,7 @@ class AgentTypes(str, Enum):
 
 ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
     [
-        # ? Core Edge Identity (Association + Entity Inheritance)
+        # Core edge identity (association + entity inheritance).
         "id",
         "iri",
         "category",
@@ -547,7 +547,7 @@ ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
         "description",
         "has_attribute",
         "deprecated",
-        # ? NamedThing Carryover (Id/Name/Taxon Slots Used By normalize())
+        # NamedThing carryover (id/name/taxon slots used by normalize()).
         "provided_by",
         "xref",
         "full_name",
@@ -559,7 +559,7 @@ ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
         "equivalent_identifiers",
         "information_content",
         "taxon",
-        # ? Core Association Slots
+        # Core association slots.
         "subject",
         "predicate",
         "object",
@@ -570,22 +570,22 @@ ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
         "sources",
         "has_evidence_of_type",
         "has_evidence",
-        # ? Knowledge Source / Provenance
+        # Knowledge source / provenance.
         "knowledge_source",
         "primary_knowledge_source",
         "aggregator_knowledge_source",
-        # ? Interpretation
+        # Interpretation.
         "knowledge_level",
         "agent_type",
-        # ? Timepoint
+        # Timepoint.
         "timepoint",
-        # ? Original Source Passthrough
+        # Original source passthrough.
         "original_subject",
         "original_predicate",
         "original_object",
         "subject_feature_name",
         "object_feature_name",
-        # ? Denormalized Subject/Object Closures
+        # Denormalized subject/object closures.
         "subject_category",
         "object_category",
         "subject_closure",
@@ -596,7 +596,7 @@ ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
         "object_namespace",
         "subject_label_closure",
         "object_label_closure",
-        # ? Evidence
+        # Evidence.
         "retrieval_source_ids",
         "publications",
         "supporting_text",
@@ -619,21 +619,22 @@ ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(
         "adjusted_p_value",
         "statistical_significance_qualifier",
         "relationship_strength",
-        # ! Tablassert Pipeline Fields -- Intentional, Tested Output, Not Literal Association Slots
+        # Tablassert pipeline fields -- intentional, tested output, not literal association slots.
         "upstream_resource_ids",
         "source_record_urls",
     ]
 ) | {q.value for q in Qualifiers}
-# ? Authoritative biolink-compliant edge column allow-list. Any column on an edge frame
-# ? that is not in this set is folded into the `supporting_text` list[str] field by
-# ? `lib.fold_unknown_to_supporting_text()` as a "column: value" string. Qualifier slot
-# ? names are unioned from the `Qualifiers` enum (the same enum `Qualifier.qualifier`
-# ? validates against in models.py), so this list never needs a second hand-maintained
-# ? copy of qualifier names.
+# Authoritative biolink-compliant edge column allow-list. Any column on an edge frame
+# that is not in this set is folded into the `supporting_text` list[str] field by
+# `lib.fold_unknown_to_supporting_text()` as a "column: value" string. Qualifier slot
+# names are unioned from the `Qualifiers` enum (the same enum `Qualifier.qualifier`
+# validates against in models.py), so this list never needs a second hand-maintained
+# copy of qualifier names.
 
 
 class EdgeCategories(str, Enum):
-    # ? Biolink Association Subclasses For Auto-Derived Edge Categories
+    """Biolink association subclasses for auto-derived edge categories."""
+
     ASSOCIATION = "Association"
     CHEMICAL_TO_DISEASE_OR_PHENOTYPIC_FEATURE = "ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation"
     GENE_TO_DISEASE = "GeneToDiseaseAssociation"

@@ -50,7 +50,7 @@
 - Start every module with `from __future__ import annotations`.
 - Annotate every variable, including locals.
 - Use `Optional[T]` / `Union[...]`, not `T | None`. Use `Path`, not `str`, for filesystem paths. Use `# pyright: ignore` to silence lazy-load false positives.
-- No docstrings on functions. Use comment markers on the line above: `# ?` description, `# !` warning, `# *` pipeline stage, `# TODO:` todo.
+- Write Google-style docstrings on all public functions, classes, and test functions (summary line + `Args:` / `Returns:` / `Raises:` / `Notes:` / `Warnings:` sections as applicable). Use plain `#` inline comments for line-specific notes, collection points, and section dividers inside function bodies (e.g. `# Stage 1/6: Load Tables`, `# Collection point: required for map_elements`). Mark todos with `# TODO:`.
 - Pydantic models inherit `TablaBase` (`extra="forbid"`, `validate_assignment=True`). Required fields use `Field(...)`; optional use `Optional[T] = Field(None)`. Enums extend `str, Enum` and live in `enums.py`.
 - Per-module logger: `from tablassert.log import cat; logger = cat("MODULE")` (e.g. `cat("FULLMAP")`). The CLI uses the root `from tablassert.log import logger`. Raise `RuntimeError` for failures; `logger.warning()` for non-fatal issues.
 

@@ -6,32 +6,32 @@ from typing import Any
 from tablassert.ingests import fastmerge, from_yaml, to_sections
 
 
-# ? fastmerge Merges Nested Dicts
 def test_fastmerge_nested_dicts() -> None:
+    """fastmerge merges nested dicts."""
     a: dict[str, Any] = {"x": 1, "inner": {"a": 1}}
     b: dict[str, Any] = {"y": 2, "inner": {"b": 2}}
     result: dict[str, Any] = fastmerge(a, b)
     assert result == {"x": 1, "y": 2, "inner": {"a": 1, "b": 2}}
 
 
-# ? fastmerge Overwrites Scalar Values
 def test_fastmerge_overwrites_scalars() -> None:
+    """fastmerge overwrites scalar values."""
     a: dict[str, Any] = {"x": 1}
     b: dict[str, Any] = {"x": 2}
     result: dict[str, Any] = fastmerge(a, b)
     assert result == {"x": 2}
 
 
-# ? fastmerge Extends Lists
 def test_fastmerge_extends_lists() -> None:
+    """fastmerge extends lists."""
     a: list[int] = [1, 2]
     b: list[int] = [3, 4]
     result: list[int] = fastmerge(a, b)
     assert result == [1, 2, 3, 4]
 
 
-# ? fastmerge Adds New Keys From B
 def test_fastmerge_adds_new_keys() -> None:
+    """fastmerge adds new keys from B."""
     a: dict[str, Any] = {"x": 1}
     b: dict[str, Any] = {"y": 2}
     result: dict[str, Any] = fastmerge(a, b)
@@ -39,57 +39,57 @@ def test_fastmerge_adds_new_keys() -> None:
     assert result["y"] == 2
 
 
-# ? fastmerge Handles List Valued Keys
 def test_fastmerge_dict_with_list_values() -> None:
+    """fastmerge handles list valued keys."""
     a: dict[str, Any] = {"items": [1]}
     b: dict[str, Any] = {"items": [2]}
     result: dict[str, Any] = fastmerge(a, b)
     assert result["items"] == [1, 2]
 
 
-# ? fastmerge Returns B When Types Differ
 def test_fastmerge_returns_b_on_type_mismatch() -> None:
+    """fastmerge returns B when types differ."""
     a: dict[str, Any] = {"x": "string"}
     b: dict[str, Any] = {"x": 42}
     result: dict[str, Any] = fastmerge(a, b)
     assert result["x"] == 42
 
 
-# ? fastmerge Modifies A In Place
 def test_fastmerge_in_place() -> None:
+    """fastmerge modifies a in place."""
     a: dict[str, Any] = {"x": 1}
     b: dict[str, Any] = {"y": 2}
     result: dict[str, Any] = fastmerge(a, b)
     assert result is a
 
 
-# ? from_yaml Reads File To Dict
 def test_from_yaml_reads_file(fixtures_path: Path) -> None:
+    """from_yaml reads file to dict."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     assert isinstance(data, dict)
     assert "source" in data
 
 
-# ? to_sections Expands Template With Sections
 def test_to_sections_expands_template(fixtures_path: Path) -> None:
+    """to_sections expands template with sections."""
     data: Any = from_yaml(fixtures_path / "minimal_section_with_sections.yaml")
     table: Path = Path("test_config.yaml")
     sections: list[list[dict[str, Any]]] = to_sections(data, table)
     assert len(sections) == 2
 
 
-# ? to_sections Merges Template Into Each Section
 def test_to_sections_merges_template(fixtures_path: Path) -> None:
+    """to_sections merges template into each section."""
     data: Any = from_yaml(fixtures_path / "minimal_section_with_sections.yaml")
     table: Path = Path("test_config.yaml")
     sections: list[list[dict[str, Any]]] = to_sections(data, table)
-    # ? Each section should inherit provenance from template
+    # each section should inherit provenance from template
     for section in sections:
         assert "provenance" in section
 
 
-# ? to_sections Adds Config Path
 def test_to_sections_adds_config(fixtures_path: Path) -> None:
+    """to_sections adds config path."""
     data: Any = from_yaml(fixtures_path / "minimal_section_with_sections.yaml")
     table: Path = Path("test_config.yaml")
     sections: list[list[dict[str, Any]]] = to_sections(data, table)
@@ -97,12 +97,12 @@ def test_to_sections_adds_config(fixtures_path: Path) -> None:
         assert section["config"] == table  # pyright: ignore
 
 
-# ? to_sections Each Section Has Unique Object
 def test_to_sections_unique_objects(fixtures_path: Path) -> None:
+    """to_sections each section has unique object."""
     data: Any = from_yaml(fixtures_path / "minimal_section_with_sections.yaml")
     table: Path = Path("test_config.yaml")
     sections: list[list[dict[str, Any]]] = to_sections(data, table)
-    # ? Sections override object encoding from the sections list
+    # sections override object encoding from the sections list
     obj_encodings: list[str] = []
     for section in sections:
         obj_encoding: Any = section["statement"]["object"]["encoding"]  # pyright: ignore

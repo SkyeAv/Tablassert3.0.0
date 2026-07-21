@@ -22,7 +22,8 @@ TablassertErrorCodes = Literal[
 
 
 class _Coded:
-    # ? Mixin: stable kebab-case slug + auto-appended docs URL on str().
+    """Mixin providing a stable kebab-case slug and an auto-appended docs URL on ``str()``."""
+
     message: str
     code: "TablassertErrorCodes"
 
@@ -38,7 +39,12 @@ class TablassertError(_Coded, RuntimeError):
 
 
 class TablassertValidationError(_Coded, ValueError):
-    # ! Inherits ValueError so Pydantic v2 still wraps it inside ValidationError.
+    """Base class for validation failures raised through Pydantic v2.
+
+    Notes:
+        Inherits ``ValueError`` so Pydantic v2 still wraps it inside ``ValidationError``.
+    """
+
     def __init__(self, message: str, *, code: "TablassertErrorCodes") -> None:
         super().__init__(message)
         self.message = message

@@ -52,8 +52,8 @@ def fullmap_db(tmp_path: Path) -> Path:
     return output
 
 
-# ? query_distinct Returns Empty Matches Schema For Empty Terms
 def test_query_distinct_empty_terms(tmp_path: Path) -> None:
+    """query_distinct returns empty matches schema for empty terms."""
     term: pl.Series = pl.Series("term", [], dtype=pl.String)
     nlp_level: pl.Series = pl.Series("nlp_level", [], dtype=pl.Int64)
     lf: pl.LazyFrame = pl.DataFrame([term, nlp_level]).lazy()
@@ -76,8 +76,8 @@ def test_query_distinct_empty_terms(tmp_path: Path) -> None:
     assert matches.columns == cols
 
 
-# ? Empty Resolve Output Still Writes Empty Parquet And Warns
 def test_empty_resolve_still_writes_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """empty resolve output still writes empty parquet and warns."""
     warnings: list[str] = []
 
     class DummyLogger:
@@ -100,8 +100,8 @@ def test_empty_resolve_still_writes_store(tmp_path: Path, monkeypatch: pytest.Mo
     assert "produced 0 rows" in warnings[0]
 
 
-# ? Resolve Uses Embedded Fullmap Redb Schema
 def test_resolve_uses_fullmap_redb_schema(fullmap_db: Path) -> None:
+    """resolve uses embedded fullmap redb schema."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, log=False).collect().to_dicts()[0]
@@ -114,8 +114,8 @@ def test_resolve_uses_fullmap_redb_schema(fullmap_db: Path) -> None:
     assert result["subject_source_version"] == "2026-07"
 
 
-# ? Resolve Honors Equivalent Identifiers From Class Files
 def test_resolve_uses_equivalent_identifier(fullmap_db: Path) -> None:
+    """resolve honors equivalent identifiers from class files."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["ncbigene:672"], "subject_two": ["ncbigene672"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, log=False).collect().to_dicts()[0]
@@ -123,8 +123,8 @@ def test_resolve_uses_equivalent_identifier(fullmap_db: Path) -> None:
     assert result["subject"] == "HGNC:1100"
 
 
-# ? Resolve Honors Gene Taxon Filter
 def test_resolve_honors_gene_taxon_filter(fullmap_db: Path) -> None:
+    """resolve honors gene taxon filter."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["shared"], "subject_two": ["shared"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, taxon="9606", log=False).collect().to_dicts()[0]
@@ -134,8 +134,8 @@ def test_resolve_honors_gene_taxon_filter(fullmap_db: Path) -> None:
     assert result["subject_taxon"] == "NCBITaxon:9606"
 
 
-# ? Resolve Honors Avoid Category
 def test_resolve_honors_avoid_category(fullmap_db: Path) -> None:
+    """resolve honors avoid category."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["ambiguous"], "subject_two": ["ambiguous"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, avoid=[Categories.DISEASE], log=False).collect().to_dicts()[0]
@@ -144,8 +144,8 @@ def test_resolve_honors_avoid_category(fullmap_db: Path) -> None:
     assert result["subject_category"] == "biolink:Gene"
 
 
-# ? Resolve Honors Prioritize Category
 def test_resolve_honors_prioritize_category(fullmap_db: Path) -> None:
+    """resolve honors prioritize category."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["mapk1"], "subject_two": ["mapk1"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, prioritize=[Categories.PROTEIN], log=False).collect().to_dicts()[0]
@@ -154,8 +154,8 @@ def test_resolve_honors_prioritize_category(fullmap_db: Path) -> None:
     assert result["subject_category"] == "biolink:Protein"
 
 
-# ? Resolve Falls Back To NLP Level Two Matches
 def test_resolve_level_two_fallback(fullmap_db: Path) -> None:
+    """resolve falls back to NLP level two matches."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["brca 1"], "subject_two": ["brca1"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, log=False).collect().to_dicts()[0]
@@ -164,8 +164,8 @@ def test_resolve_level_two_fallback(fullmap_db: Path) -> None:
     assert result["subject_nlp_level"] == 2
 
 
-# ? Resolve Uses Column Context Frequency As Final Tie Breaker
 def test_resolve_column_context_frequency(fullmap_db: Path) -> None:
+    """resolve uses column context frequency as final tie breaker."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["contextual"], "subject_two": ["contextual"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, log=False).collect().to_dicts()[0]
@@ -173,8 +173,8 @@ def test_resolve_column_context_frequency(fullmap_db: Path) -> None:
     assert result["subject_category"] == "biolink:Gene"
 
 
-# ? Resolve Converts NCBITaxon:0 To Null
 def test_resolve_converts_zero_taxon_to_null(fullmap_db: Path) -> None:
+    """resolve converts NCBITaxon:0 to null."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["ambiguous"], "subject_two": ["ambiguous"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, avoid=[Categories.GENE], log=False).collect().to_dicts()[0]
@@ -183,8 +183,8 @@ def test_resolve_converts_zero_taxon_to_null(fullmap_db: Path) -> None:
     assert result["subject_taxon"] is None
 
 
-# ? filter_and_rank Reproduces query_distinct's Avoid-Category Filtering Against A Pre-Fetched Raw Frame
 def test_filter_and_rank_honors_avoid_category(fullmap_db: Path) -> None:
+    """filter_and_rank reproduces query_distinct's avoid-category filtering against a pre-fetched raw frame."""
     terms: pl.DataFrame = pl.DataFrame({"term": ["ambiguous"], "nlp_level": [1]})
     raw: pl.DataFrame = pl.DataFrame(rs.lookup_fullmap_terms(fullmap_db, ["ambiguous"]))
 
@@ -195,8 +195,8 @@ def test_filter_and_rank_honors_avoid_category(fullmap_db: Path) -> None:
     assert matches["CATEGORY_NAME"].to_list() == ["Gene"]
 
 
-# ? filter_and_rank Returns Empty Matches Schema When The Raw Frame Has No Rows
 def test_filter_and_rank_empty_raw_returns_empty_matches() -> None:
+    """filter_and_rank returns empty matches schema when the raw frame has no rows."""
     terms: pl.DataFrame = pl.DataFrame({"term": ["anything"], "nlp_level": [1]})
     matches: pl.DataFrame = filter_and_rank(pl.DataFrame(schema={"term": pl.String}), terms, None, None, None, True)
 
@@ -204,8 +204,8 @@ def test_filter_and_rank_empty_raw_returns_empty_matches() -> None:
     assert "FREQUENCY" in matches.columns
 
 
-# ? join_matches Coalesces A Level One Hit Back Into lf Exactly Like resolve
 def test_join_matches_coalesces_level_one_hit(fullmap_db: Path) -> None:
+    """join_matches coalesces a level one hit back into lf exactly like resolve."""
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"]}).lazy()
     terms: pl.DataFrame = pl.DataFrame({"term": ["brca1"], "nlp_level": [1]})
     raw: pl.DataFrame = pl.DataFrame(rs.lookup_fullmap_terms(fullmap_db, ["brca1"]))
@@ -219,8 +219,8 @@ def test_join_matches_coalesces_level_one_hit(fullmap_db: Path) -> None:
     assert "subject_two" not in result
 
 
-# ? resolve_batch Produces The Same Output As Calling resolve Once Per Column In Sequence
 def test_resolve_batch_matches_sequential_resolve_per_column(fullmap_db: Path) -> None:
+    """resolve_batch produces the same output as calling resolve once per column in sequence."""
     lf: pl.LazyFrame = pl.DataFrame(
         {
             "subject": ["brca1", "not-a-real-term"],
@@ -238,8 +238,8 @@ def test_resolve_batch_matches_sequential_resolve_per_column(fullmap_db: Path) -
     assert sequential.select(cols).sort(cols).to_dicts() == batched.select(cols).sort(cols).to_dicts()
 
 
-# ? resolve_batch Drops Only The Row Whose Column Failed To Resolve, Same As Sequential resolve
 def test_resolve_batch_handles_asymmetric_term_sets(fullmap_db: Path) -> None:
+    """resolve_batch drops only the row whose column failed to resolve, same as sequential resolve."""
     lf: pl.LazyFrame = pl.DataFrame(
         {
             "subject": ["brca1", "not-a-real-term"],
@@ -256,8 +256,8 @@ def test_resolve_batch_handles_asymmetric_term_sets(fullmap_db: Path) -> None:
     assert result[0]["object"] == "HGNC:6871"
 
 
-# ? resolve_batch Applies Each Spec's Own Avoid/Taxon/Prioritize Filters Independently (No Cross-Column Leakage)
 def test_resolve_batch_applies_each_specs_filters_independently(fullmap_db: Path) -> None:
+    """resolve_batch applies each spec's own avoid/taxon/prioritize filters independently (no cross-column leakage)."""
     lf: pl.LazyFrame = pl.DataFrame(
         {"subject": ["ambiguous"], "subject_two": ["ambiguous"], "object": ["ambiguous"], "object_two": ["ambiguous"]}
     ).lazy()
@@ -274,8 +274,8 @@ def test_resolve_batch_applies_each_specs_filters_independently(fullmap_db: Path
     assert result["object_category"] == "biolink:Disease"
 
 
-# ? resolve_batch Makes One Redb Lookup Regardless Of How Many Node Columns Are Resolved
 def test_resolve_batch_makes_one_redb_call_regardless_of_spec_count(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """resolve_batch makes one redb lookup regardless of how many node columns are resolved."""
     calls: list[list[str]] = []
     original = rs.lookup_fullmap_terms
 
@@ -303,15 +303,15 @@ def test_resolve_batch_makes_one_redb_call_regardless_of_spec_count(fullmap_db: 
     assert len(calls) == 1
 
 
-# ? Rust Lookup Is Deterministic With One Or More Threads
 def test_lookup_threads_match(fullmap_db: Path) -> None:
+    """rust lookup is deterministic with one or more threads."""
     single: list[dict[str, Any]] = rs.lookup_fullmap_terms(fullmap_db, ["brca1", "mapk1"], threads=1)
     multi: list[dict[str, Any]] = rs.lookup_fullmap_terms(fullmap_db, ["brca1", "mapk1"], threads=2)
     assert single == multi
 
 
-# ? Fullmap Base Path Helper Supports File, Direct Base, And data/fullmap.redb
 def test_fullmap_db_path_variants(tmp_path: Path, fullmap_db: Path) -> None:
+    """fullmap base path helper supports file, direct base, and data/fullmap.redb."""
     direct: Path = tmp_path / "fullmap.redb"
     direct.write_bytes(fullmap_db.read_bytes())
     assert fullmap_db_path(fullmap_db) == fullmap_db
@@ -319,8 +319,8 @@ def test_fullmap_db_path_variants(tmp_path: Path, fullmap_db: Path) -> None:
     assert fullmap_db_path(tmp_path / "other") == tmp_path / "other" / "data" / "fullmap.redb"
 
 
-# ? CLI Command Builds Fullmap Redb From Downloaded BABEL Fixtures
 def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CLI command builds fullmap redb from downloaded BABEL fixtures."""
     classes: Path = write_jsonl(tmp_path / "classes.ndjson", [class_row("HGNC:1100", ["NCBIGene:672"])])
     synonyms: Path = write_jsonl(tmp_path / "HGNC.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["BRCA1"], "Gene")])
     output: Path = tmp_path / "fullmap.redb"
@@ -338,8 +338,9 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
     assert rows[0]["CURIE"] == "HGNC:1100"
 
 
-# ? BABEL URL Discovery Mirrors Fullmap Constants And Exclusions
 def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BABEL URL discovery mirrors fullmap constants and exclusions."""
+
     class HasFullUrl(Protocol):
         full_url: str
 
@@ -364,7 +365,7 @@ def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
     assert urls == [("protein_nodes.jsonl.gz", "https://stars.renci.org/var/babel_outputs/2025sep1/kgx/Protein_nodes.jsonl.gz")]
 
 
-# ? polars-hash Dependency Is Not Needed For Fullmap Resolution
 def test_polars_hash_dependency_removed() -> None:
+    """polars-hash dependency is not needed for fullmap resolution."""
     pyproject: str = Path("pyproject.toml").read_text()
     assert "polars-hash" not in pyproject

@@ -25,9 +25,9 @@ if TYPE_CHECKING:
 else:
     pydantic = Lazy.load("pydantic")
 
-# ? Pipeline completion events (BUILD, VALIDATE)
+# Pipeline completion events (BUILD, VALIDATE).
 logger = cat("PIPELINE")
-# ? BABEL downloader events (reuse, restart, done, retry)
+# BABEL downloader events (reuse, restart, done, retry).
 download_logger = cat("DOWNLOAD")
 
 APP: cyclopts.App = cyclopts.App(
@@ -44,7 +44,22 @@ BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
 
 
 def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False, qc: bool = False, log: bool = False) -> None:
-    # ? Build A Knowledge Graph From A Configuration File
+    """Build a knowledge graph from a YAML configuration file.
+
+    Runs the six-stage build pipeline: load tables → extract sections → build
+    Tcodes → collect instructions → build subgraphs → compile graph.
+
+    Args:
+        graph_configuration_file: Path to the graph YAML file.
+        progress: Pipeline progress reporter.
+        release: When ``True``, emit release-mode artifacts.
+        qc: When ``True``, run quality-control audits on each section.
+        log: When ``True``, enable per-section verbose logging.
+
+    Raises:
+        GraphValidationError: If the graph YAML fails Pydantic validation.
+        SectionValidationError: If any section fails Pydantic validation.
+    """
     from tablassert.fullmap import fullmap_db_path
     from tablassert.ingests import from_yaml, to_sections
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
@@ -52,7 +67,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
     from tablassert.progress import flatten_pydantic_error, format_section_compact
     from tablassert.utils import STORE, mkhash
 
-    # * Load Tables (1/6)
+    # Stage 1/6: load tables.
     progress.stage("Loading Tables")
     r: object = from_yaml(graph_configuration_file)
     try:
@@ -62,14 +77,14 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
     with Pool() as pool:
         raw: list[object] = pool.map(from_yaml, g.tables)
 
-    # * Extract Sections (2/6)
+    # Stage 2/6: extract sections.
     progress.stage("Extracting Sections")
     with Pool() as pool:
         temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
 
-    # * Build TCode (3/6)
+    # Stage 3/6: build Tcode.
     progress.stage("Building TCode")
     start, advance, _ = progress.section_loop(n, "TCode")
     tcode: list[Tcode] = []
@@ -84,7 +99,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
 
     db: Path = fullmap_db_path(g.fullmap)
 
-    # * Collect Instructions (4/6)
+    # Stage 4/6: collect instructions.
     progress.stage("Collecting Instructions")
     start, advance, sub_step = progress.section_loop(n, "Collect")
     instructions: list[Any] = []
@@ -94,17 +109,17 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
         instructions.append(x.collect(db))
         advance()
 
-    # * Build Subgraphs (5/6)
+    # Stage 5/6: build subgraphs.
     progress.stage("Building Subgraphs")
     start, advance, sub_step = progress.section_loop(n, "Subgraph")
     subgraphs: list[Path] = []
     for x, op in zip(tcode, instructions):
         start(format_section_compact(x))
-        # ! on_phase drives the per-op sub-step indicator (load → filter → resolve → write ...)
+        # on_phase drives the per-op sub-step indicator (load → filter → resolve → write ...).
         subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op, on_phase=sub_step))
         advance()
 
-    # * Compile Graph (6/6)
+    # Stage 6/6: compile graph.
     progress.stage("Compiling Graph")
     start, advance, sub_step = progress.section_loop(1, "Graph")
     start(f"{g.name} · v{g.version}")
@@ -116,22 +131,33 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
 
 
 def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgress") -> None:
-    # ? Validate Section Syntax From A Configuration File
+    """Validate section syntax from a YAML configuration file.
+
+    Runs the three-stage validate pipeline: load tables → extract sections →
+    validate section syntax (no execution).
+
+    Args:
+        table_configuration_file: Path to the table YAML file.
+        progress: Pipeline progress reporter.
+
+    Raises:
+        SectionValidationError: If any section fails Pydantic validation.
+    """
     from tablassert.ingests import from_yaml, to_sections
     from tablassert.lib import Tcode
     from tablassert.progress import flatten_pydantic_error
     from tablassert.utils import STORE, mkhash
 
-    # * Load Tables (1/3)
+    # Stage 1/3: load tables.
     progress.stage("Loading Tables")
     r: object = from_yaml(table_configuration_file)
 
-    # * Extract Sections (2/3)
+    # Stage 2/3: extract sections.
     progress.stage("Extracting Sections")
     sections: list[dict[str, Any]] = to_sections(r, table_configuration_file)  # pyright: ignore
     n: int = len(sections)
 
-    # * Validate Section Syntax (3/3)
+    # Stage 3/3: validate section syntax.
     progress.stage("Validating Section Syntax")
     start, advance, _ = progress.section_loop(n, "Validate")
     for s in sections:
@@ -159,7 +185,20 @@ def run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
 
 
 def babel_urls(version: str, endpoints: tuple[str, ...], pattern: re.Pattern[str]) -> list[tuple[str, str]]:
-    # ? Discover BABEL files using the same RENCI directory-listing convention as the legacy Datassert tool this replaces.
+    """Discover BABEL files using the RENCI directory-listing convention.
+
+    Mirrors the legacy Datassert tool this replaces: fetch each endpoint's
+    HTML listing, apply ``pattern`` to extract compressed file URLs, and drop
+    any file whose name starts with a banned prefix.
+
+    Args:
+        version: BABEL version label inserted into the URL template.
+        endpoints: Subdirectory endpoints under ``{BABEL_BASE}/{version}/``.
+        pattern: Regex with one capture group selecting ``*.gz`` file paths.
+
+    Returns:
+        List of ``(lowercased_filename, absolute_url)`` tuples.
+    """
     out: list[tuple[str, str]] = []
     for endpoint in endpoints:
         listing_url: str = f"{BABEL_BASE}/{version}/{endpoint}"
@@ -176,7 +215,24 @@ def babel_urls(version: str, endpoints: tuple[str, ...], pattern: re.Pattern[str
 
 
 def download_babel_file(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
-    # ? Spool downloads to disk so large BABEL responses are resumable and never held in memory.
+    """Spool a BABEL download to disk so large responses are resumable and never held in memory.
+
+    Downloads to ``{filename}.part`` with HTTP Range resume support, then
+    atomically renames to ``{filename}`` on success. Cached final files are
+    reused without re-fetching.
+
+    Args:
+        filename: Output basename under ``destination``.
+        url: Source URL.
+        destination: Directory to download into (created if missing).
+        retries: Maximum number of attempts before giving up.
+
+    Returns:
+        Path to the downloaded file.
+
+    Raises:
+        BabelDownloadError: If every retry attempt fails.
+    """
     destination.mkdir(parents=True, exist_ok=True)
     final_path: Path = destination / filename
     part_path: Path = destination / f"{filename}.part"

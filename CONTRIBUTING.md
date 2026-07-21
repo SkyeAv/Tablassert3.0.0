@@ -95,18 +95,41 @@ Formatting is enforced by **ruff** with these settings:
 | Classes | `PascalCase` | `Tcode`, `TablaBase` |
 | Module constants | `UPPER_CASE` | `STORE`, `TOKEN_SEP` |
 
-### Comment Markers
+### Docstrings & Comments
 
-Use these prefixes for inline comments:
+Write **Google-style docstrings** on all public functions, classes, and test functions. Lead with a one-line summary (sentence case, trailing period), then sections as applicable:
 
-| Marker | Meaning | Example |
+| Section | When to include |
+|---|---|
+| `Args:` | Always, unless the function takes no parameters |
+| `Returns:` | Always, unless the function returns `None` |
+| `Raises:` | When the body explicitly raises (e.g. `RuntimeError`, `ValueError`, re-raised pydantic `ValidationError`) |
+| `Notes:` | Extended description, algorithm details, collection points |
+| `Warnings:` | Gotchas and important invariants the caller must respect |
+
+```python
+def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
+    """Create a new column set to a literal value.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Name of the new column to add.
+        x: Literal string value to populate every row with.
+
+    Returns:
+        LazyFrame with the new literal column appended.
+    """
+    return lf.with_columns(pl.lit(x).alias(col))
+```
+
+For **inline comments** inside function bodies, use plain `#` comments:
+
+| Style | Use | Example |
 |---|---|---|
-| `# ?` | Description or clarification | `# ? strip whitespace from column names` |
-| `# !` | Warning or important note | `# ! must run before entity resolution` |
-| `# *` | Pipeline stage marker | `# * Stage 2: Entity Resolution` |
-| `# TODO:` | Todo item | `# TODO: add fuzzy matching support` |
-
-Do **not** write docstrings on functions. Use a `# ?` comment on the line above instead.
+| `# Stage N/M: <name>` | Pipeline stage divider | `# Stage 1/6: Load Tables` |
+| `# Collection point: <reason>` | Marks an eager-collect boundary in a lazy pipeline | `# Collection point: required for map_elements` |
+| `# <sentence>` | Line-specific clarification | `# strict=False tolerates residual non-numeric junk` |
+| `# TODO: <item>` | Todo item | `# TODO: add fuzzy matching support` |
 
 ### Type Annotations
 

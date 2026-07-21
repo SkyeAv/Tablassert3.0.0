@@ -11,8 +11,8 @@ from sklearn.metrics import pairwise
 import tablassert.qc as qc
 
 
-# ? fullmap_audit Suppresses Failed QC Logs When Disabled
 def test_fullmap_audit_suppresses_logs(monkeypatch: Any) -> None:
+    """fullmap_audit suppresses failed QC logs when disabled."""
     messages: list[str] = []
 
     class DummyLogger:
@@ -41,8 +41,8 @@ def test_fullmap_audit_suppresses_logs(monkeypatch: Any) -> None:
     assert messages == []
 
 
-# ? fullmap_audit Logs Failed QC Rows When Enabled
 def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
+    """fullmap_audit logs failed QC rows when enabled."""
     messages: list[str] = []
 
     class DummyLogger:
@@ -77,8 +77,8 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
     assert "bert=" in messages[0]
 
 
-# ? fullmap_audit Log Message Contains Expected Score Values
 def test_fullmap_audit_log_score_values(monkeypatch: Any) -> None:
+    """fullmap_audit log message contains expected score values."""
     messages: list[str] = []
 
     class DummyLogger:
