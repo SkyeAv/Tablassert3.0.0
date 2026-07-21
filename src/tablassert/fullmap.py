@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from operator import add
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, NamedTuple, Optional
 
 import lazy_loader as Lazy
 
@@ -68,6 +68,40 @@ def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFra
     return result.unique(subset=["term"], keep="first")
 
 
+def filter_and_rank(
+    raw: pl.DataFrame,
+    terms: pl.DataFrame,
+    taxon: Optional[str],
+    prioritize: Optional[list[Categories]],
+    avoid: Optional[list[Categories]],
+    column_context: bool,
+) -> pl.DataFrame:
+    # ? Joins Already-Fetched Redb Rows Against One Column's Own Terms, Then Filters/Ranks/Dedups
+    # * Split Out Of query_distinct So resolve_batch Can Reuse One Shared Redb Fetch Per Column
+    if raw.height == 0:
+        return empty_matches(column_context)
+
+    result: pl.DataFrame = raw.join(terms, on="term", how="inner").rename({"nlp_level": "NLP_LEVEL"})
+    if avoid:
+        avoid_values: list[str] = [x.value for x in avoid]
+        result = result.filter(~pl.col("CATEGORY_NAME").is_in(avoid_values))
+    if taxon:
+        taxon_id: int = int(taxon)
+        result = result.filter((pl.col("TAXON_ID") == taxon_id) | (pl.col("CATEGORY_NAME") != Categories.GENE.value))
+    if result.height == 0:
+        return empty_matches(column_context)
+
+    if prioritize:
+        priority_values: list[str] = [x.value for x in prioritize]
+        priority: pl.Expr = pl.when(pl.col("CATEGORY_NAME").is_in(priority_values)).then(pl.lit(1)).otherwise(pl.lit(50))
+    else:
+        priority = pl.lit(50)
+    result = result.with_columns(
+        (priority * pl.when(pl.col("PREFERRED_NAME").str.to_lowercase() == pl.col("term")).then(pl.lit(1)).otherwise(pl.lit(10))).alias("PR")
+    )
+    return deduplicate_result(result, column_context)
+
+
 def query_distinct(
     lf: pl.LazyFrame,
     db: Path,
@@ -87,25 +121,7 @@ def query_distinct(
     if len(rows) == 0:
         return empty_matches(column_context)
 
-    result: pl.DataFrame = pl.DataFrame(rows).join(terms, on="term", how="inner").rename({"nlp_level": "NLP_LEVEL"})
-    if avoid:
-        avoid_values: list[str] = [x.value for x in avoid]
-        result = result.filter(~pl.col("CATEGORY_NAME").is_in(avoid_values))
-    if taxon:
-        taxon_id: int = int(taxon)
-        result = result.filter((pl.col("TAXON_ID") == taxon_id) | (pl.col("CATEGORY_NAME") != Categories.GENE.value))
-    if result.height == 0:
-        return empty_matches(column_context)
-
-    if prioritize:
-        priority_values: list[str] = [x.value for x in prioritize]
-        priority: pl.Expr = pl.when(pl.col("CATEGORY_NAME").is_in(priority_values)).then(pl.lit(1)).otherwise(pl.lit(50))
-    else:
-        priority = pl.lit(50)
-    result = result.with_columns(
-        (priority * pl.when(pl.col("PREFERRED_NAME").str.to_lowercase() == pl.col("term")).then(pl.lit(1)).otherwise(pl.lit(10))).alias("PR")
-    )
-    return deduplicate_result(result, column_context)
+    return filter_and_rank(pl.DataFrame(rows), terms, taxon, prioritize, avoid, column_context)
 
 
 def fullmap_db_path(fullmap: Path) -> Path:
@@ -130,31 +146,13 @@ def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_
             logger.info("Unresolved term in {config} ({hash}) col {col}: {term!r}", config=config_file, hash=section_hash, col=col, term=term)
 
 
-def resolve(
-    lf: pl.LazyFrame,
-    col: str,
-    db: Path,
-    taxon: Optional[str] = None,
-    prioritize: Optional[list[Categories]] = None,
-    avoid: Optional[list[Categories]] = None,
-    log: bool = True,
-    section_hash: Optional[str] = None,
-    config_file: Optional[str] = None,
-    column_context: bool = True,
-    tag: str = "_two",
-    threads: Optional[int] = None,
-) -> pl.LazyFrame:
-    # ? Case Dependant, Provenance Rich Name Entity Recognition
+def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "_two") -> pl.LazyFrame:
+    # ? Joins Ranked Fullmap Matches Back Into lf For One Column, Coalescing Level One/Two Hits
+    # * Split Out Of resolve So resolve_batch Can Apply Per-Column Matches From One Shared Redb Fetch
     l1: str = col
     l2: str = add(l1, tag)
 
-    terms: pl.LazyFrame = distinct(lf, l1, l2)
-    matches: pl.DataFrame = query_distinct(terms, db, taxon, prioritize, avoid, column_context, threads=threads)
-
-    if log:
-        log_unmatched(col, terms, matches, section_hash, config_file)
-
-    # ! Collection Point: Join After DuckDB Query, Then Re-Lazy
+    # ! Collection Point: Join After Redb Query, Then Re-Lazy
     df: pl.DataFrame = lf.collect()
     result: pl.DataFrame = df.join(matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix="_l1")
 
@@ -186,8 +184,80 @@ def resolve(
     )
 
     result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)(_l2)?$"))
-    result = result.select(pl.exclude(add(col, "_two")))
+    result = result.select(pl.exclude(add(col, tag)))
     result = result.with_columns(pl.col(add(col, "_taxon")).replace("NCBITaxon:0", None))
     result = result.filter(pl.col(col).is_not_null())
 
     return result.lazy()
+
+
+class ResolveSpec(NamedTuple):
+    # ? One Node Column's Resolution Settings For resolve_batch
+    col: str
+    taxon: Optional[str] = None
+    prioritize: Optional[list[Categories]] = None
+    avoid: Optional[list[Categories]] = None
+
+
+def resolve_batch(
+    lf: pl.LazyFrame,
+    specs: list[ResolveSpec],
+    db: Path,
+    log: bool = True,
+    section_hash: Optional[str] = None,
+    config_file: Optional[str] = None,
+    column_context: bool = True,
+    tag: str = "_two",
+    threads: Optional[int] = None,
+) -> pl.LazyFrame:
+    # ? Resolves Multiple Node Columns (Subject/Object/Qualifiers) Against One Shared Redb Fetch
+    # * Each Column Still Gets Its Own Taxon/Prioritize/Avoid Filtering And Its Own Join Back Into lf;
+    # * Only The Redb Round Trip Itself (rs.lookup_fullmap_terms) Is Pooled Across Columns
+    if not specs:
+        return lf
+
+    terms_by_col: dict[str, pl.LazyFrame] = {spec.col: distinct(lf, spec.col, add(spec.col, tag)) for spec in specs}
+    collected_terms: dict[str, pl.DataFrame] = {col: terms.collect() for col, terms in terms_by_col.items()}
+
+    union_terms: list[str] = pl.concat([t.select("term") for t in collected_terms.values()]).unique().get_column("term").to_list()
+
+    rows: list[dict[str, object]] = rs.lookup_fullmap_terms(db, union_terms, threads=threads) if union_terms else []
+    raw: pl.DataFrame = pl.DataFrame(rows)
+
+    result: pl.LazyFrame = lf
+    for spec in specs:
+        terms_df: pl.DataFrame = collected_terms[spec.col]
+        matches: pl.DataFrame = filter_and_rank(raw, terms_df, spec.taxon, spec.prioritize, spec.avoid, column_context)
+        if log:
+            log_unmatched(spec.col, terms_by_col[spec.col], matches, section_hash, config_file)
+        result = join_matches(result, spec.col, matches, tag)
+
+    return result
+
+
+def resolve(
+    lf: pl.LazyFrame,
+    col: str,
+    db: Path,
+    taxon: Optional[str] = None,
+    prioritize: Optional[list[Categories]] = None,
+    avoid: Optional[list[Categories]] = None,
+    log: bool = True,
+    section_hash: Optional[str] = None,
+    config_file: Optional[str] = None,
+    column_context: bool = True,
+    tag: str = "_two",
+    threads: Optional[int] = None,
+) -> pl.LazyFrame:
+    # ? Case Dependant, Provenance Rich Name Entity Recognition -- Single-Column Convenience Wrapper
+    return resolve_batch(
+        lf,
+        [ResolveSpec(col, taxon, prioritize, avoid)],
+        db,
+        log=log,
+        section_hash=section_hash,
+        config_file=config_file,
+        column_context=column_context,
+        tag=tag,
+        threads=threads,
+    )

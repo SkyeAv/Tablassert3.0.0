@@ -6,7 +6,8 @@ from typing import Any, Optional
 import polars as pl
 
 import tablassert.lib as lib
-from tablassert.enums import ALLOWED_EDGE_FIELDS, Repositories
+from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, Repositories
+from tablassert.fullmap import ResolveSpec
 from tablassert.ingests import from_yaml
 from tablassert.lib import (
     Tcode,
@@ -158,6 +159,98 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
     assert len(qc_ops) == 2
     assert qc_ops[0][1] == ("subject", "sectionhash", "minimal_section.yaml", "passed", True)
     assert qc_ops[1][1] == ("object", "sectionhash", "minimal_section.yaml", "passed", True)
+
+
+# ? Tcode collect Orders drop_not_significant Before resolve_batch In Release Mode
+# * Rows That Will Be Dropped For Insignificance Must Never Reach The Expensive Fullmap Resolve Step
+def test_tcode_collect_orders_significance_before_resolve_when_release(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_release.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "release": True}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    drop_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "drop_not_significant")
+    resolve_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "resolve_batch")
+
+    assert drop_idx < resolve_idx
+
+
+# ? Tcode collect Omits drop_not_significant Without Release But Keeps sig Before resolve_batch
+def test_tcode_collect_omits_drop_not_significant_without_release(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_norelease.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    names: list[str] = [op[0].__name__ for op in collected]
+
+    assert "drop_not_significant" not in names
+    assert names.index("sig") < names.index("resolve_batch")
+
+
+# ? Tcode collect Emits Exactly One resolve_batch Op Covering Subject/Object/Qualifiers
+def test_tcode_collect_emits_single_resolve_batch_for_all_node_columns(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_batch.parquet")
+    data["statement"]["subject"]["taxon"] = 9606
+    data["statement"]["object"]["prioritize"] = ["Gene"]
+    data["statement"]["qualifiers"] = [
+        {"qualifier": "species_context_qualifier", "method": "value", "encoding": "NCBITaxon:9606", "avoid": ["Disease"]},
+        {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"},
+    ]
+
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    batch_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "resolve_batch"]
+
+    assert len(batch_ops) == 1
+    specs: list[ResolveSpec] = batch_ops[0][1][0]
+    assert [spec.col for spec in specs] == ["subject", "object", "species_context_qualifier", "anatomical_context_qualifier"]
+    assert specs[0].taxon == "9606"
+    assert specs[1].prioritize == [Categories.GENE]
+    assert specs[2].avoid == [Categories.DISEASE]
+
+
+# ? Tcode collect Runs Every Node Column's QC Audit After The Single resolve_batch Op
+def test_tcode_collect_audits_follow_single_resolve_batch_with_qualifiers(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_batch_qc.parquet")
+    data["statement"]["qualifiers"] = [{"qualifier": "species_context_qualifier", "method": "value", "encoding": "NCBITaxon:9606"}]
+
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    batch_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "resolve_batch")
+    audit_ops: list[tuple[int, tuple[Any, tuple[Any]]]] = [(i, op) for i, op in enumerate(collected) if op[0].__name__ == "fullmap_audit"]
+
+    assert [op[1][0] for _, op in audit_ops] == ["subject", "object", "species_context_qualifier"]
+    assert all(i > batch_idx for i, _ in audit_ops)
+
+
+# ? Tcode collect Runs predicate/edge_category After The Single resolve_batch Op
+def test_tcode_collect_edge_ops_follow_resolve_batch(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_edge_order.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    batch_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "resolve_batch")
+    predicate_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "value" and op[1][0] == "predicate")
+    edge_category_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "edge_category")
+
+    assert batch_idx < predicate_idx
+    assert batch_idx < edge_category_idx
 
 
 # ? Tcode collect Passes The Local Source Path Through To The csv Reader

@@ -12,7 +12,7 @@ import tablassert.cli as cli
 from tablassert.cli import build_fullmap
 import tablassert.lib as lib
 from tablassert.enums import Categories
-from tablassert.fullmap import fullmap_db_path, query_distinct, resolve
+from tablassert.fullmap import ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, query_distinct, resolve, resolve_batch
 from tablassert.lib import to_store
 
 
@@ -181,6 +181,126 @@ def test_resolve_converts_zero_taxon_to_null(fullmap_db: Path) -> None:
 
     assert result["subject"] == "MONDO:2"
     assert result["subject_taxon"] is None
+
+
+# ? filter_and_rank Reproduces query_distinct's Avoid-Category Filtering Against A Pre-Fetched Raw Frame
+def test_filter_and_rank_honors_avoid_category(fullmap_db: Path) -> None:
+    terms: pl.DataFrame = pl.DataFrame({"term": ["ambiguous"], "nlp_level": [1]})
+    raw: pl.DataFrame = pl.DataFrame(rs.lookup_fullmap_terms(fullmap_db, ["ambiguous"]))
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon=None, prioritize=None, avoid=[Categories.DISEASE], column_context=True)
+
+    assert matches.height == 1
+    assert matches["CURIE"].to_list() == ["HGNC:2"]
+    assert matches["CATEGORY_NAME"].to_list() == ["Gene"]
+
+
+# ? filter_and_rank Returns Empty Matches Schema When The Raw Frame Has No Rows
+def test_filter_and_rank_empty_raw_returns_empty_matches() -> None:
+    terms: pl.DataFrame = pl.DataFrame({"term": ["anything"], "nlp_level": [1]})
+    matches: pl.DataFrame = filter_and_rank(pl.DataFrame(schema={"term": pl.String}), terms, None, None, None, True)
+
+    assert matches.height == 0
+    assert "FREQUENCY" in matches.columns
+
+
+# ? join_matches Coalesces A Level One Hit Back Into lf Exactly Like resolve
+def test_join_matches_coalesces_level_one_hit(fullmap_db: Path) -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"]}).lazy()
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1"], "nlp_level": [1]})
+    raw: pl.DataFrame = pl.DataFrame(rs.lookup_fullmap_terms(fullmap_db, ["brca1"]))
+    matches: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, True)
+
+    result: dict[str, Any] = join_matches(lf, "subject", matches).collect().to_dicts()[0]
+
+    assert result["subject"] == "HGNC:1100"
+    assert result["subject_name"] == "BRCA1"
+    assert result["subject_category"] == "biolink:Gene"
+    assert "subject_two" not in result
+
+
+# ? resolve_batch Produces The Same Output As Calling resolve Once Per Column In Sequence
+def test_resolve_batch_matches_sequential_resolve_per_column(fullmap_db: Path) -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["brca1", "not-a-real-term"],
+            "subject_two": ["brca1", "not-a-real-term"],
+            "object": ["mapk1", "mapk1"],
+            "object_two": ["mapk1", "mapk1"],
+        }
+    ).lazy()
+
+    sequential: pl.DataFrame = resolve(resolve(lf, "subject", fullmap_db, log=False), "object", fullmap_db, log=False).collect()
+    batched: pl.DataFrame = resolve_batch(lf, [ResolveSpec("subject"), ResolveSpec("object")], fullmap_db, log=False).collect()
+
+    cols: list[str] = sorted(sequential.columns)
+    assert cols == sorted(batched.columns)
+    assert sequential.select(cols).sort(cols).to_dicts() == batched.select(cols).sort(cols).to_dicts()
+
+
+# ? resolve_batch Drops Only The Row Whose Column Failed To Resolve, Same As Sequential resolve
+def test_resolve_batch_handles_asymmetric_term_sets(fullmap_db: Path) -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["brca1", "not-a-real-term"],
+            "subject_two": ["brca1", "not-a-real-term"],
+            "object": ["mapk1", "mapk1"],
+            "object_two": ["mapk1", "mapk1"],
+        }
+    ).lazy()
+
+    result: list[dict[str, Any]] = resolve_batch(lf, [ResolveSpec("subject"), ResolveSpec("object")], fullmap_db, log=False).collect().to_dicts()
+
+    assert len(result) == 1
+    assert result[0]["subject"] == "HGNC:1100"
+    assert result[0]["object"] == "HGNC:6871"
+
+
+# ? resolve_batch Applies Each Spec's Own Avoid/Taxon/Prioritize Filters Independently (No Cross-Column Leakage)
+def test_resolve_batch_applies_each_specs_filters_independently(fullmap_db: Path) -> None:
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["ambiguous"], "subject_two": ["ambiguous"], "object": ["ambiguous"], "object_two": ["ambiguous"]}
+    ).lazy()
+
+    result: dict[str, Any] = (
+        resolve_batch(lf, [ResolveSpec("subject", avoid=[Categories.DISEASE]), ResolveSpec("object", avoid=[Categories.GENE])], fullmap_db, log=False)
+        .collect()
+        .to_dicts()[0]
+    )
+
+    assert result["subject"] == "HGNC:2"
+    assert result["subject_category"] == "biolink:Gene"
+    assert result["object"] == "MONDO:2"
+    assert result["object_category"] == "biolink:Disease"
+
+
+# ? resolve_batch Makes One Redb Lookup Regardless Of How Many Node Columns Are Resolved
+def test_resolve_batch_makes_one_redb_call_regardless_of_spec_count(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    original = rs.lookup_fullmap_terms
+
+    def counting_lookup(db: Path, terms: list[str], threads: Any = None) -> list[dict[str, Any]]:
+        calls.append(list(terms))
+        return original(db, terms, threads=threads)
+
+    monkeypatch.setattr(rs, "lookup_fullmap_terms", counting_lookup)
+
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["brca1"],
+            "subject_two": ["brca1"],
+            "object": ["mapk1"],
+            "object_two": ["mapk1"],
+            "species_context_qualifier": ["shared"],
+            "species_context_qualifier_two": ["shared"],
+        }
+    ).lazy()
+
+    resolve_batch(
+        lf, [ResolveSpec("subject"), ResolveSpec("object"), ResolveSpec("species_context_qualifier", taxon="9606")], fullmap_db, log=False
+    ).collect()
+
+    assert len(calls) == 1
 
 
 # ? Rust Lookup Is Deterministic With One Or More Threads

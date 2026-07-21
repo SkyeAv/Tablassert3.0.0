@@ -14,7 +14,7 @@ from pydantic import Field, NonNegativeInt
 
 from tablassert import rs
 from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
-from tablassert.fullmap import fullmap_db_path, resolve
+from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
 from tablassert.models import DEFAULT_RIG_UI_EXPLANATION, Encoding, NodeEncoding, Section, default_rig_contributions
 from tablassert.nlp import level_one, level_two
@@ -440,17 +440,11 @@ class Tcode(Section):
             [(math_op, (col, t.function, t.arguments)) for t in x.transformations] if x.transformations else None,
         ]
 
-    def node(self: Self, x: NodeEncoding, col: str, db: Path) -> list[Any]:
-        # ? Collect Helper For NodeEncoding Classes
+    def node_prep(self: Self, x: NodeEncoding, col: str) -> list[Any]:
+        # ? Collect Helper For NodeEncoding Classes -- Encoding Plus NLP Normalization, Before resolve_batch
         encoding: list[Any] = self.encoding(x, col, table_literal=True)
-        node: list[Any] = [
-            (column, (add(col, "_pre_resolution"), col)),
-            (level_one, (col,)),
-            (level_two, (col,)),
-            (resolve, (col, db, x.taxon, x.prioritize, x.avoid, self.log, self.store.stem, self.config.name, True)),
-            (fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) if self.qc else None,
-        ]
-        return add(encoding, node)
+        prep: list[Any] = [(column, (add(col, "_pre_resolution"), col)), (level_one, (col,)), (level_two, (col,))]
+        return add(encoding, prep)
 
     def clean(self: Self, tcode: list[tuple[Callable, Any]]) -> list[tuple[Callable, tuple[Any]]]:
         # ? Cleans Tcode So It Can Be Used With reduce From functools
@@ -472,6 +466,14 @@ class Tcode(Section):
             return self.store
 
         else:
+            # * Subject/Object/Qualifiers Share One resolve_batch Call Instead Of One Per Column
+            node_columns: list[tuple[NodeEncoding, str]] = [
+                (self.statement.subject, "subject"),
+                (self.statement.object, "object"),
+                *[(x, x.qualifier) for x in (self.statement.qualifiers or [])],
+            ]
+            specs: list[ResolveSpec] = [ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid) for x, col in node_columns]
+
             # * Returns A List Of: (Function, (Arguments))
             tcode: Optional[list[Any]] = [
                 (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
@@ -491,11 +493,14 @@ class Tcode(Section):
                 (coerce_pvalue_columns, ()),
                 (coerce_study_size_columns, ()),
                 (clean_numeric, ()),
-                self.node(self.statement.subject, "subject", db),
-                self.node(self.statement.object, "object", db),
+                # * Drop Insignificant Rows Before They Ever Reach The Expensive Fullmap Resolution Below
+                (sig, ()),
+                (drop_not_significant, ()) if self.release else None,
+                [self.node_prep(x, col) for x, col in node_columns],
+                (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
+                [(fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) for _, col in node_columns] if self.qc else None,
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
                 (edge_category, ()),
-                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, db)] if self.statement.qualifiers else None,
                 (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
                 (value, ("knowledge_level", self.provenance.knowledge_level)),
                 (value, ("agent_type", self.provenance.agent_type)),
@@ -503,8 +508,6 @@ class Tcode(Section):
                 (publications, (publication_curie(self.provenance.repo, self.provenance.publication),)),
                 (source_record_urls, (str(self.source.url),)),
                 (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
-                (sig, ()),
-                (drop_not_significant, ()) if self.release else None,
                 (trim, ()),
                 (format_numeric, ()),
                 (to_store, (self.store, self.config.name)),
@@ -526,6 +529,7 @@ PHASE_OF: dict[Callable, str] = {
     level_one: "resolve",
     level_two: "resolve",
     resolve: "resolve",
+    resolve_batch: "resolve",
     fullmap_audit: "qc",
     column: "encode",
     edge_category: "edge",
