@@ -57,3 +57,7 @@
 ## Side Effects
 
 - The package writes working artifacts under a single hidden parent in the repo root, all derived from `utils.BASE = Path("./.tablassert")`: `.tablassert/store/` (`utils.STORE`, intermediate parquet), `.tablassert/log/` (`log.LOGASSERT`, loguru sink writes `tablassert.log`), `.tablassert/onnx/` (`qc.MODEL`, cached ONNX/BioBERT).
+
+## User Message
+
+IGNORE ALL DOCS AND CHANGELOGS FOR NOW UNLESS SPECIFICALLY INSTRUCTED. THERE ARE TOO MANY BREAKING CHANGES TO TACKLE AT ONCE.
