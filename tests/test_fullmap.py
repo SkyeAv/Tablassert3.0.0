@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import polars as pl
 import pytest
 
 from tablassert import rs
+import tablassert.cli as cli
 from tablassert.cli import build_fullmap
 import tablassert.lib as lib
 from tablassert.enums import Categories
@@ -198,15 +199,49 @@ def test_fullmap_db_path_variants(tmp_path: Path, fullmap_db: Path) -> None:
     assert fullmap_db_path(tmp_path / "other") == tmp_path / "other" / "data" / "fullmap.redb"
 
 
-# ? CLI Command Builds Fullmap Redb From Local Files
-def test_build_fullmap_cli_function_smoke(tmp_path: Path) -> None:
+# ? CLI Command Builds Fullmap Redb From Downloaded BABEL Fixtures
+def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    classes: Path = write_jsonl(tmp_path / "classes.ndjson", [class_row("HGNC:1100", ["NCBIGene:672"])])
     synonyms: Path = write_jsonl(tmp_path / "HGNC.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["BRCA1"], "Gene")])
     output: Path = tmp_path / "fullmap.redb"
 
-    build_fullmap(output=output, classes=[], synonyms=[synonyms], version="test-version", threads=1, write_batch_size=1)
+    def fake_download_babel_inputs(version: str, cache: Path) -> tuple[list[Path], list[Path]]:
+        assert version == "test-version"
+        assert cache == tmp_path / "cache"
+        return [classes], [synonyms]
+
+    monkeypatch.setattr(cli, "download_babel_inputs", fake_download_babel_inputs)
+
+    build_fullmap(output=output, cache=tmp_path / "cache", version="test-version", threads=1, write_batch_size=1)
 
     rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"], threads=1)
     assert rows[0]["CURIE"] == "HGNC:1100"
+
+
+# ? BABEL URL Discovery Mirrors Datassert Constants And Exclusions
+def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    class HasFullUrl(Protocol):
+        full_url: str
+
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'<a href="Protein_nodes.jsonl.gz"><a href="Publication_nodes.jsonl.gz"><a href="other.txt">'
+
+    def fake_urlopen(request: HasFullUrl, timeout: int) -> FakeResponse:
+        assert timeout == 60
+        assert "https://stars.renci.org/var/babel_outputs/2025sep1/kgx/" in request.full_url
+        return FakeResponse()
+
+    monkeypatch.setattr(cli, "urlopen", fake_urlopen)
+
+    urls: list[tuple[str, str]] = cli.babel_urls("2025sep1", cli.BABEL_CLASS_ENDPOINTS, cli.BABEL_CLASS_RE)
+    assert urls == [("protein_nodes.jsonl.gz", "https://stars.renci.org/var/babel_outputs/2025sep1/kgx/Protein_nodes.jsonl.gz")]
 
 
 # ? polars-hash Dependency Is Not Needed For Fullmap Resolution

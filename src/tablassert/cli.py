@@ -4,7 +4,11 @@ from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Annotated, TYPE_CHECKING, Any, Optional
+from typing import Annotated, TYPE_CHECKING, Any, BinaryIO, Optional
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+import re
+import time
 
 import cyclopts
 import lazy_loader as Lazy
@@ -23,6 +27,14 @@ else:
 APP: cyclopts.App = cyclopts.App(
     version=f"tablassert {get_version('tablassert')}", help="Extract Knowledge Assertions From Tabular Data Into KGX NDJSON"
 )
+
+BABEL_BASE: str = "https://stars.renci.org/var/babel_outputs"
+BABEL_VERSION: str = "2025sep1"
+BABEL_CLASS_ENDPOINTS: tuple[str, ...] = ("kgx/",)
+BABEL_SYNONYM_ENDPOINTS: tuple[str, ...] = ("synonyms/", "synonyms/chemicals/", "synonyms/geneprotein/")
+BABEL_EXCLUDE_PREFIXES: tuple[str, ...] = ("Publication", "GeneProteinConflated")
+BABEL_CLASS_RE: re.Pattern[str] = re.compile(r'<a href="([^"]*_nodes[^"]*\.gz)"')
+BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
 
 
 def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False, qc: bool = False, log: bool = False) -> None:
@@ -146,6 +158,73 @@ def run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
             logger.remove(sink_id)
 
 
+def babel_urls(version: str, endpoints: tuple[str, ...], pattern: re.Pattern[str]) -> list[tuple[str, str]]:
+    # ? Discover BABEL files using the same RENCI directory-listing convention as Datassert.
+    out: list[tuple[str, str]] = []
+    for endpoint in endpoints:
+        listing_url: str = f"{BABEL_BASE}/{version}/{endpoint}"
+        request: Request = Request(listing_url, headers={"User-Agent": "tablassert"})
+        with urlopen(request, timeout=60) as response:  # noqa: S310
+            body: str = response.read().decode("utf-8")
+        matches: list[str] = pattern.findall(body)
+        for match in matches:
+            filename: str = Path(match).name
+            if any(filename.startswith(prefix) for prefix in BABEL_EXCLUDE_PREFIXES):
+                continue
+            out.append((filename.lower(), f"{listing_url}{match}"))
+    return out
+
+
+def download_babel_file(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+    # ? Spool downloads to disk so large BABEL responses are resumable and never held in memory.
+    destination.mkdir(parents=True, exist_ok=True)
+    final_path: Path = destination / filename
+    part_path: Path = destination / f"{filename}.part"
+    if final_path.is_file():
+        logger.info(f"FULLMAP DOWNLOAD REUSE | FILE: {final_path}")
+        return final_path
+
+    last_error: Optional[Exception] = None
+    for attempt in range(1, retries + 1):
+        offset: int = part_path.stat().st_size if part_path.exists() else 0
+        headers: dict[str, str] = {"User-Agent": "tablassert"}
+        if offset > 0:
+            headers["Range"] = f"bytes={offset}-"
+        request: Request = Request(url, headers=headers)
+        try:
+            with urlopen(request, timeout=300) as response:  # noqa: S310
+                status: int = response.getcode()
+                mode: str = "ab" if offset > 0 and status == 206 else "wb"
+                if offset > 0 and status != 206:
+                    logger.warning(f"FULLMAP DOWNLOAD RESTART | URL: {url} | STATUS: {status}")
+                with part_path.open(mode) as handle:
+                    stream_copy(response, handle)
+            part_path.replace(final_path)
+            logger.info(f"FULLMAP DOWNLOAD DONE | FILE: {final_path} | URL: {url}")
+            return final_path
+        except (OSError, URLError) as e:
+            last_error = e
+            logger.warning(f"FULLMAP DOWNLOAD RETRY | ATTEMPT: {attempt}/{retries} | URL: {url} | ERROR: {e}")
+            time.sleep(5)
+    raise RuntimeError(f"failed to download BABEL file after {retries} attempts: {url}") from last_error
+
+
+def stream_copy(source: BinaryIO, destination: BinaryIO) -> None:
+    while True:
+        chunk: bytes = source.read(1024 * 1024)
+        if not chunk:
+            return
+        destination.write(chunk)
+
+
+def download_babel_inputs(version: str, cache: Path) -> tuple[list[Path], list[Path]]:
+    class_urls: list[tuple[str, str]] = babel_urls(version, BABEL_CLASS_ENDPOINTS, BABEL_CLASS_RE)
+    synonym_urls: list[tuple[str, str]] = babel_urls(version, BABEL_SYNONYM_ENDPOINTS, BABEL_SYNONYM_RE)
+    classes: list[Path] = [download_babel_file(filename, url, cache / "classes") for filename, url in class_urls]
+    synonyms: list[Path] = [download_babel_file(filename, url, cache / "synonyms") for filename, url in synonym_urls]
+    return classes, synonyms
+
+
 @APP.command
 def build(
     graph_configuration_file: Path,
@@ -166,16 +245,16 @@ def validate(table_configuration_file: Path) -> None:
 @APP.command(name="build-fullmap")
 def build_fullmap(
     output: Path = Path("./datassert/data/fullmap.redb"),
-    classes: Annotated[Optional[list[Path]], cyclopts.Parameter(name="--classes")] = None,
-    synonyms: Annotated[Optional[list[Path]], cyclopts.Parameter(name="--synonyms")] = None,
-    version: str = "2025sep1",
+    cache: Path = Path("./datassert/downloads/fullmap"),
+    version: str = BABEL_VERSION,
     threads: Optional[int] = None,
     write_batch_size: int = 50_000,
 ) -> None:
-    """Build an embedded fullmap redb database from local BABEL JSONL/JSONL.GZ files."""
+    """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
     from tablassert import rs
 
-    class_files: list[Path] = classes or []
-    synonym_files: list[Path] = synonyms or []
+    class_files: list[Path]
+    synonym_files: list[Path]
+    class_files, synonym_files = download_babel_inputs(version, cache)
     rs.build_fullmap_db(output, class_files, synonym_files, version, threads=threads, write_batch_size=write_batch_size)
     logger.info(f"FULLMAP BUILD DONE | OUTPUT: {output} | CLASSES: {len(class_files)} | SYNONYMS: {len(synonym_files)} | VERSION: {version}")

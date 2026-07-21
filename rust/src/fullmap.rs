@@ -2,10 +2,10 @@ use flate2::read::GzDecoder;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use redb::{Database, TableDefinition};
+use redb::{Database, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -14,6 +14,8 @@ use std::thread;
 
 const RECORDS: TableDefinition<&str, &[u8]> = TableDefinition::new("records");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
+const EQUIVALENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("equivalents");
+const TERM_RECORDS: TableDefinition<&str, &[u8]> = TableDefinition::new("term_records");
 const SCHEMA_VERSION: &str = "tablassert.fullmap.v1";
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -85,17 +87,16 @@ fn open_reader(path: &Path) -> PyResult<Box<dyn Read>> {
     Ok(Box::new(file))
 }
 
-fn read_json_lines(path: &Path) -> PyResult<Vec<Value>> {
+fn for_json_lines(path: &Path, mut visit: impl FnMut(Value) -> PyResult<()>) -> PyResult<()> {
     let reader = BufReader::new(open_reader(path)?);
-    let mut rows = Vec::new();
     for line in reader.lines() {
         let raw = line.map_err(py_err)?;
         if raw.trim().is_empty() {
             continue;
         }
-        rows.push(serde_json::from_str(&raw).map_err(py_err)?);
+        visit(serde_json::from_str(&raw).map_err(py_err)?)?;
     }
-    Ok(rows)
+    Ok(())
 }
 
 fn string_field(value: &Value, keys: &[&str]) -> Option<String> {
@@ -150,53 +151,116 @@ fn equivalent_id(value: &Value) -> Option<String> {
     string_field(value, &["identifier", "id", "curie"])
 }
 
-fn load_equivalents(classes: &[PathBuf]) -> PyResult<HashMap<String, Vec<String>>> {
-    let mut lookup = HashMap::new();
-    for path in classes {
-        for row in read_json_lines(path)? {
-            let id = string_field(&row, &["id", "curie"]);
-            let equivalents = row.get("equivalent_identifiers").and_then(Value::as_array);
-            let Some(id) = id else { continue };
-            let mut ids = HashSet::from([id.clone()]);
-            if let Some(equivalents) = equivalents {
-                for equivalent in equivalents {
-                    if let Some(eid) = equivalent_id(equivalent) {
-                        ids.insert(eid);
-                    }
-                }
+fn class_id_and_equivalents(row: &Value) -> Option<(String, Vec<String>)> {
+    let equivalents = row.get("equivalent_identifiers").and_then(Value::as_array);
+    let mut ids = HashSet::new();
+    let id = string_field(row, &["id", "curie"]).or_else(|| {
+        equivalents
+            .and_then(|items| items.first())
+            .and_then(equivalent_id)
+    })?;
+    ids.insert(id.clone());
+    if let Some(equivalents) = equivalents {
+        for equivalent in equivalents {
+            if let Some(eid) = equivalent_id(equivalent) {
+                ids.insert(eid);
             }
-            lookup.insert(id, ids.into_iter().collect());
         }
     }
-    Ok(lookup)
+    Some((id, ids.into_iter().collect()))
 }
 
-fn insert_key(
-    map: &mut HashMap<String, HashSet<FullmapRecord>>,
-    key: String,
-    record: &FullmapRecord,
-) {
+fn stage_equivalents(database: &Database, classes: &[PathBuf], batch_size: usize) -> PyResult<()> {
+    for path in classes {
+        let mut rows: Vec<(String, Vec<u8>)> = Vec::new();
+        for_json_lines(path, |row| {
+            if let Some((id, equivalents)) = class_id_and_equivalents(&row) {
+                let encoded = bincode::serialize(&equivalents).map_err(py_err)?;
+                rows.push((id, encoded));
+            }
+            if rows.len() >= batch_size {
+                write_bytes_batch(database, EQUIVALENTS, &rows)?;
+                rows.clear();
+            }
+            Ok(())
+        })?;
+        if !rows.is_empty() {
+            write_bytes_batch(database, EQUIVALENTS, &rows)?;
+        }
+    }
+    Ok(())
+}
+
+fn staged_keys(key: String, record: &FullmapRecord) -> PyResult<Vec<(String, Vec<u8>)>> {
     let cleaned = clean(key);
     if !token_qc(&cleaned) {
-        return;
+        return Ok(Vec::new());
     }
+    let encoded = bincode::serialize(record).map_err(py_err)?;
+    let mut out = Vec::new();
     let l1 = level_one(&cleaned);
     let l2 = level_two(&l1);
     if token_qc(&l1) {
-        map.entry(l1).or_default().insert(record.clone());
+        out.push((stage_record_key(&l1, &encoded), encoded.clone()));
     }
     if token_qc(&l2) {
-        map.entry(l2).or_default().insert(record.clone());
+        out.push((stage_record_key(&l2, &encoded), encoded));
     }
+    Ok(out)
 }
 
-fn build_records(
-    classes: &[PathBuf],
+fn stage_record_key(term: &str, encoded: &[u8]) -> String {
+    format!("{}\0{:x}", term, md5::compute(encoded))
+}
+
+fn staged_term(key: &str) -> &str {
+    key.split_once('\0').map(|(term, _)| term).unwrap_or(key)
+}
+
+fn write_bytes_batch(
+    database: &Database,
+    table_definition: TableDefinition<&str, &[u8]>,
+    rows: &[(String, Vec<u8>)],
+) -> PyResult<()> {
+    let write = database.begin_write().map_err(py_err)?;
+    {
+        let mut table = write.open_table(table_definition).map_err(py_err)?;
+        for (key, value) in rows {
+            table
+                .insert(key.as_str(), value.as_slice())
+                .map_err(py_err)?;
+        }
+    }
+    write.commit().map_err(py_err)?;
+    Ok(())
+}
+
+fn initialize_build_tables(database: &Database) -> PyResult<()> {
+    let write = database.begin_write().map_err(py_err)?;
+    {
+        let _equivalents = write.open_table(EQUIVALENTS).map_err(py_err)?;
+        let _term_records = write.open_table(TERM_RECORDS).map_err(py_err)?;
+    }
+    write.commit().map_err(py_err)?;
+    Ok(())
+}
+
+fn equivalent_terms(database: &Database, curie: &str) -> PyResult<Vec<String>> {
+    let read = database.begin_read().map_err(py_err)?;
+    let table = read.open_table(EQUIVALENTS).map_err(py_err)?;
+    let Some(bytes) = table.get(curie).map_err(py_err)? else {
+        return Ok(Vec::new());
+    };
+    bincode::deserialize(bytes.value()).map_err(py_err)
+}
+
+fn stage_synonyms(
+    database: &Database,
     synonyms: &[PathBuf],
     source_version: &str,
-) -> PyResult<HashMap<String, HashSet<FullmapRecord>>> {
-    let equivalents = load_equivalents(classes)?;
-    let mut map = HashMap::new();
+    batch_size: usize,
+) -> PyResult<()> {
+    let mut rows: Vec<(String, Vec<u8>)> = Vec::new();
 
     for path in synonyms {
         let source_name = path
@@ -205,9 +269,9 @@ fn build_records(
             .unwrap_or("BABEL")
             .trim_end_matches(".ndjson")
             .to_string();
-        for row in read_json_lines(path)? {
+        for_json_lines(path, |row| {
             let Some(curie) = string_field(&row, &["curie", "id"]) else {
-                continue;
+                return Ok(());
             };
             let preferred_name =
                 string_field(&row, &["preferred_name", "name"]).unwrap_or_else(|| curie.clone());
@@ -222,16 +286,21 @@ fn build_records(
 
             let mut terms = string_array(&row, "names");
             terms.push(curie.clone());
-            if let Some(ids) = equivalents.get(&curie) {
-                terms.extend(ids.iter().cloned());
-            }
+            terms.extend(equivalent_terms(database, &curie)?);
             for term in terms {
-                insert_key(&mut map, term, &record);
+                rows.extend(staged_keys(term, &record)?);
+                if rows.len() >= batch_size {
+                    write_bytes_batch(database, TERM_RECORDS, &rows)?;
+                    rows.clear();
+                }
             }
-        }
+            Ok(())
+        })?;
     }
-
-    Ok(map)
+    if !rows.is_empty() {
+        write_bytes_batch(database, TERM_RECORDS, &rows)?;
+    }
+    Ok(())
 }
 
 fn sorted_records(records: HashSet<FullmapRecord>) -> Vec<FullmapRecord> {
@@ -257,6 +326,70 @@ fn sorted_records(records: HashSet<FullmapRecord>) -> Vec<FullmapRecord> {
     out
 }
 
+fn commit_final_records(
+    database: &Database,
+    rows: &[(String, Vec<FullmapRecord>)],
+) -> PyResult<()> {
+    let write = database.begin_write().map_err(py_err)?;
+    {
+        let mut table = write.open_table(RECORDS).map_err(py_err)?;
+        for (term, records) in rows {
+            let encoded = bincode::serialize(records).map_err(py_err)?;
+            table
+                .insert(term.as_str(), encoded.as_slice())
+                .map_err(py_err)?;
+        }
+    }
+    write.commit().map_err(py_err)?;
+    Ok(())
+}
+
+fn finalize_records(
+    stage_database: &Database,
+    final_database: &Database,
+    batch_size: usize,
+) -> PyResult<()> {
+    let read = stage_database.begin_read().map_err(py_err)?;
+    let table = read.open_table(TERM_RECORDS).map_err(py_err)?;
+    let mut current_term: Option<String> = None;
+    let mut current_records: HashSet<FullmapRecord> = HashSet::new();
+    let mut final_rows: Vec<(String, Vec<FullmapRecord>)> = Vec::new();
+
+    for item in table.iter().map_err(py_err)? {
+        let (key, value) = item.map_err(py_err)?;
+        let term = staged_term(key.value()).to_string();
+        if current_term
+            .as_deref()
+            .is_some_and(|existing| existing != term)
+        {
+            let finished_term = current_term.take().unwrap_or_default();
+            final_rows.push((finished_term, sorted_records(current_records)));
+            current_records = HashSet::new();
+            if final_rows.len() >= batch_size {
+                commit_final_records(final_database, &final_rows)?;
+                final_rows.clear();
+            }
+        }
+        current_term = Some(term);
+        let record: FullmapRecord = bincode::deserialize(value.value()).map_err(py_err)?;
+        current_records.insert(record);
+    }
+
+    if let Some(term) = current_term {
+        final_rows.push((term, sorted_records(current_records)));
+    }
+    if !final_rows.is_empty() {
+        commit_final_records(final_database, &final_rows)?;
+    }
+    Ok(())
+}
+
+fn temp_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut value = path.as_os_str().to_os_string();
+    value.push(suffix);
+    PathBuf::from(value)
+}
+
 #[pyfunction]
 #[pyo3(signature = (output, classes, synonyms, source_version, threads=None, write_batch_size=50000))]
 pub fn build_fullmap_db(
@@ -277,34 +410,23 @@ pub fn build_fullmap_db(
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent).map_err(py_err)?;
     }
-    if output.exists() {
-        std::fs::remove_file(&output).map_err(py_err)?;
+    let final_output = temp_path(&output, ".tmp");
+    let stage_output = temp_path(&output, ".stage.tmp");
+    if final_output.exists() {
+        std::fs::remove_file(&final_output).map_err(py_err)?;
     }
-
-    let map = build_records(&classes, &synonyms, &source_version)?;
-    let database = Database::create(output).map_err(py_err)?;
-
-    let mut rows: Vec<(String, Vec<FullmapRecord>)> = map
-        .into_iter()
-        .map(|(term, records)| (term, sorted_records(records)))
-        .collect();
-    rows.sort_by(|a, b| a.0.cmp(&b.0));
-
-    for chunk in rows.chunks(batch_size) {
-        let write = database.begin_write().map_err(py_err)?;
-        {
-            let mut table = write.open_table(RECORDS).map_err(py_err)?;
-            for (term, records) in chunk {
-                let encoded = bincode::serialize(records).map_err(py_err)?;
-                table
-                    .insert(term.as_str(), encoded.as_slice())
-                    .map_err(py_err)?;
-            }
-        }
-        write.commit().map_err(py_err)?;
+    if stage_output.exists() {
+        std::fs::remove_file(&stage_output).map_err(py_err)?;
     }
+    let stage_database = Database::create(&stage_output).map_err(py_err)?;
+    let final_database = Database::create(&final_output).map_err(py_err)?;
 
-    let write = database.begin_write().map_err(py_err)?;
+    initialize_build_tables(&stage_database)?;
+    stage_equivalents(&stage_database, &classes, batch_size)?;
+    stage_synonyms(&stage_database, &synonyms, &source_version, batch_size)?;
+    finalize_records(&stage_database, &final_database, batch_size)?;
+
+    let write = final_database.begin_write().map_err(py_err)?;
     {
         let mut meta = write.open_table(META).map_err(py_err)?;
         meta.insert("schema", SCHEMA_VERSION).map_err(py_err)?;
@@ -312,6 +434,13 @@ pub fn build_fullmap_db(
             .map_err(py_err)?;
     }
     write.commit().map_err(py_err)?;
+    drop(stage_database);
+    drop(final_database);
+    std::fs::remove_file(&stage_output).map_err(py_err)?;
+    if output.exists() {
+        std::fs::remove_file(&output).map_err(py_err)?;
+    }
+    std::fs::rename(&final_output, &output).map_err(py_err)?;
     Ok(())
 }
 
