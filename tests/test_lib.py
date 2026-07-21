@@ -438,10 +438,8 @@ def test_resolve_many_skips_qc(monkeypatch: Any, tmp_path: Path) -> None:
         calls.append(("resolve", col, db, kwargs))
         return lf
 
-    def fake_qc(
-        lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True, provider: str | None = None
-    ) -> pl.LazyFrame:
-        calls.append(("qc", col, section_hash, config_file, out, log, provider))
+    def fake_qc(lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True) -> pl.LazyFrame:
+        calls.append(("qc", col, section_hash, config_file, out, log))
         return lf
 
     monkeypatch.setattr(lib, "resolve", fake_resolve)
@@ -467,10 +465,8 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
         calls.append(("resolve", col, db, kwargs))
         return lf
 
-    def fake_qc(
-        lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True, provider: str | None = None
-    ) -> pl.LazyFrame:
-        calls.append(("qc", col, section_hash, config_file, out, log, provider))
+    def fake_qc(lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True) -> pl.LazyFrame:
+        calls.append(("qc", col, section_hash, config_file, out, log))
         return lf.with_columns(pl.lit("YES").alias(out))
 
     monkeypatch.setattr(lib, "resolve", fake_resolve)
@@ -479,7 +475,7 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
     result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1"], tmp_path, qc=True)
 
     assert result == [{"subject": "brca1", "original_subject": "BRCA1", "subject_two": "brca1", "passed": "YES"}]
-    assert ("qc", "subject", "", "", "passed", True, None) in calls
+    assert ("qc", "subject", "", "", "passed", True) in calls
 
 
 # ? resolve_many Accepts A Direct Fullmap Redb File Path

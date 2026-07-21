@@ -1,111 +1,50 @@
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as get_version
 from operator import add, eq
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING
 
 import lazy_loader as Lazy
 
 if TYPE_CHECKING:
-    import onnxruntime as ort
     import polars as pl
     import sentence_transformers
 else:
-    ort = Lazy.load("onnxruntime")
     sentence_transformers = Lazy.load("sentence_transformers")
     pl = Lazy.load("polars")
 
-from tablassert.errors import QcCudaNoCpuFallbackError, QcCudaPackageMissingError, QcCudaProviderUnavailableError, QcRuntimeMissingError
+from tablassert.errors import QcRuntimeMissingError
 from tablassert.log import cat
 from tablassert.utils import BASE
 
 logger = cat("QC")
 
-MODEL: Path = BASE / "onnx"
-MODEL_BACKEND: Literal["onnx"] = "onnx"
-CPU_PROVIDER: str = "CPUExecutionProvider"
-CUDA_PROVIDER: str = "CUDAExecutionProvider"
+MODEL: Path = BASE / "biobert"
 
 # TODO: Explore Best Model For QC
 BIOBERT: dict[str, object] = {}
 
 
-def has_qc_runtime(name: str) -> bool:
-    try:
-        get_version(name)
-        return True
-    except PackageNotFoundError:
-        return False
-
-
-def get_qc_provider(provider: Optional[Literal["cpu", "cuda"]] = None) -> tuple[str, Optional[dict[str, object]]]:
-    has_cpu: bool = has_qc_runtime("onnxruntime")
-    has_cuda: bool = has_qc_runtime("onnxruntime-gpu")
-
-    if provider == "cpu":
-        if has_cpu or has_cuda:
-            return CPU_PROVIDER, None
-        raise QcRuntimeMissingError()
-
-    if provider == "cuda":
-        if not has_cuda:
-            raise QcCudaPackageMissingError()
-        available: list[str] = ort.get_available_providers()  # pyright: ignore
-        if CUDA_PROVIDER not in available:
-            raise QcCudaProviderUnavailableError(requested=True)
-        return CUDA_PROVIDER, {"device_id": 0}
-
-    if has_cuda:
-        available = ort.get_available_providers()  # pyright: ignore
-        if CUDA_PROVIDER not in available:
-            raise QcCudaNoCpuFallbackError()
-        return CUDA_PROVIDER, {"device_id": 0}
-
-    if has_cpu:
-        return CPU_PROVIDER, None
-
-    raise QcRuntimeMissingError()
-
-
-def get_biobert(provider: Optional[Literal["cpu", "cuda"]] = None) -> object:
+def get_biobert() -> object:
     # ? Lazy-loads BioBERT once on first batch audit call, then caches globally
-    provider_name: str
-    provider_options: Optional[dict[str, object]]
-    provider_name, provider_options = get_qc_provider(provider)
-    cache_key: str = add(provider_name, str(provider_options))
-    if cache_key in BIOBERT:
-        return BIOBERT[cache_key]
-
-    session_opts: object = ort.SessionOptions()
-    session_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL  # pyright: ignore
-    model_kwargs: dict[str, object] = {"provider": provider_name, "session_options": session_opts}
-    if provider_options:
-        model_kwargs["provider_options"] = provider_options
-
-    if MODEL.exists():
-        model: object = sentence_transformers.SentenceTransformer(str(MODEL), backend=MODEL_BACKEND, model_kwargs=model_kwargs)  # pyright: ignore
-    else:
-        model = sentence_transformers.SentenceTransformer(
-            "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", backend=MODEL_BACKEND, model_kwargs=model_kwargs
-        )  # pyright: ignore
-        MODEL.mkdir(parents=True, exist_ok=True)
-        model.save(MODEL)  # pyright: ignore
-
-    BIOBERT[cache_key] = model
+    if "model" in BIOBERT:
+        return BIOBERT["model"]
+    try:
+        if MODEL.exists():
+            model: object = sentence_transformers.SentenceTransformer(str(MODEL))  # pyright: ignore
+        else:
+            model = sentence_transformers.SentenceTransformer(  # pyright: ignore
+                "pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb"
+            )
+            MODEL.mkdir(parents=True, exist_ok=True)
+            model.save(MODEL)  # pyright: ignore
+    except ImportError as exc:
+        raise QcRuntimeMissingError() from exc
+    BIOBERT["model"] = model
     return model
 
 
-def fullmap_audit(
-    lf: pl.LazyFrame,
-    col: str,
-    section_hash: str,
-    config_file: str,
-    out: str = "passed",
-    log: bool = True,
-    provider: Optional[Literal["cpu", "cuda"]] = None,
-) -> pl.LazyFrame:
+def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True) -> pl.LazyFrame:
     # ? Ensures Fullmap Correct Processes Strings To CURIES
     # * Deletes Suspected Errors
     # ! Collection Point: Pending Pairs Require Eager
@@ -169,7 +108,7 @@ def fullmap_audit(
     originals = pending.get_column(cols[1]).to_list()
     preferreds = pending.get_column(cols[2]).to_list()
 
-    embeddings: object = get_biobert(provider).encode(originals + preferreds)  # pyright: ignore
+    embeddings: object = get_biobert().encode(originals + preferreds)  # pyright: ignore
     n: int = len(originals)
     similarity: object = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()  # pyright: ignore
 

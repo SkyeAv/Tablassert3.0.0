@@ -7,9 +7,6 @@ DOCS_URL: str = "https://tablassert.readthedocs.io/errors/"
 
 TablassertErrorCodes = Literal[
     "qc-runtime-missing",
-    "qc-cuda-package-missing",
-    "qc-cuda-provider-unavailable",
-    "qc-cuda-no-cpu-fallback",
     "graph-validation-failed",
     "section-validation-failed",
     "babel-download-failed",
@@ -50,31 +47,7 @@ class TablassertValidationError(_Coded, ValueError):
 
 class QcRuntimeMissingError(TablassertError):
     def __init__(self) -> None:
-        super().__init__("QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].", code="qc-runtime-missing")
-
-
-class QcCudaPackageMissingError(TablassertError):
-    def __init__(self) -> None:
-        super().__init__("QC requested CUDA but onnxruntime-gpu is not installed. Install tablassert[qc-cuda].", code="qc-cuda-package-missing")
-
-
-class QcCudaProviderUnavailableError(TablassertError):
-    def __init__(self, *, requested: bool) -> None:
-        verb: str = "requested" if requested else "detected"
-        super().__init__(
-            f"QC {verb} onnxruntime-gpu but CUDAExecutionProvider is unavailable. Verify the CUDA/cuDNN environment for tablassert[qc-cuda].",
-            code="qc-cuda-provider-unavailable",
-        )
-
-
-class QcCudaNoCpuFallbackError(TablassertError):
-    def __init__(self) -> None:
-        super().__init__(
-            "Detected onnxruntime-gpu but CUDAExecutionProvider is unavailable. "
-            "Tablassert will not fall back to CPU from qc-cuda. "
-            "Install tablassert[qc] or fix the CUDA/cuDNN environment.",
-            code="qc-cuda-no-cpu-fallback",
-        )
+        super().__init__("QC requires optional runtime dependencies. Install tablassert[qc].", code="qc-runtime-missing")
 
 
 class GraphValidationError(TablassertError):
