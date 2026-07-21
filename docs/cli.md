@@ -50,13 +50,38 @@ tablassert build /path/to/MOKGV6.yaml
 
 This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through datassert, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.
 
-The process executes in parallel stages with rich progress bars showing:
+The process executes in parallel stages with a three-row live progress block (logs print above the live block):
+
+```
+✓ Stage 1 · LOADING TABLES · 0:00:01.20
+✓ Stage 2 · EXTRACTING SECTIONS · 0:00:00.80
+Stage 3 of 6  ·  BUILDING TCODE   tablassert v8.0.0
+TCODE ━━━━━━━━━━━━━━━━━━━━━━━━━━─── 12/47 · 0:00:42 · 0:02:11
+  ↳ my_table.yaml · abc123de
+```
+
+- **Row 1** — the current stage header (`Stage N of 6 · NAME`)
+- **Row 2** — the section bar: label, bar, count, elapsed, ETA
+- **Row 3** — the in-flight item detail (config stem + 8-char hash)
+
+The six stages are:
+
 - Loading Tables
 - Extracting Sections
 - Building TCode
 - Collecting Instructions
 - Building Subgraphs
 - Compiling Graph
+
+For Building Subgraphs (the longest stage), the detail line also shows the current per-section phase as `compile_subgraph` reduces over the op-list:
+
+```
+Stage 5 of 6  ·  BUILDING SUBGRAPHS   tablassert v8.0.0
+SUBGRAPH ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12/47 · 0:01:24 · 0:03:02
+  ↳ my_table.yaml · abc123de  →  resolve
+```
+
+Phases cycle through `load`, `filter`, `clean`, `encode`, `resolve`, `qc`, `edge`, `provenance`, `significance`, `finalize`, `write` per section. Each completed stage prints a green `✓ Stage N · NAME · elapsed` line above the live block.
 
 Final output files are written to the current working directory as:
 - `{name}_{version}.nodes.ndjson` - Node file (entities)

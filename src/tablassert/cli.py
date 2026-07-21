@@ -34,7 +34,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
     from tablassert.ingests import from_yaml, to_sections
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
     from tablassert.models import Graph
-    from tablassert.progress import flatten_pydantic_error, format_section_oneline
+    from tablassert.progress import flatten_pydantic_error, format_section_compact
     from tablassert.utils import STORE, mkhash
 
     # * Load Tables (1/6)
@@ -57,12 +57,12 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
     n: int = len(sections)
 
     # * Build TCode (3/6)
-    progress.stage(f"Building TCode | Sections: {n}")
-    start, advance = progress.section_loop(n, "TCode")
+    progress.stage("Building TCode")
+    start, advance, _ = progress.section_loop(n, "TCode")
     tcode: list[Tcode] = []
     for s in sections:
         h: str = mkhash(s)
-        start(f"CONFIG: {Path(s['config']).name} | HASH: {h}")
+        start(f"{Path(str(s['config'])).stem} · {h[:8]}")
         try:
             tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": g.log, "qc": g.qc, "release": release, "name": g.name}))
         except pydantic.ValidationError as e:
@@ -75,27 +75,30 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
         conns: list[object] = [stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True)) for x in range(SHARDS)]
 
         # * Collect Instructions (4/6)
-        progress.stage(f"Collecting Instructions | Sections: {n}")
-        start, advance = progress.section_loop(n, "Collect")
+        progress.stage("Collecting Instructions")
+        start, advance, sub_step = progress.section_loop(n, "Collect")
         instructions: list[Any] = []
         for x in tcode:
-            start(format_section_oneline(x))
+            start(format_section_compact(x))
+            sub_step("planning")
             instructions.append(x.collect(conns))  # pyright: ignore
             advance()
 
         # * Build Subgraphs (5/6)
-        progress.stage(f"Building Subgraphs | Sections: {n}")
-        start, advance = progress.section_loop(n, "Subgraph")
+        progress.stage("Building Subgraphs")
+        start, advance, sub_step = progress.section_loop(n, "Subgraph")
         subgraphs: list[Path] = []
         for x, op in zip(tcode, instructions):
-            start(format_section_oneline(x))
-            subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op))
+            start(format_section_compact(x))
+            # ! on_phase drives the per-op sub-step indicator (load → filter → resolve → write ...)
+            subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op, on_phase=sub_step))
             advance()
 
     # * Compile Graph (6/6)
-    progress.stage(f"Compiling Graph | Sections: {n}")
-    start, advance = progress.section_loop(1, "Graph")
-    start(f"NAME: {g.name} | VERSION: {g.version}")
+    progress.stage("Compiling Graph")
+    start, advance, sub_step = progress.section_loop(1, "Graph")
+    start(f"{g.name} · v{g.version}")
+    sub_step("aggregating")
     compile_graph(subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables)
     advance()
 
@@ -119,11 +122,11 @@ def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgres
     n: int = len(sections)
 
     # * Validate Section Syntax (3/3)
-    progress.stage(f"Validating Section Syntax | Sections: {n}")
-    start, advance = progress.section_loop(n, "Validate")
+    progress.stage("Validating Section Syntax")
+    start, advance, _ = progress.section_loop(n, "Validate")
     for s in sections:
         h: str = mkhash(s)
-        start(f"HASH: {h}")
+        start(f"{Path(str(s['config'])).stem} · {h[:8]}")
         try:
             Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet")})
         except pydantic.ValidationError as e:

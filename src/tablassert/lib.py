@@ -5,7 +5,7 @@ import operator
 import re
 from collections.abc import Iterable
 from contextlib import ExitStack
-from functools import cache, reduce
+from functools import cache
 from operator import add, eq, le
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
@@ -515,9 +515,63 @@ class Tcode(Section):
             return self.clean(tcode)
 
 
-def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]]) -> Path:
-    # ? Executes Tcode To Build Subgraphs As Parquets
-    return reduce(lambda acc, op: op[0](acc, *op[1]) if acc is not None else op[0](*op[1]), tcode, None)  # pyright: ignore
+PHASE_OF: dict[Callable, str] = {
+    # ? Maps Each Tcode Op Callable To A Short Lowercase Phase Label For Progress UX
+    csv: "load",
+    excel: "load",
+    idx: "load",
+    crop: "filter",
+    pick: "filter",
+    reindex: "filter",
+    coerce_pvalue_columns: "clean",
+    coerce_study_size_columns: "clean",
+    clean_numeric: "clean",
+    level_one: "resolve",
+    level_two: "resolve",
+    resolve: "resolve",
+    fullmap_audit: "qc",
+    column: "encode",
+    edge_category: "edge",
+    publications: "provenance",
+    source_record_urls: "provenance",
+    sig: "significance",
+    drop_not_significant: "significance",
+    trim: "finalize",
+    format_numeric: "finalize",
+    to_store: "write",
+}
+
+UNKNOWN_PHASE: str = "transform"
+
+_VALUE_PROVENANCE_COLS: frozenset[str] = frozenset({"upstream_resource_ids", "knowledge_level", "agent_type", "resource_id", "sheet_name"})
+
+
+def _phase_of(fn: Callable, args: tuple[Any, ...]) -> str:
+    # ? Resolves The Phase Label For An Op, Handling value() Specially Since It Spans Phases
+    if fn is value:
+        col: str = str(args[0]) if args else ""
+        if col == "predicate":
+            return "edge"
+        if col in _VALUE_PROVENANCE_COLS:
+            return "provenance"
+        return UNKNOWN_PHASE
+    return PHASE_OF.get(fn, UNKNOWN_PHASE)
+
+
+def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Optional[Callable[[str], None]] = None) -> Path:
+    # ? Executes Tcode To Build Subgraphs As Parquets; on_phase Fires When The Phase Label Changes
+    last_phase: Optional[str] = None
+    acc: Union[pl.LazyFrame, Path, None] = None
+    for op in tcode:
+        fn: Callable = op[0]
+        args: tuple[Any, ...] = op[1]
+        if on_phase is not None:
+            phase: str = _phase_of(fn, args)
+            if phase != last_phase:
+                last_phase = phase
+                on_phase(phase)
+        acc = fn(acc, *args) if acc is not None else fn(*args)  # pyright: ignore
+    return acc  # pyright: ignore
 
 
 def normalize(
