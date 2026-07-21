@@ -127,7 +127,7 @@ def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_
     unnmatched: pl.DataFrame = antimatches.select("term").unique().collect()
     if unnmatched.height > 0:
         for term in unnmatched.get_column("term").to_list():
-            logger.info(f"FAILED | HASH: {section_hash} | CONFIG: {config_file} | COL: {col} | VALUE: {term!r}")
+            logger.info("Unresolved term in {config} ({hash}) col {col}: {term!r}", config=config_file, hash=section_hash, col=col, term=term)
 
 
 def resolve(

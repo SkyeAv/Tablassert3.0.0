@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal, Optional, Self, Union
 import lazy_loader as Lazy
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
+from tablassert.errors import TablassertValidationError
 from tablassert.enums import (
     AgentTypes,
     Categories,
@@ -49,12 +50,15 @@ class Reindex(TablaBase):
 
         if eq(x, Comparisons.NE) or eq(x, Comparisons.EQ):
             if not isinstance(y, str):
-                msg: str = f"14 | eq or ne comparisons must have a str comparator, got {type(y)}"
-                raise ValueError(msg)
+                raise TablassertValidationError(
+                    f"`eq`/`ne` comparisons require a str comparator, got {type(y).__name__}.", code="comparison-bad-comparator-type"
+                )
         else:
             if not (isinstance(y, int) or isinstance(y, float)):
-                msg = f"15 | all comparisons other than eq or ne must have a float or an int comparator, got {type(y)}"
-                raise ValueError(msg)
+                raise TablassertValidationError(
+                    f"Comparisons other than `eq`/`ne` require a float or int comparator, got {type(y).__name__}.",
+                    code="comparison-nonnumeric-comparator",
+                )
 
         return self
 
@@ -73,8 +77,9 @@ class BaseSource(TablaBase):
     @model_validator(mode="after")
     def no_rows_and_slice(self: Self) -> Self:
         if self.rows and self.row_slice:
-            msg: str = "13 | cannot specify rows and row_slice in the same section"
-            raise ValueError(msg)
+            raise TablassertValidationError(
+                "Cannot specify both `rows` and `row_slice` in the same section.", code="config-rows-and-row-slice-conflict"
+            )
 
         return self
 
@@ -104,8 +109,7 @@ class Regex(TablaBase):
         try:
             pl.Series([""]).str.contains(str(pattern))
         except Exception as e:
-            msg: str = f"17 | pattern must be a polars compatible regex, got {pattern} | {e}"
-            raise ValueError(msg)
+            raise TablassertValidationError(f"`pattern` must be a polars-compatible regex, got {pattern!r}: {e}", code="regex-bad-pattern") from e
 
         return pattern
 
@@ -117,8 +121,9 @@ class Regex(TablaBase):
         try:
             pl.Series([""]).str.contains(str(replacement))
         except Exception as e:
-            msg: str = f"18 | replacement must be a polars compatible regex, got {replacement} | {e}"
-            raise ValueError(msg)
+            raise TablassertValidationError(
+                f"`replacement` must be a polars-compatible regex, got {replacement!r}: {e}", code="regex-bad-replacement"
+            ) from e
 
         return replacement
 
@@ -145,8 +150,7 @@ class Encoding(TablaBase):
         if eq(self.method, EncodingMethods.COLUMN):
             x: Union[str, int, float] = self.encoding
             if not re.search(r"^[A-Z]{1,3}$", str(x)):
-                msg: str = f"16 | encoding must be an excel style alphanumeric column name like A to ZZ, got {x}"
-                raise ValueError(msg)
+                raise TablassertValidationError(f"`encoding` must be an Excel-style column name (A-ZZ), got {x!r}.", code="encoding-bad-excel-column")
 
         return self
 
@@ -170,8 +174,9 @@ class Encoding(TablaBase):
                 try:
                     pl.Series([""]).str.contains(str(r))
                 except Exception as e:
-                    msg: str = f"19 | remove must be contain polars compatible regular expressions, got {r} | {e}"
-                    raise ValueError(msg)
+                    raise TablassertValidationError(
+                        f"`remove` entries must be polars-compatible regular expressions, got {r!r}: {e}", code="encoding-bad-remove-entry"
+                    ) from e
 
         return remove
 
@@ -223,8 +228,9 @@ class Provenance(TablaBase):
         if eq(self.repo, Repositories.PUBMED_CENTRAL):
             publication: str = self.publication
             if not re.search(r"^PMC\d+", publication):
-                msg: str = f"20 | pubmed central publications must start with PMC, got {publication}"
-                raise ValueError(msg)
+                raise TablassertValidationError(
+                    f"PubMed Central publications must start with `PMC`, got {publication!r}.", code="provenance-bad-pmc-id"
+                )
 
         return self
 

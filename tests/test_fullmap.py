@@ -81,8 +81,8 @@ def test_empty_resolve_still_writes_store(tmp_path: Path, monkeypatch: pytest.Mo
     warnings: list[str] = []
 
     class DummyLogger:
-        def warning(self, message: str) -> None:
-            warnings.append(message)
+        def warning(self, message: str, *args: Any, **kwargs: Any) -> None:
+            warnings.append(message.format(*args, **kwargs) if kwargs else message)
 
     monkeypatch.setattr(lib, "logger", DummyLogger())
 
@@ -97,7 +97,7 @@ def test_empty_resolve_still_writes_store(tmp_path: Path, monkeypatch: pytest.Mo
     assert out.is_file()
     assert stored.height == 0
     assert len(warnings) == 1
-    assert "EMPTY SUBGRAPH" in warnings[0]
+    assert "produced 0 rows" in warnings[0]
 
 
 # ? Resolve Uses Embedded Fullmap Redb Schema

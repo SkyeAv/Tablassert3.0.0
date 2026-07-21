@@ -13,7 +13,8 @@ import time
 import cyclopts
 import lazy_loader as Lazy
 
-from tablassert.log import logger
+from tablassert.errors import BabelDownloadError, GraphValidationError, SectionValidationError
+from tablassert.log import cat
 
 if TYPE_CHECKING:
     import pydantic
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
     from tablassert.progress import PipelineProgress
 else:
     pydantic = Lazy.load("pydantic")
+
+# ? Pipeline completion events (BUILD, VALIDATE)
+logger = cat("PIPELINE")
+# ? BABEL downloader events (reuse, restart, done, retry)
+download_logger = cat("DOWNLOAD")
 
 APP: cyclopts.App = cyclopts.App(
     version=f"tablassert {get_version('tablassert')}", help="Extract Knowledge Assertions From Tabular Data Into KGX NDJSON"
@@ -52,9 +58,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
     try:
         g: Graph = Graph.model_validate(r)
     except pydantic.ValidationError as e:
-        raise RuntimeError(
-            f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | KIND: graph | PYDANTIC: {flatten_pydantic_error(e)}"
-        ) from e
+        raise GraphValidationError(graph_configuration_file, flatten_pydantic_error(e)) from e
     with Pool() as pool:
         raw: list[object] = pool.map(from_yaml, g.tables)
 
@@ -75,9 +79,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
         try:
             tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": log, "qc": qc, "release": release, "name": g.name}))
         except pydantic.ValidationError as e:
-            raise RuntimeError(
-                f"02 | FAILED VALIDATION | CONFIG: {graph_configuration_file} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
-            ) from e
+            raise SectionValidationError(graph_configuration_file, h, flatten_pydantic_error(e)) from e
         advance()
 
     db: Path = fullmap_db_path(g.datassert)
@@ -110,7 +112,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
     compile_graph(subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables)
     advance()
 
-    logger.info(f"BUILD DONE | SECTIONS: {n} | NAME: {g.name} | VERSION: {g.version}")
+    logger.info("Built graph {name} v{version}: {n} sections", name=g.name, version=g.version, n=n)
 
 
 def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgress") -> None:
@@ -138,12 +140,10 @@ def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgres
         try:
             Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet")})
         except pydantic.ValidationError as e:
-            raise RuntimeError(
-                f"02 | FAILED VALIDATION | CONFIG: {table_configuration_file} | HASH: {h} | PYDANTIC: {flatten_pydantic_error(e)}"
-            ) from e
+            raise SectionValidationError(table_configuration_file, h, flatten_pydantic_error(e)) from e
         advance()
 
-    logger.info(f"VALIDATE DONE | SECTIONS: {n} | CONFIG: {table_configuration_file.name}")
+    logger.info("Validated {n} sections from {config}", n=n, config=table_configuration_file.name)
 
 
 def run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
@@ -181,7 +181,7 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
     final_path: Path = destination / filename
     part_path: Path = destination / f"{filename}.part"
     if final_path.is_file():
-        logger.info(f"FULLMAP DOWNLOAD REUSE | FILE: {final_path}")
+        download_logger.info("Reusing cached BABEL file: {path}", path=final_path)
         return final_path
 
     last_error: Optional[Exception] = None
@@ -196,17 +196,19 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
                 status: int = response.getcode()
                 mode: str = "ab" if offset > 0 and status == 206 else "wb"
                 if offset > 0 and status != 206:
-                    logger.warning(f"FULLMAP DOWNLOAD RESTART | URL: {url} | STATUS: {status}")
+                    download_logger.warning("Server ignored Range header (HTTP {status}); restarting download: {url}", status=status, url=url)
                 with part_path.open(mode) as handle:
                     stream_copy(response, handle)
             part_path.replace(final_path)
-            logger.info(f"FULLMAP DOWNLOAD DONE | FILE: {final_path} | URL: {url}")
+            download_logger.info("Downloaded {url} -> {path}", url=url, path=final_path)
             return final_path
         except (OSError, URLError) as e:
             last_error = e
-            logger.warning(f"FULLMAP DOWNLOAD RETRY | ATTEMPT: {attempt}/{retries} | URL: {url} | ERROR: {e}")
+            download_logger.warning(
+                "Download attempt {attempt}/{retries} failed for {url}: {error}", attempt=attempt, retries=retries, url=url, error=e
+            )
             time.sleep(5)
-    raise RuntimeError(f"failed to download BABEL file after {retries} attempts: {url}") from last_error
+    raise BabelDownloadError(url, retries, last_error or RuntimeError("no attempts made")) from last_error
 
 
 def stream_copy(source: BinaryIO, destination: BinaryIO) -> None:
@@ -257,4 +259,10 @@ def build_fullmap(
     synonym_files: list[Path]
     class_files, synonym_files = download_babel_inputs(version, cache)
     rs.build_fullmap_db(output, class_files, synonym_files, version, threads=threads, write_batch_size=write_batch_size)
-    logger.info(f"FULLMAP BUILD DONE | OUTPUT: {output} | CLASSES: {len(class_files)} | SYNONYMS: {len(synonym_files)} | VERSION: {version}")
+    logger.info(
+        "Built fullmap v{version}: {classes} classes, {synonyms} synonyms -> {output}",
+        version=version,
+        classes=len(class_files),
+        synonyms=len(synonym_files),
+        output=output,
+    )

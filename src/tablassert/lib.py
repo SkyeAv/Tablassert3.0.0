@@ -410,7 +410,7 @@ def to_store(lf: pl.LazyFrame, p: Path, config_name: str) -> Path:
     df: pl.DataFrame = lf.collect()
 
     if df.height == 0:
-        logger.warning(f"EMPTY SUBGRAPH | HASH: {p.stem} | CONFIG: {config_name}")
+        logger.warning("Section {config} ({hash}) produced 0 rows", config=config_name, hash=p.stem)
     df.write_parquet(p)
 
     return p

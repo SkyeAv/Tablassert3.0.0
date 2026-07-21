@@ -11,6 +11,7 @@ from rapidfuzz import process as rf_process
 from sklearn.metrics import pairwise
 
 import tablassert.qc as qc
+from tablassert.errors import QcCudaNoCpuFallbackError
 
 
 # ? QC Provider Defaults To CPU Runtime
@@ -45,7 +46,7 @@ def test_get_qc_provider_hardfails_when_cuda_unavailable(monkeypatch: Any) -> No
     monkeypatch.setattr(qc, "ort", DummyOrt())
     monkeypatch.setattr(qc, "has_qc_runtime", lambda name: name == "onnxruntime-gpu")
 
-    with pytest.raises(RuntimeError, match="will not fall back to CPU"):
+    with pytest.raises(QcCudaNoCpuFallbackError, match="will not fall back to CPU"):
         qc.get_qc_provider()
 
 
@@ -88,8 +89,8 @@ def test_fullmap_audit_suppresses_logs(monkeypatch: Any) -> None:
     messages: list[str] = []
 
     class DummyLogger:
-        def info(self, message: str) -> None:
-            messages.append(message)
+        def info(self, message: str, *args: Any, **kwargs: Any) -> None:
+            messages.append(message.format(*args, **kwargs) if kwargs else message)
 
     class DummyBioBERT:
         def encode(self, values: list[str]) -> object:
@@ -118,8 +119,8 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
     messages: list[str] = []
 
     class DummyLogger:
-        def info(self, message: str) -> None:
-            messages.append(message)
+        def info(self, message: str, *args: Any, **kwargs: Any) -> None:
+            messages.append(message.format(*args, **kwargs) if kwargs else message)
 
     class DummyBioBERT:
         def encode(self, values: list[str]) -> object:
@@ -142,11 +143,11 @@ def test_fullmap_audit_logs_failures(monkeypatch: Any) -> None:
 
     assert result.height == 0
     assert len(messages) == 1
-    assert "FAILED" in messages[0]
-    assert "HASH: store123" in messages[0]
-    assert "CONFIG: config.yaml" in messages[0]
-    assert "FUZZ:" in messages[0]
-    assert "BERT:" in messages[0]
+    assert "QC rejected" in messages[0]
+    assert "hash=store123" in messages[0]
+    assert "config=config.yaml" in messages[0]
+    assert "fuzz=" in messages[0]
+    assert "bert=" in messages[0]
 
 
 # ? fullmap_audit Log Message Contains Expected Score Values
@@ -154,8 +155,8 @@ def test_fullmap_audit_log_score_values(monkeypatch: Any) -> None:
     messages: list[str] = []
 
     class DummyLogger:
-        def info(self, message: str) -> None:
-            messages.append(message)
+        def info(self, message: str, *args: Any, **kwargs: Any) -> None:
+            messages.append(message.format(*args, **kwargs) if kwargs else message)
 
     class DummyBioBERT:
         def encode(self, values: list[str]) -> object:
@@ -177,8 +178,8 @@ def test_fullmap_audit_log_score_values(monkeypatch: Any) -> None:
 
     assert result.height == 0
     assert len(messages) == 1
-    assert "FUZZ: 8.0" in messages[0]
-    assert "BERT: 0.05" in messages[0]
+    assert "fuzz=8.0" in messages[0]
+    assert "bert=0.05" in messages[0]
 
 
 # ? GPU Runtime Can Be Forced To CPU

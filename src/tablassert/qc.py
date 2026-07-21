@@ -17,6 +17,7 @@ else:
     sentence_transformers = Lazy.load("sentence_transformers")
     pl = Lazy.load("polars")
 
+from tablassert.errors import QcCudaNoCpuFallbackError, QcCudaPackageMissingError, QcCudaProviderUnavailableError, QcRuntimeMissingError
 from tablassert.log import cat
 from tablassert.utils import BASE
 
@@ -46,30 +47,26 @@ def get_qc_provider(provider: Optional[Literal["cpu", "cuda"]] = None) -> tuple[
     if provider == "cpu":
         if has_cpu or has_cuda:
             return CPU_PROVIDER, None
-        raise RuntimeError("03 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
+        raise QcRuntimeMissingError()
 
     if provider == "cuda":
         if not has_cuda:
-            raise RuntimeError("04 | QC requested CUDA runtime but onnxruntime-gpu is not installed. Install tablassert[qc-cuda].")
+            raise QcCudaPackageMissingError()
         available: list[str] = ort.get_available_providers()  # pyright: ignore
         if CUDA_PROVIDER not in available:
-            raise RuntimeError(
-                "05 | QC requested CUDA runtime but CUDAExecutionProvider is unavailable. Verify the CUDA/cuDNN environment for tablassert[qc-cuda]."
-            )
+            raise QcCudaProviderUnavailableError(requested=True)
         return CUDA_PROVIDER, {"device_id": 0}
 
     if has_cuda:
         available = ort.get_available_providers()  # pyright: ignore
         if CUDA_PROVIDER not in available:
-            raise RuntimeError(
-                "06 | Detected onnxruntime-gpu but CUDAExecutionProvider is unavailable. Tablassert will not fall back to CPU from qc-cuda. Install tablassert[qc] or fix the CUDA/cuDNN environment."
-            )
+            raise QcCudaNoCpuFallbackError()
         return CUDA_PROVIDER, {"device_id": 0}
 
     if has_cpu:
         return CPU_PROVIDER, None
 
-    raise RuntimeError("07 | QC requires optional runtime dependencies. Install tablassert[qc] or tablassert[qc-cuda].")
+    raise QcRuntimeMissingError()
 
 
 def get_biobert(provider: Optional[Literal["cpu", "cuda"]] = None) -> object:
@@ -195,9 +192,19 @@ def fullmap_audit(
         bert_sims: list[object] = pending.get_column("bert_similarity").to_list() if has_bert else []
 
         for i, c in enumerate(curies):
-            msg: str = f"FAILED | HASH: {section_hash} | CONFIG: {config_file} | COL: {col} | ORIGINAL: {originals_list[i]!r} | PREFERRED: {preferreds_list[i]!r} | CURIE: {c!r} | FUZZ: {fuzz_partials[i]}"
+            fields: dict[str, object] = {
+                "curie": c,
+                "original": originals_list[i],
+                "preferred": preferreds_list[i],
+                "col": col,
+                "fuzz": fuzz_partials[i],
+                "config": config_file,
+                "hash": section_hash,
+            }
+            template: str = "QC rejected {curie!r}: original={original!r} preferred={preferred!r} col={col} fuzz={fuzz} config={config} hash={hash}"
             if has_bert:
-                msg = f"{msg} | BERT: {bert_sims[i]}"
-            logger.info(msg)
+                fields["bert"] = bert_sims[i]
+                template += " bert={bert}"
+            logger.info(template, **fields)  # pyright: ignore
 
     return df.join(passed.select(col), on=col, how="semi").lazy()

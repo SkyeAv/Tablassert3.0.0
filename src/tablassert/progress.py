@@ -30,8 +30,8 @@ def flatten_pydantic_error(e: "ValidationError") -> str:
         loc: str = ".".join(str(p) for p in err.get("loc", ())) or "<root>"
         msg: str = str(err.get("msg", "")).replace("\n", " ").replace("|", "/").strip()
         kind: str = str(err.get("type", ""))
-        parts.append(f"LOC: {loc} MSG: {msg} TYPE: {kind}")
-    return " ; ".join(parts)
+        parts.append(f"{loc}: {msg} [{kind}]")
+    return "; ".join(parts)
 
 
 def _truncate(s: str, max_width: int) -> str:
