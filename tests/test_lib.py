@@ -740,7 +740,7 @@ def test_dedup_stream_nodes(tmp_path: Path) -> None:
 
 # ? dedup_stream Labels Edges With UUID Shaped ids And Deduplicates
 def test_dedup_stream_edges(tmp_path: Path) -> None:
-    import orjson
+    import json
 
     p_in: Path = tmp_path / "edges.ndjson.tmp"
     p_in.write_text('{"subject":"A","object":"B","predicate":"r"}\n{"subject":"A","object":"B","predicate":"r"}\n')
@@ -750,7 +750,7 @@ def test_dedup_stream_edges(tmp_path: Path) -> None:
     assert not p_in.exists()
     lines: list[str] = (tmp_path / "edges.ndjson").read_text().strip().splitlines()
     assert len(lines) == 1  # ? duplicate edges collapse to one
-    row: dict = orjson.loads(lines[0])
+    row: dict = json.loads(lines[0])
     assert "id" in row
 
 
