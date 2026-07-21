@@ -12,8 +12,12 @@ default = []
 extension-module = ["pyo3/extension-module"]
 
 [dependencies]
+bincode = "1"
+flate2 = "1"
 md5 = "0.7"
 pyo3 = "0.29"
+redb = "2"
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 uuid = "1"
 xxhash-rust = { version = "0.8", features = ["xxh64"] }

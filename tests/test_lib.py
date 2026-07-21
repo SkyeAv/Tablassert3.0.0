@@ -3,10 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
-import duckdb
 import polars as pl
 
-import tablassert.fullmap as fullmap
 import tablassert.lib as lib
 from tablassert.enums import ALLOWED_EDGE_FIELDS, Repositories
 from tablassert.ingests import from_yaml
@@ -140,7 +138,7 @@ def test_tcode_collect_skips_qc_by_default(fixtures_path: Path) -> None:
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     qc_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "fullmap_audit"]
 
     assert qc_ops == []
@@ -154,7 +152,7 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     qc_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "fullmap_audit"]
 
     assert len(qc_ops) == 2
@@ -170,7 +168,7 @@ def test_tcode_collect_passes_local_path_to_csv_reader(fixtures_path: Path) -> N
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     csv_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "csv"]
 
     assert csv_ops[0][1] == (tcode_model.source.local, tcode_model.source.delimiter)  # pyright: ignore
@@ -215,7 +213,7 @@ def test_tcode_collect_adds_upstream_resource_ids(fixtures_path: Path) -> None:
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if len(op[1]) > 0 and op[1][0] == "upstream_resource_ids"]
     assert ops[0][1] == ("upstream_resource_ids", ["infores:pubmed-central"])
 
@@ -262,7 +260,7 @@ def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "MULTIOMICS_KG"}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
 
     assert len(rid_ops) == 1
@@ -277,7 +275,7 @@ def test_tcode_collect_omits_resource_id_when_unnamed(fixtures_path: Path) -> No
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
 
     assert rid_ops == []
@@ -291,7 +289,7 @@ def test_tcode_collect_emits_source_record_urls_list(fixtures_path: Path) -> Non
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "source_record_urls"]
     url_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "url"]
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"]}).lazy()
@@ -315,7 +313,7 @@ def test_tcode_original_value_before_regex_for_columns(fixtures_path: Path) -> N
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
     assert "original_subject" in targets
     assert "original_object" in targets
@@ -333,7 +331,7 @@ def test_tcode_original_value_present_for_value_encoding(fixtures_path: Path) ->
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     targets: list[str] = [op[1][0] for op in collected if op[0].__name__ == "column" and len(op[1]) > 1]
     assert "original_subject" in targets
     assert "original_object" in targets
@@ -343,20 +341,8 @@ def test_tcode_original_value_present_for_value_encoding(fixtures_path: Path) ->
 def test_resolve_many_skips_qc(monkeypatch: Any, tmp_path: Path) -> None:
     calls: list[tuple[Any, ...]] = []
 
-    class DummyConn:
-        def __enter__(self) -> object:
-            return object()
-
-        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-            return None
-
-    class DummyDuckDB:
-        def connect(self, path: Path, read_only: bool = True) -> DummyConn:
-            calls.append(("connect", path, read_only))
-            return DummyConn()
-
-    def fake_resolve(lf: pl.LazyFrame, col: str, conns: list[object], **kwargs: Any) -> pl.LazyFrame:
-        calls.append(("resolve", col, len(conns), kwargs))
+    def fake_resolve(lf: pl.LazyFrame, col: str, db: Path, **kwargs: Any) -> pl.LazyFrame:
+        calls.append(("resolve", col, db, kwargs))
         return lf
 
     def fake_qc(
@@ -365,15 +351,18 @@ def test_resolve_many_skips_qc(monkeypatch: Any, tmp_path: Path) -> None:
         calls.append(("qc", col, section_hash, config_file, out, log, provider))
         return lf
 
-    monkeypatch.setattr(lib, "duckdb", DummyDuckDB())
     monkeypatch.setattr(lib, "resolve", fake_resolve)
     monkeypatch.setattr(lib, "fullmap_audit", fake_qc)
-    monkeypatch.setattr(lib, "SHARDS", 2)
 
     result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1", "TP53"], tmp_path, qc=False)
 
     assert len(result) == 2
-    assert any(call[0] == "resolve" for call in calls)
+    assert (
+        "resolve",
+        "subject",
+        tmp_path / "data" / "fullmap.redb",
+        {"taxon": None, "prioritize": None, "avoid": None, "column_context": True},
+    ) in calls
     assert not any(call[0] == "qc" for call in calls)
 
 
@@ -381,20 +370,8 @@ def test_resolve_many_skips_qc(monkeypatch: Any, tmp_path: Path) -> None:
 def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
     calls: list[tuple[Any, ...]] = []
 
-    class DummyConn:
-        def __enter__(self) -> object:
-            return object()
-
-        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-            return None
-
-    class DummyDuckDB:
-        def connect(self, path: Path, read_only: bool = True) -> DummyConn:
-            calls.append(("connect", path, read_only))
-            return DummyConn()
-
-    def fake_resolve(lf: pl.LazyFrame, col: str, conns: list[object], **kwargs: Any) -> pl.LazyFrame:
-        calls.append(("resolve", col, len(conns), kwargs))
+    def fake_resolve(lf: pl.LazyFrame, col: str, db: Path, **kwargs: Any) -> pl.LazyFrame:
+        calls.append(("resolve", col, db, kwargs))
         return lf
 
     def fake_qc(
@@ -403,10 +380,8 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
         calls.append(("qc", col, section_hash, config_file, out, log, provider))
         return lf.with_columns(pl.lit("YES").alias(out))
 
-    monkeypatch.setattr(lib, "duckdb", DummyDuckDB())
     monkeypatch.setattr(lib, "resolve", fake_resolve)
     monkeypatch.setattr(lib, "fullmap_audit", fake_qc)
-    monkeypatch.setattr(lib, "SHARDS", 2)
 
     result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1"], tmp_path, qc=True)
 
@@ -414,52 +389,22 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
     assert ("qc", "subject", "", "", "passed", True, None) in calls
 
 
-# ? resolve_many Uses Datassert Like DuckDB Shard
-def test_resolve_many_uses_datassert_like_duckdb_shard(monkeypatch: Any, tmp_path: Path) -> None:
-    real_connect: Any = duckdb.connect
-    opened: list[tuple[Path, bool]] = []
+# ? resolve_many Accepts A Direct Fullmap Redb File Path
+def test_resolve_many_accepts_direct_fullmap_file(monkeypatch: Any, tmp_path: Path) -> None:
+    calls: list[Path] = []
+    db: Path = tmp_path / "fullmap.redb"
+    db.touch()
 
-    class MemoryShard:
-        con: Any
+    def fake_resolve(lf: pl.LazyFrame, col: str, db_path: Path, **kwargs: Any) -> pl.LazyFrame:
+        calls.append(db_path)
+        return lf
 
-        def __enter__(self) -> Any:
-            self.con = real_connect(":memory:")
-            self.con.execute("CREATE TABLE SOURCES (SOURCE_ID INTEGER, SOURCE_NAME VARCHAR, SOURCE_VERSION VARCHAR)")
-            self.con.execute("CREATE TABLE CATEGORIES (CATEGORY_ID INTEGER, CATEGORY_NAME VARCHAR)")
-            self.con.execute("CREATE TABLE CURIES (CURIE_ID INTEGER, CURIE VARCHAR, PREFERRED_NAME VARCHAR, CATEGORY_ID INTEGER, TAXON_ID BIGINT)")
-            self.con.execute("CREATE TABLE SYNONYMS (SYNONYM VARCHAR, CURIE_ID INTEGER, SOURCE_ID INTEGER)")
-            self.con.execute("INSERT INTO SOURCES VALUES (1, 'HGNC', '2026-07')")
-            self.con.execute("INSERT INTO CATEGORIES VALUES (1, 'Gene')")
-            self.con.execute("INSERT INTO CURIES VALUES (1, 'HGNC:1100', 'BRCA1', 1, 9606)")
-            self.con.execute("INSERT INTO SYNONYMS VALUES ('brca1', 1, 1)")
-            return self.con
+    monkeypatch.setattr(lib, "resolve", fake_resolve)
 
-        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-            self.con.close()
+    result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1"], db, qc=False)
 
-    def fake_connect(path: Path, read_only: bool = True) -> MemoryShard:
-        opened.append((path, read_only))
-        return MemoryShard()
-
-    monkeypatch.setattr(lib.duckdb, "connect", fake_connect)
-    monkeypatch.setattr(lib, "SHARDS", 1)
-    monkeypatch.setattr(fullmap, "SHARDS", 1)
-
-    result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1"], tmp_path, qc=False)
-
-    assert opened == [(tmp_path / "data" / "0.duckdb", True)]
-    assert result == [
-        {
-            "subject": "HGNC:1100",
-            "original_subject": "BRCA1",
-            "subject_name": "BRCA1",
-            "subject_category": "biolink:Gene",
-            "subject_taxon": "NCBITaxon:9606",
-            "subject_source": "HGNC",
-            "subject_source_version": "2026-07",
-            "subject_nlp_level": 1,
-        }
-    ]
+    assert calls == [db]
+    assert result == [{"subject": "brca1", "original_subject": "BRCA1", "subject_two": "brca1"}]
 
 
 # ? sig Uses Exact "p_value" Column When Present Alongside Other P-Value Columns
@@ -1118,7 +1063,7 @@ def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) 
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_pvalue_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
@@ -1134,7 +1079,7 @@ def test_tcode_collect_coerces_study_size_before_clean_numeric(fixtures_path: Pa
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect([])  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_size_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 

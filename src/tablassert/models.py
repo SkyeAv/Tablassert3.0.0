@@ -271,4 +271,4 @@ class Graph(TablaBase):
     log: bool = Field(False, description="Whether to log unmatched entities and audit details during graph builds.")
     qc: bool = Field(False, description="Whether to run the QC audit stage during graph builds.")
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
-    datassert: Path = Field(..., description="Base datassert directory containing data shard DuckDB files.", examples=[".datassert"])
+    datassert: Path = Field(..., description="Base datassert directory or fullmap redb file for entity resolution.", examples=[".datassert"])

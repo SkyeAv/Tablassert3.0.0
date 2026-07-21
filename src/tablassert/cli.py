@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from contextlib import ExitStack
 from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Annotated, TYPE_CHECKING, Any
+from typing import Annotated, TYPE_CHECKING, Any, Optional
 
 import cyclopts
 import lazy_loader as Lazy
@@ -13,14 +12,12 @@ import lazy_loader as Lazy
 from tablassert.log import logger
 
 if TYPE_CHECKING:
-    import duckdb
     import pydantic
 
     from tablassert.lib import Tcode  # noqa: F401
     from tablassert.models import Graph  # noqa: F401
     from tablassert.progress import PipelineProgress
 else:
-    duckdb = Lazy.load("duckdb")
     pydantic = Lazy.load("pydantic")
 
 APP: cyclopts.App = cyclopts.App(
@@ -30,7 +27,7 @@ APP: cyclopts.App = cyclopts.App(
 
 def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False) -> None:
     # ? Build A Knowledge Graph From A Configuration File
-    from tablassert.fullmap import SHARDS
+    from tablassert.fullmap import fullmap_db_path
     from tablassert.ingests import from_yaml, to_sections
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
     from tablassert.models import Graph
@@ -71,28 +68,27 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
             ) from e
         advance()
 
-    with ExitStack() as stack:
-        conns: list[object] = [stack.enter_context(duckdb.connect(g.datassert / "data" / f"{x}.duckdb", read_only=True)) for x in range(SHARDS)]
+    db: Path = fullmap_db_path(g.datassert)
 
-        # * Collect Instructions (4/6)
-        progress.stage("Collecting Instructions")
-        start, advance, sub_step = progress.section_loop(n, "Collect")
-        instructions: list[Any] = []
-        for x in tcode:
-            start(format_section_compact(x))
-            sub_step("planning")
-            instructions.append(x.collect(conns))  # pyright: ignore
-            advance()
+    # * Collect Instructions (4/6)
+    progress.stage("Collecting Instructions")
+    start, advance, sub_step = progress.section_loop(n, "Collect")
+    instructions: list[Any] = []
+    for x in tcode:
+        start(format_section_compact(x))
+        sub_step("planning")
+        instructions.append(x.collect(db))
+        advance()
 
-        # * Build Subgraphs (5/6)
-        progress.stage("Building Subgraphs")
-        start, advance, sub_step = progress.section_loop(n, "Subgraph")
-        subgraphs: list[Path] = []
-        for x, op in zip(tcode, instructions):
-            start(format_section_compact(x))
-            # ! on_phase drives the per-op sub-step indicator (load → filter → resolve → write ...)
-            subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op, on_phase=sub_step))
-            advance()
+    # * Build Subgraphs (5/6)
+    progress.stage("Building Subgraphs")
+    start, advance, sub_step = progress.section_loop(n, "Subgraph")
+    subgraphs: list[Path] = []
+    for x, op in zip(tcode, instructions):
+        start(format_section_compact(x))
+        # ! on_phase drives the per-op sub-step indicator (load → filter → resolve → write ...)
+        subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op, on_phase=sub_step))
+        advance()
 
     # * Compile Graph (6/6)
     progress.stage("Compiling Graph")
@@ -160,3 +156,21 @@ def build(graph_configuration_file: Path, release: Annotated[bool, cyclopts.Para
 def validate(table_configuration_file: Path) -> None:
     """Validate section syntax from a YAML configuration file."""
     run(3, validate_pipeline, table_configuration_file)
+
+
+@APP.command(name="build-fullmap")
+def build_fullmap(
+    output: Path = Path("./datassert/data/fullmap.redb"),
+    classes: Annotated[Optional[list[Path]], cyclopts.Parameter(name="--classes")] = None,
+    synonyms: Annotated[Optional[list[Path]], cyclopts.Parameter(name="--synonyms")] = None,
+    version: str = "2025sep1",
+    threads: Optional[int] = None,
+    write_batch_size: int = 50_000,
+) -> None:
+    """Build an embedded fullmap redb database from local BABEL JSONL/JSONL.GZ files."""
+    from tablassert import rs
+
+    class_files: list[Path] = classes or []
+    synonym_files: list[Path] = synonyms or []
+    rs.build_fullmap_db(output, class_files, synonym_files, version, threads=threads, write_batch_size=write_batch_size)
+    logger.info(f"FULLMAP BUILD DONE | OUTPUT: {output} | CLASSES: {len(class_files)} | SYNONYMS: {len(synonym_files)} | VERSION: {version}")

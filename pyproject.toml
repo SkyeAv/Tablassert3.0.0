@@ -48,7 +48,6 @@ dependencies = [
     "loguru>=0.7.3",
     "orjson>=3.11.7",
     "polars>=1.39.0",
-    "polars-hash>=0.5.6",
     "pyarrow>=23.0.1",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",

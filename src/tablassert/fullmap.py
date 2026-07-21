@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from operator import add
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import lazy_loader as Lazy
 
+from tablassert import rs
 from tablassert.enums import Categories
 from tablassert.log import cat
 
@@ -12,13 +14,8 @@ logger = cat("FULLMAP")
 
 if TYPE_CHECKING:
     import polars as pl
-    import polars_hash as plh
 else:
     pl = Lazy.load("polars")
-    plh = Lazy.load("polars_hash")
-
-
-SHARDS: int = 10
 
 
 def empty_matches(column_context: bool) -> pl.DataFrame:
@@ -53,50 +50,7 @@ def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFr
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown|not applicable|p_value|variable|result|exposure|expression|symbol)$|^$"
     terms = terms.filter(~pl.col(col).str.contains(bad))
-    return terms.with_columns((plh.col(col).nchash.xxhash64() % SHARDS).alias("shard"))  # pyright: ignore
-
-
-def query_builder(prioritize: Optional[list[Categories]], avoid: Optional[list[Categories]], taxon: Optional[str]) -> str:
-    # ? Build Query With UNION For Better Index Utilization
-    base: str = """
-    SELECT
-        PA.term,
-        CU.CURIE,
-        CU.PREFERRED_NAME,
-        CA.CATEGORY_NAME,
-        CU.TAXON_ID,
-        SO.SOURCE_NAME,
-        SO.SOURCE_VERSION,
-        PA."nlp_level" AS NLP_LEVEL,
-        CASE
-            {priority_case}
-            ELSE 50
-        END * CASE
-            WHEN LOWER(CU.PREFERRED_NAME) = PA.term THEN 1
-            ELSE 10
-        END AS PR
-    FROM SYNONYMS SY
-    JOIN SOURCES SO ON SY.SOURCE_ID = SO.SOURCE_ID
-    JOIN CURIES CU ON SY.CURIE_ID = CU.CURIE_ID
-    JOIN CATEGORIES CA ON CU.CATEGORY_ID = CA.CATEGORY_ID
-        {avoid_filter}
-    JOIN PARQUET PA ON PA.term = SY.SYNONYM
-    {taxon_filter}
-"""
-
-    priority_list: str = ", ".join("'" + x + "'" for x in prioritize) if prioritize else ""
-    priority_case: str = f"WHEN CA.CATEGORY_NAME IN ({priority_list}) THEN 1" if prioritize else "WHEN TRUE THEN 50"
-    avoid_list: str = ", ".join("'" + x + "'" for x in avoid) if avoid else ""
-    avoid_filter: str = f"AND CA.CATEGORY_NAME NOT IN ({avoid_list})" if avoid else ""
-    taxon_filter: str = f"WHERE CU.TAXON_ID = {taxon} OR CA.CATEGORY_NAME != 'Gene'" if taxon else ""
-
-    return base.format(priority_case=priority_case, avoid_filter=avoid_filter, taxon_filter=taxon_filter)
-
-
-def query_shard(conn: object, df: pl.DataFrame, query: str) -> pl.DataFrame:
-    # ? Query A Single Shard Database For Distinct Terms
-    conn.register("PARQUET", df.to_arrow())  # pyright: ignore
-    return conn.execute(query).pl()  # pyright: ignore
+    return terms
 
 
 def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFrame:
@@ -116,31 +70,52 @@ def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFra
 
 def query_distinct(
     lf: pl.LazyFrame,
-    conns: list[object],
+    db: Path,
     taxon: Optional[str],
     prioritize: Optional[list[Categories]],
     avoid: Optional[list[Categories]],
     column_context: bool,
+    threads: Optional[int] = None,
 ) -> pl.DataFrame:
-    # ? Query All Shard Databases In Parallel Using Thread Pool
+    # ? Query The Embedded Fullmap Database For Distinct Terms
     # * Added Column Prioritization Logic From 4.2.0
-    shards: dict[tuple[str], pl.DataFrame] = lf.collect().partition_by("shard", as_dict=True)
-    if len(shards) == 0:
+    terms: pl.DataFrame = lf.collect()
+    if terms.height == 0:
         return empty_matches(column_context)
 
-    results: list[pl.DataFrame] = []
-    query: str = query_builder(prioritize, avoid, taxon)
-    for shard, df in shards.items():
-        shard_number: int = int(shard[0])
-        conn: object = conns[shard_number]  # type: ignore
-
-        results += [query_shard(conn, df, query)]
-
-    if len(results) == 0:
+    rows: list[dict[str, object]] = rs.lookup_fullmap_terms(db, terms.get_column("term").to_list(), threads=threads)
+    if len(rows) == 0:
         return empty_matches(column_context)
 
-    result: pl.DataFrame = pl.concat(results, how="vertical")
+    result: pl.DataFrame = pl.DataFrame(rows).join(terms, on="term", how="inner").rename({"nlp_level": "NLP_LEVEL"})
+    if avoid:
+        avoid_values: list[str] = [x.value for x in avoid]
+        result = result.filter(~pl.col("CATEGORY_NAME").is_in(avoid_values))
+    if taxon:
+        taxon_id: int = int(taxon)
+        result = result.filter((pl.col("TAXON_ID") == taxon_id) | (pl.col("CATEGORY_NAME") != Categories.GENE.value))
+    if result.height == 0:
+        return empty_matches(column_context)
+
+    if prioritize:
+        priority_values: list[str] = [x.value for x in prioritize]
+        priority: pl.Expr = pl.when(pl.col("CATEGORY_NAME").is_in(priority_values)).then(pl.lit(1)).otherwise(pl.lit(50))
+    else:
+        priority = pl.lit(50)
+    result = result.with_columns(
+        (priority * pl.when(pl.col("PREFERRED_NAME").str.to_lowercase() == pl.col("term")).then(pl.lit(1)).otherwise(pl.lit(10))).alias("PR")
+    )
     return deduplicate_result(result, column_context)
+
+
+def fullmap_db_path(datassert: Path) -> Path:
+    # ? Resolves Existing Datassert Base Paths To The Embedded Redb File
+    if datassert.is_file() or datassert.suffix == ".redb":
+        return datassert
+    direct: Path = datassert / "fullmap.redb"
+    if direct.is_file():
+        return direct
+    return datassert / "data" / "fullmap.redb"
 
 
 def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]) -> None:
@@ -158,7 +133,7 @@ def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_
 def resolve(
     lf: pl.LazyFrame,
     col: str,
-    conns: list[object],
+    db: Path,
     taxon: Optional[str] = None,
     prioritize: Optional[list[Categories]] = None,
     avoid: Optional[list[Categories]] = None,
@@ -167,13 +142,14 @@ def resolve(
     config_file: Optional[str] = None,
     column_context: bool = True,
     tag: str = "_two",
+    threads: Optional[int] = None,
 ) -> pl.LazyFrame:
     # ? Case Dependant, Provenance Rich Name Entity Recognition
     l1: str = col
     l2: str = add(l1, tag)
 
     terms: pl.LazyFrame = distinct(lf, l1, l2)
-    matches: pl.DataFrame = query_distinct(terms, conns, taxon, prioritize, avoid, column_context)
+    matches: pl.DataFrame = query_distinct(terms, db, taxon, prioritize, avoid, column_context, threads=threads)
 
     if log:
         log_unmatched(col, terms, matches, section_hash, config_file)

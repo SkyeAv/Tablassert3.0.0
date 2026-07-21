@@ -4,7 +4,6 @@ import math
 import operator
 import re
 from collections.abc import Iterable
-from contextlib import ExitStack
 from functools import cache
 from operator import add, eq, le
 from pathlib import Path
@@ -15,18 +14,16 @@ from pydantic import Field, NonNegativeInt
 
 from tablassert import rs
 from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
-from tablassert.fullmap import SHARDS, resolve
+from tablassert.fullmap import fullmap_db_path, resolve
 from tablassert.log import cat
 from tablassert.models import DEFAULT_RIG_UI_EXPLANATION, Encoding, NodeEncoding, Section, default_rig_contributions
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
 
 if TYPE_CHECKING:
-    import duckdb
     import numpy as np
     import polars as pl
 else:
-    duckdb = Lazy.load("duckdb")
     np = Lazy.load("numpy")
     pl = Lazy.load("polars")
 
@@ -443,14 +440,14 @@ class Tcode(Section):
             [(math_op, (col, t.function, t.arguments)) for t in x.transformations] if x.transformations else None,
         ]
 
-    def node(self: Self, x: NodeEncoding, col: str, conns: list[object]) -> list[Any]:
+    def node(self: Self, x: NodeEncoding, col: str, db: Path) -> list[Any]:
         # ? Collect Helper For NodeEncoding Classes
         encoding: list[Any] = self.encoding(x, col, table_literal=True)
         node: list[Any] = [
             (column, (add(col, "_pre_resolution"), col)),
             (level_one, (col,)),
             (level_two, (col,)),
-            (resolve, (col, conns, x.taxon, x.prioritize, x.avoid, self.log, self.store.stem, self.config.name, True)),
+            (resolve, (col, db, x.taxon, x.prioritize, x.avoid, self.log, self.store.stem, self.config.name, True)),
             (fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) if self.qc else None,
         ]
         return add(encoding, node)
@@ -467,7 +464,7 @@ class Tcode(Section):
                 result.append(x)
         return result
 
-    def collect(self: Self, conns: list[object]) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+    def collect(self: Self, db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
         # ? Code That Tells Tablassert What Actions To While Transforming Data
 
         if self.store.is_file():
@@ -494,11 +491,11 @@ class Tcode(Section):
                 (coerce_pvalue_columns, ()),
                 (coerce_study_size_columns, ()),
                 (clean_numeric, ()),
-                self.node(self.statement.subject, "subject", conns),
-                self.node(self.statement.object, "object", conns),
+                self.node(self.statement.subject, "subject", db),
+                self.node(self.statement.object, "object", db),
                 (value, ("predicate", add("biolink:", self.statement.predicate))),
                 (edge_category, ()),
-                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, conns)] if self.statement.qualifiers else None,
+                [op for x in self.statement.qualifiers for op in self.node(x, x.qualifier, db)] if self.statement.qualifiers else None,
                 (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
                 (value, ("knowledge_level", self.provenance.knowledge_level)),
                 (value, ("agent_type", self.provenance.agent_type)),
@@ -906,12 +903,9 @@ def resolve_many(
     lf = level_one(lf, col)
     lf = level_two(lf, col)
 
-    with ExitStack() as stack:
-        conns: list[object] = [stack.enter_context(duckdb.connect(datassert / "data" / f"{x}.duckdb", read_only=True)) for x in range(SHARDS)]
-
-        lf = resolve(lf, col, conns, taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
-        if qc:
-            lf = fullmap_audit(lf, col, "", "", log=qc)
+    lf = resolve(lf, col, fullmap_db_path(datassert), taxon=taxon, prioritize=prioritize, avoid=avoid, column_context=column_context)
+    if qc:
+        lf = fullmap_audit(lf, col, "", "", log=qc)
 
     df: pl.DataFrame = lf.collect()
     # ? Drop Internal Pre-Resolution Snapshot Columns To Mirror Edge Output
