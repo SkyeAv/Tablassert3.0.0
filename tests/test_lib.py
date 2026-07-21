@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
+import duckdb
 import polars as pl
 
+import tablassert.fullmap as fullmap
 import tablassert.lib as lib
 from tablassert.enums import ALLOWED_EDGE_FIELDS, Repositories
 from tablassert.ingests import from_yaml
@@ -407,6 +409,54 @@ def test_resolve_many_runs_qc(monkeypatch: Any, tmp_path: Path) -> None:
 
     assert result == [{"subject": "brca1", "original_subject": "BRCA1", "subject_two": "brca1", "passed": "YES"}]
     assert ("qc", "subject", "", "", "passed", True, None) in calls
+
+
+# ? resolve_many Uses Datassert Like DuckDB Shard
+def test_resolve_many_uses_datassert_like_duckdb_shard(monkeypatch: Any, tmp_path: Path) -> None:
+    real_connect: Any = duckdb.connect
+    opened: list[tuple[Path, bool]] = []
+
+    class MemoryShard:
+        con: Any
+
+        def __enter__(self) -> Any:
+            self.con = real_connect(":memory:")
+            self.con.execute("CREATE TABLE SOURCES (SOURCE_ID INTEGER, SOURCE_NAME VARCHAR, SOURCE_VERSION VARCHAR)")
+            self.con.execute("CREATE TABLE CATEGORIES (CATEGORY_ID INTEGER, CATEGORY_NAME VARCHAR)")
+            self.con.execute("CREATE TABLE CURIES (CURIE_ID INTEGER, CURIE VARCHAR, PREFERRED_NAME VARCHAR, CATEGORY_ID INTEGER, TAXON_ID BIGINT)")
+            self.con.execute("CREATE TABLE SYNONYMS (SYNONYM VARCHAR, CURIE_ID INTEGER, SOURCE_ID INTEGER)")
+            self.con.execute("INSERT INTO SOURCES VALUES (1, 'HGNC', '2026-07')")
+            self.con.execute("INSERT INTO CATEGORIES VALUES (1, 'Gene')")
+            self.con.execute("INSERT INTO CURIES VALUES (1, 'HGNC:1100', 'BRCA1', 1, 9606)")
+            self.con.execute("INSERT INTO SYNONYMS VALUES ('brca1', 1, 1)")
+            return self.con
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            self.con.close()
+
+    def fake_connect(path: Path, read_only: bool = True) -> MemoryShard:
+        opened.append((path, read_only))
+        return MemoryShard()
+
+    monkeypatch.setattr(lib.duckdb, "connect", fake_connect)
+    monkeypatch.setattr(lib, "SHARDS", 1)
+    monkeypatch.setattr(fullmap, "SHARDS", 1)
+
+    result: list[dict[str, Any]] = lib.resolve_many("subject", ["BRCA1"], tmp_path, qc=False)
+
+    assert opened == [(tmp_path / "data" / "0.duckdb", True)]
+    assert result == [
+        {
+            "subject": "HGNC:1100",
+            "original_subject": "BRCA1",
+            "subject_name": "BRCA1",
+            "subject_category": "biolink:Gene",
+            "subject_taxon": "NCBITaxon:9606",
+            "subject_source": "HGNC",
+            "subject_source_version": "2026-07",
+            "subject_nlp_level": 1,
+        }
+    ]
 
 
 # ? sig Uses Exact "p_value" Column When Present Alongside Other P-Value Columns
