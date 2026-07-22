@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from operator import add
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple, Optional, cast
 
 import lazy_loader as Lazy
 
@@ -11,6 +12,10 @@ from tablassert.enums import Categories
 from tablassert.log import cat
 
 logger = cat("FULLMAP")
+
+_TERM_CACHE: OrderedDict[tuple[Path, float, str], Optional[list[tuple[int, int]]]] = OrderedDict()
+_TERM_CACHE_MAX: int = 100_000
+_SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], str]] = {}
 
 if TYPE_CHECKING:
     import polars as pl
@@ -44,6 +49,131 @@ def empty_matches(column_context: bool) -> pl.DataFrame:
         schema["FREQUENCY"] = pl.Int64
 
     return pl.DataFrame(schema=schema)  # pyright: ignore
+
+
+def _db_cache_key(db: Path) -> tuple[Path, float]:
+    """Build a cache key for a fullmap DB that invalidates on rebuild.
+
+    Args:
+        db: Path to the fullmap redb file.
+
+    Returns:
+        Canonical path and mtime seconds.
+    """
+    resolved: Path = db.resolve()
+    try:
+        return resolved, resolved.stat().st_mtime
+    except FileNotFoundError:
+        return resolved, -1.0
+
+
+def _remember_term(key: tuple[Path, float, str], value: Optional[list[tuple[int, int]]]) -> None:
+    """Store one term lookup in the bounded FIFO cache.
+
+    Args:
+        key: Cache key including database path, mtime, and term.
+        value: Raw ``(curie_id, source_id)`` records, or ``None`` for misses.
+    """
+    _TERM_CACHE[key] = value
+    while len(_TERM_CACHE) > _TERM_CACHE_MAX:
+        _TERM_CACHE.popitem(last=False)
+
+
+def _dimension_maps(db: Path, cache_key: tuple[Path, float]) -> tuple[list[str], list[str], list[str], str]:
+    """Load cached prefix/category/source dimensions for a fullmap DB.
+
+    Args:
+        db: Path to the fullmap redb file.
+        cache_key: Cache key from ``_db_cache_key``.
+
+    Returns:
+        Prefix, category, source, and source-version maps.
+    """
+    cached: Optional[tuple[list[str], list[str], list[str], str]] = _SOURCE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    source_version: str = rs.fullmap_source_version()
+    value: tuple[list[str], list[str], list[str], str] = (
+        list(rs.hydrate_prefixes(db)),
+        list(rs.hydrate_categories(db)),
+        list(rs.hydrate_sources(db)),
+        source_version,
+    )
+    _SOURCE_CACHE.clear()
+    _SOURCE_CACHE[cache_key] = value
+    return value
+
+
+def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> list[dict[str, object]]:
+    """Lookup terms using the v2 raw-pair path and hydrate rows once per batch.
+
+    Args:
+        db: Path to the fullmap redb file.
+        terms: Terms to query.
+        threads: Optional thread count forwarded to Rust.
+
+    Returns:
+        Hydrated rows matching the legacy ``lookup_fullmap_terms`` shape.
+    """
+    if not terms:
+        return []
+    cache_key: tuple[Path, float] = _db_cache_key(db)
+    pairs_by_term: dict[str, Optional[list[tuple[int, int]]]] = {}
+    misses: list[str] = []
+    for term in terms:
+        term_key: tuple[Path, float, str] = (cache_key[0], cache_key[1], term)
+        if term_key in _TERM_CACHE:
+            pairs_by_term[term] = _TERM_CACHE[term_key]
+        else:
+            misses.append(term)
+
+    if misses:
+        try:
+            pair_rows: list[dict[str, object]] = rs.lookup_fullmap_terms(db, misses, threads=threads, return_format="pairs")
+        except TypeError:
+            return rs.lookup_fullmap_terms(db, terms, threads=threads)
+        if pair_rows and "records" not in pair_rows[0]:
+            return pair_rows
+        seen: set[str] = set()
+        for row in pair_rows:
+            term = str(row["term"])
+            records_raw: list[tuple[int, int]] = cast(list[tuple[int, int]], row["records"])
+            records: list[tuple[int, int]] = [(int(curie_id), int(source_id)) for curie_id, source_id in records_raw]
+            pairs_by_term[term] = records
+            _remember_term((cache_key[0], cache_key[1], term), records)
+            seen.add(term)
+        for term in misses:
+            if term not in seen:
+                pairs_by_term[term] = None
+                _remember_term((cache_key[0], cache_key[1], term), None)
+
+    curie_ids: list[int] = sorted({curie_id for pairs in pairs_by_term.values() if pairs for curie_id, _source_id in pairs})
+    if not curie_ids:
+        return []
+    hydrated: list[dict[str, Any]] = rs.hydrate_curies(db, curie_ids)
+    curie_map: dict[int, dict[str, Any]] = dict(zip(curie_ids, hydrated))
+    prefixes, categories, sources, source_version = _dimension_maps(db, cache_key)
+    rows: list[dict[str, object]] = []
+    for term in terms:
+        pairs: Optional[list[tuple[int, int]]] = pairs_by_term.get(term)
+        if not pairs:
+            continue
+        for curie_id, source_id in pairs:
+            curie: dict[str, Any] = curie_map[curie_id]
+            prefix: str = prefixes[int(curie["prefix_id"])]
+            category: str = categories[int(curie["category_id"])]
+            rows.append(
+                {
+                    "term": term,
+                    "CURIE": add(add(prefix, ":"), str(curie["local_id"])),
+                    "PREFERRED_NAME": str(curie["preferred_name"]),
+                    "CATEGORY_NAME": category,
+                    "TAXON_ID": int(curie["taxon_id"]),
+                    "SOURCE_NAME": sources[source_id],
+                    "SOURCE_VERSION": source_version,
+                }
+            )
+    return rows
 
 
 def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFrame:
@@ -147,9 +277,14 @@ def filter_and_rank(
         priority: pl.Expr = pl.when(pl.col("CATEGORY_NAME").is_in(priority_values)).then(pl.lit(1)).otherwise(pl.lit(50))
     else:
         priority = pl.lit(50)
-    result = result.with_columns(
-        (priority * pl.when(pl.col("PREFERRED_NAME").str.to_lowercase() == pl.col("term")).then(pl.lit(1)).otherwise(pl.lit(10))).alias("PR")
+    pr_base: pl.Expr = (
+        pl.when(pl.col("PREFERRED_NAME") == pl.col("term"))
+        .then(pl.lit(1))
+        .when((pl.col("PREFERRED_NAME").str.to_lowercase() == pl.col("term")) & (pl.col("NLP_LEVEL") == 1))
+        .then(pl.lit(5))
+        .otherwise(pl.lit(10))
     )
+    result = result.with_columns((priority * pr_base).alias("PR"))
     return deduplicate_result(result, column_context)
 
 
@@ -184,7 +319,7 @@ def query_distinct(
     if terms.height == 0:
         return empty_matches(column_context)
 
-    rows: list[dict[str, object]] = rs.lookup_fullmap_terms(db, terms.get_column("term").to_list(), threads=threads)
+    rows: list[dict[str, object]] = lookup_rows(db, terms.get_column("term").to_list(), threads=threads)
     if len(rows) == 0:
         return empty_matches(column_context)
 
@@ -348,7 +483,7 @@ def resolve_batch(
 
     union_terms: list[str] = pl.concat([t.select("term") for t in collected_terms.values()]).unique().get_column("term").to_list()
 
-    rows: list[dict[str, object]] = rs.lookup_fullmap_terms(db, union_terms, threads=threads) if union_terms else []
+    rows: list[dict[str, object]] = lookup_rows(db, union_terms, threads=threads) if union_terms else []
     raw: pl.DataFrame = pl.DataFrame(rows)
 
     result: pl.LazyFrame = lf

@@ -111,7 +111,7 @@ def test_resolve_uses_fullmap_redb_schema(fullmap_db: Path) -> None:
     assert result["subject_category"] == "biolink:Gene"
     assert result["subject_taxon"] == "NCBITaxon:9606"
     assert result["subject_source"] == "HGNC"
-    assert result["subject_source_version"] == "2026-07"
+    assert result["subject_source_version"] == rs.fullmap_source_version()
 
 
 def test_resolve_uses_equivalent_identifier(fullmap_db: Path) -> None:
@@ -152,6 +152,27 @@ def test_resolve_honors_prioritize_category(fullmap_db: Path) -> None:
 
     assert result["subject"] == "UniProtKB:P28482"
     assert result["subject_category"] == "biolink:Protein"
+
+
+def test_pr_case_insensitive_preferred() -> None:
+    """case-insensitive preferred-name hits outrank synonym-only hits at the same priority."""
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1"], "nlp_level": [1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["brca1", "brca1"],
+            "CURIE": ["HGNC:1100", "HGNC:9999"],
+            "PREFERRED_NAME": ["BRCA1", "OTHER"],
+            "CATEGORY_NAME": ["Gene", "Gene"],
+            "TAXON_ID": [9606, 9606],
+            "SOURCE_NAME": ["HGNC", "HGNC"],
+            "SOURCE_VERSION": [rs.fullmap_source_version(), rs.fullmap_source_version()],
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon=None, prioritize=None, avoid=None, column_context=False)
+
+    assert matches["CURIE"].to_list() == ["HGNC:1100"]
+    assert matches["PR"].to_list() == [250]
 
 
 def test_resolve_level_two_fallback(fullmap_db: Path) -> None:
