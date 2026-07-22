@@ -26,3 +26,4 @@
 *.so
 *.coverage
 *fullmap/
+*AGENTS.md
