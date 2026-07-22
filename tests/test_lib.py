@@ -993,6 +993,11 @@ def test_parse_edge_name_no_to() -> None:
     assert parse_edge_name("ChemicalGeneInteractionAssociation") is None
 
 
+def test_parse_edge_name_embedded_or_not_split() -> None:
+    """parse_edge_name does not split on "Or" embedded inside a role name."""
+    assert parse_edge_name("OrganismTaxonToOrganismTaxonAssociation") == ("OrganismTaxon", ["OrganismTaxon"])
+
+
 def test_edge_tables_cached() -> None:
     """edge_tables returns same object on repeat calls (cached)."""
     first: tuple[dict[str, str], dict[str, str]] = edge_tables()

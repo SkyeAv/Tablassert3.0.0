@@ -52,6 +52,7 @@ pub fn dedup_ndjson(
     reader
         .lines()
         .map(|line| line.map_err(runtime_error))
+        .filter(|line| line.as_ref().map_or(true, |line| !line.trim().is_empty()))
         .map(|line| {
             line.and_then(|line| serde_json::from_str::<Value>(&line).map_err(runtime_error))
         })
@@ -174,5 +175,20 @@ mod tests {
         dedup_ndjson(input, output.clone(), false, None).expect("dedup nodes");
 
         assert_eq!(fs::read_to_string(output).expect("read output"), "");
+    }
+
+    #[test]
+    fn dedup_ndjson_skips_blank_lines() {
+        let dir = tempdir().expect("tempdir");
+        let input = dir.path().join("nodes.ndjson.tmp");
+        let output = dir.path().join("nodes.ndjson");
+        fs::write(&input, "\n  \n{\"id\":\"A\"}\n\n{\"id\":\"A\"}\n   \n").expect("write input");
+
+        dedup_ndjson(input, output.clone(), false, None).expect("dedup nodes");
+
+        assert_eq!(
+            fs::read_to_string(output).expect("read output"),
+            "{\"id\":\"A\"}\n"
+        );
     }
 }

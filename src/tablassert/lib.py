@@ -66,7 +66,9 @@ def parse_edge_name(name: str) -> Optional[tuple[str, list[str]]]:
     subj: str = ""
     rest: str = ""
     subj, rest = name.split("To", 1)
-    return (subj, rest.split("Or"))
+    # Split on Camel-case "Or" tokens only, so embedded "Or" substrings such as
+    # the one in "Organism" are not treated as object-role separators.
+    return (subj, re.split(r"(?<=[a-z])Or(?=[A-Z])", rest))
 
 
 @cache
