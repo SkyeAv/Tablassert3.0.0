@@ -10,8 +10,6 @@ Transform a gene-disease association table into KGX-compliant edges with statist
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
   source:
     kind: text
     local: ./gene-disease.csv
@@ -34,10 +32,6 @@ template:
   provenance:
     repo: PMID
     publication: "12345678"
-    contributors:
-      - kind: curation
-        name: Your Name
-        date: 01 JAN 2026
   annotations:
     - annotation: p_value
       method: column
@@ -61,8 +55,6 @@ Extract drug-target relationships from a curated interaction database.
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
   source:
     kind: text
     local: ./drug-targets.tsv
@@ -87,10 +79,6 @@ template:
   provenance:
     repo: PMID
     publication: "98765432"
-    contributors:
-      - kind: curation
-        name: Your Name
-        date: 15 FEB 2026
   annotations:
     - annotation: interaction_type
       method: column
@@ -116,8 +104,6 @@ Extract microbe-metabolite correlations with taxonomic name cleaning.
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
   source:
     kind: excel
     local: ./microbiome-correlations.xlsx
@@ -147,11 +133,7 @@ template:
       encoding: CHEBI:41774
   provenance:
     repo: PMC
-    publication: 11708054
-    contributors:
-      - kind: curation
-        name: Your Name
-        date: 01 MAR 2026
+    publication: PMC11708054
   annotations:
     - annotation: p_value
       method: column
@@ -185,7 +167,6 @@ Map genes to multiple pathways from a single source using sections.
 
 ```yaml
 template:
-  syntax: TC4
   source:
     kind: text
     local: ./gene-pathways.csv
@@ -205,10 +186,6 @@ template:
   provenance:
     repo: PMID
     publication: "11223344"
-    contributors:
-      - kind: curation
-        name: Your Name
-        date: 01 APR 2026
 
 sections:
   - statement:
@@ -252,8 +229,6 @@ Filter rows based on column values before entity resolution.
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
   source:
     kind: text
     local: ./significant-associations.csv
@@ -283,10 +258,6 @@ template:
   provenance:
     repo: PMID
     publication: "55667788"
-    contributors:
-      - kind: curation
-        name: Your Name
-        date: 01 MAY 2026
   annotations:
     - annotation: p_value
       method: column
@@ -312,8 +283,6 @@ Process hierarchical data where parent values propagate down through empty cells
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
   source:
     kind: text
     local: ./hierarchical-data.csv
@@ -336,10 +305,6 @@ template:
   provenance:
     repo: PMID
     publication: "99887766"
-    contributors:
-      - kind: curation
-        name: Your Name
-        date: 01 JUN 2026
 ```
 
 **Key techniques:**

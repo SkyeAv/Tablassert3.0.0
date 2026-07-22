@@ -56,13 +56,13 @@ Example: `"9606"` filters to human-specific entities.
 
 Optional list of Biolink categories to prefer when multiple matches exist.
 
-Example: `[Categories.Gene, Categories.Protein]` prefers gene/protein mappings.
+Example: `[Categories.GENE, Categories.PROTEIN]` prefers gene/protein mappings.
 
 **`avoid: Optional[list[Categories]]`**
 
 Optional list of Biolink categories to exclude from results.
 
-Example: `[Categories.Gene]` prevents gene mappings.
+Example: `[Categories.GENE]` prevents gene mappings.
 
 **`log: bool` (default: `True`)**
 
@@ -142,8 +142,8 @@ result = resolve(
   col="gene_symbol",
   db=db,
   taxon="9606",  # Human only
-  prioritize=[Categories.Gene],
-  avoid=[Categories.Protein],
+  prioritize=[Categories.GENE],
+  avoid=[Categories.PROTEIN],
   log=True,
   section_hash="tutorial-section",
   config_file="tutorial-table.yaml",
@@ -184,7 +184,7 @@ result = resolve(
     col="gene",
     db=db,
     taxon="9606",               # Human only
-    prioritize=[Categories.Gene],
+    prioritize=[Categories.GENE],
     log=False,
 ).collect()
 

@@ -1,9 +1,59 @@
 site_name: Tablassert
-theme: readthedocs
+site_description: Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in.
+site_url: https://skyeav.github.io/Tablassert/
+repo_url: https://github.com/SkyeAv/Tablassert
+repo_name: SkyeAv/Tablassert
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+# Scratch/planning notes that live under docs/ locally but are not part of the
+# published site (also gitignored). Excluded so they can never be built by accident.
+exclude_docs: |
+  plans/
+  specs/
+
 nav:
   - Home: index.md
   - Installation: installation.md
-  - Docker: docker.md
   - Fullmap: fullmap.md
   - CLI Reference: cli.md
   - Tutorial: tutorial.md

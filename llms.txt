@@ -8,13 +8,14 @@ Current CLI behavior queries a single embedded redb file at `fullmap/data/fullma
 
 ## Quickstart
 - [README](README.md): high-level overview, install snippets, and one-command graph build.
-- [Installation Guide](docs/installation.md): local/dev/tool/docker installation paths. Only the `rt` extra remains; all other deps are in core.
+- [Installation Guide](docs/installation.md): local/dev/tool installation paths. Optional extras: `rt` (runtime-compatible Polars) and `qc` (quality-control runtime).
 - [CLI Reference](docs/cli.md): command syntax for building graphs and validating table configs.
 - [Tutorial](docs/tutorial.md): first end-to-end run from CSV input to KGX NDJSON output.
 
 ## YAML Authoring
-- [Table Configuration Reference](docs/configuration/table.md): TC4 schema, template/sections patterns, and field semantics.
-- [Graph Configuration Reference](docs/configuration/graph.md): GC3 graph config fields and orchestration model.
+- [Table Configuration Reference](docs/configuration/table.md): the table (`Section`) schema, template/sections patterns, and field semantics.
+- [Graph Configuration Reference](docs/configuration/graph.md): the `Graph` config fields (`name`/`version`/`description`/`tables`/`fullmap`) and orchestration model.
+- [Use Case Gallery](docs/examples.md): real-world table-configuration patterns for common data types.
 - [Tutorial Table Example](docs/examples/tutorial-table.yaml): minimal working TC4 table configuration.
 - [Tutorial Graph Example](docs/examples/tutorial-graph.yaml): minimal GC3 graph configuration.
 - [Advanced Example](docs/configuration/advanced-example.md): complex regex, filtering, annotations, and section overrides.
@@ -27,7 +28,7 @@ Current CLI behavior queries a single embedded redb file at `fullmap/data/fullma
 
 ## Contributor Development
 - [Contributing Guide](CONTRIBUTING.md): setup, style conventions, checks, and PR expectations.
-- [Project Metadata](pyproject.toml): dependencies, tooling config, and CLI entrypoint. Only the `rt` optional extra remains.
+- [Project Metadata](pyproject.toml): dependencies, tooling config, and CLI entrypoint. Optional extras: `rt` and `qc`.
 - [Tests](tests/): pytest coverage and fixtures.
 - [MkDocs Configuration](mkdocs.yml): docs navigation and published pages.
 - [GitHub Workflows](.github/workflows/): release, docs, docker, and autotag automation.
@@ -37,11 +38,12 @@ Current CLI behavior queries a single embedded redb file at `fullmap/data/fullma
 - [Entity Resolution](src/tablassert/fullmap.py): embedded redb synonym resolution and ranking logic.
 - [Quality Control](src/tablassert/qc.py): exact, fuzzy, and BioBERT validation stages.
 - [Normalization](src/tablassert/nlp.py): text normalization levels and preprocessing helpers.
-- [Enums Catalog](src/tablassert/enums.py): allowed values for syntax, predicates, categories, repositories, and transforms.
+- [Enums Catalog](src/tablassert/enums.py): allowed values for predicates, qualifiers, categories, repositories, knowledge levels, agent types, and transforms.
 - [Utilities](src/tablassert/utils.py): hashing, storage path constants, and filesystem helpers.
 
 ## Optional
 - [API Reference: Fullmap](docs/api/fullmap.md): lower-level entity-resolution details.
+- [API Reference: Batch Resolution](docs/api/lib.md): the `resolve_many()` convenience function.
 - [API Reference: QC](docs/api/qc.md): quality control internals.
 - [API Reference: Utils](docs/api/utils.md): utility function references.
 - [Documentation Home](docs/index.md): docs landing page and navigation context.

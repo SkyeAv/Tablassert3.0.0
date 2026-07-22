@@ -22,11 +22,14 @@ uv sync
 
 ### Optional Extras
 
-All ML, web, and Excel dependencies are included in the core install. The only optional extra is a runtime-compatible Polars build for CPUs without required instructions:
+The core install includes everything needed to build knowledge graphs from CSV/TSV sources. Two optional extras are available:
 
 ```bash
-uv sync --extra rt   # polars[rtcompat]
+uv sync --extra rt   # polars[rtcompat] — for CPUs without the required Polars instructions
+uv sync --extra qc   # torch, sentence-transformers, rapidfuzz, scikit-learn, numpy — QC runtime
 ```
+
+Excel (`.xlsx`) input is read through Polars' `calamine` engine and additionally requires `python-calamine`.
 
 ## Development Workflow
 
@@ -82,7 +85,7 @@ uv run pre-commit install
 
 Formatting is enforced by **ruff** with these settings:
 
-- Line length: **120**
+- Line length: **150**
 - Quote style: **double quotes**
 - Indent: **4 spaces**
 - Target: **Python >=3.11**
@@ -166,7 +169,7 @@ else:
     pl = Lazy.load("polars")
 ```
 
-Lazy-loaded packages: `polars`, `duckdb`, `orjson`, `xxhash`, `polars_hash`, `yaml`, `httpx`, `pyexcel`, `onnxruntime`, `sentence_transformers`
+Lazy-loaded packages: `polars`, `pydantic`, `yaml`, `xxhash`, `numpy`, `sentence_transformers`
 
 Import order: standard library → blank line → third-party → blank line → local
 

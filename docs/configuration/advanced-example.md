@@ -14,9 +14,6 @@ This page presents a real-world table configuration (ALAMV6.yaml) with annotatio
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
-
   # Data source: Excel file from PubMed Central
   source:
     kind: excel
@@ -67,14 +64,6 @@ template:
   provenance:
     repo: PMC
     publication: PMC11708054
-    contributors:
-      - kind: curation
-        name: Skye Lane Goetz
-        date: 09 JAN 2025
-        organizations:
-          - Institute for Systems Biology
-          - CalPoly SLO
-        comment: Manual Migration From TC2 to TC4 To Test Tablassert
 
   # Statistical metadata as edge annotations
   annotations:
@@ -199,18 +188,24 @@ Lactobacillus rhamnosus --[correlated_with]--> 13C-tamoxifen
 ```
 
 **Edges:**
+
+Allow-listed annotation columns (`sample_size`, `p_value`, `relationship_strength`) stay as top-level edge fields (numeric annotations are emitted as controlled-notation strings). Any annotation name that is not a Biolink slot — here `assertion_method`, `multiple_testing_correction_method`, and `miscellaneous_notes` — is folded into the edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically), along with the built-in `extracted_from_row_number`:
+
 ```json
 {
-  "id":"uuid:...",
-  "subject":"NCBITaxon:47715",
-  "predicate":"biolink:correlated_with",
-  "object":"CHEBI:41774",
-  "sample_size":9,
-  "p_value":0.001,
-  "multiple_testing_correction_method":"Benjamini Hochberg",
-  "relationship_strength":0.85,
-  "assertion_method":"Spearman correlation",
-  "miscellaneous_notes":"Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction"
+  "id": "2cfea591-0f8f-33af-a7df-03da531d3359",
+  "subject": "NCBITaxon:47715",
+  "predicate": "biolink:correlated_with",
+  "object": "CHEBI:41774",
+  "sample_size": "9.000",
+  "p_value": "1.0000e-03",
+  "relationship_strength": "0.8500",
+  "supporting_text": [
+    "assertion_method: Spearman correlation",
+    "extracted_from_row_number: 3",
+    "miscellaneous_notes: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction",
+    "multiple_testing_correction_method: Benjamini Hochberg"
+  ]
 }
 ```
 
@@ -220,7 +215,6 @@ Here's how you'd use sections if you wanted multiple predicates from the same so
 
 ```yaml
 template:
-  syntax: TC4
   source: {...}  # Same source
   provenance: {...}  # Same provenance
 
@@ -270,7 +264,6 @@ This pattern maps both subject and object from columns — both nodes require en
 
 ```yaml
 template:
-  syntax: TC4
   source:
     kind: excel
     url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
@@ -302,12 +295,6 @@ template:
   provenance:
     repo: PMC
     publication: PMC12345678
-    contributors:
-      - kind: curation
-        name: Skye Lane Goetz
-        date: 01 JAN 2025
-        organizations:
-          - Institute for Systems Biology
 
   annotations:
     - annotation: p_value
@@ -334,7 +321,6 @@ This pattern handles wide tables where each column encodes a different object (e
 
 ```yaml
 template:
-  syntax: TC4
   source:
     kind: excel
     url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
@@ -363,12 +349,6 @@ template:
   provenance:
     repo: PMC
     publication: PMC87654321
-    contributors:
-      - kind: curation
-        name: Skye Lane Goetz
-        date: 15 FEB 2025
-        organizations:
-          - Institute for Systems Biology
 
 sections:
   # Each section targets one metabolite column

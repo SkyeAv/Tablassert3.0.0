@@ -18,15 +18,17 @@ tablassert build-fullmap
 | `--output` | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
 | `--cache` | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
 | `--version` | No | current BABEL release (see `cli.py`) | BABEL release version to fetch |
-| `--threads` | No | `None` (single-threaded) | Worker threads for staging/writing |
-| `--write-batch-size` | No | `50000` | Row batch size for staged writes |
+| `--threads` | No | `None` (~90% of available CPUs) | Worker threads for the parallel build |
+| `--write-batch-size` | No | `50000` | Row batch size for database writes |
 
 ### Data Pipeline
 
-1. **Download** — BABEL class and synonym files are downloaded from RENCI (`https://stars.renci.org/var/babel_outputs`) into `--cache`.
-2. **Equivalents** — Class files are staged into an `equivalents` table used to resolve equivalent-identifier groups.
-3. **Synonyms** — Synonym files are staged into a `term_records` table alongside per-term metadata.
-4. **Finalize** — Staged tables are reduced into a single `records` table keyed by normalized term, written to a temporary redb file, then atomically renamed to `--output`.
+The build is an in-memory, parallel pipeline (rayon) executed by the Rust extension — there is no staging database and no temporary-file copy:
+
+1. **Download** — BABEL class and synonym files are downloaded from RENCI (`https://stars.renci.org/var/babel_outputs`) into `--cache` (resumable, range-request downloads; cached files are reused).
+2. **Equivalents map** — Class files are parsed in parallel into an in-memory map of each primary CURIE to its equivalent identifiers.
+3. **Synonym pass** — Synonym files are parsed in parallel. For each row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources), assigns compact integer CURIE IDs, and accumulates normalized-term → (CURIE, source) postings in a sharded in-memory map.
+4. **Write** — A single redb write transaction emits the dimension tables (`prefixes`, `categories`, `sources`), the `curies` table, and the `meta` schema tag, followed by the `records` table (normalized term → serialized postings) written to `--output`.
 
 ### Examples
 
@@ -43,16 +45,18 @@ tablassert build-fullmap --threads 8 --write-batch-size 100000
 
 ## Output Artifact
 
-A single redb file (default `./fullmap/data/fullmap.redb`) containing four tables (see `rust/src/fullmap.rs`):
+A single redb file (default `./fullmap/data/fullmap.redb`) containing six tables (see `rust/src/fullmap.rs`):
 
 | Table | Description |
 |-------|-------------|
-| `records` | Normalized term → serialized list of `FullmapRecord` (CURIE, preferred name, category, taxon ID, source name/version) |
-| `meta` | Schema version tag (`tablassert.fullmap.v1`) and the BABEL `source_version` used to build the file |
-| `equivalents` | Staged equivalent-identifier groups from BABEL class files |
-| `term_records` | Staged per-term synonym records prior to finalization |
+| `records` | Normalized term (xxhash `u64`) → serialized list of resolution postings (CURIE id, source id) |
+| `prefixes` | Compact `u16` id → CURIE prefix string |
+| `categories` | Compact `u16` id → Biolink category string |
+| `sources` | Compact `u8` id → source metadata (name/version) |
+| `curies` | Compact `u32` id → CURIE record (CURIE, preferred name, category, taxon, source) |
+| `meta` | Schema version tag (`tablassert.fullmap.v3`) and the BABEL `source_version` used to build the file |
 
-Lookups (`lookup_fullmap_terms`) check the `meta` schema tag before reading `records`; a mismatched or missing tag raises rather than silently reading incompatible data — there is no automatic schema migration, so a schema bump requires rebuilding via `tablassert build-fullmap`.
+Lookups (`lookup_fullmap_terms`) check the `meta` schema tag before reading `records`; a mismatched or missing tag raises rather than silently reading incompatible data. Databases built under the older `v1`/`v2` schemas are rejected — there is no automatic schema migration, so a schema bump requires rebuilding via `tablassert build-fullmap`.
 
 ## Usage in Graph Config
 
@@ -63,10 +67,10 @@ The `fullmap:` field in a graph configuration points at either the redb file dir
 - Else it falls back to `<path>/data/fullmap.redb` (the `build-fullmap` default layout).
 
 ```yaml
-# graph-config.yaml (GC3)
-syntax: GC3
+# graph-config.yaml
 name: my-graph
 version: "1.0"
+description: Example graph backed by a fullmap entity-resolution database.
 fullmap: /path/to/fullmap/   # directory containing data/fullmap.redb, or a direct .redb file
 tables:
   - ./TABLE/my-table.yaml

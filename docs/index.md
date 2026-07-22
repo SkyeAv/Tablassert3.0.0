@@ -16,7 +16,7 @@ Tablassert transforms biomedical tabular data (Excel, CSV, TSV) into knowledge g
 - **Named Entity Recognition**: Case-dependent, provenance-rich NER with taxonomic filtering
 - **Quality Control**: Three-stage validation (exact → fuzzy → BERT embeddings)
 - **Biolink Compliance**: Uses Biolink categories and predicates throughout
-- **Performance**: Lazy evaluation pipelines via Polars with DuckDB-accelerated entity resolution
+- **Performance**: Lazy evaluation pipelines via Polars with an embedded redb-accelerated entity-resolution database built by Tablassert's Rust extension
 - **Reproducible**: UV-based development environment with deterministic builds
 
 ## Quick Start
@@ -36,23 +36,17 @@ uv tool install "tablassert[rt]"
 # or
 pip install "tablassert[rt]"
 
-# Install CPU QC runtime
+# Install the QC runtime (torch + sentence-transformers BioBERT)
 uv tool install "tablassert[qc]"
 # or
 pip install "tablassert[qc]"
-
-# Install CUDA QC runtime
-uv tool install "tablassert[qc-cuda]"
-# or
-pip install "tablassert[qc-cuda]"
 
 # Or install latest from GitHub main
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-QC is opt-in and requires either the `qc` or `qc-cuda` extra. CUDA support targets a single GPU on `device_id=0` and does not silently fall back to CPU if CUDA is unavailable.
-See [Installation](installation.md) for details.
+QC is opt-in and requires the `qc` extra. See [Installation](installation.md) for details.
 
 For development from source:
 

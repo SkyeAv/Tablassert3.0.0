@@ -1,8 +1,8 @@
 # Quality Control (qc)
 
-The `qc` module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BERT semantic similarity.
+The `qc` module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BioBERT semantic similarity.
 
-QC runtime support is optional. Install `tablassert[qc]` for CPU inference or `tablassert[qc-cuda]` for CUDA inference on GPU 0. **Strict GPU behavior:** if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is not available (e.g., a broken CUDA/cuDNN environment), `fullmap_audit()` raises a `RuntimeError` rather than silently falling back to CPU — install `tablassert[qc]` for CPU inference or fix the CUDA environment.
+QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `torch`, `sentence-transformers`, `rapidfuzz`, `scikit-learn`, and `numpy`. If the audit stage runs without `sentence-transformers` installed, `fullmap_audit()` raises `QcRuntimeMissingError`.
 
 ## fullmap_audit()
 
@@ -18,7 +18,6 @@ def fullmap_audit(
   config_file: str,
   out: str = "passed",
   log: bool = True,
-  provider: Optional[Literal["cpu", "cuda"]] = None
 ) -> pl.LazyFrame
 ```
 
@@ -29,7 +28,7 @@ def fullmap_audit(
 Input LazyFrame containing entity resolution results.
 
 Expected columns:
-- `{col}_pre_resolution` - Original text string
+- `{col}_pre_resolution` - Original (pre-resolution) text string
 - `{col}` - Resolved CURIE
 - `{col}_name` - Preferred entity name
 
@@ -44,7 +43,7 @@ Example: If `col="subject"`, looks for:
 
 **`out: str` (default: `"passed"`)**
 
-Name of the boolean column indicating validation status.
+Name of the boolean column indicating validation status (used internally).
 
 Rows with `out=True` passed QC, `out=False` failed.
 
@@ -52,104 +51,95 @@ Rows with `out=True` passed QC, `out=False` failed.
 
 Controls whether failed QC rows are logged.
 
-**`provider: Optional[Literal["cpu", "cuda"]]`**
-
-Optional runtime override. Use `"cpu"` to force CPU inference, `"cuda"` to require CUDA inference, or `None` to auto-select from the installed QC runtime.
-
 **`section_hash: str` / `config_file: str`**
 
 Context fields used in QC failure logs for traceability.
 
 ### Return Value
 
-Returns a Polars LazyFrame with only validated rows (where `out=True`). Failed pairs are logged with section/config/column context.
-
-Removes the `out` column before returning.
+Returns a Polars LazyFrame containing only rows whose `col` value passed QC (via a semi-join on the surviving CURIEs). Failed pairs are logged with section/config/column context and their fuzzy/BioBERT scores.
 
 ### Three-Stage Pipeline
 
-The function applies three validation stages in sequence:
+The function applies three validation stages in sequence. Each stage progressively filters out correct resolutions and leaves suspected errors for the next stage.
 
-#### Stage 1: Exact String Match
+#### Stage 1: Exact Match & Rule-Based Pass-Through
 
-**Fast path for high-confidence mappings.**
+**Fast path for high-confidence mappings.** A row passes if any of these hold:
 
 ```python
 original == preferred_name
 ```
 
+- The pre-resolution text exactly equals the resolved preferred name.
+- The resolved CURIE matches an exempt prefix (`CHEBI`, `PR`, `UniProtKB`, `NCBIGene`, `UMLS`, `UNII`, `PUBCHEM`, `MONDO`).
+- The original text contains `:` (already looks like a CURIE).
+- The preferred name matches an exception prefix (`^LOC` or `^si:`).
+
 **Example passes:**
 - Original: `"TP53"` → Preferred: `"TP53"` ✓
 - Original: `"diabetes"` → Preferred: `"diabetes mellitus"` ✗ (goes to Stage 2)
 
-**Performance:** O(1) string comparison
-
-Before fuzzy matching, the function also applies rule-based pass-through checks: (1) the resolved CURIE matches an exempt prefix (`CHEBI`, `PR`, `UniProtKB`, `NCBIGene`, `UMLS`, `UNII`, `PUBCHEM`, `MONDO`); (2) the original text contains `:` (looks like a CURIE); (3) the preferred name matches an exception prefix (`^LOC` or `^si:`).
+**Performance:** O(1) string comparison per row.
 
 #### Stage 2: Fuzzy Matching
 
-**Medium confidence using RapidFuzz.**
+**Medium confidence using RapidFuzz (batched via `rapidfuzz.process.cpdist`).**
 
 Two fuzzy matching algorithms:
 1. **Ratio:** Overall string similarity
 2. **Partial token sort ratio:** Combined token/subsequence matching
 
-**Thresholds:** `fuzz.ratio` >= 20 OR `fuzz.partial_token_sort_ratio` >= 30
+**Thresholds:** `fuzz.ratio` >= 70 OR `fuzz.partial_token_sort_ratio` >= 80
 
 ```python
-fuzz.ratio(original, preferred) >= 20
-or fuzz.partial_token_sort_ratio(original, preferred) >= 30
+fuzz.ratio(original, preferred) >= 70
+or fuzz.partial_token_sort_ratio(original, preferred) >= 80
 ```
 
 **Example passes:**
 - Original: `"breast ca"` → Preferred: `"breast cancer"` ✓
 - Original: `"T53"` → Preferred: `"tumor protein p53"` ✗ (goes to Stage 3)
 
-**Performance:** O(n) string operations
+**Performance:** O(n) string operations, batched.
 
-#### Stage 3: BERT Semantic Similarity
+#### Stage 3: BioBERT Semantic Similarity
 
 **High confidence using BioBERT embeddings.**
 
-1. **Encode** original and preferred name with BioBERT
-2. **Compute** cosine similarity between embeddings
-3. **Accept** if similarity >= 0.2 (20%)
+1. **Encode** original and preferred name with BioBERT (sentence-transformers)
+2. **Compute** cosine similarity between embeddings (scikit-learn)
+3. **Accept** if similarity >= 0.5
 
 ```python
-embeddings = get_biobert(provider).encode(originals + preferreds)
+embeddings = get_biobert().encode(originals + preferreds)
 similarity = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()
-return similarity >= 0.2
+return similarity >= 0.5
 ```
 
 **Example passes:**
 - Original: `"lung carcinoma"` → Preferred: `"lung cancer"` ✓ (high semantic similarity)
 - Original: `"random text"` → Preferred: `"diabetes"` ✗ (rejected, low similarity)
 
-**Performance:** Expensive (ONNX inference), heavily cached
+**Performance:** Expensive (transformer inference); the model is loaded once and cached.
 
 ### BioBERT Model
 
-**Model:** `pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb`
+**Model:** `pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb`
 
-**Backend:** ONNX Runtime (`CPUExecutionProvider` or `CUDAExecutionProvider`)
+**Backend:** [sentence-transformers](https://www.sbert.net/) (PyTorch). Embeddings are compared with scikit-learn's `cosine_similarity`.
 
-**Optimizations:**
-- Graph optimization level: ALL
-- ONNX session caching
-
-Lazy-loaded on first `fullmap_audit()` call that reaches the embedding stage, then reused per provider for subsequent calls.
+**Lazy-loaded** on the first `fullmap_audit()` call that reaches the embedding stage via `get_biobert()`, then cached globally for the lifetime of the process.
 
 ### Model Caching
 
-BioBERT is lazy-loaded on first use and cached globally for the lifetime of the process.
+`get_biobert()` loads the model from the local cache when present; otherwise it downloads `pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb` and saves it for future runs.
 
-**Cache location:** Downloaded model files are cached on disk in `.tablassert/onnx/`, and the loaded model object is cached in memory for the lifetime of the process.
-
-**Cache strategy:** BioBERT model loaded once on first batch audit, then reused globally
+**Cache location:** `.tablassert/biobert/` on disk (`qc.MODEL`); the loaded model object is also cached in memory for the lifetime of the process.
 
 **Why caching matters:**
-- Fuzzy matching: 100-1000x speedup on repeated strings
-- BERT inference: 10,000x speedup on repeated strings
+- Fuzzy matching: large speedup on repeated strings (batched)
+- BioBERT inference: avoids re-encoding repeated strings and re-downloading the model
 - Enables iterative development without recomputing
 
 ### Example Usage
@@ -172,7 +162,6 @@ validated = fullmap_audit(
   col="subject",
   section_hash="tutorial-section",
   config_file="tutorial-table.yaml",
-  provider="cpu"
 )
 
 # Only rows that passed QC remain
@@ -186,7 +175,7 @@ Input: 1000 rows with entity mappings
 
 Stage 1 (Exact): 700 pass → 300 pending
 Stage 2 (Fuzzy): 250 pass → 50 pending
-Stage 3 (BERT): 40 pass → 10 rejected
+Stage 3 (BioBERT): 40 pass → 10 rejected
 
 Output: 990 rows (700 + 250 + 40)
 ```
@@ -195,26 +184,17 @@ Output: 990 rows (700 + 250 + 40)
 
 | Stage | Method | Confidence | Use Case |
 |-------|--------|-----------|----------|
-| 1 | Exact match | Highest | Standardized IDs, acronyms |
+| 1 | Exact match / rule-based | Highest | Standardized IDs, acronyms, CURIE-like inputs |
 | 2 | Fuzzy | Medium | Abbreviations, typos |
-| 3 | BERT | High | Synonyms, paraphrases |
+| 3 | BioBERT | High | Synonyms, paraphrases |
 
-### Performance Characteristics
+### Rejection Logging
 
-**Best case** (all exact matches):
-- 1M rows: ~1 second
-
-**Worst case** (all go to BERT):
-- 1M rows: ~30 minutes (first run)
-- 1M rows: ~10 seconds (cached)
-
-**Typical case** (70% exact, 25% fuzzy, 5% BERT):
-- 1M rows: ~2 minutes (first run)
-- 1M rows: ~5 seconds (cached)
+When `log=True`, each rejected CURIE is logged at INFO level with its context and the scores that caused the rejection: `curie`, `original`, `preferred`, `col`, `fuzz` (partial token sort ratio), `config`, `hash`, and — when the BioBERT stage ran — `bert` (cosine similarity).
 
 ### Integration with Pipeline
 
-QC is applied after entity resolution when graph or API QC is enabled:
+QC is applied after entity resolution when QC is enabled (the `build-graph --qc` flag, or `resolve_many(..., qc=True)`):
 
 1. **Entity resolution** (`resolve()`) - Maps text to CURIEs
 2. **Quality control** (`fullmap_audit()`) - Validates mappings

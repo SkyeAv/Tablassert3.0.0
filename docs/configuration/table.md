@@ -21,7 +21,6 @@ Use when processing a single table with one output.
 
 ```yaml
 template:
-  syntax: TC4
   source: {...}
   statement: {...}
   provenance: {...}
@@ -33,7 +32,6 @@ Use when processing variations of the same data (different columns, predicates, 
 
 ```yaml
 template:
-  syntax: TC4
   source: {...}  # Shared by all sections
   provenance: {...}  # Shared by all sections
 
@@ -81,10 +79,12 @@ sections:
 **Scalars:** Section replaces template
 ```yaml
 template:
-  syntax: TC4
+  statement:
+    predicate: related_to
 
 sections:
-  - syntax: GC3  # Valid values are TC4 (default) and GC3; overriding is not recommended
+  - statement:
+      predicate: treats  # Replaces the template predicate
 ```
 
 ### Use Cases
@@ -100,7 +100,7 @@ template:
 ```yaml
 template:
   source: {kind: excel, local: data.xlsx, url: https://example.com/data.xlsx}
-  provenance: {repo: PMC, publication: "PMC123", contributors: [{name: Example User, date: 27 JAN 2026}]}
+  provenance: {repo: PMC, publication: "PMC123"}
 
 sections:
   - statement: {predicate: treats}
@@ -111,7 +111,7 @@ sections:
 ```yaml
 template:
   source: {kind: text, local: data.csv, url: https://example.com/data.csv}
-  provenance: {repo: PMID, publication: "456", contributors: [{name: Example User, date: 27 JAN 2026}]}
+  provenance: {repo: PMID, publication: "456"}
   statement:
     subject: {method: column, encoding: A}
 
@@ -122,13 +122,6 @@ sections:
 
 ## Configuration Schema
 
-### Template Metadata
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `syntax` | String | No | Configuration version. Defaults to `"TC4"`. |
-| `status` | String | No | Development status. Defaults to `"alpha"`; allowed values are `"alpha"`, `"beta"`, `"primetime"`. |
-
 ### Source
 
 Defines the data file location and format.
@@ -138,8 +131,8 @@ Defines the data file location and format.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"excel"`, but specify it explicitly in configs. |
-| `local` | Path | Yes | Local file path for caching |
-| `url` | URL | Yes | Download URL (HTTP/HTTPS). Validated as reachable at parse time. |
+| `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
+| `url` | URL | Yes | Source URL recorded as provenance (emitted as the edge `source_record_urls` column and in the RIG). Format-validated only; not fetched. |
 | `sheet` | String | No | Sheet name. Defaults to `"Sheet1"`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -162,8 +155,8 @@ source:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"text"`, but specify it explicitly in configs. |
-| `local` | Path | Yes | Local file path for caching |
-| `url` | URL | Yes | Download URL. Validated as reachable at parse time. |
+| `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
+| `url` | URL | Yes | Source URL recorded as provenance (emitted as the edge `source_record_urls` column and in the RIG). Format-validated only; not fetched. |
 | `delimiter` | String | No | Field delimiter. Defaults to `","`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -430,31 +423,14 @@ Required metadata about data source.
 | `publication` | String | Yes | Repository-local identifier emitted as a CURIE. For `repo: PMC` the value **must** start with `PMC` followed by digits (e.g., `"PMC11708054"`, `"PMC123"`) and is emitted under the `PMCID:` namespace as `PMCID:PMC...` (previously `PMC:PMC...`); for `repo: PMID` it is emitted as `PMID:<publication>` (e.g., `"11708054"` → `PMID:11708054`). The `repository` output column still records the raw `repo` value (`PMC`/`PMID`). |
 | `knowledge_level` | String | No | Biolink KL/AT knowledge level of produced edges. Defaults to `"statistical_association"`; allowed values are the `KnowledgeLevels` enum (e.g., `knowledge_assertion`, `logical_entailment`, `prediction`, `statistical_association`, `text_co_occurrence`, `observation`, `not_provided`). |
 | `agent_type` | String | No | Biolink KL/AT agent type responsible for produced edges. Defaults to `"data_analysis_pipeline"`; allowed values are the `AgentTypes` enum (e.g., `manual_agent`, `automated_agent`, `data_analysis_pipeline`, `computational_model`, `text_mining_agent`, `image_processing_agent`, `manual_validation_of_automated_agent`, `not_provided`). |
-| `contributors` | List[Contributor] | Yes | Curation information |
-
-**Contributor fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `kind` | String | No | Contributor role. Defaults to `"curation"`; allowed values are `"curation"`, `"validation"`, `"tool"`. |
-| `name` | String | Yes | Contributor name |
-| `date` | String | Yes | Date (free format) |
-| `organizations` | List[String] | No | Affiliations |
-| `comment` | String | No | Notes |
 
 **Example:**
 ```yaml
 provenance:
   repo: PMC
   publication: "PMC11708054"
-  contributors:
-    - kind: curation
-      name: Skye Lane Goetz
-      date: 09 JAN 2025
-      organizations:
-        - Institute for Systems Biology
-        - CalPoly SLO
-      comment: Migrated from TC2 to TC4
+  knowledge_level: statistical_association
+  agent_type: data_analysis_pipeline
 ```
 
 ### Annotations
@@ -511,9 +487,6 @@ Minimal table configuration:
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
-
   source:
     kind: text
     local: ./data.csv
@@ -535,10 +508,6 @@ template:
   provenance:
     repo: PMID
     publication: "12345678"
-    contributors:
-      - kind: curation
-        name: Example User
-        date: 27 JAN 2026
 
   annotations:
     - annotation: p_value

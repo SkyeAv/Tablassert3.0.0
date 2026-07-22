@@ -20,30 +20,16 @@ tablassert build-graph config.yaml
 pip install tablassert
 ```
 
-Base install includes web and Excel support. Optional extras are available for CPU compatibility and QC runtime selection:
+The base install includes everything needed to build knowledge graphs from CSV/TSV sources. Optional extras are available for CPU compatibility and quality control:
 
 ```bash
-pip install "tablassert[rt]"       # Polars build for CPUs without required instructions
-pip install "tablassert[qc]"       # Enable QC with CPU ONNX Runtime
-pip install "tablassert[qc-cuda]"  # Enable QC with CUDA ONNX Runtime on GPU 0
+pip install "tablassert[rt]"  # Polars build for CPUs without the required instructions
+pip install "tablassert[qc]"  # Enable QC (torch + sentence-transformers BioBERT, rapidfuzz, scikit-learn)
 ```
 
-QC is disabled by default at the graph level. Set `qc: true` in a graph config to enable the audit stage.
+Excel (`.xlsx`) inputs are read through Polars' `calamine` engine and additionally require `python-calamine` (`pip install python-calamine`).
 
-<details>
-<summary><strong>Docker</strong></summary>
-
-```bash
-docker pull ghcr.io/skyeav/tablassert:latest
-
-docker run --rm \
-  -v /path/to/config:/data \
-  -v /path/to/fullmap:/fullmap \
-  ghcr.io/skyeav/tablassert:latest \
-  build-graph /data/graph-config.yaml
-```
-
-</details>
+QC is opt-in: pass `--qc` to `build-graph` to run the three-stage audit (exact → fuzzy → BioBERT). See the [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for the full flag reference.
 
 ## Quick Demo
 
@@ -60,7 +46,7 @@ results = resolve_many(
 )
 
 for row in results:
-    print(f"{row['original gene']} → {row['gene']} ({row['gene name']})")
+    print(f"{row['original_gene']} → {row['gene']} ({row['gene_name']})")
 # TP53 → HGNC:11998 (TP53)
 # BRCA1 → HGNC:1100 (BRCA1)
 # EGFR → HGNC:3236 (EGFR)

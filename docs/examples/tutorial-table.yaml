@@ -1,6 +1,4 @@
 template:
-  syntax: TC4
-  status: alpha
   source:
     kind: text
     local: ./docs/examples/tutorial-data.csv
@@ -24,13 +22,6 @@ template:
   provenance:
     repo: PMID
     publication: "12345678"
-    contributors:
-      - kind: curation
-        name: Tutorial Example
-        date: 27 JAN 2026
-        organizations:
-          - Example Institute
-        comment: Synthetic tutorial data for Tablassert documentation
   annotations:
     - annotation: p_value
       method: column

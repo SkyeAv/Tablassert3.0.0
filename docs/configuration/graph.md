@@ -5,10 +5,12 @@ Graph configurations orchestrate the processing of multiple table configurations
 ## Purpose
 
 A graph configuration file specifies:
-- Output knowledge graph name and version
-- Whether QC auditing runs during the build
+- Output knowledge graph name, version, and description
 - List of table configurations to process
 - Database location for entity resolution
+- Resource Ingest Guide (RIG) metadata (contributions and UI explanation)
+
+QC auditing and verbose logging are controlled at build time via the `build-graph --qc` and `build-graph --log` flags — they are **not** graph-config fields.
 
 ## Schema
 
@@ -16,8 +18,9 @@ A graph configuration file specifies:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | String | Knowledge graph name (used in output filename) |
-| `version` | String | Knowledge graph version (used in output filename) |
+| `name` | String | Knowledge graph name (used in output filenames and the RIG) |
+| `version` | String | Knowledge graph version (used in output filenames) |
+| `description` | String | Source-scope description written into the generated RIG |
 | `tables` | List[Path] | Paths to table configuration YAML files |
 | `fullmap` | Path | Path to the fullmap redb file, or a base directory containing it |
 
@@ -25,37 +28,34 @@ A graph configuration file specifies:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `syntax` | String | Configuration version. Defaults to `"GC3"`; overriding is not recommended. |
-| `log` | Boolean | Log unmatched entities and audit details during graph builds |
-| `qc` | Boolean | Enable the QC audit stage during graph builds |
+| `contributions` | List[String] | RIG contribution statements for graph provenance. Defaults to `["Tablassert: KGX and RIG generation"]` |
+| `ui_explanation` | String | RIG explanation applied to generated edge-type metadata. Defaults to a built-in description of how Tablassert transforms source records into Biolink associations |
 
 ### Field Details
 
-**`syntax: "GC3"`**
-
-Configuration syntax version. Defaults to `"GC3"`; overriding the default is not recommended.
-
 **`name: string`**
 
-Output knowledge graph name. Used as prefix for NDJSON files.
+Output knowledge graph name. Used as the prefix for the NDJSON and RIG output files.
 
 Example: `name: MULTIOMICS_KG` produces `MULTIOMICS_KG_{version}.nodes.ndjson`
 
 **`version: string`**
 
-Output knowledge graph version. Used as suffix for NDJSON files.
+Output knowledge graph version. Used as the suffix for output files.
 
 Common values: `"1.0.0"`, `"UNSTABLE"`, `"BETA"`
 
-**`log: bool = false`**
+**`description: string`**
 
-When `true`, Tablassert logs unmatched entities and audit details during the graph build. When `false`, unmatched entities are silently filtered.
+A short human-readable description of the graph's source scope. Written into the generated Resource Ingest Guide (RIG). Required.
 
-**`qc: bool = false`**
+**`contributions: list[string]`**
 
-When `true`, Tablassert runs the QC audit stage after entity resolution for node-like columns. When `false`, the build skips QC entirely.
+Contribution statements recorded in the RIG `provenance_info`. Defaults to `["Tablassert: KGX and RIG generation"]` when omitted.
 
-This field only controls whether QC runs. Install `tablassert[qc]` or `tablassert[qc-cuda]` if you plan to enable it.
+**`ui_explanation: string`**
+
+Human-readable explanation applied to each generated edge type's metadata in the RIG. Defaults to a built-in description when omitted.
 
 **`tables: list[path]`**
 
@@ -88,11 +88,9 @@ Paths can be:
 ## Minimal Example
 
 ```yaml
-syntax: GC3
 name: MY_GRAPH
 version: 1.0.0
-log: true
-qc: true
+description: Knowledge graph built from configured tabular source data.
 tables:
   - ./my-table.yaml
 fullmap: /data/fullmap
@@ -101,9 +99,9 @@ fullmap: /data/fullmap
 ## Multi-Table Example
 
 ```yaml
-syntax: GC3
 name: MULTIOMICS_KG
 version: UNSTABLE
+description: Multi-omics knowledge graph integrating gene-disease, drug-target, and protein-interaction tables.
 tables:
   - /configs/gene-disease-associations.yaml
   - /configs/drug-targets.yaml
@@ -119,11 +117,12 @@ When you run `tablassert build-graph graph.yaml`:
 2. **Load table configurations** - Parse each YAML in `tables`
 3. **Extract sections** - Expand templates into per-section `Tcode` instances
 4. **Collect instructions (per section):**
-   - Download source file (if URL specified)
+   - Read the source file from disk (`source.local`)
    - Apply transformations and resolve entities using `fullmap`
-   - Validate with the QC audit when `qc: true`
+   - Validate with the QC audit when `build-graph --qc` is passed
 5. **Build subgraphs** - Compile each section's resolved data into a parquet file
-6. **Compile graph** - Aggregate all subgraph parquets and export `{name}_{version}.nodes.ndjson` / `.edges.ndjson`
+6. **Compile graph** - Aggregate all subgraph parquets and export `{name}_{version}.nodes.ndjson` / `.edges.ndjson` / `.RIG.yaml`
+
 ## Output Files
 
 Given this configuration:
@@ -135,15 +134,16 @@ version: 2.0.0
 Produces:
 - `EXAMPLE_KG_2.0.0.nodes.ndjson`
 - `EXAMPLE_KG_2.0.0.edges.ndjson`
+- `EXAMPLE_KG_2.0.0.RIG.yaml`
 
 ## Real-World Example
 
 From MOKGV6.yaml:
 
 ```yaml
-syntax: GC3
 name: MULTIOMICS_KG
 version: UNSTABLE
+description: Multi-omics knowledge graph derived from the ALAMV6 tabular source.
 tables:
   - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
 fullmap: /local_raid1/sgoetz/CODE/FULLMAP/fullmap

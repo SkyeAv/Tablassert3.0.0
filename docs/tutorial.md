@@ -44,8 +44,6 @@ Create `tutorial-table.yaml`:
 
 ```yaml
 template:
-  syntax: TC4
-  status: alpha
   source:
     kind: text
     local: ./tutorial-data.csv
@@ -69,13 +67,6 @@ template:
   provenance:
     repo: PMID
     publication: "12345678"
-    contributors:
-      - kind: curation
-        name: Tutorial Example
-        date: 27 JAN 2026
-        organizations:
-          - Example Institute
-        comment: Synthetic tutorial data
   annotations:
     - annotation: p_value
       method: column
@@ -97,9 +88,9 @@ template:
 Create `tutorial-graph.yaml`:
 
 ```yaml
-syntax: GC3
 name: TUTORIAL_KG
 version: 1.0.0
+description: Tutorial knowledge graph built from configured tabular source data.
 tables:
   - ./tutorial-table.yaml
 fullmap: /path/to/fullmap
@@ -108,7 +99,8 @@ fullmap: /path/to/fullmap
 **Important:** Replace the database paths with your actual paths.
 
 **What this does:**
-- **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson` and `TUTORIAL_KG_1.0.0.edges.ndjson`
+- **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson`, `TUTORIAL_KG_1.0.0.edges.ndjson`, and `TUTORIAL_KG_1.0.0.RIG.yaml`
+- **description**: Source-scope description written into the generated Resource Ingest Guide (required)
 - **tables**: List of table configurations to process
 - **fullmap**: Path to the fullmap redb file (or base directory) for entity resolution
 
@@ -118,16 +110,22 @@ fullmap: /path/to/fullmap
 tablassert build-graph tutorial-graph.yaml
 ```
 
+To also run the quality-control audit stage, add `--qc` (and `--log` for verbose per-section logging):
+
+```bash
+tablassert build-graph tutorial-graph.yaml --qc --log
+```
+
 **What happens:**
 1. Loads graph configuration
 2. For each table config:
-   - Downloads file (or uses local)
+   - Reads the source file from disk
    - Applies row slicing
    - Resolves entities (genes and diseases)
-   - Validates with QC pipeline (exact → fuzzy → BERT)
+   - Validates with the QC pipeline when `--qc` is passed (exact → fuzzy → BioBERT)
    - Creates subgraph parquet file
 3. Aggregates all subgraphs
-4. Exports NDJSON files
+4. Exports NDJSON files and the RIG
 
 ## Step 5: Examine Output
 
@@ -150,11 +148,19 @@ Example output:
 head -n 2 TUTORIAL_KG_1.0.0.edges.ndjson
 ```
 
-Example output:
+Example output (numeric annotation columns are emitted as controlled-notation strings — p-values in scientific notation):
 ```json
-{"id":"uuid:...","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":0.001,"sample_size":450}
-{"id":"uuid:...","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p_value":0.0001,"sample_size":1200}
+{"id":"2cfea591-0f8f-33af-a7df-03da531d3359","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","sample_size":"450"}
+{"id":"7b1c9d02-5e8a-4f3b-9c1d-2a6e8f0b4d7c","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p_value":"1.0000e-04","sample_size":"1200"}
 ```
+
+**RIG file:**
+
+```bash
+cat TUTORIAL_KG_1.0.0.RIG.yaml
+```
+
+The Resource Ingest Guide records the graph's source scope (`description`), provenance (`contributions`), and a summary of its node and edge types for NCATS Translator registration.
 
 ## Understanding the Transformation
 

@@ -45,7 +45,7 @@ This creates a virtual environment in `.venv/` and installs the base dependencie
 ### Method 2: Install from PyPI
 
 Recommended for most users who just need the CLI.
-Base install includes web and Excel support. QC runtime support is opt-in.
+The base install includes everything needed to build knowledge graphs from CSV/TSV sources. QC runtime support is opt-in.
 
 ```bash
 # Option A: Install from PyPI with UV
@@ -60,8 +60,7 @@ pip install tablassert
 | Extra | Description | Includes |
 |---|---|---|
 | `rt` | Runtime-compatible Polars build | `polars[rtcompat]` |
-| `qc` | CPU QC runtime | `onnxruntime` |
-| `qc-cuda` | CUDA QC runtime | `onnxruntime-gpu` |
+| `qc` | QC runtime (exact → fuzzy → BioBERT audit) | `torch`, `sentence-transformers`, `rapidfuzz`, `scikit-learn`, `numpy` |
 
 ```bash
 # Install with runtime-compatible Polars
@@ -71,16 +70,12 @@ uv tool install "tablassert[rt]"
 # pip equivalents
 pip install "tablassert[rt]"
 
-# Install CPU QC runtime
+# Install the QC runtime
 uv tool install "tablassert[qc]"
 pip install "tablassert[qc]"
-
-# Install CUDA QC runtime
-uv tool install "tablassert[qc-cuda]"
-pip install "tablassert[qc-cuda]"
 ```
 
-The `qc` and `qc-cuda` extras are intended as separate install choices. `qc-cuda` targets a single NVIDIA GPU on `device_id=0` and hard-fails if `CUDAExecutionProvider` is unavailable at runtime.
+Excel (`.xlsx`) input is read through Polars' `calamine` engine and additionally requires `python-calamine` (`pip install python-calamine`).
 
 Tablassert CLI is now available:
 
@@ -88,20 +83,7 @@ Tablassert CLI is now available:
 tablassert --help
 ```
 
-### Method 3: Docker
-
-Pre-built Docker images are available from GitHub Container Registry for containerized usage without a local Python installation.
-
-```bash
-docker pull ghcr.io/skyeav/tablassert:latest
-
-# Run CLI
-docker run --rm ghcr.io/skyeav/tablassert:latest --help
-```
-
-See the [Docker documentation](docker.md) for full usage details including volume mounts and CI/CD integration.
-
-### Method 4: Install from GitHub main
+### Method 3: Install from GitHub main
 
 Use this when you want the latest main-branch build.
 
@@ -113,7 +95,7 @@ uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
 tablassert --help
 ```
 
-### Method 5: Install from local source
+### Method 4: Install from local source
 
 For contributors testing local repository changes.
 
@@ -151,11 +133,8 @@ For contributing to Tablassert or running tests, follow these additional steps:
 # Install development dependencies (includes pre-commit hooks)
 uv sync --dev
 
-# Add CPU QC runtime for QC tests
+# Add the QC runtime for QC tests
 uv sync --dev --extra qc
-
-# Or add CUDA QC runtime for GPU-backed QC tests
-uv sync --dev --extra qc-cuda
 
 # Install pre-commit hooks
 pre-commit install
@@ -220,11 +199,10 @@ pip install "tablassert[rt]"
 
 ### QC Runtime Issues
 
-If you enable `qc: true` in a graph configuration without a QC runtime installed, install one of:
+If you run `build-graph --qc` without the QC runtime installed, install it:
 
 ```bash
 pip install "tablassert[qc]"
-pip install "tablassert[qc-cuda]"
 ```
 
-Use `qc-cuda` only on systems with a working NVIDIA CUDA/cuDNN environment. Tablassert will not silently fall back to CPU from the CUDA path.
+The `qc` extra installs the torch / sentence-transformers BioBERT backend used by the audit stage.

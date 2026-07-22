@@ -31,7 +31,7 @@ Build a knowledge graph from a YAML configuration file.
 ### Synopsis
 
 ```bash
-tablassert build-graph <graph_configuration_file>
+tablassert build-graph <graph_configuration_file> [--release] [--qc] [--log]
 ```
 
 ### Options
@@ -39,16 +39,19 @@ tablassert build-graph <graph_configuration_file>
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
 | `graph_configuration_file` | Path | Yes | Knowledge Graph Configuration -- See Docs |
+| `--release`, `-r` | Flag | No | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
+| `--qc`, `-q` | Flag | No | Run the QC audit stage (exact → fuzzy → BioBERT) on resolved node columns |
+| `--log`, `-l` | Flag | No | Enable verbose per-section logging |
 
 ### Example
 
 ```bash
-tablassert build-graph /path/to/MOKGV6.yaml
+tablassert build-graph /path/to/MOKGV6.yaml --qc --log
 ```
 
 ### Description
 
-This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, downloads source files, applies transformations, resolves entities through fullmap, validates mappings with the QC pipeline (exact → fuzzy → BERT), and compiles subgraphs into KGX-compliant NDJSON files.
+This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, reads each table's source file from disk, applies transformations, resolves entities through fullmap, optionally validates mappings with the QC pipeline (exact → fuzzy → BioBERT) when `--qc` is passed, and compiles subgraphs into KGX-compliant NDJSON files plus a Resource Ingest Guide (RIG).
 
 The process executes in parallel stages with a three-row live progress block (logs print above the live block):
 
@@ -86,6 +89,7 @@ Phases cycle through `load`, `filter`, `clean`, `encode`, `resolve`, `qc`, `edge
 Final output files are written to the current working directory as:
 - `{name}_{version}.nodes.ndjson` - Node file (entities)
 - `{name}_{version}.edges.ndjson` - Edge file (relationships)
+- `{name}_{version}.RIG.yaml` - Resource Ingest Guide (source, provenance, and target metadata for the graph)
 
 Intermediate parquet artifacts are written to `.tablassert/store/` during section processing.
 
@@ -145,8 +149,8 @@ tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>
 | `--output` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
 | `--cache` | Path | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
 | `--version` | str | No | current BABEL release | BABEL release version to fetch |
-| `--threads` | int | No | `None` | Worker threads for staging/writing |
-| `--write-batch-size` | int | No | `50000` | Row batch size for staged writes |
+| `--threads` | int | No | `None` | Worker threads for the parallel build (defaults to ~90% of available CPUs when unset) |
+| `--write-batch-size` | int | No | `50000` | Row batch size for database writes |
 
 ### Example
 
@@ -156,7 +160,7 @@ tablassert build-fullmap --output /data/fullmap/fullmap.redb
 
 ### Description
 
-This command downloads BABEL class and synonym files from RENCI, stages them, and builds a single embedded `fullmap.redb` file used for entity resolution during `build-graph`. See [Fullmap](fullmap.md) for the full data pipeline, output schema, and graph-config usage.
+This command downloads BABEL class and synonym files from RENCI and builds a single embedded `fullmap.redb` file (via an in-memory parallel build) used for entity resolution during `build-graph`. See [Fullmap](fullmap.md) for the full data pipeline, output schema, and graph-config usage.
 
 ---
 
@@ -193,11 +197,11 @@ tablassert build-fullmap
 3. **Validate table config** - `tablassert validate-table table.yaml`
 4. **Build knowledge graph** - `tablassert build-graph graph.yaml`
 5. **Process executes:**
-   - Downloads files from URLs (if needed)
+   - Reads each table's source file from disk
    - Applies transformations to each table
    - Resolves entities using fullmap
-   - Validates mappings with QC pipeline
-   - Aggregates subgraphs into NDJSON
+   - Validates mappings with the QC pipeline (when `--qc` is passed)
+   - Aggregates subgraphs into NDJSON and writes the RIG
 
 ## Next Steps
 

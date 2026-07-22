@@ -74,7 +74,7 @@ This is useful when resolving a column of related entities (e.g., all genes) —
 
 **`qc: bool` (default: `False`)**
 
-When `True`, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Mappings that fail all three stages are dropped from the returned list (in addition to the unresolved-entity filtering performed by `resolve()`). Requires a QC runtime to be installed (`tablassert[qc]` or `tablassert[qc-cuda]`). The ONNX Runtime provider is auto-detected based on the installed package — CUDA is preferred when `onnxruntime-gpu` is installed and `CUDAExecutionProvider` is available; if only `onnxruntime` (CPU) is installed, CPU is used. Note: if `onnxruntime-gpu` is installed but `CUDAExecutionProvider` is unavailable, QC raises rather than falling back to CPU.
+When `True`, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Mappings that fail all three stages are dropped from the returned list (in addition to the unresolved-entity filtering performed by `resolve()`). Requires the QC runtime to be installed (`tablassert[qc]`); see [Quality Control](qc.md) for the stage thresholds and backend.
 
 ### Return Value
 
