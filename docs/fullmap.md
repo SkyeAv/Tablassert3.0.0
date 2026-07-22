@@ -19,7 +19,6 @@ tablassert build-fullmap
 | `--cache` | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
 | `--version` | No | current BABEL release (see `cli.py`) | BABEL release version to fetch |
 | `--threads` | No | `None` (~90% of available CPUs) | Worker threads for the parallel build |
-| `--write-batch-size` | No | `50000` | Row batch size for database writes |
 
 ### Data Pipeline
 
@@ -39,8 +38,8 @@ tablassert build-fullmap
 # Custom output location and BABEL version
 tablassert build-fullmap --output /data/fullmap/fullmap.redb --version 2025sep1
 
-# Tune concurrency and write batching for large builds
-tablassert build-fullmap --threads 8 --write-batch-size 100000
+# Tune concurrency for large builds
+tablassert build-fullmap --threads 8
 ```
 
 ## Output Artifact

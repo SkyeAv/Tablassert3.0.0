@@ -19,8 +19,8 @@ from tablassert.log import cat
 if TYPE_CHECKING:
     import pydantic
 
-    from tablassert.lib import Tcode  # noqa: F401
-    from tablassert.models import Graph  # noqa: F401
+    from tablassert.lib import Tcode
+    from tablassert.models import Graph
     from tablassert.progress import PipelineProgress
 else:
     pydantic = Lazy.load("pydantic")
@@ -203,7 +203,7 @@ def babel_urls(version: str, endpoints: tuple[str, ...], pattern: re.Pattern[str
     for endpoint in endpoints:
         listing_url: str = f"{BABEL_BASE}/{version}/{endpoint}"
         request: Request = Request(listing_url, headers={"User-Agent": "tablassert"})
-        with urlopen(request, timeout=60) as response:  # noqa: S310
+        with urlopen(request, timeout=60) as response:
             body: str = response.read().decode("utf-8")
         matches: list[str] = pattern.findall(body)
         for match in matches:
@@ -248,7 +248,7 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
             headers["Range"] = f"bytes={offset}-"
         request: Request = Request(url, headers=headers)
         try:
-            with urlopen(request, timeout=300) as response:  # noqa: S310
+            with urlopen(request, timeout=300) as response:
                 status: int = response.getcode()
                 mode: str = "ab" if offset > 0 and status == 206 else "wb"
                 if offset > 0 and status != 206:
@@ -298,7 +298,6 @@ def build_fullmap_pipeline(
     cache: Path = Path("./fullmap/downloads/fullmap"),
     version: str = BABEL_VERSION,
     threads: Optional[int] = None,
-    write_batch_size: int = 50_000,
 ) -> None:
     """Build an embedded fullmap redb database from BABEL outputs.
 
@@ -311,7 +310,6 @@ def build_fullmap_pipeline(
         cache: Directory for downloaded BABEL files.
         version: BABEL version label.
         threads: Optional thread count forwarded to Rust.
-        write_batch_size: Write batch size forwarded to Rust.
     """
     from tablassert import rs
 
@@ -349,7 +347,7 @@ def build_fullmap_pipeline(
     start, advance, sub_step = progress.section_loop(1, "Build")
     start(f"{output.name} · v{version}")
     sub_step("indexing")
-    rs.build_fullmap_db(output, class_files, synonym_files, version, threads=threads, write_batch_size=write_batch_size)
+    rs.build_fullmap_db(output, class_files, synonym_files, threads=threads)
     advance()
 
     logger.info(
@@ -367,7 +365,6 @@ def build_fullmap(
     cache: Path = Path("./fullmap/downloads/fullmap"),
     version: str = BABEL_VERSION,
     threads: Optional[int] = None,
-    write_batch_size: int = 50_000,
 ) -> None:
     """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
-    run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads, write_batch_size=write_batch_size)
+    run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads)

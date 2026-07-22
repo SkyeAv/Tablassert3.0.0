@@ -244,8 +244,7 @@ def filter_and_rank(
 ) -> pl.DataFrame:
     """Join already-fetched redb rows against one column's own terms, then filter, rank, and dedup.
 
-    Split out of ``query_distinct`` so ``resolve_batch`` can reuse one shared
-    redb fetch per column.
+    Called by ``resolve_batch`` so it can reuse one shared redb fetch per column.
 
     Args:
         raw: Rows looked up from the fullmap redb.
@@ -258,7 +257,7 @@ def filter_and_rank(
     Returns:
         Ranked matches DataFrame with one row per term.
     """
-    # Split out of query_distinct so resolve_batch can reuse one shared redb fetch per column.
+    # Resolve_batch reuses one shared redb fetch per column.
     if raw.height == 0:
         return empty_matches(column_context)
 
@@ -286,44 +285,6 @@ def filter_and_rank(
     )
     result = result.with_columns((priority * pr_base).alias("PR"))
     return deduplicate_result(result, column_context)
-
-
-def query_distinct(
-    lf: pl.LazyFrame,
-    db: Path,
-    taxon: Optional[str],
-    prioritize: Optional[list[Categories]],
-    avoid: Optional[list[Categories]],
-    column_context: bool,
-    threads: Optional[int] = None,
-) -> pl.DataFrame:
-    """Query the embedded fullmap database for distinct terms.
-
-    Args:
-        lf: LazyFrame of distinct terms (output of ``distinct``).
-        db: Path to the fullmap redb file.
-        taxon: Optional taxon filter applied to gene-category matches.
-        prioritize: Categories to boost in ranking.
-        avoid: Categories to drop entirely.
-        column_context: Whether to compute/use category frequency as a tiebreaker.
-        threads: Optional thread count forwarded to the Rust lookup.
-
-    Returns:
-        Ranked matches DataFrame (empty schema if no terms or no hits).
-
-    Notes:
-        Added column prioritization logic from 4.2.0.
-    """
-    # Added column prioritization logic from 4.2.0.
-    terms: pl.DataFrame = lf.collect()
-    if terms.height == 0:
-        return empty_matches(column_context)
-
-    rows: list[dict[str, object]] = lookup_rows(db, terms.get_column("term").to_list(), threads=threads)
-    if len(rows) == 0:
-        return empty_matches(column_context)
-
-    return filter_and_rank(pl.DataFrame(rows), terms, taxon, prioritize, avoid, column_context)
 
 
 def fullmap_db_path(fullmap: Path) -> Path:

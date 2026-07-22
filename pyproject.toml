@@ -109,6 +109,15 @@ line-length = 150
 indent-width = 4
 target-version = "py311"
 
+[tool.ruff.lint]
+select = [
+    "E4", # pycodestyle E4xx (ruff default subset)
+    "E7", # pycodestyle E7xx (ruff default subset)
+    "E9", # pycodestyle E9xx (ruff default subset)
+    "F", # pyflakes: F401 unused-imports, F841 unused-vars, F811 redefinitions, ...
+    "RUF100", # flag stale/unused `# noqa` directives
+]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

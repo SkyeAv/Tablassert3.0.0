@@ -139,7 +139,7 @@ Build an embedded fullmap redb database from BABEL export files.
 ### Synopsis
 
 ```bash
-tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>] [--threads <n>] [--write-batch-size <n>]
+tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>] [--threads <n>]
 ```
 
 ### Options
@@ -150,7 +150,6 @@ tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>
 | `--cache` | Path | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
 | `--version` | str | No | current BABEL release | BABEL release version to fetch |
 | `--threads` | int | No | `None` | Worker threads for the parallel build (defaults to ~90% of available CPUs when unset) |
-| `--write-batch-size` | int | No | `50000` | Row batch size for database writes |
 
 ### Example
 

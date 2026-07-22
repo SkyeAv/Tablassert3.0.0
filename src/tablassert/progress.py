@@ -82,7 +82,6 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         self.detail_text: Text = Text("")
         self._group: Group = Group(self.stage_text, Padding(self.progress, (0, 0)), self.detail_text)
         self.live: Live = Live(self._group, console=self.console, refresh_per_second=10, transient=False)
-        self.stage_task: Optional[TaskID] = None
         self.section_task: Optional[TaskID] = None
         self.stage_step: int = 0
         self._stage_name: str = ""

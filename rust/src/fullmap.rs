@@ -643,22 +643,18 @@ fn cache_database(path: &Path, database: Arc<Database>) -> PyResult<()> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (output, classes, synonyms, source_version, threads=None, write_batch_size=50000))]
+#[pyo3(signature = (output, classes, synonyms, threads=None))]
 pub fn build_fullmap_db(
     output: PathBuf,
     classes: Vec<PathBuf>,
     synonyms: Vec<PathBuf>,
-    source_version: String,
     threads: Option<usize>,
-    write_batch_size: usize,
 ) -> PyResult<()> {
     if synonyms.is_empty() {
         return Err(PyValueError::new_err(
             "at least one synonym file is required",
         ));
     }
-    drop(source_version);
-    let _write_batch_size = write_batch_size; // kept for CLI compat; unused in v2 build
 
     // Thread count: explicit --threads flag wins; default to all CPUs.
     let worker_count = threads
@@ -1027,15 +1023,7 @@ mod tests {
         )
         .unwrap();
 
-        build_fullmap_db(
-            output.clone(),
-            vec![classes],
-            vec![synonyms],
-            "test-version".to_string(),
-            Some(1),
-            1,
-        )
-        .unwrap();
+        build_fullmap_db(output.clone(), vec![classes], vec![synonyms], Some(1)).unwrap();
         let rows = lookup_terms(
             output,
             vec!["brca1".to_string(), "ncbigene672".to_string()],
@@ -1062,15 +1050,7 @@ mod tests {
         )
         .unwrap();
 
-        build_fullmap_db(
-            output.clone(),
-            Vec::new(),
-            vec![synonyms],
-            "ignored-version".to_string(),
-            Some(1),
-            1,
-        )
-        .unwrap();
+        build_fullmap_db(output.clone(), Vec::new(), vec![synonyms], Some(1)).unwrap();
 
         let database = open_cached(output).unwrap();
         let read = database.begin_read().unwrap();
@@ -1118,15 +1098,7 @@ mod tests {
         )
         .unwrap();
 
-        build_fullmap_db(
-            output.clone(),
-            Vec::new(),
-            vec![synonyms],
-            "ignored-version".to_string(),
-            Some(1),
-            1,
-        )
-        .unwrap();
+        build_fullmap_db(output.clone(), Vec::new(), vec![synonyms], Some(1)).unwrap();
 
         let database = open_cached(output).unwrap();
         let read = database.begin_read().unwrap();
@@ -1140,15 +1112,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let output = dir.path().join("fullmap.redb");
 
-        let err = build_fullmap_db(
-            output,
-            Vec::new(),
-            Vec::new(),
-            "test-version".to_string(),
-            Some(1),
-            1,
-        )
-        .expect_err("empty synonyms should fail");
+        let err = build_fullmap_db(output, Vec::new(), Vec::new(), Some(1))
+            .expect_err("empty synonyms should fail");
 
         assert!(err
             .to_string()
@@ -1169,15 +1134,7 @@ mod tests {
         )
         .unwrap();
 
-        build_fullmap_db(
-            output.clone(),
-            Vec::new(),
-            vec![synonyms],
-            "test-version".to_string(),
-            Some(1),
-            1,
-        )
-        .unwrap();
+        build_fullmap_db(output.clone(), Vec::new(), vec![synonyms], Some(1)).unwrap();
         let rows = lookup_terms(output, vec!["alias disease".to_string()], Some(1)).unwrap();
 
         assert_eq!(rows.len(), 1);
@@ -1200,15 +1157,7 @@ mod tests {
         )
         .unwrap();
 
-        build_fullmap_db(
-            output.clone(),
-            Vec::new(),
-            vec![synonyms],
-            "test-version".to_string(),
-            Some(1),
-            1,
-        )
-        .unwrap();
+        build_fullmap_db(output.clone(), Vec::new(), vec![synonyms], Some(1)).unwrap();
         let rows = lookup_terms(
             output,
             vec!["hypothetical protein".to_string(), "gene1".to_string()],
@@ -1234,15 +1183,7 @@ mod tests {
         )
         .unwrap();
 
-        build_fullmap_db(
-            output.clone(),
-            Vec::new(),
-            vec![synonyms],
-            "test-version".to_string(),
-            Some(1),
-            1,
-        )
-        .unwrap();
+        build_fullmap_db(output.clone(), Vec::new(), vec![synonyms], Some(1)).unwrap();
         let rows = lookup_terms(output, vec!["quoted gene".to_string()], Some(1)).unwrap();
 
         assert_eq!(rows.len(), 1);

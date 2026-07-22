@@ -12,7 +12,7 @@ import tablassert.cli as cli
 from tablassert.cli import build_fullmap
 import tablassert.lib as lib
 from tablassert.enums import Categories
-from tablassert.fullmap import ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, query_distinct, resolve, resolve_batch
+from tablassert.fullmap import ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, resolve, resolve_batch
 from tablassert.lib import to_store
 
 
@@ -48,32 +48,8 @@ def fullmap_db(tmp_path: Path) -> Path:
         ],
     )
     output: Path = tmp_path / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], "2026-07", threads=2, write_batch_size=2)
+    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
     return output
-
-
-def test_query_distinct_empty_terms(tmp_path: Path) -> None:
-    """query_distinct returns empty matches schema for empty terms."""
-    term: pl.Series = pl.Series("term", [], dtype=pl.String)
-    nlp_level: pl.Series = pl.Series("nlp_level", [], dtype=pl.Int64)
-    lf: pl.LazyFrame = pl.DataFrame([term, nlp_level]).lazy()
-
-    matches: pl.DataFrame = query_distinct(lf, tmp_path / "missing.redb", None, None, None, True)
-    cols: list[str] = [
-        "term",
-        "CURIE",
-        "PREFERRED_NAME",
-        "CATEGORY_NAME",
-        "TAXON_ID",
-        "SOURCE_NAME",
-        "SOURCE_VERSION",
-        "NLP_LEVEL",
-        "PR",
-        "FREQUENCY",
-    ]
-
-    assert matches.height == 0
-    assert matches.columns == cols
 
 
 def test_empty_resolve_still_writes_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -205,7 +181,7 @@ def test_resolve_converts_zero_taxon_to_null(fullmap_db: Path) -> None:
 
 
 def test_filter_and_rank_honors_avoid_category(fullmap_db: Path) -> None:
-    """filter_and_rank reproduces query_distinct's avoid-category filtering against a pre-fetched raw frame."""
+    """filter_and_rank applies avoid-category filtering against a pre-fetched raw frame."""
     terms: pl.DataFrame = pl.DataFrame({"term": ["ambiguous"], "nlp_level": [1]})
     raw: pl.DataFrame = pl.DataFrame(rs.lookup_fullmap_terms(fullmap_db, ["ambiguous"]))
 
@@ -360,7 +336,7 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(cli, "babel_urls", fake_babel_urls)
     monkeypatch.setattr(cli, "download_babel_file", fake_download_babel_file)
 
-    build_fullmap(output=output, cache=tmp_path / "cache", version="test-version", threads=1, write_batch_size=1)
+    build_fullmap(output=output, cache=tmp_path / "cache", version="test-version", threads=1)
 
     rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"], threads=1)
     assert rows[0]["CURIE"] == "HGNC:1100"

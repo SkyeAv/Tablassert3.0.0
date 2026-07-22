@@ -25,3 +25,8 @@ xxhash-rust = { version = "0.8", features = ["xxh64"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints.rust]
+unused_imports = "deny"
+unused_variables = "deny"
+dead_code = "deny"
