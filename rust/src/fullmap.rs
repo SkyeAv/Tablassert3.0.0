@@ -2,35 +2,36 @@ use flate2::read::GzDecoder;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use redb::{Database, ReadableTable, TableDefinition};
+use rayon::prelude::*;
+use redb::{Database, Durability, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::thread;
+use xxhash_rust::xxh64::xxh64;
 
-const RECORDS: TableDefinition<&str, &[u8]> = TableDefinition::new("records");
+const RECORDS: TableDefinition<u64, &[u8]> = TableDefinition::new("records");
 const PREFIXES: TableDefinition<u16, &str> = TableDefinition::new("prefixes");
 const CATEGORIES: TableDefinition<u16, &str> = TableDefinition::new("categories");
 const SOURCES: TableDefinition<u8, &[u8]> = TableDefinition::new("sources");
 const CURIES: TableDefinition<u32, &[u8]> = TableDefinition::new("curies");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
-const EQUIVALENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("equivalents");
-const TERM_RECORDS: TableDefinition<&str, &[u8]> = TableDefinition::new("term_records");
-const SCHEMA_VERSION: &str = "tablassert.fullmap.v2";
+const SCHEMA_VERSION: &str = "tablassert.fullmap.v3";
+const SCHEMA_VERSION_V2: &str = "tablassert.fullmap.v2";
 const SCHEMA_VERSION_V1: &str = "tablassert.fullmap.v1";
 const FULLMAP_SOURCE_VERSION: &str = "2026sep1";
 type CachedDatabaseKey = (PathBuf, std::time::SystemTime);
-type DimensionIds = (
-    HashMap<String, u16>,
-    HashMap<String, u16>,
-    HashMap<String, u8>,
-);
 type PairRecords = Vec<(String, Vec<(u32, u8)>)>;
 static DB_CACHE: OnceLock<RwLock<HashMap<CachedDatabaseKey, Arc<Database>>>> = OnceLock::new();
+
+/// Number of shards for concurrent maps (power of two for mask routing).
+const SHARD_COUNT: usize = 64;
+const SHARD_MASK: usize = SHARD_COUNT - 1;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 struct FullmapRecord {
@@ -204,237 +205,12 @@ fn class_id_and_equivalents(row: &Value) -> Option<(String, Vec<String>)> {
     Some((id, ids.into_iter().collect()))
 }
 
-fn stage_equivalents(database: &Database, classes: &[PathBuf], batch_size: usize) -> PyResult<()> {
-    for path in classes {
-        let mut rows: Vec<(String, Vec<u8>)> = Vec::new();
-        for_json_lines(path, |row| {
-            if let Some((id, equivalents)) = class_id_and_equivalents(&row) {
-                let encoded = bincode::serialize(&equivalents).map_err(py_err)?;
-                rows.push((id, encoded));
-            }
-            if rows.len() >= batch_size {
-                write_bytes_batch(database, EQUIVALENTS, &rows)?;
-                rows.clear();
-            }
-            Ok(())
-        })?;
-        if !rows.is_empty() {
-            write_bytes_batch(database, EQUIVALENTS, &rows)?;
-        }
-    }
-    Ok(())
-}
-
-fn staged_pair_keys(key: String, pair: (u32, u8)) -> PyResult<Vec<(String, Vec<u8>)>> {
-    let cleaned = clean(key);
-    if !token_qc(&cleaned) {
-        return Ok(Vec::new());
-    }
-    let encoded = bincode::serialize(&pair).map_err(py_err)?;
-    let mut out = Vec::new();
-    let l1 = level_one(&cleaned);
-    let l2 = level_two(&l1);
-    if token_qc(&l1) {
-        out.push((stage_record_key(&l1, &encoded), encoded.clone()));
-    }
-    if token_qc(&l2) {
-        out.push((stage_record_key(&l2, &encoded), encoded));
-    }
-    Ok(out)
-}
-
-fn stage_record_key(term: &str, encoded: &[u8]) -> String {
-    format!("{}\0{:x}", term, md5::compute(encoded))
-}
-
-fn staged_term(key: &str) -> &str {
-    key.split_once('\0').map(|(term, _)| term).unwrap_or(key)
-}
-
-fn write_bytes_batch(
-    database: &Database,
-    table_definition: TableDefinition<&str, &[u8]>,
-    rows: &[(String, Vec<u8>)],
-) -> PyResult<()> {
-    let write = database.begin_write().map_err(py_err)?;
-    {
-        let mut table = write.open_table(table_definition).map_err(py_err)?;
-        for (key, value) in rows {
-            table
-                .insert(key.as_str(), value.as_slice())
-                .map_err(py_err)?;
-        }
-    }
-    write.commit().map_err(py_err)?;
-    Ok(())
-}
-
-fn initialize_build_tables(database: &Database) -> PyResult<()> {
-    let write = database.begin_write().map_err(py_err)?;
-    {
-        let _equivalents = write.open_table(EQUIVALENTS).map_err(py_err)?;
-        let _term_records = write.open_table(TERM_RECORDS).map_err(py_err)?;
-        let _prefixes = write.open_table(PREFIXES).map_err(py_err)?;
-        let _categories = write.open_table(CATEGORIES).map_err(py_err)?;
-        let _sources = write.open_table(SOURCES).map_err(py_err)?;
-    }
-    write.commit().map_err(py_err)?;
-    Ok(())
-}
-
-fn equivalent_terms(database: &Database, curie: &str) -> PyResult<Vec<String>> {
-    let read = database.begin_read().map_err(py_err)?;
-    let table = read.open_table(EQUIVALENTS).map_err(py_err)?;
-    let Some(bytes) = table.get(curie).map_err(py_err)? else {
-        return Ok(Vec::new());
-    };
-    bincode::deserialize(bytes.value()).map_err(py_err)
-}
-
 fn source_name(path: &Path) -> String {
     path.file_stem()
         .and_then(|x| x.to_str())
         .unwrap_or("BABEL")
         .trim_end_matches(".ndjson")
         .to_string()
-}
-
-fn ids_u16(values: BTreeSet<String>, label: &str) -> PyResult<HashMap<String, u16>> {
-    values
-        .into_iter()
-        .enumerate()
-        .map(|(idx, value)| {
-            let id = u16::try_from(idx)
-                .map_err(|_| PyRuntimeError::new_err(format!("too many {label}s")))?;
-            Ok((value, id))
-        })
-        .collect()
-}
-
-fn ids_u8(values: BTreeSet<String>, label: &str) -> PyResult<HashMap<String, u8>> {
-    values
-        .into_iter()
-        .enumerate()
-        .map(|(idx, value)| {
-            let id = u8::try_from(idx)
-                .map_err(|_| PyRuntimeError::new_err(format!("too many {label}s")))?;
-            Ok((value, id))
-        })
-        .collect()
-}
-
-fn intern_synonym_dimensions(database: &Database, synonyms: &[PathBuf]) -> PyResult<DimensionIds> {
-    let mut prefixes = BTreeSet::new();
-    let mut categories = BTreeSet::new();
-    let mut sources = BTreeSet::new();
-
-    for path in synonyms {
-        sources.insert(source_name(path));
-        for_json_lines(path, |row| {
-            if let Some(curie) = string_field(&row, &["curie", "id"]) {
-                if let Some((prefix, _local)) = split_curie(&curie) {
-                    prefixes.insert(prefix.to_string());
-                }
-            }
-            categories.insert(first_category(&row));
-            Ok(())
-        })?;
-    }
-
-    let prefix_ids = ids_u16(prefixes, "fullmap prefix")?;
-    let category_ids = ids_u16(categories, "fullmap category")?;
-    let source_ids = ids_u8(sources, "fullmap source")?;
-
-    let write = database.begin_write().map_err(py_err)?;
-    {
-        let mut prefix_table = write.open_table(PREFIXES).map_err(py_err)?;
-        for (value, id) in &prefix_ids {
-            prefix_table.insert(*id, value.as_str()).map_err(py_err)?;
-        }
-        let mut category_table = write.open_table(CATEGORIES).map_err(py_err)?;
-        for (value, id) in &category_ids {
-            category_table.insert(*id, value.as_str()).map_err(py_err)?;
-        }
-        let mut source_table = write.open_table(SOURCES).map_err(py_err)?;
-        for (value, id) in &source_ids {
-            let encoded = bincode::serialize(&SourceRow {
-                source_name: value.clone(),
-            })
-            .map_err(py_err)?;
-            source_table
-                .insert(*id, encoded.as_slice())
-                .map_err(py_err)?;
-        }
-    }
-    write.commit().map_err(py_err)?;
-    Ok((prefix_ids, category_ids, source_ids))
-}
-
-fn stage_synonyms(
-    database: &Database,
-    synonyms: &[PathBuf],
-    batch_size: usize,
-) -> PyResult<BTreeMap<u32, CurieRow>> {
-    let (prefix_ids, category_ids, source_ids) = intern_synonym_dimensions(database, synonyms)?;
-    let mut rows: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut curie_ids: HashMap<String, u32> = HashMap::new();
-    let mut curies: BTreeMap<u32, CurieRow> = BTreeMap::new();
-
-    for path in synonyms {
-        let source_name = source_name(path);
-        let source_id = *source_ids
-            .get(&source_name)
-            .ok_or_else(|| PyRuntimeError::new_err(format!("uninterned source {source_name}")))?;
-        for_json_lines(path, |row| {
-            let Some(curie) = string_field(&row, &["curie", "id"]) else {
-                return Ok(());
-            };
-            let Some((prefix, local_id)) = split_curie(&curie) else {
-                return Ok(());
-            };
-            let preferred_name =
-                string_field(&row, &["preferred_name", "name"]).unwrap_or_else(|| curie.clone());
-            let category_name = first_category(&row);
-            let prefix_id = *prefix_ids
-                .get(prefix)
-                .ok_or_else(|| PyRuntimeError::new_err(format!("uninterned prefix {prefix}")))?;
-            let category_id = *category_ids.get(&category_name).ok_or_else(|| {
-                PyRuntimeError::new_err(format!("uninterned category {category_name}"))
-            })?;
-            let next_id = u32::try_from(curie_ids.len())
-                .map_err(|_| PyRuntimeError::new_err("too many fullmap CURIE rows"))?;
-            let curie_id = *curie_ids.entry(curie.clone()).or_insert_with(|| {
-                curies.insert(
-                    next_id,
-                    CurieRow {
-                        prefix_id,
-                        local_id: local_id.to_string(),
-                        preferred_name: clean(preferred_name),
-                        category_id,
-                        taxon_id: first_taxon(&row),
-                    },
-                );
-                next_id
-            });
-            let pair = (curie_id, source_id);
-
-            let mut terms = string_array(&row, "names");
-            terms.push(curie.clone());
-            terms.extend(equivalent_terms(database, &curie)?);
-            for term in terms {
-                rows.extend(staged_pair_keys(term, pair)?);
-                if rows.len() >= batch_size {
-                    write_bytes_batch(database, TERM_RECORDS, &rows)?;
-                    rows.clear();
-                }
-            }
-            Ok(())
-        })?;
-    }
-    if !rows.is_empty() {
-        write_bytes_batch(database, TERM_RECORDS, &rows)?;
-    }
-    Ok(curies)
 }
 
 fn hydrate_record(
@@ -454,124 +230,393 @@ fn hydrate_record(
     }
 }
 
-fn sorted_pairs(records: HashSet<(u32, u8)>) -> Vec<(u32, u8)> {
-    let mut out: Vec<(u32, u8)> = records.into_iter().collect();
-    out.sort_unstable();
-    out
+// ---------------------------------------------------------------------------
+// Sharded concurrent map (inspired by datassert's sharded curieCounter)
+// ---------------------------------------------------------------------------
+
+fn shard_index(key: &str) -> usize {
+    (xxh64(key.as_bytes(), 0) as usize) & SHARD_MASK
 }
 
-fn commit_final_records(database: &Database, rows: &[(String, Vec<(u32, u8)>)]) -> PyResult<()> {
-    let write = database.begin_write().map_err(py_err)?;
-    {
-        let mut table = write.open_table(RECORDS).map_err(py_err)?;
-        for (term, records) in rows {
-            let encoded = bincode::serialize(records).map_err(py_err)?;
-            table
-                .insert(term.as_str(), encoded.as_slice())
-                .map_err(py_err)?;
+/// A sharded concurrent HashMap that routes keys by xxhash to reduce lock
+/// contention.  Each shard is independently locked.
+struct ShardedMap<V> {
+    shards: Vec<RwLock<HashMap<String, V>>>,
+}
+
+impl<V> ShardedMap<V> {
+    fn new() -> Self {
+        let mut shards = Vec::with_capacity(SHARD_COUNT);
+        for _ in 0..SHARD_COUNT {
+            shards.push(RwLock::new(HashMap::new()));
         }
+        ShardedMap { shards }
     }
-    write.commit().map_err(py_err)?;
-    Ok(())
-}
 
-fn finalize_records(
-    stage_database: &Database,
-    final_database: &Database,
-    curies: &BTreeMap<u32, CurieRow>,
-    batch_size: usize,
-) -> PyResult<()> {
-    copy_build_tables(stage_database, final_database, curies)?;
-    let read = stage_database.begin_read().map_err(py_err)?;
-    let table = read.open_table(TERM_RECORDS).map_err(py_err)?;
-    let mut current_term: Option<String> = None;
-    let mut current_records: HashSet<(u32, u8)> = HashSet::new();
-    let mut final_rows: PairRecords = Vec::new();
-
-    for item in table.iter().map_err(py_err)? {
-        let (key, value) = item.map_err(py_err)?;
-        let term = staged_term(key.value()).to_string();
-        if current_term
-            .as_deref()
-            .is_some_and(|existing| existing != term)
+    /// Get an existing value or insert a new one computed by `f`.
+    /// Returns a clone of the value (requires V: Clone).
+    fn get_or_insert_with(&self, key: &str, f: impl FnOnce() -> V) -> V
+    where
+        V: Clone,
+    {
+        let idx = shard_index(key);
+        // Fast path: read lock.
         {
-            let finished_term = current_term.take().unwrap_or_default();
-            final_rows.push((finished_term, sorted_pairs(current_records)));
-            current_records = HashSet::new();
-            if final_rows.len() >= batch_size {
-                commit_final_records(final_database, &final_rows)?;
-                final_rows.clear();
+            let shard = self.shards[idx].read().unwrap();
+            if let Some(v) = shard.get(key) {
+                return v.clone();
             }
         }
-        current_term = Some(term);
-        let record: (u32, u8) = bincode::deserialize(value.value()).map_err(py_err)?;
-        current_records.insert(record);
+        // Slow path: write lock.
+        let mut shard = self.shards[idx].write().unwrap();
+        if let Some(v) = shard.get(key) {
+            return v.clone();
+        }
+        let v = f();
+        shard.insert(key.to_string(), v.clone());
+        v
     }
-
-    if let Some(term) = current_term {
-        final_rows.push((term, sorted_pairs(current_records)));
-    }
-    if !final_rows.is_empty() {
-        commit_final_records(final_database, &final_rows)?;
-    }
-    Ok(())
 }
 
-fn copy_build_tables(
-    stage_database: &Database,
-    final_database: &Database,
-    curies: &BTreeMap<u32, CurieRow>,
-) -> PyResult<()> {
-    let stage_read = stage_database.begin_read().map_err(py_err)?;
-    let write = final_database.begin_write().map_err(py_err)?;
+/// One shard of the term-aggregation map.
+type TermShard = HashMap<String, HashSet<(u32, u8)>>;
+
+/// Concrete sharded term-aggregation map: term → set of (curie_id, source_id).
+struct TermMap {
+    shards: Vec<RwLock<TermShard>>,
+}
+
+impl TermMap {
+    fn new() -> Self {
+        let mut shards = Vec::with_capacity(SHARD_COUNT);
+        for _ in 0..SHARD_COUNT {
+            shards.push(RwLock::new(HashMap::new()));
+        }
+        TermMap { shards }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: build in-memory equivalents lookup (parallel over class files)
+// ---------------------------------------------------------------------------
+
+fn build_equivalents_map(classes: &[PathBuf]) -> PyResult<HashMap<String, Vec<String>>> {
+    let partial: Vec<PyResult<HashMap<String, Vec<String>>>> = classes
+        .par_iter()
+        .map(|path| {
+            let mut local: HashMap<String, Vec<String>> = HashMap::new();
+            for_json_lines(path, |row| {
+                if let Some((id, equivalents)) = class_id_and_equivalents(&row) {
+                    local.insert(id, equivalents);
+                }
+                Ok(())
+            })?;
+            Ok(local)
+        })
+        .collect();
+
+    let mut merged: HashMap<String, Vec<String>> = HashMap::new();
+    for result in partial {
+        let local = result?;
+        merged.extend(local);
+    }
+    Ok(merged)
+}
+
+// ---------------------------------------------------------------------------
+// Phases 2+3: single-pass synonym processing (parallel over synonym files)
+//
+// Collects dimensions (prefixes, categories, sources), assigns CURIE IDs,
+// builds CurieRows, and aggregates term → (curie_id, source_id) pairs —
+// all in one pass per file.
+// ---------------------------------------------------------------------------
+
+/// Result of the parallel synonym-processing pass.
+struct SynonymBuildResult {
+    /// prefix string → u16 id
+    prefix_ids: HashMap<String, u16>,
+    /// category string → u16 id
+    category_ids: HashMap<String, u16>,
+    /// source string → u8 id
+    source_ids: HashMap<String, u8>,
+    /// curie_id → CurieRow (indexed by id)
+    curie_rows: Vec<CurieRow>,
+    /// term → set of (curie_id, source_id)
+    terms: TermMap,
+}
+
+fn process_synonyms(
+    synonyms: &[PathBuf],
+    equivalents: &HashMap<String, Vec<String>>,
+) -> PyResult<SynonymBuildResult> {
+    // Pre-compute source IDs from filenames (small, deterministic).
+    let mut source_ids: HashMap<String, u8> = HashMap::new();
+    for path in synonyms {
+        let name = source_name(path);
+        let next_id = u8::try_from(source_ids.len())
+            .map_err(|_| PyRuntimeError::new_err("too many fullmap sources"))?;
+        source_ids.entry(name).or_insert(next_id);
+    }
+
+    // Concurrent dimension counters.
+    let prefix_map: ShardedMap<u16> = ShardedMap::new();
+    let prefix_counter = AtomicU32::new(0);
+    let category_map: ShardedMap<u16> = ShardedMap::new();
+    let category_counter = AtomicU32::new(0);
+
+    // Concurrent CURIE ID assignment + CurieRow storage.
+    let curie_map: ShardedMap<u32> = ShardedMap::new();
+    let curie_counter = AtomicU32::new(0);
+    // CurieRows stored as (curie_id, CurieRow) pairs; merged after the pass.
+    let curie_rows_collected: RwLock<Vec<(u32, CurieRow)>> = RwLock::new(Vec::new());
+
+    // Term aggregation.
+    let terms = TermMap::new();
+
+    // Parallel pass over synonym files.
+    let results: Vec<PyResult<()>> = synonyms
+        .par_iter()
+        .map(|path| {
+            let src_name = source_name(path);
+            let source_id = *source_ids
+                .get(&src_name)
+                .ok_or_else(|| PyRuntimeError::new_err(format!("uninterned source {src_name}")))?;
+
+            // Thread-local buffers to avoid lock contention in the hot loop.
+            let mut local_curie_rows: Vec<(u32, CurieRow)> = Vec::new();
+            let mut local_terms: HashMap<String, HashSet<(u32, u8)>> = HashMap::new();
+
+            for_json_lines(path, |row| {
+                let Some(curie) = string_field(&row, &["curie", "id"]) else {
+                    return Ok(());
+                };
+                let Some((prefix, local_id)) = split_curie(&curie) else {
+                    return Ok(());
+                };
+
+                // Get-or-create prefix ID.
+                let prefix_id = prefix_map.get_or_insert_with(prefix, || {
+                    u16::try_from(prefix_counter.fetch_add(1, Ordering::Relaxed))
+                        .expect("too many fullmap prefixes")
+                });
+
+                // Get-or-create category ID.
+                let category_name = first_category(&row);
+                let category_id = category_map.get_or_insert_with(&category_name, || {
+                    u16::try_from(category_counter.fetch_add(1, Ordering::Relaxed))
+                        .expect("too many fullmap categories")
+                });
+
+                // Get-or-create CURIE ID.
+                let preferred_name = string_field(&row, &["preferred_name", "name"])
+                    .unwrap_or_else(|| curie.clone());
+                let taxon_id = first_taxon(&row);
+
+                let mut is_new = false;
+                let curie_id = curie_map.get_or_insert_with(&curie, || {
+                    is_new = true;
+                    curie_counter.fetch_add(1, Ordering::Relaxed)
+                });
+
+                if is_new {
+                    local_curie_rows.push((
+                        curie_id,
+                        CurieRow {
+                            prefix_id,
+                            local_id: local_id.to_string(),
+                            preferred_name: clean(preferred_name),
+                            category_id,
+                            taxon_id,
+                        },
+                    ));
+                }
+
+                let pair = (curie_id, source_id);
+
+                // Collect all terms: names + curie + equivalents.
+                let mut all_terms = string_array(&row, "names");
+                all_terms.push(curie.clone());
+                if let Some(equivs) = equivalents.get(&curie) {
+                    all_terms.extend(equivs.iter().cloned());
+                }
+
+                // Generate L1 and L2 normalised term keys into the
+                // thread-local map (no locking in the hot loop).
+                for term in &all_terms {
+                    let cleaned = clean(term.clone());
+                    if !token_qc(&cleaned) {
+                        continue;
+                    }
+                    let l1 = level_one(&cleaned);
+                    if token_qc(&l1) {
+                        local_terms.entry(l1.clone()).or_default().insert(pair);
+                        let l2 = level_two(&l1);
+                        if l2 != l1 && token_qc(&l2) {
+                            local_terms.entry(l2).or_default().insert(pair);
+                        }
+                    }
+                }
+
+                Ok(())
+            })?;
+
+            // Flush thread-local CurieRows into the shared collection.
+            if !local_curie_rows.is_empty() {
+                curie_rows_collected
+                    .write()
+                    .unwrap()
+                    .extend(local_curie_rows);
+            }
+
+            // Merge thread-local terms into the shared TermMap.
+            for (term, pairs) in local_terms {
+                let idx = shard_index(&term);
+                let mut shard = terms.shards[idx].write().unwrap();
+                shard.entry(term).or_default().extend(pairs);
+            }
+
+            Ok(())
+        })
+        .collect();
+
+    // Propagate any errors from parallel tasks.
+    for result in results {
+        result?;
+    }
+
+    // Build final prefix_ids / category_ids maps from the sharded counters.
+    let mut prefix_ids: HashMap<String, u16> = HashMap::new();
+    for shard in &prefix_map.shards {
+        prefix_ids.extend(shard.read().unwrap().iter().map(|(k, v)| (k.clone(), *v)));
+    }
+    let mut category_ids: HashMap<String, u16> = HashMap::new();
+    for shard in &category_map.shards {
+        category_ids.extend(shard.read().unwrap().iter().map(|(k, v)| (k.clone(), *v)));
+    }
+
+    // Build curie_rows vec indexed by curie_id.
+    let collected = curie_rows_collected.into_inner().unwrap();
+    let max_id = collected.iter().map(|(id, _)| *id).max().unwrap_or(0);
+    let mut curie_rows: Vec<CurieRow> = Vec::with_capacity(max_id as usize + 1);
+    // Sort by curie_id so we can place them in order.
+    let mut sorted = collected;
+    sorted.sort_unstable_by_key(|(id, _)| *id);
+    // Fill the vec (IDs are 0..N with no gaps since the counter is sequential).
+    for (id, row) in sorted {
+        while curie_rows.len() <= id as usize {
+            // Safety: IDs are assigned sequentially from 0, so gaps should not
+            // occur.  If they do, pad with a placeholder (should never happen).
+            curie_rows.push(CurieRow {
+                prefix_id: 0,
+                local_id: String::new(),
+                preferred_name: String::new(),
+                category_id: 0,
+                taxon_id: 0,
+            });
+        }
+        curie_rows[id as usize] = row;
+    }
+
+    Ok(SynonymBuildResult {
+        prefix_ids,
+        category_ids,
+        source_ids,
+        curie_rows,
+        terms,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: write final database (single write transaction)
+// ---------------------------------------------------------------------------
+
+fn write_final_database(output: &Path, result: &SynonymBuildResult) -> PyResult<()> {
+    // Pre-serialise all RECORDS entries outside the write transaction.
+    // Key is xxh64(term) for fast fixed-width B-tree inserts; the full term
+    // is stored inside the value for collision verification on lookup.
+    let mut record_entries: Vec<(u64, Vec<u8>)> = Vec::new();
+    for shard in &result.terms.shards {
+        let shard_read = shard.read().unwrap();
+        for (term, pairs) in shard_read.iter() {
+            let mut sorted_pairs: Vec<(u32, u8)> = pairs.iter().copied().collect();
+            sorted_pairs.sort_unstable();
+            let encoded = bincode::serialize(&(term.as_str(), &sorted_pairs)).map_err(py_err)?;
+            record_entries.push((xxh64(term.as_bytes(), 0), encoded));
+        }
+    }
+    record_entries.sort_unstable_by_key(|(hash, _)| *hash);
+
+    let database = redb::Builder::new()
+        .set_cache_size(8 * 1024 * 1024 * 1024) // 8 GB cache
+        .create(output)
+        .map_err(py_err)?;
+
+    // Write dimension tables + CURIES + META in one small transaction.
+    let write = database.begin_write().map_err(py_err)?;
     {
-        let stage_prefixes = stage_read.open_table(PREFIXES).map_err(py_err)?;
-        let mut final_prefixes = write.open_table(PREFIXES).map_err(py_err)?;
-        for item in stage_prefixes.iter().map_err(py_err)? {
-            let (id, value) = item.map_err(py_err)?;
-            final_prefixes
-                .insert(id.value(), value.value())
-                .map_err(py_err)?;
+        let mut prefix_table = write.open_table(PREFIXES).map_err(py_err)?;
+        for (value, id) in &result.prefix_ids {
+            prefix_table.insert(*id, value.as_str()).map_err(py_err)?;
         }
-        drop(final_prefixes);
+        drop(prefix_table);
 
-        let stage_categories = stage_read.open_table(CATEGORIES).map_err(py_err)?;
-        let mut final_categories = write.open_table(CATEGORIES).map_err(py_err)?;
-        for item in stage_categories.iter().map_err(py_err)? {
-            let (id, value) = item.map_err(py_err)?;
-            final_categories
-                .insert(id.value(), value.value())
-                .map_err(py_err)?;
+        let mut category_table = write.open_table(CATEGORIES).map_err(py_err)?;
+        for (value, id) in &result.category_ids {
+            category_table.insert(*id, value.as_str()).map_err(py_err)?;
         }
-        drop(final_categories);
+        drop(category_table);
 
-        let stage_sources = stage_read.open_table(SOURCES).map_err(py_err)?;
-        let mut final_sources = write.open_table(SOURCES).map_err(py_err)?;
-        for item in stage_sources.iter().map_err(py_err)? {
-            let (id, value) = item.map_err(py_err)?;
-            final_sources
-                .insert(id.value(), value.value())
-                .map_err(py_err)?;
-        }
-        drop(final_sources);
-
-        let mut final_curies = write.open_table(CURIES).map_err(py_err)?;
-        for (id, curie) in curies {
-            let encoded = bincode::serialize(curie).map_err(py_err)?;
-            final_curies
+        let mut source_table = write.open_table(SOURCES).map_err(py_err)?;
+        for (value, id) in &result.source_ids {
+            let encoded = bincode::serialize(&SourceRow {
+                source_name: value.clone(),
+            })
+            .map_err(py_err)?;
+            source_table
                 .insert(*id, encoded.as_slice())
                 .map_err(py_err)?;
         }
+        drop(source_table);
+
+        let mut curie_table = write.open_table(CURIES).map_err(py_err)?;
+        for (id, curie) in result.curie_rows.iter().enumerate() {
+            let encoded = bincode::serialize(curie).map_err(py_err)?;
+            curie_table
+                .insert(id as u32, encoded.as_slice())
+                .map_err(py_err)?;
+        }
+        drop(curie_table);
+
+        let mut meta = write.open_table(META).map_err(py_err)?;
+        meta.insert("schema", SCHEMA_VERSION).map_err(py_err)?;
     }
     write.commit().map_err(py_err)?;
+
+    // Write RECORDS in batched transactions (1 M rows each) to keep each
+    // B-tree mutation set small enough for redb to flush efficiently while
+    // still amortising the fsync cost over many rows.
+    // Write RECORDS in a single transaction with Durability::None for
+    // maximum insert throughput, then a final empty Immediate commit to
+    // flush everything to disk.
+    let mut write = database.begin_write().map_err(py_err)?;
+    write.set_durability(Durability::None);
+    {
+        let mut table = write.open_table(RECORDS).map_err(py_err)?;
+        for (hash, encoded) in &record_entries {
+            table.insert(*hash, encoded.as_slice()).map_err(py_err)?;
+        }
+    }
+    write.commit().map_err(py_err)?;
+    // Final durable commit to persist all pages.
+    let write = database.begin_write().map_err(py_err)?;
+    write.commit().map_err(py_err)?;
+
     Ok(())
 }
 
-fn temp_path(path: &Path, suffix: &str) -> PathBuf {
-    let mut value = path.as_os_str().to_os_string();
-    value.push(suffix);
-    PathBuf::from(value)
-}
+// ---------------------------------------------------------------------------
+// Build orchestrator
+// ---------------------------------------------------------------------------
 
 fn evict_cached_path(path: &Path) -> PyResult<()> {
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -613,39 +658,53 @@ pub fn build_fullmap_db(
         ));
     }
     drop(source_version);
-    let _threads = threads.unwrap_or(1).max(1);
-    let batch_size = write_batch_size.max(1);
+    let _write_batch_size = write_batch_size; // kept for CLI compat; unused in v2 build
+
+    // Thread count: explicit --threads flag wins; default to all CPUs.
+    let worker_count = threads
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
+        })
+        .max(1);
+
+    // Build a dedicated rayon pool so we don't disturb the global pool.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(worker_count)
+        .build()
+        .map_err(py_err)?;
+
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent).map_err(py_err)?;
-    }
-    let stage_output = temp_path(&output, ".stage.tmp");
-    if stage_output.exists() {
-        std::fs::remove_file(&stage_output).map_err(py_err)?;
     }
     evict_cached_path(&output)?;
     if output.exists() {
         std::fs::remove_file(&output).map_err(py_err)?;
     }
-    let stage_database = Database::create(&stage_output).map_err(py_err)?;
-    let final_database = Arc::new(Database::create(&output).map_err(py_err)?);
 
-    initialize_build_tables(&stage_database)?;
-    stage_equivalents(&stage_database, &classes, batch_size)?;
-    let curies = stage_synonyms(&stage_database, &synonyms, batch_size)?;
-    finalize_records(&stage_database, &final_database, &curies, batch_size)?;
+    pool.install(|| {
+        // Phase 1: build in-memory equivalents lookup from class files.
+        let equivalents = build_equivalents_map(&classes)?;
 
-    let write = final_database.begin_write().map_err(py_err)?;
-    {
-        let mut meta = write.open_table(META).map_err(py_err)?;
-        meta.insert("schema", SCHEMA_VERSION).map_err(py_err)?;
-    }
-    write.commit().map_err(py_err)?;
-    cache_database(&output, Arc::clone(&final_database))?;
-    drop(stage_database);
-    drop(final_database);
-    std::fs::remove_file(&stage_output).map_err(py_err)?;
+        // Phases 2+3: single-pass synonym processing.
+        let result = process_synonyms(&synonyms, &equivalents)?;
+
+        // Phase 4: write final database.
+        write_final_database(&output, &result)?;
+
+        Ok::<(), PyErr>(())
+    })?;
+
+    // Cache the freshly-built database for the read path.
+    let database = Arc::new(Database::open(&output).map_err(py_err)?);
+    cache_database(&output, database)?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Read path (unchanged)
+// ---------------------------------------------------------------------------
 
 fn validate_schema(database: &Database) -> PyResult<()> {
     let read = database.begin_read().map_err(py_err)?;
@@ -656,8 +715,8 @@ fn validate_schema(database: &Database) -> PyResult<()> {
         .map(|x| x.value().to_string());
     match schema.as_deref() {
         Some(SCHEMA_VERSION) => Ok(()),
-        Some(SCHEMA_VERSION_V1) => Err(PyRuntimeError::new_err(
-            "fullmap DB is v1; rebuild with 'tablassert build-fullmap'",
+        Some(SCHEMA_VERSION_V2) | Some(SCHEMA_VERSION_V1) => Err(PyRuntimeError::new_err(
+            "fullmap DB is outdated; rebuild with 'tablassert build-fullmap'",
         )),
         _ => Err(PyRuntimeError::new_err("unsupported fullmap redb schema")),
     }
@@ -688,9 +747,14 @@ fn lookup_pair_chunk(database: &Database, terms: &[String]) -> PyResult<PairReco
     let table = read.open_table(RECORDS).map_err(py_err)?;
     let mut out = Vec::new();
     for term in terms {
-        if let Some(bytes) = table.get(term.as_str()).map_err(py_err)? {
-            let records: Vec<(u32, u8)> = bincode::deserialize(bytes.value()).map_err(py_err)?;
-            out.push((term.clone(), records));
+        let hash = xxh64(term.as_bytes(), 0);
+        if let Some(bytes) = table.get(hash).map_err(py_err)? {
+            let (stored_term, records): (String, Vec<(u32, u8)>) =
+                bincode::deserialize(bytes.value()).map_err(py_err)?;
+            // Verify the term matches (guards against xxh64 collisions).
+            if &stored_term == term {
+                out.push((term.clone(), records));
+            }
         }
     }
     Ok(out)
@@ -1037,7 +1101,7 @@ mod tests {
         let err = lookup_terms(output, vec!["brca1".to_string()], Some(1)).unwrap_err();
         assert!(err
             .to_string()
-            .contains("fullmap DB is v1; rebuild with 'tablassert build-fullmap'"));
+            .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
     }
 
     #[test]
