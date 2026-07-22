@@ -15,10 +15,10 @@ tablassert build-fullmap
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--output` | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
-| `--cache` | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
-| `--version` | No | current BABEL release (see `cli.py`) | BABEL release version to fetch |
-| `--threads` | No | `None` (~90% of available CPUs) | Worker threads for the parallel build |
+| `--output`, `-o` | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
+| `--cache`, `-c` | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
+| `--version`, `-v` | No | current BABEL release (see `cli.py`) | BABEL release version to fetch |
+| `--threads`, `-t` | No | `None` (~90% of available CPUs) | Worker threads for the parallel build |
 
 ### Data Pipeline
 

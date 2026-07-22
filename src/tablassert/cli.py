@@ -361,10 +361,10 @@ def build_fullmap_pipeline(
 
 @APP.command(name="build-fullmap")
 def build_fullmap(
-    output: Path = Path("./fullmap/data/fullmap.redb"),
-    cache: Path = Path("./fullmap/downloads/fullmap"),
-    version: str = BABEL_VERSION,
-    threads: Optional[int] = None,
+    output: Annotated[Path, cyclopts.Parameter(name=["--output", "-o"])] = Path("./fullmap/data/fullmap.redb"),
+    cache: Annotated[Path, cyclopts.Parameter(name=["--cache", "-c"])] = Path("./fullmap/downloads/fullmap"),
+    version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,
+    threads: Annotated[Optional[int], cyclopts.Parameter(name=["--threads", "-t"])] = None,
 ) -> None:
     """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
     run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads)

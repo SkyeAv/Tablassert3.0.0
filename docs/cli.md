@@ -146,10 +146,10 @@ tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>
 
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
-| `--output` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
-| `--cache` | Path | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
-| `--version` | str | No | current BABEL release | BABEL release version to fetch |
-| `--threads` | int | No | `None` | Worker threads for the parallel build (defaults to ~90% of available CPUs when unset) |
+| `--output`, `-o` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
+| `--cache`, `-c` | Path | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
+| `--version`, `-v` | str | No | current BABEL release | BABEL release version to fetch |
+| `--threads`, `-t` | int | No | `None` | Worker threads for the parallel build (defaults to ~90% of available CPUs when unset) |
 
 ### Example
 
