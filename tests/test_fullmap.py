@@ -346,12 +346,19 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
     synonyms: Path = write_jsonl(tmp_path / "HGNC.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["BRCA1"], "Gene")])
     output: Path = tmp_path / "fullmap.redb"
 
-    def fake_download_babel_inputs(version: str, cache: Path) -> tuple[list[Path], list[Path]]:
+    def fake_babel_urls(version: str, endpoints: tuple[str, ...], pattern: object) -> list[tuple[str, str]]:
         assert version == "test-version"
-        assert cache == tmp_path / "cache"
-        return [classes], [synonyms]
+        if endpoints == cli.BABEL_CLASS_ENDPOINTS:
+            return [("classes.ndjson", "https://example.com/classes.ndjson")]
+        return [("HGNC.ndjson", "https://example.com/HGNC.ndjson")]
 
-    monkeypatch.setattr(cli, "download_babel_inputs", fake_download_babel_inputs)
+    def fake_download_babel_file(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+        if filename == "classes.ndjson":
+            return classes
+        return synonyms
+
+    monkeypatch.setattr(cli, "babel_urls", fake_babel_urls)
+    monkeypatch.setattr(cli, "download_babel_file", fake_download_babel_file)
 
     build_fullmap(output=output, cache=tmp_path / "cache", version="test-version", threads=1, write_batch_size=1)
 

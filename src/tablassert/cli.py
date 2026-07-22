@@ -275,14 +275,6 @@ def stream_copy(source: BinaryIO, destination: BinaryIO) -> None:
         destination.write(chunk)
 
 
-def download_babel_inputs(version: str, cache: Path) -> tuple[list[Path], list[Path]]:
-    class_urls: list[tuple[str, str]] = babel_urls(version, BABEL_CLASS_ENDPOINTS, BABEL_CLASS_RE)
-    synonym_urls: list[tuple[str, str]] = babel_urls(version, BABEL_SYNONYM_ENDPOINTS, BABEL_SYNONYM_RE)
-    classes: list[Path] = [download_babel_file(filename, url, cache / "classes") for filename, url in class_urls]
-    synonyms: list[Path] = [download_babel_file(filename, url, cache / "synonyms") for filename, url in synonym_urls]
-    return classes, synonyms
-
-
 @APP.command(name="build-graph")
 def build_graph(
     graph_configuration_file: Path,
@@ -300,6 +292,75 @@ def validate_table(table_configuration_file: Path) -> None:
     run(3, validate_pipeline, table_configuration_file)
 
 
+def build_fullmap_pipeline(
+    output: Path,
+    progress: "PipelineProgress",
+    cache: Path = Path("./fullmap/downloads/fullmap"),
+    version: str = BABEL_VERSION,
+    threads: Optional[int] = None,
+    write_batch_size: int = 50_000,
+) -> None:
+    """Build an embedded fullmap redb database from BABEL outputs.
+
+    Runs the three-stage build pipeline: discover BABEL files → download
+    BABEL files → build fullmap redb database.
+
+    Args:
+        output: Path to the output redb file.
+        progress: Pipeline progress reporter.
+        cache: Directory for downloaded BABEL files.
+        version: BABEL version label.
+        threads: Optional thread count forwarded to Rust.
+        write_batch_size: Write batch size forwarded to Rust.
+    """
+    from tablassert import rs
+
+    # Stage 1/3: discover BABEL files.
+    progress.stage("Discovering BABEL Files")
+    start, advance, sub_step = progress.section_loop(2, "Discover")
+    start("class endpoints")
+    sub_step("fetching listings")
+    class_urls: list[tuple[str, str]] = babel_urls(version, BABEL_CLASS_ENDPOINTS, BABEL_CLASS_RE)
+    advance()
+    start("synonym endpoints")
+    sub_step("fetching listings")
+    synonym_urls: list[tuple[str, str]] = babel_urls(version, BABEL_SYNONYM_ENDPOINTS, BABEL_SYNONYM_RE)
+    advance()
+
+    # Stage 2/3: download BABEL files.
+    progress.stage("Downloading BABEL Files")
+    total_files: int = len(class_urls) + len(synonym_urls)
+    start, advance, sub_step = progress.section_loop(total_files, "Download")
+    class_files: list[Path] = []
+    for filename, url in class_urls:
+        start(filename)
+        sub_step("downloading")
+        class_files.append(download_babel_file(filename, url, cache / "classes"))
+        advance()
+    synonym_files: list[Path] = []
+    for filename, url in synonym_urls:
+        start(filename)
+        sub_step("downloading")
+        synonym_files.append(download_babel_file(filename, url, cache / "synonyms"))
+        advance()
+
+    # Stage 3/3: build fullmap database.
+    progress.stage("Building Fullmap Database")
+    start, advance, sub_step = progress.section_loop(1, "Build")
+    start(f"{output.name} · v{version}")
+    sub_step("indexing")
+    rs.build_fullmap_db(output, class_files, synonym_files, version, threads=threads, write_batch_size=write_batch_size)
+    advance()
+
+    logger.info(
+        "Built fullmap v{version}: {classes} classes, {synonyms} synonyms -> {output}",
+        version=version,
+        classes=len(class_files),
+        synonyms=len(synonym_files),
+        output=output,
+    )
+
+
 @APP.command(name="build-fullmap")
 def build_fullmap(
     output: Path = Path("./fullmap/data/fullmap.redb"),
@@ -309,16 +370,4 @@ def build_fullmap(
     write_batch_size: int = 50_000,
 ) -> None:
     """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
-    from tablassert import rs
-
-    class_files: list[Path]
-    synonym_files: list[Path]
-    class_files, synonym_files = download_babel_inputs(version, cache)
-    rs.build_fullmap_db(output, class_files, synonym_files, version, threads=threads, write_batch_size=write_batch_size)
-    logger.info(
-        "Built fullmap v{version}: {classes} classes, {synonyms} synonyms -> {output}",
-        version=version,
-        classes=len(class_files),
-        synonyms=len(synonym_files),
-        output=output,
-    )
+    run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads, write_batch_size=write_batch_size)
