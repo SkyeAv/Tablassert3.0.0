@@ -531,17 +531,86 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.rename(renames) if renames else lf
 
 
-STUDY_SIZE_EXACT_PATTERN: re.Pattern = re.compile(
-    r"(?i)^(?:n|total[\s_\-.]*n|sample[\s_\-.]*size|samplesize|study[\s_\-.]*size|cohort[\s_\-.]*size|supporting[\s_\-.]*study[\s_\-.]*size)$"
+# --- Study-size fragments ----------------------------------------------------
+# Population units whose count denotes a study size.
+_UNIT: str = r"samples?|participants?|subjects?|individuals?|patients?|cases?"
+# Count nouns following a unit ("sample_count", "participants_n", "cases_size").
+_COUNT_WORD: str = r"n|count|number|size"
+# Quantity words preceding a unit ("number of samples", "total participants").
+_QUANTITY: str = r"n|num|number|count|total"
+
+# Whole-name matches for the canonical study-size labels ("n", "sample_size",
+# "study size", "cohort_size", "supporting_study_size"). "samplesize" needs no
+# separate alternative: sample<_SEP>size matches it at zero separator width.
+STUDY_SIZE_EXACT_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    ^
+    (?:
+        n
+        | total {_SEP} n
+        | sample {_SEP} size
+        | study {_SEP} size
+        | cohort {_SEP} size
+        | supporting {_SEP} study {_SEP} size
+    )
+    $
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
-STUDY_SIZE_COUNT_PATTERN: re.Pattern = re.compile(
-    r"(?i)\b(?:samples?|participants?|subjects?|individuals?|patients?|cases?|enrollment)[\s_\-.]*(?:n|count|number|size)\b"
+# A population unit followed by a count noun ("sample_count", "participant_count",
+# "enrollment_count", "samples_n").
+STUDY_SIZE_COUNT_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b
+    (?:
+        {_UNIT}
+        | enrollment
+    )
+    {_SEP}
+    (?: {_COUNT_WORD} )
+    \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
-STUDY_SIZE_PREFIX_PATTERN: re.Pattern = re.compile(
-    r"(?i)\b(?:n|num|number|count|total)[\s_\-.]*(?:of[\s_\-.]*)?(?:samples?|participants?|subjects?|individuals?|patients?|cases?)\b"
+# A quantity word (optionally followed by "of") before a population unit
+# ("number of samples", "num_samples", "n_samples", "total participants").
+STUDY_SIZE_PREFIX_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b
+    (?: {_QUANTITY} )
+    {_SEP}
+    (?: of {_SEP} )?
+    (?: {_UNIT} )
+    \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
-STUDY_SIZE_SUFFIX_PATTERN: re.Pattern = re.compile(r"(?i)\b(?:samples?|participants?|subjects?|individuals?|patients?|cases?)[\s_\-.]*n\b")
-STUDY_SIZE_SINGLETON_PATTERN: re.Pattern = re.compile(r"(?i)^(?:participants|enrollment)$")
+# A population unit followed by a bare "n" ("samples_n", "participants_n"). A
+# documented subset of COUNT (which also matches unit<_SEP>n), kept to make the
+# trailing-n convention explicit.
+STUDY_SIZE_SUFFIX_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b
+    (?: {_UNIT} )
+    {_SEP}
+    n
+    \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# Whole-name singular labels that unambiguously denote a study size on their own
+# ("participants", "enrollment").
+STUDY_SIZE_SINGLETON_PATTERN: re.Pattern[str] = re.compile(
+    r"""
+    ^
+    (?:
+        participants
+        | enrollment
+    )
+    $
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 
 def study_size_target(name: str) -> Optional[str]:
