@@ -344,11 +344,11 @@ def build_fullmap_pipeline(
 
     # Stage 3/3: build fullmap database.
     progress.stage("Building Fullmap Database")
-    start, advance, sub_step = progress.section_loop(1, "Build")
-    start(f"{output.name} · v{version}")
-    sub_step("indexing")
-    rs.build_fullmap_db(output, class_files, synonym_files, threads=threads)
-    advance()
+    # Rust drives per-phase progress (equivalents -> synonyms -> writing) via the
+    # callback; the GIL is released during the build so the bar repaints live.
+    on_progress = progress.dynamic_loop("Build")
+    rs.build_fullmap_db(output, class_files, synonym_files, threads=threads, progress=on_progress)
+    progress.end_section_task()
 
     logger.info(
         "Built fullmap v{version}: {classes} classes, {synonyms} synonyms -> {output}",

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 def build_fullmap_db(
-    output: Path, classes: list[Path], synonyms: list[Path], threads: Optional[int] = None
+    output: Path,
+    classes: list[Path],
+    synonyms: list[Path],
+    threads: Optional[int] = None,
+    progress: Optional[Callable[[int, int, int, str], None]] = None,
 ) -> None: ...
 def dedup_ndjson(input: Path, output: Path, is_edges: bool, domain: Optional[str] = None) -> None: ...
 def fullmap_source_version() -> str: ...

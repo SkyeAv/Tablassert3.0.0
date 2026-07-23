@@ -165,6 +165,45 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
             self.progress.update(self.section_task, visible=False)
             self.section_task = None
 
+    def dynamic_loop(self: "PipelineProgress", label: str) -> Callable[[int, int, int, str], None]:
+        """Start a progress task driven by an external ``(phase, completed, total, detail)`` callback.
+
+        Used for the fullmap build, where Rust reports progress across phases
+        (equivalents / synonyms / writing) whose totals differ and are not all
+        known up front. A fresh bar is created on each phase change; a phase
+        whose ``total`` is ``0`` renders as an indeterminate bar until a later
+        callback supplies the real total.
+
+        Args:
+            label: Fallback label rendered on the progress bar.
+
+        Returns:
+            A ``(phase, completed, total, detail)`` callback to pass as
+            ``rs.build_fullmap_db(progress=...)``.
+        """
+        self.end_section_task()
+        self._clear_detail()
+        phase_labels: dict[int, str] = {0: "EQUIVALENTS", 1: "SYNONYMS", 2: "WRITING"}
+        state: dict[str, int] = {"phase": -1}
+
+        def update(phase: int, completed: int, total: int, detail: str) -> None:
+            if phase != state["phase"]:
+                state["phase"] = phase
+                self.end_section_task()
+                self.section_task = self.progress.add_task(
+                    description="", total=total if total > 0 else None, label=phase_labels.get(phase, label.upper())
+                )
+            assert self.section_task is not None
+            if total > 0:
+                self.progress.update(self.section_task, completed=completed, total=total)
+            else:
+                self.progress.update(self.section_task, completed=completed)
+            self._current_detail = detail
+            self._current_phase = ""
+            self._render_detail()
+
+        return update
+
     def log_sink(self: "PipelineProgress", message: str) -> None:
         self.console.print(message, end="", highlight=False, markup=False)
 
