@@ -184,20 +184,29 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         self.end_section_task()
         self._clear_detail()
         phase_labels: dict[int, str] = {0: "EQUIVALENTS", 1: "SYNONYMS", 2: "WRITING"}
-        state: dict[str, int] = {"phase": -1}
+        # Rust fires the progress callback from parallel rayon threads; the GIL
+        # serialises the calls but NOT in completion order, so ``completed`` can
+        # arrive out of order (e.g. 6, 3, 21, 8).  Feeding a regression to rich
+        # makes the bar jump backwards and breaks the ETA (``--:--:--``).  Track
+        # the high-water mark per phase and clamp to keep the bar monotonic.
+        state: dict[str, int] = {"phase": -1, "max_completed": 0}
 
         def update(phase: int, completed: int, total: int, detail: str) -> None:
             if phase != state["phase"]:
                 state["phase"] = phase
+                state["max_completed"] = 0
                 self.end_section_task()
                 self.section_task = self.progress.add_task(
                     description="", total=total if total > 0 else None, label=phase_labels.get(phase, label.upper())
                 )
+            if completed > state["max_completed"]:
+                state["max_completed"] = completed
+            mono = state["max_completed"]
             assert self.section_task is not None
             if total > 0:
-                self.progress.update(self.section_task, completed=completed, total=total)
+                self.progress.update(self.section_task, completed=mono, total=total)
             else:
-                self.progress.update(self.section_task, completed=completed)
+                self.progress.update(self.section_task, completed=mono)
             self._current_detail = detail
             self._current_phase = ""
             self._render_detail()

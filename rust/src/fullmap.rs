@@ -49,6 +49,7 @@ const SHARD_MASK: usize = SHARD_COUNT - 1;
 
 // Build tunables (overridable via environment for benchmarking / target tuning).
 const DEFAULT_LOCAL_SPILL_ENTRIES: usize = 1_000_000;
+const DEFAULT_EQUIV_SPILL_ENTRIES: usize = 2_000_000;
 const DEFAULT_REDB_CACHE_BYTES: usize = 2 * 1024 * 1024 * 1024;
 const DEFAULT_INSERT_BATCH: usize = 500_000;
 
@@ -541,6 +542,42 @@ fn read_equiv_entry(r: &mut impl BufRead) -> std::io::Result<Option<EquivEntry>>
     Ok(Some((hash, key, equivs)))
 }
 
+/// Drain a thread-local equivalents buffer into a sorted run file on disk.
+/// Called both mid-file (when the buffer exceeds the spill threshold) and at
+/// end-of-file, bounding per-thread anonymous memory during Phase 1a so a
+/// single huge class file (e.g. gene_nodes, ~200 M rows) cannot blow up RAM.
+fn spill_equiv_local(
+    local: &mut HashMap<String, Vec<String>>,
+    equiv_dir: &Path,
+    run_counter: &AtomicUsize,
+    run_paths: &RwLock<Vec<PathBuf>>,
+) -> PyResult<()> {
+    if local.is_empty() {
+        return Ok(());
+    }
+    let mut entries: Vec<EquivEntry> = local
+        .drain()
+        .map(|(key, mut ev)| {
+            ev.sort();
+            ev.dedup();
+            (xxh64(key.as_bytes(), 0), key, ev)
+        })
+        .collect();
+    // Sort by (hash, key) so each run's stream matches the k-way merge heap's
+    // ordering — required for correct grouping if a hash collision lands two
+    // distinct CURIEs in the same run.
+    entries.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
+    let rp = equiv_dir.join(format!("run_{:08}.bin", run_id));
+    let mut w = BufWriter::with_capacity(1 << 20, File::create(&rp).map_err(py_err)?);
+    for (h, k, e) in &entries {
+        write_equiv_entry(&mut w, *h, k, e).map_err(py_err)?;
+    }
+    w.flush().map_err(py_err)?;
+    run_paths.write().unwrap().push(rp);
+    Ok(())
+}
+
 /// Disk-backed equivalents lookup: sorted hash index + mmap'd string data.
 struct EquivIndex {
     /// Sorted xxh64 hashes (binary-search target).
@@ -614,6 +651,11 @@ impl EquivIndex {
             });
         }
 
+        let equiv_spill = env_usize(
+            "TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES",
+            DEFAULT_EQUIV_SPILL_ENTRIES,
+        );
+
         let results: Vec<PyResult<()>> = classes
             .par_iter()
             .map(|path| {
@@ -621,31 +663,16 @@ impl EquivIndex {
                 for_json_lines(path, |row| {
                     if let Some((id, equivs)) = class_id_and_equivalents(&row) {
                         local.entry(id).or_default().extend(equivs);
+                        // Bound per-thread memory: spill a sorted run once the
+                        // buffer exceeds the threshold instead of holding an
+                        // entire class file (gene_nodes ≈ 200 M rows) in RAM.
+                        if local.len() >= equiv_spill {
+                            spill_equiv_local(&mut local, &equiv_dir, &run_counter, &run_paths)?;
+                        }
                     }
                     Ok(())
                 })?;
-
-                if !local.is_empty() {
-                    let mut entries: Vec<EquivEntry> = local
-                        .drain()
-                        .map(|(key, mut ev)| {
-                            ev.sort();
-                            ev.dedup();
-                            (xxh64(key.as_bytes(), 0), key, ev)
-                        })
-                        .collect();
-                    entries.sort_unstable_by_key(|(h, _, _)| *h);
-
-                    let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
-                    let rp = equiv_dir.join(format!("run_{:08}.bin", run_id));
-                    let mut w =
-                        BufWriter::with_capacity(1 << 20, File::create(&rp).map_err(py_err)?);
-                    for (h, k, e) in &entries {
-                        write_equiv_entry(&mut w, *h, k, e).map_err(py_err)?;
-                    }
-                    w.flush().map_err(py_err)?;
-                    run_paths.write().unwrap().push(rp);
-                }
+                spill_equiv_local(&mut local, &equiv_dir, &run_counter, &run_paths)?;
 
                 if let Some(p) = progress {
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
