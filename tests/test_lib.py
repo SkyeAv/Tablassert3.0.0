@@ -1294,6 +1294,56 @@ def test_study_size_target_excludes_false_positives() -> None:
         assert study_size_target(n) is None, n
 
 
+def test_study_size_target_matches_cohort_total_and_study_n_variants() -> None:
+    """study_size_target matches cohort counts, mirrored total-n, and study-n labels."""
+    names: list[str] = [
+        "cohort_n",
+        "cohort n",
+        "cohort_count",
+        "cohort count",
+        "n_cohort",
+        "total_cohort",
+        "n_total",
+        "n total",
+        "study_n",
+        "study n",
+    ]
+    for n in names:
+        assert study_size_target(n) == "supporting_study_size", n
+
+
+def test_study_size_target_matches_enrolled_variants() -> None:
+    """study_size_target treats 'enrolled' as an 'enrollment' study-size variant."""
+    names: list[str] = ["enrolled", "enrolled_count", "enrolled n"]
+    for n in names:
+        assert study_size_target(n) == "supporting_study_size", n
+
+
+def test_study_size_target_excludes_expanded_near_misses() -> None:
+    """study_size_target keeps near-misses out after the cohort/enrolled expansion.
+
+    Guards the expansion: adding cohort/enrolled as units must not pull in
+    identifier/date columns ("cohort_id", "enrolled_date") or unrelated n-words
+    ("nucleotide_variation", "normalization"), and "case"/"subject" units must not
+    match "case_control"/"subject_id".
+    """
+    names: list[str] = [
+        "cohort_id",
+        "cohort_name",
+        "case_control",
+        "subject_id",
+        "study_id",
+        "nucleotide_variation",
+        "normalization",
+        "sample_size_estimate",
+        "enrollment_date",
+        "enrolled_date",
+        "participant_id",
+    ]
+    for n in names:
+        assert study_size_target(n) is None, n
+
+
 def test_coerce_study_size_columns_renames_n_column() -> None:
     """coerce_study_size_columns renames bare N to supporting_study_size."""
     lf: pl.LazyFrame = pl.DataFrame({"n": [120, 450]}).lazy()

@@ -532,24 +532,28 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 # --- Study-size fragments ----------------------------------------------------
-# Population units whose count denotes a study size.
-_UNIT: str = r"samples?|participants?|subjects?|individuals?|patients?|cases?"
+# Population units whose count denotes a study size. Bare "cohort"/"cohort_id"
+# still do not match: every pattern requires a count/quantity word alongside.
+_UNIT: str = r"samples?|participants?|subjects?|individuals?|patients?|cases?|cohorts?"
 # Count nouns following a unit ("sample_count", "participants_n", "cases_size").
 _COUNT_WORD: str = r"n|count|number|size"
 # Quantity words preceding a unit ("number of samples", "total participants").
 _QUANTITY: str = r"n|num|number|count|total"
 
 # Whole-name matches for the canonical study-size labels ("n", "sample_size",
-# "study size", "cohort_size", "supporting_study_size"). "samplesize" needs no
-# separate alternative: sample<_SEP>size matches it at zero separator width.
+# "study size", "study_n", "n_total", "cohort_size", "supporting_study_size").
+# "samplesize" needs no separate alternative: sample<_SEP>size matches it at zero
+# separator width.
 STUDY_SIZE_EXACT_PATTERN: re.Pattern[str] = re.compile(
     rf"""
     ^
     (?:
         n
         | total {_SEP} n
+        | n {_SEP} total
         | sample {_SEP} size
         | study {_SEP} size
+        | study {_SEP} n
         | cohort {_SEP} size
         | supporting {_SEP} study {_SEP} size
     )
@@ -558,13 +562,14 @@ STUDY_SIZE_EXACT_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 # A population unit followed by a count noun ("sample_count", "participant_count",
-# "enrollment_count", "samples_n").
+# "cohort_count", "enrollment_count", "enrolled_count", "samples_n").
 STUDY_SIZE_COUNT_PATTERN: re.Pattern[str] = re.compile(
     rf"""
     \b
     (?:
         {_UNIT}
         | enrollment
+        | enrolled
     )
     {_SEP}
     (?: {_COUNT_WORD} )
@@ -599,13 +604,14 @@ STUDY_SIZE_SUFFIX_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 # Whole-name singular labels that unambiguously denote a study size on their own
-# ("participants", "enrollment").
+# ("participants", "enrollment", "enrolled").
 STUDY_SIZE_SINGLETON_PATTERN: re.Pattern[str] = re.compile(
     r"""
     ^
     (?:
         participants
         | enrollment
+        | enrolled
     )
     $
     """,
