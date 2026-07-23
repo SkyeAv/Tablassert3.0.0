@@ -372,13 +372,81 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
     return lf.with_columns(band.alias(out))
 
 
-PVALUE_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bp[\s_\-.]*val(?:ue)?s?\b")
-QVALUE_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bq[\s_\-.]*val(?:ue)?s?\b")
-PADJ_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bp[\s_\-.]*adj(?:usted)?\b")
-BARE_P_TOKEN_PATTERN: re.Pattern = re.compile(r"(?i)\bp\b")
-STANDALONE_ADJUSTED_PATTERN: re.Pattern = re.compile(r"(?i)\b(?:fdr|bonferroni|holm|false discovery rate)\b")
-CONTEXTUAL_ADJUSTED_PATTERN: re.Pattern = re.compile(r"(?i)\b(?:adj(?:usted)?|corrected)\b")
-SIGNIFICANCE_FLAG_PATTERN: re.Pattern = re.compile(r"(?i)significan")
+# --- Column-name classification fragments ------------------------------------
+# Real-world column labels separate tokens with spaces, underscores, hyphens, or
+# dots ("p value", "p_value", "p-value", "p.value"); treat any run of these as an
+# optional token separator shared by every pattern below.
+_SEP: str = r"[\s_.\-]*"
+# "value" spelled val / value, optionally plural (vals / values).
+_VALUE: str = r"val(?:ue)?s?"
+# "adjusted" spelled adj / adjusted.
+_ADJUSTED: str = r"adj(?:usted)?"
+
+# A P value token: leading "p" then a "value" word across an optional separator
+# ("p value", "p-value", "pvalue", "p vals").
+PVALUE_TOKEN_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b p {_SEP} {_VALUE} \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# A Q value token (Storey's q value); same shape as the P value token.
+QVALUE_TOKEN_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b q {_SEP} {_VALUE} \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# A P value already marked adjusted ("padj", "p.adj", "p adjusted").
+PADJ_TOKEN_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b p {_SEP} {_ADJUSTED} \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# A bare "P" standing alone (common GWAS convention: "P", "p SMR", "gwas p").
+BARE_P_TOKEN_PATTERN: re.Pattern[str] = re.compile(
+    r"""
+    \b p \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# Adjustment methods that by themselves imply an adjusted P value, unlike the
+# generic words "adjusted"/"corrected" which also modify hazard/odds ratios.
+STANDALONE_ADJUSTED_PATTERN: re.Pattern[str] = re.compile(
+    r"""
+    \b
+    (?:
+        fdr                       # Benjamini-Hochberg false discovery rate
+        | bonferroni              # Bonferroni correction
+        | holm                    # Holm-Bonferroni correction
+        | false\ discovery\ rate  # FDR spelled out (literal spaces)
+    )
+    \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# Generic adjustment words that only imply an adjusted P value when a P/Q value
+# token is also present (see pvalue_target).
+CONTEXTUAL_ADJUSTED_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b
+    (?:
+        {_ADJUSTED}    # adj / adjusted
+        | corrected    # corrected
+    )
+    \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# Stem of "significant"/"significance": a deliberate substring match (no word
+# boundary) so every inflection is caught; these columns are categorical flags.
+SIGNIFICANCE_FLAG_PATTERN: re.Pattern[str] = re.compile(
+    r"""
+    significan
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 
 def pvalue_target(name: str) -> Optional[str]:
