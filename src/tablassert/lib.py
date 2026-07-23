@@ -381,33 +381,44 @@ _SEP: str = r"[\s_.\-]*"
 _VALUE: str = r"val(?:ue)?s?"
 # "adjusted" spelled adj / adjusted.
 _ADJUSTED: str = r"adj(?:usted)?"
+# Optional trailing numeric qualifier for multi-phenotype outputs ("pvalue1",
+# "p_value_2", "padj_1"): a separator-or-nothing then digits.
+_NUMQUAL: str = r"(?:[\s_.\-]*\d+)?"
 
-# A P value token: leading "p" then a "value" word across an optional separator
-# ("p value", "p-value", "pvalue", "p vals").
+# A P value token: leading "p" then a "value" word across an optional separator,
+# with an optional trailing numeric qualifier ("p value", "p-value", "pvalue",
+# "p vals", "pvalue1", "p_value_2").
 PVALUE_TOKEN_PATTERN: re.Pattern[str] = re.compile(
     rf"""
-    \b p {_SEP} {_VALUE} \b
+    \b p {_SEP} {_VALUE} {_NUMQUAL} \b
     """,
     re.IGNORECASE | re.VERBOSE,
 )
 # A Q value token (Storey's q value); same shape as the P value token.
 QVALUE_TOKEN_PATTERN: re.Pattern[str] = re.compile(
     rf"""
-    \b q {_SEP} {_VALUE} \b
+    \b q {_SEP} {_VALUE} {_NUMQUAL} \b
     """,
     re.IGNORECASE | re.VERBOSE,
 )
-# A P value already marked adjusted ("padj", "p.adj", "p adjusted").
+# A P value already marked adjusted, with an optional trailing numeric qualifier
+# ("padj", "p.adj", "p adjusted", "padj_1").
 PADJ_TOKEN_PATTERN: re.Pattern[str] = re.compile(
     rf"""
-    \b p {_SEP} {_ADJUSTED} \b
+    \b p {_SEP} {_ADJUSTED} {_NUMQUAL} \b
     """,
     re.IGNORECASE | re.VERBOSE,
 )
-# A bare "P" standing alone (common GWAS convention: "P", "p SMR", "gwas p").
+# A bare "P" standing as its own token (common GWAS convention: "P", "p SMR",
+# "gwas p", plus underscore/dot/hyphen-glued forms like "raw_p", "snp_p",
+# "p_nominal"). "Its own token" means not glued to a letter or digit, so gene/
+# protein and chemistry names ("p53", "p16", "pH", "protein", "phosphate") and
+# words merely ending in p ("top value", "group value") stay excluded. A plain
+# \bp\b would also reject the underscore-glued forms because \b treats "_" as a
+# word char, hence the explicit alphanumeric lookarounds.
 BARE_P_TOKEN_PATTERN: re.Pattern[str] = re.compile(
     r"""
-    \b p \b
+    (?<![A-Za-z0-9]) p (?![A-Za-z0-9])
     """,
     re.IGNORECASE | re.VERBOSE,
 )
@@ -460,14 +471,17 @@ def pvalue_target(name: str) -> Optional[str]:
         not look like a p/q-value column.
 
     Notes:
-        Word-boundary anchored so "Group value" style substrings are not
-        falsely matched. Bare ``"P"`` and ``"padj"``/``"p.adj"`` cover common
-        GWAS/DESeq2 conventions. ``"adj"``/``"adjusted"``/``"corrected"``
-        only count alongside a p/q-value token, since they are generic words
-        also used for adjusted hazard/odds ratios (unlike
-        ``fdr``/``bonferroni``/``holm``). ``"significance"``/``"significant"``
-        columns are categorical flags, not the numeric value, so they are
-        excluded unless a p/q-value token is also present.
+        Tokens are delimiter-anchored so "Group value" / "top value" style
+        substrings are not falsely matched. A bare ``"P"`` counts when it stands
+        as its own token (delimited by whitespace, ``_``, ``.`` or ``-``), covering
+        GWAS conventions like ``"P"``, ``"gwas p"`` and ``"raw_p"``/``"snp_p"`` while
+        excluding ``"p53"``/``"pH"``/``"protein"``. ``"padj"``/``"p.adj"`` cover DESeq2
+        conventions. Value/adjusted tokens may carry a trailing numeric qualifier
+        (``"pvalue1"``, ``"padj_1"``). ``"adj"``/``"adjusted"``/``"corrected"`` only count
+        alongside a p/q-value token, since they are generic words also used for
+        adjusted hazard/odds ratios (unlike ``fdr``/``bonferroni``/``holm``).
+        ``"significance"``/``"significant"`` columns are categorical flags, not the
+        numeric value, so they are excluded unless a p/q-value token is also present.
     """
     core_pvalue: bool = bool(PVALUE_TOKEN_PATTERN.search(name)) or bool(BARE_P_TOKEN_PATTERN.search(name))
     core_qvalue: bool = bool(QVALUE_TOKEN_PATTERN.search(name))

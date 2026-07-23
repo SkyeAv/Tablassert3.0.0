@@ -1157,6 +1157,56 @@ def test_pvalue_target_unadjusted_prefix_not_treated_as_adjusted() -> None:
     assert pvalue_target("unadjusted HR") is None
 
 
+def test_pvalue_target_matches_separator_glued_bare_p() -> None:
+    """pvalue_target treats a bare P glued by underscores/dots/hyphens as a P value.
+
+    Real GWAS outputs glue qualifiers onto a standalone P with underscores
+    ("raw_p", "snp_p", "p_nominal"); these are the underscore-delimited siblings
+    of the already-supported space-delimited forms ("gwas p", "log p").
+    """
+    plain: list[str] = [
+        "raw_p",
+        "nominal_p",
+        "unadjusted_p",
+        "p_nominal",
+        "p_two_tailed",
+        "two_sided_p_value",
+        "wald_p",
+        "p_wald",
+        "snp_p",
+        "assoc_p",
+        "meta_p",
+        "empirical_p",
+        "perm_p",
+        "permutation_p",
+    ]
+    for n in plain:
+        assert pvalue_target(n) == "p_value", n
+
+
+def test_pvalue_target_matches_numbered_pvalue_conventions() -> None:
+    """pvalue_target matches numbered P/Q value columns from multi-phenotype outputs."""
+    plain: list[str] = ["pvalue1", "p_value_1", "pvalue2"]
+    for n in plain:
+        assert pvalue_target(n) == "p_value", n
+
+    adjusted: list[str] = ["padj_1", "qvalue1"]
+    for n in adjusted:
+        assert pvalue_target(n) == "adjusted_p_value", n
+
+
+def test_pvalue_target_excludes_alnum_glued_p_and_near_misses() -> None:
+    """pvalue_target excludes P glued to a letter/digit and value-like near misses.
+
+    Guards the separator-glued bare-P expansion: gene/protein and chemistry names
+    ("p53", "p16", "pH", "protein", "phosphate") and words merely ending in P
+    ("peak value", "probability") must not be read as P values.
+    """
+    names: list[str] = ["pH", "protein", "phosphate", "p53", "p16", "peak value", "probability", "q statistic", "adjusted hazard ratio"]
+    for n in names:
+        assert pvalue_target(n) is None, n
+
+
 def test_coerce_pvalue_columns_renames_single_p_value_column() -> None:
     """coerce_pvalue_columns renames a single P value column."""
     lf: pl.LazyFrame = pl.DataFrame({"p value": [0.01, 0.05]}).lazy()
