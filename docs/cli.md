@@ -31,7 +31,7 @@ Build a knowledge graph from a YAML configuration file.
 ### Synopsis
 
 ```bash
-tablassert build-graph <graph_configuration_file> [--release] [--qc] [--log]
+tablassert build-graph <graph_configuration_file> [--release] [--qc] [--log] [--head]
 ```
 
 ### Options
@@ -42,6 +42,7 @@ tablassert build-graph <graph_configuration_file> [--release] [--qc] [--log]
 | `--release`, `-r` | Flag | No | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
 | `--qc`, `-q` | Flag | No | Run the QC audit stage (exact → fuzzy → BioBERT) on resolved node columns |
 | `--log`, `-l` | Flag | No | Enable verbose per-section logging |
+| `--head` | Flag | No | Preview only the first 5 rows per section for a fast output shape/schema check (cached separately, never clobbers a full build) |
 
 ### Example
 

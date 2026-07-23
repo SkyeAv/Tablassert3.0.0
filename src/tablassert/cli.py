@@ -43,7 +43,9 @@ BABEL_CLASS_RE: re.Pattern[str] = re.compile(r'<a href="([^"]*_nodes[^"]*\.gz)"'
 BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
 
 
-def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False, qc: bool = False, log: bool = False) -> None:
+def build_pipeline(
+    graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False, qc: bool = False, log: bool = False, head: bool = False
+) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
     Runs the six-stage build pipeline: load tables → extract sections → build
@@ -55,6 +57,7 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
         release: When ``True``, emit release-mode artifacts.
         qc: When ``True``, run quality-control audits on each section.
         log: When ``True``, enable per-section verbose logging.
+        head: When ``True``, preview only the first 5 rows per section (fast schema/shape check).
 
     Raises:
         GraphValidationError: If the graph YAML fails Pydantic validation.
@@ -91,8 +94,10 @@ def build_pipeline(graph_configuration_file: Path, progress: "PipelineProgress",
     for s in sections:
         h: str = mkhash(s)
         start(f"{Path(str(s['config'])).stem} · {h[:8]}")
+        # --head preview builds cache to a distinct .head.parquet so they never clobber full builds.
+        store: Path = STORE / (f"{h}.head.parquet" if head else f"{h}.parquet")
         try:
-            tcode.append(Tcode.model_validate({**s, "store": (STORE / f"{h}.parquet"), "log": log, "qc": qc, "release": release, "name": g.name}))
+            tcode.append(Tcode.model_validate({**s, "store": store, "log": log, "qc": qc, "release": release, "head": head, "name": g.name}))
         except pydantic.ValidationError as e:
             raise SectionValidationError(graph_configuration_file, h, flatten_pydantic_error(e)) from e
         advance()
@@ -281,9 +286,10 @@ def build_graph(
     release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False,
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
+    head: Annotated[bool, cyclopts.Parameter(name=["--head"], negative="")] = False,
 ) -> None:
     """Build a knowledge graph from a YAML configuration file."""
-    run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log)
+    run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head)
 
 
 @APP.command(name="validate-table")

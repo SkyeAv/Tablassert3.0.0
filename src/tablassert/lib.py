@@ -611,6 +611,26 @@ def pick(lf: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
     return df.lazy()
 
 
+HEAD_ROWS: int = 5
+
+
+def head(lf: pl.LazyFrame, n: int = HEAD_ROWS) -> pl.LazyFrame:
+    """Limit a LazyFrame to its first ``min(n, height)`` rows for a fast ``--head`` preview.
+
+    Args:
+        lf: Source LazyFrame.
+        n: Maximum number of rows to keep.
+
+    Returns:
+        LazyFrame with at most ``n`` rows (fewer when the source has fewer than ``n``).
+
+    Notes:
+        Stays fully lazy; ``LazyFrame.head`` pushes the limit down to the scan,
+        so only ``n`` rows are ever materialized downstream.
+    """
+    return lf.head(n)
+
+
 def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: Union[str, int, float], cast: bool = True) -> pl.LazyFrame:
     """Reindex a LazyFrame by filtering rows on a column condition.
 
@@ -710,6 +730,7 @@ class Tcode(Section):
     log: bool = Field(False)
     qc: bool = Field(False)
     release: bool = Field(False)
+    head: bool = Field(False)
     name: Optional[str] = Field(None)
 
     def encoding(self: Self, x: Encoding, col: str, table_literal: bool = False) -> list[Any]:
@@ -818,6 +839,8 @@ class Tcode(Section):
                 ]
                 if self.source.reindex
                 else None,
+                # --head preview: cap rows to min(HEAD_ROWS, height) before any encoding/resolve.
+                (head, (HEAD_ROWS,)) if self.head else None,
                 [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
                 (coerce_pvalue_columns, ()),
                 (coerce_study_size_columns, ()),
@@ -852,6 +875,7 @@ PHASE_OF: dict[Callable, str] = {
     crop: "filter",
     pick: "filter",
     reindex: "filter",
+    head: "filter",
     coerce_pvalue_columns: "clean",
     coerce_study_size_columns: "clean",
     clean_numeric: "clean",

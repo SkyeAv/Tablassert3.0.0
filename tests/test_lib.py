@@ -13,6 +13,7 @@ from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, Repositories
 from tablassert.fullmap import ResolveSpec
 from tablassert.ingests import from_yaml
 from tablassert.lib import (
+    HEAD_ROWS,
     Tcode,
     clean_numeric,
     coerce_pvalue_columns,
@@ -22,6 +23,7 @@ from tablassert.lib import (
     edge_tables,
     fold_unknown_to_supporting_text,
     format_numeric,
+    head,
     idx,
     idxname,
     infores,
@@ -350,6 +352,50 @@ def test_tcode_collect_passes_local_path_to_csv_reader(fixtures_path: Path) -> N
     csv_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "csv"]
 
     assert csv_ops[0][1] == (tcode_model.source.local, tcode_model.source.delimiter)  # pyright: ignore
+
+
+def test_head_caps_at_n_rows() -> None:
+    """head keeps min(n, height) rows, never more than the source height."""
+    small: pl.DataFrame = head(pl.LazyFrame({"a": [1, 2, 3]}), n=HEAD_ROWS).collect()
+    big: pl.DataFrame = head(pl.LazyFrame({"a": list(range(10))}), n=HEAD_ROWS).collect()
+
+    assert small.height == 3
+    assert big.height == 5
+
+
+def test_tcode_collect_omits_head_by_default(fixtures_path: Path) -> None:
+    """tcode collect omits the head op unless head mode is requested."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    names: list[str] = [op[0].__name__ for op in collected]
+
+    assert "head" not in names
+
+
+def test_tcode_collect_inserts_head_after_row_filters_before_resolve_when_head(fixtures_path: Path) -> None:
+    """head op sits after idx/row-filters and before resolve_batch so resolve only sees HEAD_ROWS rows."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_head.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "head": True}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    names: list[str] = [op[0].__name__ for op in collected]
+
+    head_idx: int = names.index("head")
+    resolve_idx: int = names.index("resolve_batch")
+    idx_idx: int = names.index("idx")
+    annotations_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "column" and op[1][0].startswith("original_"))
+
+    assert idx_idx < head_idx < resolve_idx
+    assert head_idx < annotations_idx
+    assert collected[head_idx][1] == (HEAD_ROWS,)
 
 
 def test_publication_curie_pmc() -> None:
@@ -1594,6 +1640,36 @@ def test_compile_subgraph_e2e_release_drops_rows_before_fullmap_lookup(monkeypat
     assert "droppeddisease" not in looked_up
 
 
+def test_compile_subgraph_e2e_head_caps_rows_to_five(monkeypatch: Any, tmp_path: Path) -> None:
+    """--head limits a >5-row section to 5 rows before fullmap resolution."""
+    rows: dict[str, list[dict[str, object]]] = {
+        **{f"gene{i}": [fake_fullmap_row(f"gene{i}", f"HGNC:{i}", f"GENE{i}", "Gene", 9606)] for i in range(1, 9)},
+        **{f"disease{i}": [fake_fullmap_row(f"disease{i}", f"MONDO:{i}", f"Disease{i}", "Disease", 0)] for i in range(1, 9)},
+    }
+    calls: list[list[str]] = install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "head_cap",
+        {
+            "statement": {"subject": {"method": "column", "encoding": "A"}, "object": {"method": "column", "encoding": "B"}},
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        [f"gene{i}\tdisease{i}" for i in range(1, 9)],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "head_cap.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "head": True})  # pyright: ignore
+
+    result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
+    result: pl.DataFrame = pl.read_parquet(result_path)
+    looked_up: set[str] = set(calls[0])
+
+    assert result.height == 5
+    assert "gene5" in looked_up
+    assert "gene6" not in looked_up
+    assert "disease8" not in looked_up
+
+
 def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypatch: Any, tmp_path: Path) -> None:
     """resolved qualifiers survive graph export as edge attributes without creating nodes."""
     monkeypatch.chdir(tmp_path)
@@ -1690,3 +1766,49 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
     assert rig["name"] == "PIPELINE_KG v0.1.0"
     edge_type: dict[str, Any] = rig["target_info"]["edge_type_info"][0]  # pyright: ignore
     assert edge_type["primary_knowledge_sources"] == ["infores:pipeline-kg", "infores:pubmed-central"]
+
+
+def test_build_pipeline_head_mode_isolates_store_and_caps_rows(monkeypatch: Any, tmp_path: Path) -> None:
+    """--head caches subgraphs to .head.parquet (never clobbering a full build) and caps to 5 rows."""
+    from tablassert.ingests import to_yaml
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
+    monkeypatch.setattr(cli, "Pool", SyncPool)
+    rows: dict[str, list[dict[str, object]]] = {
+        **{f"gene{i}": [fake_fullmap_row(f"gene{i}", f"HGNC:{i}", f"GENE{i}", "Gene", 9606)] for i in range(1, 9)},
+        **{f"disease{i}": [fake_fullmap_row(f"disease{i}", f"MONDO:{i}", f"Disease{i}", "Disease", 0)] for i in range(1, 9)},
+    }
+    install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "head_store",
+        {
+            "statement": {"subject": {"method": "column", "encoding": "A"}, "object": {"method": "column", "encoding": "B"}},
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        [f"gene{i}\tdisease{i}" for i in range(1, 9)],
+    )
+    table_data: Any = from_yaml(table_path)
+    to_yaml(table_path, {"template": table_data})
+    graph_path: Path = tmp_path / "graph.yaml"
+    to_yaml(
+        graph_path,
+        {
+            "name": "HEAD_KG",
+            "version": "0.1.0",
+            "description": "Head preview graph.",
+            "tables": [str(table_path)],
+            "fullmap": str(tmp_path / "fullmap.redb"),
+        },
+    )
+    progress: DummyProgress = DummyProgress()
+
+    cli.build_pipeline(graph_path, cast(Any, progress), release=False, qc=False, log=False, head=True)
+
+    edge_rows: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "HEAD_KG_0.1.0.edges.ndjson").read_text().splitlines()]
+    store_files: list[Path] = list((tmp_path / ".tablassert" / "store").glob("*.parquet"))
+
+    assert len(edge_rows) == 5
+    assert store_files, "expected a cached subgraph parquet"
+    assert all(f.name.endswith(".head.parquet") for f in store_files)
