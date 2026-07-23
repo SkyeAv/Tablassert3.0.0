@@ -48,8 +48,8 @@ const SHARD_COUNT: usize = 64;
 const SHARD_MASK: usize = SHARD_COUNT - 1;
 
 // Build tunables (overridable via environment for benchmarking / target tuning).
-const DEFAULT_LOCAL_SPILL_ENTRIES: usize = 4_000_000;
-const DEFAULT_REDB_CACHE_BYTES: usize = 8 * 1024 * 1024 * 1024;
+const DEFAULT_LOCAL_SPILL_ENTRIES: usize = 1_000_000;
+const DEFAULT_REDB_CACHE_BYTES: usize = 2 * 1024 * 1024 * 1024;
 const DEFAULT_INSERT_BATCH: usize = 500_000;
 
 fn env_usize(name: &str, default: usize) -> usize {
@@ -87,9 +87,10 @@ fn py_err<E: std::fmt::Display>(err: E) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
 }
 
-fn clean(mut value: String) -> String {
+fn clean(value: &str) -> String {
+    let mut s = value;
     loop {
-        let trimmed = value.trim().to_string();
+        let trimmed = s.trim();
         let bytes = trimmed.as_bytes();
         let matching_quotes = bytes.len() >= 2
             && ((bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\'')
@@ -98,17 +99,17 @@ fn clean(mut value: String) -> String {
             && ((bytes[0] == b'\'' && bytes[1] == b'\'') || (bytes[0] == b'"' && bytes[1] == b'"'));
 
         let next = if duplicate_start {
-            trimmed[1..].to_string()
+            &trimmed[1..]
         } else if matching_quotes {
-            trimmed[1..trimmed.len() - 1].to_string()
+            &trimmed[1..trimmed.len() - 1]
         } else {
             trimmed
         };
 
-        if next == value {
-            return next;
+        if next == s {
+            return next.to_string();
         }
-        value = next;
+        s = next;
     }
 }
 
@@ -220,7 +221,8 @@ fn class_id_and_equivalents(row: &Value) -> Option<(String, Vec<String>)> {
             .and_then(|items| items.first())
             .and_then(equivalent_id)
     })?;
-    ids.push(id.clone());
+    // Primary id is NOT included in the value Vec — process_synonyms already
+    // adds the curie itself as a term, saving ~38 GB of redundant storage.
     if let Some(equivalents) = equivalents {
         for equivalent in equivalents {
             if let Some(eid) = equivalent_id(equivalent) {
@@ -473,47 +475,316 @@ impl MergeHeap {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1: build in-memory equivalents lookup (parallel over class files)
+// Phase 1: disk-backed equivalents index (sorted file + mmap)
+//
+// Instead of holding a ~200 GB HashMap<String, Vec<String>> in RAM, we write
+// equivalents to a sorted binary file and mmap it.  An in-memory sorted index
+// of (hash, offset) pairs (~14 GB for 860 M entries) drives O(log n) binary
+// search lookups; the OS page-cache manages the mmap'd string data.
 // ---------------------------------------------------------------------------
 
-fn build_equivalents_map(
-    classes: &[PathBuf],
-    progress: Option<&Arc<Progress>>,
-) -> PyResult<HashMap<String, Vec<String>>> {
-    let total = classes.len() as u64;
-    let done = AtomicUsize::new(0);
-    let partial: Vec<PyResult<HashMap<String, Vec<String>>>> = classes
-        .par_iter()
-        .map(|path| {
-            let mut local: HashMap<String, Vec<String>> = HashMap::new();
-            for_json_lines(path, |row| {
-                if let Some((id, equivalents)) = class_id_and_equivalents(&row) {
-                    local.insert(id, equivalents);
+/// An entry from an equivalents run file: (hash, key, equivs).
+type EquivEntry = (u64, String, Vec<String>);
+/// One k-way-merge heap entry for equivalents: (hash, key, run_idx, equivs).
+type EquivMergeItem = (Reverse<u64>, Reverse<String>, usize, Vec<String>);
+
+/// Write an equiv entry to a buffered writer (run-file format with hash).
+fn write_equiv_entry(
+    w: &mut impl Write,
+    hash: u64,
+    key: &str,
+    equivs: &[String],
+) -> std::io::Result<()> {
+    w.write_all(&hash.to_le_bytes())?;
+    let kb = key.as_bytes();
+    w.write_all(&(kb.len() as u32).to_le_bytes())?;
+    w.write_all(kb)?;
+    w.write_all(&(equivs.len() as u32).to_le_bytes())?;
+    for equiv in equivs {
+        let eb = equiv.as_bytes();
+        w.write_all(&(eb.len() as u32).to_le_bytes())?;
+        w.write_all(eb)?;
+    }
+    Ok(())
+}
+
+/// Read one equiv entry from a buffered reader.  Returns None at clean EOF.
+fn read_equiv_entry(r: &mut impl BufRead) -> std::io::Result<Option<EquivEntry>> {
+    if r.fill_buf()?.is_empty() {
+        return Ok(None);
+    }
+    let mut hb = [0u8; 8];
+    r.read_exact(&mut hb)?;
+    let hash = u64::from_le_bytes(hb);
+    let mut kl = [0u8; 4];
+    r.read_exact(&mut kl)?;
+    let key_len = u32::from_le_bytes(kl) as usize;
+    let mut key_buf = vec![0u8; key_len];
+    r.read_exact(&mut key_buf)?;
+    let key = String::from_utf8(key_buf)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let mut ec = [0u8; 4];
+    r.read_exact(&mut ec)?;
+    let equiv_count = u32::from_le_bytes(ec) as usize;
+    let mut equivs = Vec::with_capacity(equiv_count);
+    for _ in 0..equiv_count {
+        let mut el = [0u8; 4];
+        r.read_exact(&mut el)?;
+        let elen = u32::from_le_bytes(el) as usize;
+        let mut ebuf = vec![0u8; elen];
+        r.read_exact(&mut ebuf)?;
+        equivs.push(
+            String::from_utf8(ebuf)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+        );
+    }
+    Ok(Some((hash, key, equivs)))
+}
+
+/// Disk-backed equivalents lookup: sorted hash index + mmap'd string data.
+struct EquivIndex {
+    /// Sorted xxh64 hashes (binary-search target).
+    hashes: Vec<u64>,
+    /// Byte offsets into `data` for each entry.
+    offsets: Vec<u64>,
+    /// Mmap'd data file: entries packed as
+    /// `[u32 key_len][key_bytes][u32 equiv_count][u32 elen][equiv_bytes]…`
+    data: memmap2::Mmap,
+    /// Kept alive for the mmap.
+    _file: File,
+    /// Path to the data file (for cleanup on drop).
+    data_path: PathBuf,
+}
+
+impl Drop for EquivIndex {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.data_path);
+    }
+}
+
+/// Zero-copy iterator over equivalent strings from the mmap'd data.
+struct EquivIter<'a> {
+    data: &'a [u8],
+    pos: usize,
+    remaining: u32,
+}
+
+impl<'a> Iterator for EquivIter<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<&'a str> {
+        if self.remaining == 0 {
+            return None;
+        }
+        self.remaining -= 1;
+        let d = &self.data[self.pos..];
+        let len = u32::from_le_bytes(d.get(..4)?.try_into().ok()?) as usize;
+        self.pos += 4 + len;
+        std::str::from_utf8(d.get(4..4 + len)?).ok()
+    }
+}
+
+impl EquivIndex {
+    /// Build the disk-backed equivalents index from class files.
+    fn build(
+        classes: &[PathBuf],
+        spill_dir: &Path,
+        progress: Option<&Arc<Progress>>,
+    ) -> PyResult<Self> {
+        let equiv_dir = spill_dir.join("equiv");
+        std::fs::create_dir_all(&equiv_dir).map_err(py_err)?;
+
+        // Phase 1a: parallel read class files → sorted spill runs.
+        let run_counter = AtomicUsize::new(0);
+        let run_paths: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
+        let total = classes.len() as u64;
+        let done = AtomicUsize::new(0);
+
+        if classes.is_empty() {
+            // No class files — write an empty data file.
+            let data_path = spill_dir.join("equiv_data.bin");
+            std::fs::write(&data_path, b"").map_err(py_err)?;
+            let file = File::open(&data_path).map_err(py_err)?;
+            let data = unsafe { memmap2::Mmap::map(&file).map_err(py_err)? };
+            return Ok(EquivIndex {
+                hashes: Vec::new(),
+                offsets: Vec::new(),
+                data,
+                _file: file,
+                data_path,
+            });
+        }
+
+        let results: Vec<PyResult<()>> = classes
+            .par_iter()
+            .map(|path| {
+                let mut local: HashMap<String, Vec<String>> = HashMap::new();
+                for_json_lines(path, |row| {
+                    if let Some((id, equivs)) = class_id_and_equivalents(&row) {
+                        local.entry(id).or_default().extend(equivs);
+                    }
+                    Ok(())
+                })?;
+
+                if !local.is_empty() {
+                    let mut entries: Vec<EquivEntry> = local
+                        .drain()
+                        .map(|(key, mut ev)| {
+                            ev.sort();
+                            ev.dedup();
+                            (xxh64(key.as_bytes(), 0), key, ev)
+                        })
+                        .collect();
+                    entries.sort_unstable_by_key(|(h, _, _)| *h);
+
+                    let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
+                    let rp = equiv_dir.join(format!("run_{:08}.bin", run_id));
+                    let mut w =
+                        BufWriter::with_capacity(1 << 20, File::create(&rp).map_err(py_err)?);
+                    for (h, k, e) in &entries {
+                        write_equiv_entry(&mut w, *h, k, e).map_err(py_err)?;
+                    }
+                    w.flush().map_err(py_err)?;
+                    run_paths.write().unwrap().push(rp);
+                }
+
+                if let Some(p) = progress {
+                    let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+                    p.call(
+                        0,
+                        n as u64,
+                        total,
+                        &path
+                            .file_name()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                    );
                 }
                 Ok(())
-            })?;
-            if let Some(p) = progress {
-                let n = done.fetch_add(1, Ordering::Relaxed) + 1;
-                p.call(
-                    0,
-                    n as u64,
-                    total,
-                    &path
-                        .file_name()
-                        .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_default(),
-                );
-            }
-            Ok(local)
-        })
-        .collect();
+            })
+            .collect();
+        for r in results {
+            r?;
+        }
+        let run_paths = run_paths.into_inner().unwrap();
 
-    let mut merged: HashMap<String, Vec<String>> = HashMap::new();
-    for result in partial {
-        let local = result?;
-        merged.extend(local);
+        // Phase 1b: k-way merge runs → write data file + build index.
+        let data_path = spill_dir.join("equiv_data.bin");
+        let mut dw = BufWriter::with_capacity(1 << 20, File::create(&data_path).map_err(py_err)?);
+        let mut hashes: Vec<u64> = Vec::new();
+        let mut offsets: Vec<u64> = Vec::new();
+        let mut offset: u64 = 0;
+
+        let mut readers: Vec<BufReader<File>> = run_paths
+            .iter()
+            .map(|p| File::open(p).map(BufReader::new))
+            .collect::<std::io::Result<Vec<_>>>()
+            .map_err(py_err)?;
+
+        // Min-heap by (hash, key).
+        let mut heap: BinaryHeap<EquivMergeItem> = BinaryHeap::new();
+        for (idx, reader) in readers.iter_mut().enumerate() {
+            if let Some((h, k, e)) = read_equiv_entry(reader).map_err(py_err)? {
+                heap.push((Reverse(h), Reverse(k), idx, e));
+            }
+        }
+
+        while let Some((Reverse(hash), Reverse(key), idx, mut equivs)) = heap.pop() {
+            let mut to_advance = vec![idx];
+            while let Some((Reverse(h), Reverse(k), _, _)) = heap.peek() {
+                if *h != hash || *k != key {
+                    break;
+                }
+                let (_, _, i, e) = heap.pop().unwrap();
+                equivs.extend(e);
+                to_advance.push(i);
+            }
+            equivs.sort();
+            equivs.dedup();
+
+            // Write data entry (no hash — it's in the index).
+            let kb = key.as_bytes();
+            dw.write_all(&(kb.len() as u32).to_le_bytes())
+                .map_err(py_err)?;
+            dw.write_all(kb).map_err(py_err)?;
+            dw.write_all(&(equivs.len() as u32).to_le_bytes())
+                .map_err(py_err)?;
+            let mut entry_len = 4 + kb.len() + 4;
+            for equiv in &equivs {
+                let eb = equiv.as_bytes();
+                dw.write_all(&(eb.len() as u32).to_le_bytes())
+                    .map_err(py_err)?;
+                dw.write_all(eb).map_err(py_err)?;
+                entry_len += 4 + eb.len();
+            }
+            hashes.push(hash);
+            offsets.push(offset);
+            offset += entry_len as u64;
+
+            for i in to_advance {
+                if let Some((h, k, e)) = read_equiv_entry(&mut readers[i]).map_err(py_err)? {
+                    heap.push((Reverse(h), Reverse(k), i, e));
+                }
+            }
+        }
+        dw.flush().map_err(py_err)?;
+        drop(dw);
+
+        // Clean up run files (keep the merged data file).
+        let _ = std::fs::remove_dir_all(&equiv_dir);
+
+        // Mmap the data file.
+        let file = File::open(&data_path).map_err(py_err)?;
+        let data = unsafe { memmap2::Mmap::map(&file).map_err(py_err)? };
+
+        Ok(EquivIndex {
+            hashes,
+            offsets,
+            data,
+            _file: file,
+            data_path,
+        })
     }
-    Ok(merged)
+
+    /// Look up equivalents for `curie`.  Returns a zero-copy iterator over
+    /// equivalent CURIE strings from the mmap'd data, or None if not found.
+    fn lookup(&self, curie: &str) -> Option<EquivIter<'_>> {
+        let hash = xxh64(curie.as_bytes(), 0);
+        let start = self.hashes.partition_point(|&h| h < hash);
+        let mut idx = start;
+        while idx < self.hashes.len() && self.hashes[idx] == hash {
+            let off = self.offsets[idx] as usize;
+            let d = &self.data[off..];
+            let kl = u32::from_le_bytes(d.get(..4)?.try_into().ok()?) as usize;
+            let key = std::str::from_utf8(d.get(4..4 + kl)?).ok()?;
+            if key == curie {
+                let count = u32::from_le_bytes(d.get(4 + kl..8 + kl)?.try_into().ok()?);
+                return Some(EquivIter {
+                    data: &self.data,
+                    pos: off + 8 + kl,
+                    remaining: count,
+                });
+            }
+            idx += 1;
+        }
+        None
+    }
+}
+
+/// Process a single term through clean → token_qc → level_one → level_two
+/// and insert the resulting normalized forms into `local_terms`.
+fn emit_term(term: &str, pair: (u32, u8), local_terms: &mut HashMap<String, Vec<(u32, u8)>>) {
+    let cleaned = clean(term);
+    if !token_qc(&cleaned) {
+        return;
+    }
+    let l1 = level_one(&cleaned);
+    if token_qc(&l1) {
+        local_terms.entry(l1.clone()).or_default().push(pair);
+        let l2 = level_two(&l1);
+        if l2 != l1 && token_qc(&l2) {
+            local_terms.entry(l2).or_default().push(pair);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +812,7 @@ struct SynonymBuildResult {
 
 fn process_synonyms(
     synonyms: &[PathBuf],
-    equivalents: &HashMap<String, Vec<String>>,
+    equivalents: &EquivIndex,
     spill_dir: &Path,
     local_spill: usize,
     progress: Option<&Arc<Progress>>,
@@ -621,7 +892,7 @@ fn process_synonyms(
                         CurieRow {
                             prefix_id,
                             local_id: local_id.to_string(),
-                            preferred_name: clean(preferred_name),
+                            preferred_name: clean(&preferred_name),
                             category_id,
                             taxon_id,
                         },
@@ -630,33 +901,33 @@ fn process_synonyms(
 
                 let pair = (curie_id, source_id);
 
-                let mut all_terms = string_array(&row, "names");
-                all_terms.push(curie.clone());
-                if let Some(equivs) = equivalents.get(&curie) {
-                    all_terms.extend(equivs.iter().cloned());
+                // Inline term processing — avoids building a transient all_terms Vec.
+                for name in string_array(&row, "names") {
+                    emit_term(&name, pair, &mut local_terms);
                 }
-
-                for term in &all_terms {
-                    let cleaned = clean(term.clone());
-                    if !token_qc(&cleaned) {
-                        continue;
-                    }
-                    let l1 = level_one(&cleaned);
-                    if token_qc(&l1) {
-                        local_terms.entry(l1.clone()).or_default().push(pair);
-                        let l2 = level_two(&l1);
-                        if l2 != l1 && token_qc(&l2) {
-                            local_terms.entry(l2).or_default().push(pair);
-                        }
+                emit_term(&curie, pair, &mut local_terms);
+                if let Some(iter) = equivalents.lookup(&curie) {
+                    for equiv in iter {
+                        emit_term(equiv, pair, &mut local_terms);
                     }
                 }
 
-                // Spill the thread-local buffer when it exceeds the budget.
+                // Spill the thread-local term buffer when it exceeds the budget.
                 if local_terms.len() >= local_spill {
                     let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
                     let p = spill_run(&mut local_terms, spill_dir, run_id)?;
                     run_paths.write().unwrap().push(p);
                     spill_count += 1;
+                }
+
+                // Periodically flush curie rows to the shared collection to bound
+                // per-thread memory (large files like protein.txt.gz can accumulate
+                // 200 M+ CurieRows in one thread).
+                if local_curie_rows.len() >= 2_000_000 {
+                    curie_rows_collected
+                        .write()
+                        .unwrap()
+                        .append(&mut local_curie_rows);
                 }
 
                 Ok(())
@@ -898,8 +1169,8 @@ fn build_fullmap_inner(
         }
         std::fs::create_dir_all(&spill_dir).map_err(py_err)?;
 
-        // Phase 1: in-memory equivalents lookup from class files.
-        let equivalents = build_equivalents_map(&classes, progress.as_ref())?;
+        // Phase 1: disk-backed equivalents index from class files.
+        let equivalents = EquivIndex::build(&classes, &spill_dir, progress.as_ref())?;
 
         // Phases 2+3: single-pass synonym processing with bounded spill runs.
         let result = process_synonyms(
@@ -909,7 +1180,8 @@ fn build_fullmap_inner(
             local_spill,
             progress.as_ref(),
         )?;
-        // Equivalents are no longer needed; free before the merge/write phase.
+        // Equivalents index (mmap + temp file) is dropped here; the data file
+        // is deleted via EquivIndex::Drop.
         drop(equivalents);
 
         let SynonymBuildResult {
@@ -957,9 +1229,31 @@ pub fn build_fullmap_db(
 
     let worker_count = threads
         .unwrap_or_else(|| {
-            std::thread::available_parallelism()
+            let cpus = std::thread::available_parallelism()
                 .map(|n| n.get())
-                .unwrap_or(1)
+                .unwrap_or(1);
+            // Cap at available_memory_gb / 2 to prevent swap on memory-constrained
+            // machines.  Each thread uses ~400 MB of local buffers; the cap is
+            // generous (2 GB/thread) to avoid limiting CPU-bound throughput.
+            let avail_kb = std::fs::read_to_string("/proc/meminfo")
+                .ok()
+                .and_then(|s| {
+                    s.lines()
+                        .find(|l| l.starts_with("MemAvailable:"))
+                        .and_then(|l| {
+                            l.split_whitespace()
+                                .nth(1)
+                                .and_then(|v| v.parse::<usize>().ok())
+                        })
+                })
+                .unwrap_or(0);
+            if avail_kb > 0 {
+                let avail_gb = avail_kb / (1024 * 1024);
+                let mem_cap = (avail_gb / 2).max(1);
+                cpus.min(mem_cap)
+            } else {
+                cpus * 9 / 10
+            }
         })
         .max(1);
 
@@ -1328,8 +1622,8 @@ mod tests {
 
     #[test]
     fn clean_strips_matching_and_duplicate_quotes() {
-        assert_eq!(clean("  'BRCA1'  ".to_string()), "BRCA1");
-        assert_eq!(clean("\"\"TP53\"".to_string()), "TP53");
+        assert_eq!(clean("  'BRCA1'  "), "BRCA1");
+        assert_eq!(clean("\"\"TP53\""), "TP53");
     }
 
     #[test]
