@@ -22,11 +22,11 @@ tablassert build-fullmap
 
 ### Data Pipeline
 
-The build is a parallel, **memory-bounded** pipeline (rayon) executed by the Rust extension. Heavy intermediate state is spilled to a temporary directory (`<output>.spill.d`, removed on success) instead of being held in RAM, so a full BABEL build (hundreds of millions of CURIEs) completes within a fixed memory budget:
+The build is a parallel, **memory-bounded** pipeline executed by the Rust extension. Heavy intermediate state is spilled to a temporary directory (`<output>.spill.d`, removed on success) instead of being held in RAM, so a full BABEL build (hundreds of millions of CURIEs) completes within a fixed memory budget. The synonym phase uses **intra-file parallelism** (a producer–consumer pool, below) so the few very large BABEL files are processed by every worker rather than one thread each, and the crate uses the [mimalloc](https://github.com/microsoft/mimalloc) allocator so heavy multi-threaded allocation does not bloat resident memory:
 
 1. **Download** — BABEL class and synonym files are downloaded from RENCI (`https://stars.renci.org/var/babel_outputs`) into `--cache` (resumable, range-request downloads; cached files are reused).
 2. **Equivalents index** — Class files are parsed in parallel into sorted on-disk runs, then k-way merged into a single memory-mapped index mapping each primary CURIE to its equivalent identifiers. Only a compact `(hash, offset)` index lives in RAM; the string data is mmap'd.
-3. **Synonym pass** — Synonym files are parsed in parallel. For each row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources), assigns compact integer CURIE IDs via a hash-keyed dedup map (`xxh3_128(curie) → id`), and accumulates normalized-term → (CURIE, source) postings. Both the per-CURIE rows and the term postings are drained to bounded on-disk spill runs once a per-thread buffer fills, so peak RAM stays flat regardless of input size. Terms matching the lookup path's dead-term filter (purely numeric, or generic labels like `none`/`nan`/`null`) are skipped, since they can never be queried.
+3. **Synonym pass** — A small pool of producer threads decompresses/reads the synonym files and pushes byte-bounded line-chunks through a bounded channel; the worker threads pull chunks and process the rows in parallel. Because every worker draws from one shared queue, the large files (protein/smallmolecule/gene/drugchemicalconflated) are processed by **all** workers, not one thread each. For each row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources), assigns compact integer CURIE IDs via a hash-keyed dedup map (`xxh3_128(curie) → id`), and accumulates normalized-term → (CURIE, source) postings. Each worker's per-CURIE rows and term postings are drained to bounded on-disk spill runs once its buffer fills, so peak RAM stays flat regardless of input size. Terms matching the lookup path's dead-term filter (purely numeric, or generic labels like `none`/`nan`/`null`) are skipped, since they can never be queried.
 4. **Write** — A single redb write transaction emits the dimension tables (`prefixes`, `categories`, `sources`), the `curies` table (streamed from its spill runs), and the `meta` schema tag, followed by the `records` table — a k-way merge of the term spill runs streamed into redb in hash-sorted batches for near-sequential B-tree appends.
 
 ### Build Tunables (environment)
@@ -36,8 +36,10 @@ Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TABLASSERT_FULLMAP_EXCLUDE_PREFIXES` | *(empty)* | Comma-separated CURIE prefixes to drop at build time (e.g. `INCHIKEY,Publication`). Excluding prefixes you never resolve dramatically cuts build time, peak memory, and database size. |
-| `TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES` | `1000000` | Per-thread term-posting buffer size before spilling a sorted run to disk. Lower → less RAM, more run files. |
-| `TABLASSERT_FULLMAP_CURIE_SPILL_ENTRIES` | `250000` | Per-thread CURIE-row buffer size before spilling to disk. Lower → less RAM, more run files. |
+| `TABLASSERT_FULLMAP_CHUNK_BYTES` | `8388608` (8 MiB) | Byte budget per producer→worker line-chunk. Bounded by bytes (not line count) so chunk memory is fixed even for large synonym records. |
+| `TABLASSERT_FULLMAP_PRODUCERS` | `clamp(workers/4, 4, #files)` | Number of producer (decompressor) threads. Decompression far outpaces parallel processing, so a handful keeps all workers fed. |
+| `TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES` | `1000000` | Per-worker term-posting buffer size before spilling a sorted run to disk. Lower → less RAM, more run files. |
+| `TABLASSERT_FULLMAP_CURIE_SPILL_ENTRIES` | `250000` | Per-worker CURIE-row buffer size before spilling to disk. Lower → less RAM, more run files. |
 | `TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES` | `2000000` | Per-thread equivalents buffer size before spilling during the equivalents-index build. |
 | `TABLASSERT_FULLMAP_INSERT_BATCH` | `2000000` | Records buffered per hash-sorted batch during the redb write. Larger → faster writes, modestly more RAM. |
 | `TABLASSERT_FULLMAP_REDB_CACHE_BYTES` | `2147483648` (2 GiB) | redb write-cache size. |

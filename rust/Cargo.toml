@@ -15,6 +15,7 @@ extension-module = ["pyo3/extension-module"]
 bincode = "1"
 flate2 = "1"
 memmap2 = "0.9"
+mimalloc = { version = "0.1", default-features = false }
 md5 = "0.7"
 pyo3 = "0.29"
 rayon = "1"

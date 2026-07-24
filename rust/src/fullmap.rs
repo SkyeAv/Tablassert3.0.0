@@ -12,7 +12,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
 use xxhash_rust::xxh3::xxh3_128;
 use xxhash_rust::xxh64::xxh64;
@@ -54,6 +55,11 @@ const DEFAULT_EQUIV_SPILL_ENTRIES: usize = 2_000_000;
 const DEFAULT_REDB_CACHE_BYTES: usize = 2 * 1024 * 1024 * 1024;
 const DEFAULT_INSERT_BATCH: usize = 2_000_000;
 const DEFAULT_CURIE_SPILL_ENTRIES: usize = 250_000;
+/// Byte budget per producer->worker chunk. Bounding by bytes (not line count)
+/// keeps each chunk's memory fixed even when synonym lines are large (protein /
+/// PUBCHEM records can be ~1-2 KB), so the in-flight line buffer stays bounded
+/// regardless of record size while still balancing load across workers.
+const DEFAULT_CHUNK_BYTES: usize = 8 * 1024 * 1024;
 
 fn env_usize(name: &str, default: usize) -> usize {
     std::env::var(name)
@@ -972,6 +978,218 @@ fn emit_term(term: &str, pair: (u32, u8), local_terms: &mut HashMap<String, Vec<
 }
 
 // ---------------------------------------------------------------------------
+// Phases 2+3: single-pass synonym processing.
+//
+// Intra-file parallelism via a producer-consumer pipeline (NOT parallel
+// shards — the output is still a single redb file).  A small pool of PRODUCER
+// threads decompresses/reads the synonym files and pushes bounded line-chunks
+// through a channel; `worker_count` WORKER threads pull chunks and process the
+// rows in parallel.  Because every worker draws from one shared queue, the
+// large files (protein/smallmolecule/gene/drugchemicalconflated) are processed
+// by ALL workers rather than one thread each, while small files still overlap.
+//
+// Each worker keeps persistent term / curie-row buffers that spill sorted runs
+// to disk at `local_spill` / `curie_spill`, exactly as before, so the run count
+// stays bounded by total_terms / local_spill (independent of chunking).  All
+// shared dimension/CURIE state is concurrent (sharded maps + atomics + RwLock).
+// ---------------------------------------------------------------------------
+
+/// Concurrent state shared across all synonym-phase workers (all interior-
+/// mutable / atomic, so it is shared by reference).
+struct SynonymShared<'a> {
+    prefix_map: &'a ShardedMap<u16>,
+    prefix_counter: &'a AtomicU32,
+    category_map: &'a ShardedMap<u16>,
+    category_counter: &'a AtomicU32,
+    curie_map: &'a CurieIdMap,
+    curie_counter: &'a AtomicU32,
+    equivalents: &'a EquivIndex,
+    exclude_prefixes: &'a HashSet<String>,
+    spill_dir: &'a Path,
+    local_spill: usize,
+    curie_spill: usize,
+    run_counter: &'a AtomicUsize,
+    curie_run_counter: &'a AtomicUsize,
+    run_paths: &'a RwLock<Vec<PathBuf>>,
+    curie_run_paths: &'a RwLock<Vec<PathBuf>>,
+}
+
+/// A worker's private, non-shared accumulation buffers.
+#[derive(Default)]
+struct WorkerBuf {
+    terms: HashMap<String, Vec<(u32, u8)>>,
+    curie_rows: Vec<(u32, CurieRow)>,
+}
+
+/// Process one parsed synonym row into a worker's buffers, spilling to disk
+/// when a buffer exceeds its budget.
+fn process_row(
+    sh: &SynonymShared<'_>,
+    source_id: u8,
+    row: &Value,
+    buf: &mut WorkerBuf,
+) -> PyResult<()> {
+    let Some(curie) = string_field(row, &["curie", "id"]) else {
+        return Ok(());
+    };
+    let Some((prefix, local_id)) = split_curie(&curie) else {
+        return Ok(());
+    };
+    // Skip CURIEs whose prefix the caller excludes (opt-in via
+    // TABLASSERT_FULLMAP_EXCLUDE_PREFIXES) — filtered out downstream anyway.
+    if sh.exclude_prefixes.contains(prefix) {
+        return Ok(());
+    }
+
+    let prefix_id = sh.prefix_map.get_or_insert_with(prefix, || {
+        u16::try_from(sh.prefix_counter.fetch_add(1, Ordering::Relaxed))
+            .expect("too many fullmap prefixes")
+    });
+    let category_name = first_category(row);
+    let category_id = sh.category_map.get_or_insert_with(&category_name, || {
+        u16::try_from(sh.category_counter.fetch_add(1, Ordering::Relaxed))
+            .expect("too many fullmap categories")
+    });
+    let preferred_name =
+        string_field(row, &["preferred_name", "name"]).unwrap_or_else(|| curie.clone());
+    let taxon_id = first_taxon(row);
+
+    let mut is_new = false;
+    let curie_hash = xxh3_128(curie.as_bytes());
+    let curie_id = sh.curie_map.get_or_insert_with(curie_hash, || {
+        is_new = true;
+        sh.curie_counter.fetch_add(1, Ordering::Relaxed)
+    });
+    if is_new {
+        buf.curie_rows.push((
+            curie_id,
+            CurieRow {
+                prefix_id,
+                local_id: local_id.to_string(),
+                preferred_name: clean(&preferred_name),
+                category_id,
+                taxon_id,
+            },
+        ));
+    }
+
+    let pair = (curie_id, source_id);
+    for name in string_array(row, "names") {
+        emit_term(&name, pair, &mut buf.terms);
+    }
+    emit_term(&curie, pair, &mut buf.terms);
+    if let Some(iter) = sh.equivalents.lookup(&curie) {
+        for equiv in iter {
+            emit_term(equiv, pair, &mut buf.terms);
+        }
+    }
+
+    if buf.terms.len() >= sh.local_spill {
+        let run_id = sh.run_counter.fetch_add(1, Ordering::Relaxed);
+        let p = spill_run(&mut buf.terms, sh.spill_dir, run_id)?;
+        sh.run_paths.write().unwrap().push(p);
+    }
+    if buf.curie_rows.len() >= sh.curie_spill {
+        let run_id = sh.curie_run_counter.fetch_add(1, Ordering::Relaxed);
+        let p = spill_curie_run(&mut buf.curie_rows, sh.spill_dir, run_id)?;
+        sh.curie_run_paths.write().unwrap().push(p);
+    }
+    Ok(())
+}
+
+/// Drain a worker's remaining buffers to final spill runs.
+fn flush_buf(sh: &SynonymShared<'_>, buf: &mut WorkerBuf) -> PyResult<()> {
+    if !buf.terms.is_empty() {
+        let run_id = sh.run_counter.fetch_add(1, Ordering::Relaxed);
+        let p = spill_run(&mut buf.terms, sh.spill_dir, run_id)?;
+        sh.run_paths.write().unwrap().push(p);
+    }
+    if !buf.curie_rows.is_empty() {
+        let run_id = sh.curie_run_counter.fetch_add(1, Ordering::Relaxed);
+        let p = spill_curie_run(&mut buf.curie_rows, sh.spill_dir, run_id)?;
+        sh.curie_run_paths.write().unwrap().push(p);
+    }
+    Ok(())
+}
+
+/// Producer: read one synonym file (gz or plain), group non-empty lines into
+/// byte-bounded chunks (~`chunk_bytes` bytes each), and send each chunk (tagged
+/// with its source id) into the channel.  Decompression happens here; JSON
+/// parsing/processing happens in the workers.  The bounded channel provides
+/// backpressure so a fast decompressor cannot buffer a whole giant file in RAM.
+fn produce_file(
+    path: &Path,
+    tx: &SyncSender<(u8, Vec<String>)>,
+    source_ids: &HashMap<String, u8>,
+    chunk_bytes: usize,
+    progress: Option<&Arc<Progress>>,
+    files_done: &AtomicUsize,
+    total_files: usize,
+) -> PyResult<()> {
+    let src_name = source_name(path);
+    let source_id = *source_ids
+        .get(&src_name)
+        .ok_or_else(|| PyRuntimeError::new_err(format!("uninterned source {src_name}")))?;
+
+    let reader = BufReader::new(open_reader(path)?);
+    let mut chunk: Vec<String> = Vec::new();
+    let mut chunk_len: usize = 0;
+    let mut row_count: u64 = 0;
+    for line in reader.lines() {
+        let raw = line.map_err(py_err)?;
+        if raw.trim().is_empty() {
+            continue;
+        }
+        row_count += 1;
+        chunk_len += raw.len();
+        chunk.push(raw);
+        // Flush once the chunk reaches the byte budget (bounds per-chunk memory
+        // regardless of how long individual lines are).
+        if chunk_len >= chunk_bytes {
+            tx.send((source_id, std::mem::take(&mut chunk)))
+                .map_err(py_err)?;
+            chunk_len = 0;
+        }
+    }
+    if !chunk.is_empty() {
+        tx.send((source_id, chunk)).map_err(py_err)?;
+    }
+
+    if let Some(p) = progress {
+        let n = files_done.fetch_add(1, Ordering::Relaxed) + 1;
+        p.call(
+            1,
+            n as u64,
+            total_files as u64,
+            &format!("{src_name} · {row_count} rows"),
+        );
+    }
+    Ok(())
+}
+
+/// Worker: pull line-chunks from the shared receiver and process their rows
+/// into a persistent private buffer, spilling as needed; flush on channel
+/// close.  The receiver lock is held only for the `recv` call, never during
+/// processing, so workers run in parallel.
+fn worker_loop(rx: &Mutex<Receiver<(u8, Vec<String>)>>, sh: &SynonymShared<'_>) -> PyResult<()> {
+    let mut buf = WorkerBuf::default();
+    loop {
+        // Lock is dropped at the end of this statement (before processing).
+        let job = rx.lock().unwrap().recv();
+        match job {
+            Ok((source_id, lines)) => {
+                for line in lines {
+                    let row: Value = serde_json::from_str(&line).map_err(py_err)?;
+                    process_row(sh, source_id, &row, &mut buf)?;
+                }
+            }
+            Err(_) => break, // all producers finished and the channel drained
+        }
+    }
+    flush_buf(sh, &mut buf)
+}
+
+// ---------------------------------------------------------------------------
 // Phases 2+3: single-pass synonym processing (parallel over synonym files)
 //
 // Collects dimensions (prefixes, categories, sources), assigns CURIE IDs,
@@ -994,6 +1212,7 @@ struct SynonymBuildResult {
     run_paths: Vec<PathBuf>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_synonyms(
     synonyms: &[PathBuf],
     equivalents: &EquivIndex,
@@ -1001,6 +1220,9 @@ fn process_synonyms(
     local_spill: usize,
     curie_spill: usize,
     exclude_prefixes: &HashSet<String>,
+    worker_count: usize,
+    chunk_bytes: usize,
+    producers: usize,
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<SynonymBuildResult> {
     // Pre-compute source IDs from filenames (small, deterministic).
@@ -1032,133 +1254,101 @@ fn process_synonyms(
     let files_done = AtomicUsize::new(0);
     let total_files = synonyms.len();
 
-    let results: Vec<PyResult<()>> = synonyms
-        .par_iter()
-        .map(|path| {
-            let src_name = source_name(path);
-            let source_id = *source_ids
-                .get(&src_name)
-                .ok_or_else(|| PyRuntimeError::new_err(format!("uninterned source {src_name}")))?;
+    let shared = SynonymShared {
+        prefix_map: &prefix_map,
+        prefix_counter: &prefix_counter,
+        category_map: &category_map,
+        category_counter: &category_counter,
+        curie_map: &curie_map,
+        curie_counter: &curie_counter,
+        equivalents,
+        exclude_prefixes,
+        spill_dir,
+        local_spill,
+        curie_spill,
+        run_counter: &run_counter,
+        curie_run_counter: &curie_run_counter,
+        run_paths: &run_paths,
+        curie_run_paths: &curie_run_paths,
+    };
 
-            let mut local_curie_rows: Vec<(u32, CurieRow)> = Vec::new();
-            let mut local_terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
-            let mut row_count: u64 = 0;
-            let mut spill_count: u32 = 0;
+    // Bounded channel of line-chunks: backpressure keeps a fast decompressor
+    // from buffering a whole giant file in RAM.  Workers pull chunks in
+    // parallel from one shared queue, so the large files are processed by ALL
+    // workers rather than one thread each.
+    let workers = worker_count.max(1);
+    // A modest bound keeps workers fed while bounding the in-flight line-buffer
+    // memory (bound x chunk_bytes); decompression outpaces processing, so a
+    // processing, so a shallow queue never starves the workers.
+    let (tx, rx) = sync_channel::<(u8, Vec<String>)>(workers);
+    let rx = Arc::new(Mutex::new(rx));
 
-            for_json_lines(path, |row| {
-                let Some(curie) = string_field(&row, &["curie", "id"]) else {
-                    return Ok(());
-                };
-                let Some((prefix, local_id)) = split_curie(&curie) else {
-                    return Ok(());
-                };
-                // Skip CURIEs whose prefix the caller excludes (opt-in via
-                // TABLASSERT_FULLMAP_EXCLUDE_PREFIXES) — they are filtered out
-                // of downstream assertions anyway, so indexing them is wasted.
-                if exclude_prefixes.contains(prefix) {
+    // A handful of producers cover all files (decompression is far faster than
+    // parallel processing, so only a few are needed to keep the workers fed).
+    let file_idx = AtomicUsize::new(0);
+    let producer_count = producers.clamp(1, total_files.max(1));
+
+    let scope_result: PyResult<()> = std::thread::scope(|s| {
+        // Copyable reference handles so each `move` closure copies the reference
+        // rather than moving the underlying (non-Copy) shared state.
+        let shared_ref = &shared;
+        let file_idx_ref = &file_idx;
+        let source_ids_ref = &source_ids;
+        let files_done_ref = &files_done;
+        let mut handles: Vec<std::thread::ScopedJoinHandle<'_, PyResult<()>>> = Vec::new();
+
+        // Workers: persistent private buffers, spilling at local_spill/curie_spill.
+        for _ in 0..workers {
+            let rx = Arc::clone(&rx);
+            handles.push(s.spawn(move || worker_loop(&rx, shared_ref)));
+        }
+
+        // Producers: pull files from a shared counter, push line-chunks.
+        for _ in 0..producer_count {
+            let tx = tx.clone();
+            handles.push(s.spawn(move || loop {
+                let i = file_idx_ref.fetch_add(1, Ordering::Relaxed);
+                if i >= total_files {
                     return Ok(());
                 }
-                row_count += 1;
+                produce_file(
+                    &synonyms[i],
+                    &tx,
+                    source_ids_ref,
+                    chunk_bytes,
+                    progress,
+                    files_done_ref,
+                    total_files,
+                )?;
+            }));
+        }
 
-                let prefix_id = prefix_map.get_or_insert_with(prefix, || {
-                    u16::try_from(prefix_counter.fetch_add(1, Ordering::Relaxed))
-                        .expect("too many fullmap prefixes")
-                });
+        // Drop the main sender so the channel closes once all producer threads
+        // finish; workers then drain remaining chunks and exit.
+        drop(tx);
 
-                let category_name = first_category(&row);
-                let category_id = category_map.get_or_insert_with(&category_name, || {
-                    u16::try_from(category_counter.fetch_add(1, Ordering::Relaxed))
-                        .expect("too many fullmap categories")
-                });
-
-                let preferred_name = string_field(&row, &["preferred_name", "name"])
-                    .unwrap_or_else(|| curie.clone());
-                let taxon_id = first_taxon(&row);
-
-                let mut is_new = false;
-                let curie_hash = xxh3_128(curie.as_bytes());
-                let curie_id = curie_map.get_or_insert_with(curie_hash, || {
-                    is_new = true;
-                    curie_counter.fetch_add(1, Ordering::Relaxed)
-                });
-
-                if is_new {
-                    local_curie_rows.push((
-                        curie_id,
-                        CurieRow {
-                            prefix_id,
-                            local_id: local_id.to_string(),
-                            preferred_name: clean(&preferred_name),
-                            category_id,
-                            taxon_id,
-                        },
-                    ));
-                }
-
-                let pair = (curie_id, source_id);
-
-                // Inline term processing — avoids building a transient all_terms Vec.
-                for name in string_array(&row, "names") {
-                    emit_term(&name, pair, &mut local_terms);
-                }
-                emit_term(&curie, pair, &mut local_terms);
-                if let Some(iter) = equivalents.lookup(&curie) {
-                    for equiv in iter {
-                        emit_term(equiv, pair, &mut local_terms);
+        let mut first_err: Option<PyErr> = None;
+        for h in handles {
+            match h.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    if first_err.is_none() {
+                        first_err = Some(e);
                     }
                 }
-
-                // Spill the thread-local term buffer when it exceeds the budget.
-                if local_terms.len() >= local_spill {
-                    let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
-                    let p = spill_run(&mut local_terms, spill_dir, run_id)?;
-                    run_paths.write().unwrap().push(p);
-                    spill_count += 1;
+                Err(_) => {
+                    if first_err.is_none() {
+                        first_err = Some(PyRuntimeError::new_err("fullmap build worker panicked"));
+                    }
                 }
-
-                // Spill curie rows to a disk run once the buffer exceeds the
-                // budget, bounding per-thread memory (large files like
-                // protein.txt.gz can hold 200 M+ unique CURIEs in one thread).
-                if local_curie_rows.len() >= curie_spill {
-                    let run_id = curie_run_counter.fetch_add(1, Ordering::Relaxed);
-                    let p = spill_curie_run(&mut local_curie_rows, spill_dir, run_id)?;
-                    curie_run_paths.write().unwrap().push(p);
-                }
-
-                Ok(())
-            })?;
-
-            // Flush the remainder of this file as a final run.
-            if !local_terms.is_empty() {
-                let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
-                let p = spill_run(&mut local_terms, spill_dir, run_id)?;
-                run_paths.write().unwrap().push(p);
-                spill_count += 1;
             }
-
-            if !local_curie_rows.is_empty() {
-                let run_id = curie_run_counter.fetch_add(1, Ordering::Relaxed);
-                let p = spill_curie_run(&mut local_curie_rows, spill_dir, run_id)?;
-                curie_run_paths.write().unwrap().push(p);
-            }
-
-            if let Some(p) = progress {
-                let n = files_done.fetch_add(1, Ordering::Relaxed) + 1;
-                p.call(
-                    1,
-                    n as u64,
-                    total_files as u64,
-                    &format!("{src_name} · {row_count} rows · {spill_count} spills"),
-                );
-            }
-
-            Ok(())
-        })
-        .collect();
-
-    for result in results {
-        result?;
-    }
+        }
+        match first_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    });
+    scope_result?;
 
     // Build final prefix_ids / category_ids maps from the sharded counters.
     let mut prefix_ids: HashMap<String, u16> = HashMap::new();
@@ -1334,6 +1524,8 @@ fn build_fullmap_inner(
     local_spill: usize,
     curie_spill: usize,
     exclude_prefixes: HashSet<String>,
+    chunk_bytes: usize,
+    producers: usize,
     cache_bytes: usize,
     insert_batch: usize,
     spill_dir: PathBuf,
@@ -1361,6 +1553,9 @@ fn build_fullmap_inner(
             local_spill,
             curie_spill,
             &exclude_prefixes,
+            worker_count,
+            chunk_bytes,
+            producers,
             progress.as_ref(),
         )?;
         // Equivalents index (mmap + temp file) is dropped here; the data file
@@ -1467,6 +1662,12 @@ pub fn build_fullmap_db(
                 .collect()
         })
         .unwrap_or_default();
+    // Intra-file parallelism tunables: lines per producer->worker chunk, and the
+    // number of producer (decompressor) threads.  Decompression is far faster
+    // than parallel processing, so a handful of producers keeps all workers fed.
+    let chunk_bytes = env_usize("TABLASSERT_FULLMAP_CHUNK_BYTES", DEFAULT_CHUNK_BYTES);
+    let default_producers = (worker_count / 4).max(4).min(synonyms.len().max(1));
+    let producers = env_usize("TABLASSERT_FULLMAP_PRODUCERS", default_producers);
     let cache_bytes = env_usize(
         "TABLASSERT_FULLMAP_REDB_CACHE_BYTES",
         DEFAULT_REDB_CACHE_BYTES,
@@ -1494,6 +1695,8 @@ pub fn build_fullmap_db(
             local_spill,
             curie_spill,
             exclude_prefixes,
+            chunk_bytes,
+            producers,
             cache_bytes,
             insert_batch,
             spill_dir,
@@ -1816,6 +2019,8 @@ mod tests {
             local_spill,
             1_000_000,
             HashSet::new(),
+            DEFAULT_CHUNK_BYTES,
+            2,
             64 * 1024 * 1024,
             1000,
             spill_dir,
@@ -2012,6 +2217,8 @@ mod tests {
             4_000_000,
             2,
             HashSet::new(),
+            DEFAULT_CHUNK_BYTES,
+            2,
             64 * 1024 * 1024,
             1000,
             spill_dir,
@@ -2104,6 +2311,8 @@ mod tests {
             4_000_000,
             1_000_000,
             exclude,
+            DEFAULT_CHUNK_BYTES,
+            2,
             64 * 1024 * 1024,
             1000,
             spill_dir,
@@ -2125,6 +2334,70 @@ mod tests {
 
         let dropped = lookup_terms(output, vec!["genea".to_string()], Some(1)).unwrap();
         assert!(dropped.is_empty() || dropped[0].1.is_empty());
+    }
+
+    #[test]
+    fn intra_file_parallelism_single_file_many_workers() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("big.ndjson");
+        let output = dir.path().join("fullmap.redb");
+
+        // One file, 5000 distinct CURIEs.
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..5000 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}","alias{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+
+        let spill_dir = {
+            let mut p = output.clone().into_os_string();
+            p.push(".spill.d");
+            PathBuf::from(p)
+        };
+        // 4 workers, chunk_bytes=8192 (forces many chunks), 2 producers: one
+        // file is split across workers and chunks (intra-file parallelism).
+        build_fullmap_inner(
+            output.clone(),
+            Vec::new(),
+            vec![synonyms],
+            4,
+            None,
+            4_000_000,
+            1_000_000,
+            HashSet::new(),
+            8192,
+            2,
+            64 * 1024 * 1024,
+            1000,
+            spill_dir,
+        )
+        .unwrap();
+
+        let database = open_cached(output.clone()).unwrap();
+        let read = database.begin_read().unwrap();
+        let curies = read.open_table(CURIES).unwrap();
+        assert_eq!(curies.iter().unwrap().count(), 5000);
+        drop(curies);
+        drop(read);
+        drop(database);
+
+        // Sample lookups across the file (start / middle / end) all resolve.
+        let terms: Vec<String> = [0, 1, 2499, 2500, 4998, 4999]
+            .into_iter()
+            .map(|i| format!("gene{i}"))
+            .collect();
+        let rows = lookup_terms(output, terms, Some(4)).unwrap();
+        let mut got: Vec<String> = rows
+            .iter()
+            .flat_map(|(_, recs)| recs.iter().map(|r| r.curie.clone()))
+            .collect();
+        got.sort();
+        got.dedup();
+        assert_eq!(got.len(), 6);
     }
 
     #[test]

@@ -1,5 +1,14 @@
 use pyo3::prelude::*;
 
+// mimalloc returns memory to the OS far better than glibc malloc under heavy
+// multi-threaded allocation (the synonym phase runs many worker threads each
+// making millions of small String/Vec allocations).  Without it, per-thread
+// malloc arenas retain freed memory and inflate peak RSS several-fold.
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 mod fullmap;
 mod json;
 mod ndjson;
