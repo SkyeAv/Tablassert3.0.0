@@ -12,7 +12,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
 use xxhash_rust::xxh3::xxh3_128;
@@ -41,9 +41,6 @@ type TermPairs = (String, Vec<(u32, u8)>);
 type PairRecords = Vec<TermPairs>;
 /// One k-way-merge heap entry: `(term, run index, pairs)`, min-ordered by term.
 type MergeItem = (Reverse<String>, usize, Vec<(u32, u8)>);
-/// A RECORDS shard channel message: the term's xxh64 key and its bincode-encoded
-/// `(term, pairs)` payload, routed to the shard that owns that hash.
-type ShardRecord = (u64, Vec<u8>);
 /// A read-path fan-out job: the `(input_index, term)` bucket routed to one shard
 /// plus a clone of that shard's handle, so a worker thread owns both outright
 /// (no shared receiver or borrow).
@@ -528,23 +525,42 @@ impl RunReader {
     }
 }
 
-/// Drain a thread-local term buffer into a sorted run file on disk.
+/// Drain a thread-local term buffer into per-shard sorted run files on disk.
+/// Terms are partitioned by `term_shard(term, shard_count)` so each shard's runs
+/// hold ONLY that shard's terms; Phase 4 then runs one independent k-way merge
+/// per shard with no shared producer (datassert-style write-time partitioning).
+/// A file `run_s{shard}_{id}.bin` is written only for a shard that has at least
+/// one term.  Returns `(shard, path)` pairs so the caller files each run under
+/// its shard's list.  The frame format is unchanged (see `RunWriter`); each
+/// per-shard file is term-sorted exactly as the old single run file was.
 fn spill_run(
     local: &mut HashMap<String, Vec<(u32, u8)>>,
     spill_dir: &Path,
     run_id: usize,
-) -> PyResult<PathBuf> {
-    let mut entries: Vec<TermPairs> = local.drain().collect();
-    entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-    let path = spill_dir.join(format!("run_{:08}.bin", run_id));
-    let mut w = RunWriter::new(&path).map_err(py_err)?;
-    for (term, mut pairs) in entries {
-        pairs.sort_unstable();
-        pairs.dedup();
-        w.write_term(&term, &pairs).map_err(py_err)?;
+    shard_count: usize,
+) -> PyResult<Vec<(usize, PathBuf)>> {
+    // Partition the buffer's terms by their destination shard.
+    let mut by_shard: Vec<Vec<TermPairs>> = vec![Vec::new(); shard_count];
+    for (term, pairs) in local.drain() {
+        by_shard[term_shard(&term, shard_count)].push((term, pairs));
     }
-    w.finish().map_err(py_err)?;
-    Ok(path)
+    let mut out: Vec<(usize, PathBuf)> = Vec::new();
+    for (shard, mut entries) in by_shard.into_iter().enumerate() {
+        if entries.is_empty() {
+            continue; // only non-empty shards write a file
+        }
+        entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        let path = spill_dir.join(format!("run_s{shard}_{run_id:08}.bin"));
+        let mut w = RunWriter::new(&path).map_err(py_err)?;
+        for (term, mut pairs) in entries {
+            pairs.sort_unstable();
+            pairs.dedup();
+            w.write_term(&term, &pairs).map_err(py_err)?;
+        }
+        w.finish().map_err(py_err)?;
+        out.push((shard, path));
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -1048,9 +1064,14 @@ struct SynonymShared<'a> {
     spill_dir: &'a Path,
     local_spill: usize,
     curie_spill: usize,
+    /// On-disk RECORDS shard count; term spill runs are partitioned across this
+    /// many per-shard lists at write time (see `spill_run`).
+    shard_count: usize,
     run_counter: &'a AtomicUsize,
     curie_run_counter: &'a AtomicUsize,
-    run_paths: &'a RwLock<Vec<PathBuf>>,
+    /// Per-shard term spill-run files: `run_paths[shard]` holds only the runs
+    /// whose terms hash to `shard`, so Phase 4 can merge each shard independently.
+    run_paths: &'a RwLock<Vec<Vec<PathBuf>>>,
     curie_run_paths: &'a RwLock<Vec<PathBuf>>,
 }
 
@@ -1126,8 +1147,11 @@ fn process_row(
 
     if buf.terms.len() >= sh.local_spill {
         let run_id = sh.run_counter.fetch_add(1, Ordering::Relaxed);
-        let p = spill_run(&mut buf.terms, sh.spill_dir, run_id)?;
-        sh.run_paths.write().unwrap().push(p);
+        let runs = spill_run(&mut buf.terms, sh.spill_dir, run_id, sh.shard_count)?;
+        let mut paths = sh.run_paths.write().unwrap();
+        for (shard, p) in runs {
+            paths[shard].push(p);
+        }
     }
     if buf.curie_rows.len() >= sh.curie_spill {
         let run_id = sh.curie_run_counter.fetch_add(1, Ordering::Relaxed);
@@ -1141,8 +1165,11 @@ fn process_row(
 fn flush_buf(sh: &SynonymShared<'_>, buf: &mut WorkerBuf) -> PyResult<()> {
     if !buf.terms.is_empty() {
         let run_id = sh.run_counter.fetch_add(1, Ordering::Relaxed);
-        let p = spill_run(&mut buf.terms, sh.spill_dir, run_id)?;
-        sh.run_paths.write().unwrap().push(p);
+        let runs = spill_run(&mut buf.terms, sh.spill_dir, run_id, sh.shard_count)?;
+        let mut paths = sh.run_paths.write().unwrap();
+        for (shard, p) in runs {
+            paths[shard].push(p);
+        }
     }
     if !buf.curie_rows.is_empty() {
         let run_id = sh.curie_run_counter.fetch_add(1, Ordering::Relaxed);
@@ -1248,8 +1275,10 @@ struct SynonymBuildResult {
     source_ids: HashMap<String, u8>,
     /// curie-row spill-run files holding (curie_id, encoded CurieRow)
     curie_run_paths: Vec<PathBuf>,
-    /// sorted spill-run files holding term -> pairs
-    run_paths: Vec<PathBuf>,
+    /// per-shard sorted spill-run files holding term -> pairs; `run_paths[shard]`
+    /// holds only the runs whose terms hash to `shard` (see `spill_run`), so
+    /// Phase 4 merges each shard independently.
+    run_paths: Vec<Vec<PathBuf>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1261,6 +1290,7 @@ fn process_synonyms(
     curie_spill: usize,
     exclude_prefixes: &HashSet<String>,
     worker_count: usize,
+    shard_count: usize,
     chunk_bytes: usize,
     producers: usize,
     progress: Option<&Arc<Progress>>,
@@ -1288,8 +1318,9 @@ fn process_synonyms(
     let curie_run_paths: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
     let curie_run_counter = AtomicUsize::new(0);
 
-    // Spill-run bookkeeping.
-    let run_paths: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
+    // Spill-run bookkeeping: one run list per shard so Phase 4 can merge each
+    // shard's runs independently (write-time partitioning in `spill_run`).
+    let run_paths: RwLock<Vec<Vec<PathBuf>>> = RwLock::new(vec![Vec::new(); shard_count]);
     let run_counter = AtomicUsize::new(0);
     let files_done = AtomicUsize::new(0);
     let total_files = synonyms.len();
@@ -1306,6 +1337,7 @@ fn process_synonyms(
         spill_dir,
         local_spill,
         curie_spill,
+        shard_count,
         run_counter: &run_counter,
         curie_run_counter: &curie_run_counter,
         run_paths: &run_paths,
@@ -1423,11 +1455,10 @@ fn write_final_database(
     category_ids: &HashMap<String, u16>,
     source_ids: &HashMap<String, u8>,
     curie_run_paths: &[PathBuf],
-    run_paths: &[PathBuf],
+    run_paths: &[Vec<PathBuf>],
     cache_bytes: usize,
     insert_batch: usize,
     shard_count: usize,
-    worker_count: usize,
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<()> {
     let database = redb::Builder::new()
@@ -1484,17 +1515,17 @@ fn write_final_database(
     }
     write.commit().map_err(py_err)?;
 
-    // K-way merge the sorted runs ONCE on a single producer thread and route each
-    // merged term group to its hash-partitioned RECORDS shard (`term_shard`).
-    // Each shard is its own redb file, so redb's single-writer-per-file lock lets
-    // `writer_count` writer threads insert concurrently — one shard DB per writer
-    // — while the (CPU-light) merge runs ahead of them; the redb B-tree insert is
-    // the bottleneck, so N writers ~= Nx write throughput.  Bounded per-shard
-    // channels give backpressure so a fast merge cannot buffer the whole dataset
-    // in RAM.  Each writer hash-sorts its inserts in bounded batches for
-    // near-sequential B-tree appends, commits its shard with Durability::None,
-    // then does a final durable commit.  Every shard file is created below (even
-    // one that receives zero terms), so the `shard_count`-file layout is stable.
+    // Phase 4: one INDEPENDENT k-way merge per shard, run in parallel — one
+    // thread per shard, merge + insert inline (datassert-style).  Because the
+    // term spill runs were partitioned by `term_shard` AT WRITE TIME, every term
+    // in shard `i`'s runs hashes to shard `i`, so each shard's merge groups its
+    // terms completely with NO cross-shard coordination — there is no shared
+    // producer and no per-shard channel (the single global producer that capped
+    // the old design is gone).  Each thread merges only its own shard's runs,
+    // hash-sorts the merged groups into bounded batches for B-tree locality,
+    // inserts into its shard's RECORDS table, commits with Durability::None,
+    // then does a final durable commit.  Every shard file is created above (even
+    // one with zero runs), so the `shard_count`-file layout stays stable.
     let shard_databases: Vec<Database> = (0..shard_count)
         .map(|i| {
             redb::Builder::new()
@@ -1504,67 +1535,26 @@ fn write_final_database(
         })
         .collect::<PyResult<_>>()?;
 
-    let merge = MergeHeap::new(run_paths).map_err(py_err)?;
-
-    // One bounded channel per shard carrying (hash, encoded) records.  The bound
-    // caps in-flight encoded groups at `shard_count * capacity`.
-    let writer_count = shard_count.min(worker_count.max(1));
-    let capacity = worker_count.max(4);
-    let (senders, receivers): (Vec<_>, Vec<_>) = (0..shard_count)
-        .map(|_| sync_channel::<ShardRecord>(capacity))
-        .unzip();
-
-    let dbs = &shard_databases;
+    // Owned per-thread progress handle (cheap Arc clone); `Progress::call`
+    // re-acquires the GIL via Python::attach, which is safe from many threads.
+    let progress: Option<Arc<Progress>> = progress.map(Arc::clone);
     let scope_result: PyResult<u64> = std::thread::scope(|s| {
-        // Producer: run the k-way merge and route each group to its shard channel.
-        // It OWNS `senders`; when it returns they drop, closing every channel so
-        // the writers observe EOF and commit.
-        let producer = s.spawn(move || -> PyResult<()> {
-            let mut merge = merge;
-            let mut merged: u64 = 0;
-            loop {
-                let Some((term, pairs)) = merge.next_group().map_err(py_err)? else {
-                    break;
-                };
-                let shard = term_shard(&term, shard_count);
-                let hash = xxh64(term.as_bytes(), 0);
-                let encoded = bincode::serialize(&(term.as_str(), &pairs)).map_err(py_err)?;
-                senders[shard].send((hash, encoded)).map_err(py_err)?;
-                merged += 1;
-                if insert_batch > 0 && merged.is_multiple_of(insert_batch as u64) {
-                    if let Some(p) = progress {
-                        p.call(2, merged, 0, &format!("writing {merged} records"));
-                    }
-                }
-            }
-            Ok(())
-        });
-
-        // Writers: distribute shards round-robin so each writer owns one or more
-        // shard DBs and drains their channels.  With worker_count >= shard_count
-        // (the common case) every writer owns exactly one shard.
-        let mut receivers: Vec<Option<Receiver<ShardRecord>>> =
-            receivers.into_iter().map(Some).collect();
         let mut handles: Vec<std::thread::ScopedJoinHandle<'_, PyResult<u64>>> = Vec::new();
-        for worker in 0..writer_count {
-            let owned: Vec<usize> = (worker..shard_count).step_by(writer_count).collect();
-            let rxs: Vec<Receiver<ShardRecord>> = owned
-                .iter()
-                .map(|&i| receivers[i].take().expect("shard receiver already taken"))
-                .collect();
-            handles.push(s.spawn(move || write_shard_records(dbs, &owned, rxs, insert_batch)));
+        for i in 0..shard_count {
+            // Each thread owns its shard DB handle, its shard's run list, and a
+            // progress handle outright — no shared receiver or borrow.
+            let db = &shard_databases[i];
+            let shard_runs: Vec<PathBuf> = run_paths[i].clone();
+            let progress = progress.clone();
+            handles.push(s.spawn(move || {
+                write_shard_records(db, &shard_runs, insert_batch, progress.as_ref())
+            }));
         }
 
-        // Join the producer first: once it returns, every channel is closed, so
-        // the writers then drain to EOF and commit.  Propagate the first error
-        // from any thread; sum the writers' record counts on success.
+        // Join all shard threads; propagate the first error (first-err wins) and
+        // sum the per-shard record counts on success.
         let mut first_err: Option<PyErr> = None;
         let mut written: u64 = 0;
-        match producer.join() {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => first_err = Some(e),
-            Err(_) => first_err = Some(PyRuntimeError::new_err("fullmap merge thread panicked")),
-        }
         for h in handles {
             match h.join() {
                 Ok(Ok(n)) => written += n,
@@ -1594,117 +1584,66 @@ fn write_final_database(
     Ok(())
 }
 
-/// One shard writer's work: open a Durability::None write txn + RECORDS table per
-/// owned shard, drain the shard channels into hash-sorted `insert_batch` batches,
-/// insert them, then commit each shard (a final durable commit persists the
-/// pages).  Returns the number of records written across the owned shards.
+/// One shard's complete Phase-4 work: k-way merge ONLY this shard's spill runs
+/// (every term in them hashes to this shard, so the merge groups each term fully
+/// with no cross-shard coordination), insert the merged groups into the shard's
+/// RECORDS table in hash-sorted `insert_batch` batches for B-tree locality, then
+/// commit (Durability::None) and do a final durable commit to persist the pages.
+/// Returns the number of records written to this shard.
 ///
-/// A shard that receives zero records still has its RECORDS table opened and
-/// committed, so an empty shard DB is produced and the file layout stays stable.
-/// When a writer owns several shards it polls all of their channels (try_recv)
-/// rather than blocking on one, so a full channel cannot deadlock the single
-/// interleaving producer that feeds the others.
+/// A shard with zero runs still opens and commits an empty RECORDS table, so an
+/// empty shard DB is produced and the `shard_count`-file layout stays stable.
 fn write_shard_records(
-    databases: &[Database],
-    owned: &[usize],
-    receivers: Vec<Receiver<ShardRecord>>,
+    database: &Database,
+    run_paths: &[PathBuf],
     insert_batch: usize,
+    progress: Option<&Arc<Progress>>,
 ) -> PyResult<u64> {
-    let mut writes: Vec<redb::WriteTransaction> = owned
-        .iter()
-        .map(|&i| {
-            let mut write = databases[i].begin_write().map_err(py_err)?;
-            write.set_durability(Durability::None);
-            Ok(write)
-        })
-        .collect::<PyResult<_>>()?;
-    let mut tables: Vec<redb::Table<u64, &[u8]>> = writes
-        .iter_mut()
-        .map(|write| write.open_table(RECORDS).map_err(py_err))
-        .collect::<PyResult<_>>()?;
-    let mut batches: Vec<Vec<(u64, Vec<u8>)>> = owned.iter().map(|_| Vec::new()).collect();
-    let mut buffered: usize = 0;
+    let mut write = database.begin_write().map_err(py_err)?;
+    write.set_durability(Durability::None);
+    let mut table = write.open_table(RECORDS).map_err(py_err)?;
+    let mut merge = MergeHeap::new(run_paths).map_err(py_err)?;
+    let mut batch: Vec<(u64, Vec<u8>)> = Vec::new();
     let mut written: u64 = 0;
-
-    if receivers.len() == 1 {
-        // Single shard: block on recv until the producer closes the channel.
-        while let Ok((hash, enc)) = receivers[0].recv() {
-            batches[0].push((hash, enc));
-            buffered += 1;
-            if buffered >= insert_batch {
-                written += flush_shard_batches(&mut tables, &mut batches)?;
-                buffered = 0;
-            }
-        }
-    } else {
-        // Multiple shards owned by one writer: poll every channel so progress on
-        // one never waits on another.
-        let mut done = vec![false; receivers.len()];
-        let mut finished = 0usize;
-        while finished < receivers.len() {
-            let mut got_any = false;
-            for (slot, rx) in receivers.iter().enumerate() {
-                if done[slot] {
-                    continue;
-                }
-                loop {
-                    match rx.try_recv() {
-                        Ok((hash, enc)) => {
-                            got_any = true;
-                            batches[slot].push((hash, enc));
-                            buffered += 1;
-                            if buffered >= insert_batch {
-                                written += flush_shard_batches(&mut tables, &mut batches)?;
-                                buffered = 0;
-                            }
-                        }
-                        Err(TryRecvError::Empty) => break,
-                        Err(TryRecvError::Disconnected) => {
-                            done[slot] = true;
-                            finished += 1;
-                            break;
-                        }
-                    }
-                }
-            }
-            if !got_any && finished < receivers.len() {
-                thread::yield_now();
+    loop {
+        let Some((term, pairs)) = merge.next_group().map_err(py_err)? else {
+            break;
+        };
+        let hash = xxh64(term.as_bytes(), 0);
+        let encoded = bincode::serialize(&(term.as_str(), &pairs)).map_err(py_err)?;
+        batch.push((hash, encoded));
+        if insert_batch > 0 && batch.len() >= insert_batch {
+            written += flush_shard_batch(&mut table, &mut batch)?;
+            if let Some(p) = progress {
+                p.call(2, written, 0, &format!("writing {written} records"));
             }
         }
     }
-
-    written += flush_shard_batches(&mut tables, &mut batches)?;
-    drop(tables);
-    for write in writes {
-        write.commit().map_err(py_err)?;
-    }
-    // Final durable commit per owned shard to persist all pages.
-    for &i in owned {
-        let write = databases[i].begin_write().map_err(py_err)?;
-        write.commit().map_err(py_err)?;
-    }
+    written += flush_shard_batch(&mut table, &mut batch)?;
+    drop(table);
+    write.commit().map_err(py_err)?;
+    // Final durable commit to persist all pages.
+    let write = database.begin_write().map_err(py_err)?;
+    write.commit().map_err(py_err)?;
     Ok(written)
 }
 
-/// Sort each shard's pending batch by hash and insert into that shard's RECORDS
+/// Sort the shard's pending batch by hash and insert it into the shard's RECORDS
 /// table, returning the number of records flushed.  Hash-sorted inserts give
-/// near-sequential B-tree appends; clearing the buffers keeps memory bounded.
-fn flush_shard_batches(
-    tables: &mut [redb::Table<u64, &[u8]>],
-    batches: &mut [Vec<(u64, Vec<u8>)>],
+/// near-sequential B-tree appends; clearing the buffer keeps memory bounded.
+fn flush_shard_batch(
+    table: &mut redb::Table<u64, &[u8]>,
+    batch: &mut Vec<(u64, Vec<u8>)>,
 ) -> PyResult<u64> {
-    let mut flushed: u64 = 0;
-    for (table, batch) in tables.iter_mut().zip(batches.iter_mut()) {
-        if batch.is_empty() {
-            continue;
-        }
-        batch.sort_unstable_by_key(|(hash, _)| *hash);
-        for (hash, enc) in batch.iter() {
-            table.insert(*hash, enc.as_slice()).map_err(py_err)?;
-        }
-        flushed += batch.len() as u64;
-        batch.clear();
+    if batch.is_empty() {
+        return Ok(0);
     }
+    batch.sort_unstable_by_key(|(hash, _)| *hash);
+    for (hash, enc) in batch.iter() {
+        table.insert(*hash, enc.as_slice()).map_err(py_err)?;
+    }
+    let flushed = batch.len() as u64;
+    batch.clear();
     Ok(flushed)
 }
 
@@ -1803,6 +1742,7 @@ fn build_fullmap_inner(
             curie_spill,
             &exclude_prefixes,
             worker_count,
+            shard_count,
             chunk_bytes,
             producers,
             progress.as_ref(),
@@ -1830,7 +1770,6 @@ fn build_fullmap_inner(
             cache_bytes,
             insert_batch,
             shard_count,
-            worker_count,
             progress.as_ref(),
         )?;
 
@@ -2637,14 +2576,16 @@ mod tests {
         assert_eq!(round_down_pow2(9), 8);
     }
 
-    /// US-102 parallelizes the Phase-4 RECORDS write across one writer thread per
-    /// shard.  Because a term's shard is a pure function of its xxh64 hash (not of
-    /// which writer inserted it), a 4-writer build must be content-equivalent to a
-    /// 1-writer build: identical term->CURIE results AND identical per-shard record
-    /// counts.  worker_count drives writer_count = min(shard_count, worker_count),
-    /// so threads=1 also exercises the single-writer/multi-shard poll path while
-    /// threads=4 exercises one blocking writer per shard.  This guards against any
-    /// routing/batching regression introduced by the concurrent writers.
+    /// US-201 eliminated the single global merge producer: Phase 4 now runs one
+    /// INDEPENDENT k-way merge per shard in parallel (one thread per shard, doing
+    /// the merge and insert inline), so the merge parallelism is across SHARDS and
+    /// is no longer a function of the synonym-phase `threads` knob.  The build must
+    /// therefore stay serial-equivalent: a threads=1 build and a threads>=shard_count
+    /// build (which differ in how the synonym phase partitions work and spill runs)
+    /// must yield identical term->CURIE results AND identical per-shard record
+    /// counts, because a term's shard is a pure function of its xxh64 hash.  This
+    /// guards against any routing / spill-partition / batching regression in the
+    /// parallel per-shard merges.
     #[test]
     fn parallel_writers_match_single_writer_build() {
         pyo3::Python::initialize();
@@ -2662,8 +2603,9 @@ mod tests {
 
         let out_serial = dir.path().join("serial.redb");
         let out_parallel = dir.path().join("parallel.redb");
-        // local_spill=100 forces several sorted runs so the k-way merge has real
-        // work; threads=1 -> 1 writer (owns all 4 shards), threads=4 -> 4 writers.
+        // local_spill=100 forces several sorted runs so each shard's k-way merge
+        // has real work; threads=1 vs threads=4 vary only the synonym-phase worker
+        // count (Phase 4 always runs one independent merge per shard regardless).
         build_test(
             out_serial.clone(),
             Vec::new(),
@@ -2674,8 +2616,8 @@ mod tests {
         .unwrap();
         build_test(out_parallel.clone(), Vec::new(), vec![synonyms], 4, 100).unwrap();
 
-        // Per-shard record counts are identical (routing is writer-independent)
-        // and every shard received at least one record.
+        // Per-shard record counts are identical (routing is a pure function of the
+        // term hash, independent of thread count) and every shard got >=1 record.
         let serial_counts = shard_record_counts(&out_serial);
         let parallel_counts = shard_record_counts(&out_parallel);
         assert_eq!(serial_counts, parallel_counts);
@@ -2684,7 +2626,7 @@ mod tests {
             assert!(*count > 0, "shard received no records: {parallel_counts:?}");
         }
 
-        // term -> sorted CURIE set is identical across writer counts.
+        // term -> sorted CURIE set is identical across thread counts.
         let probes: Vec<String> = (0..200)
             .flat_map(|i| [format!("gene{i}"), format!("alias{i}")])
             .collect();
@@ -2705,6 +2647,159 @@ mod tests {
         let parallel = norm(out_parallel);
         assert_eq!(serial.len(), 400);
         assert_eq!(serial, parallel);
+    }
+
+    /// US-201 shards the term spill runs AT WRITE TIME (one `run_s{shard}_{id}.bin`
+    /// per non-empty shard) so Phase 4 can run one INDEPENDENT k-way merge per
+    /// shard in parallel, eliminating the single global producer that capped
+    /// US-105.  This test pins both halves of that contract:
+    ///
+    /// 1. WRITE-TIME PARTITIONING: `process_synonyms` must return exactly
+    ///    `shard_count` per-shard run lists, every file named `run_s{shard}_*.bin`
+    ///    and present on disk, and EVERY term read back from a shard's runs must
+    ///    hash to that shard (`term_shard(term, shard_count) == shard`).  A term
+    ///    filed under the wrong shard would be merged/inserted in the wrong file
+    ///    and silently vanish from lookups, so this is the core correctness
+    ///    invariant of the partition.  Multiple runs must exist (small local_spill)
+    ///    so the per-shard k-way merge has real work.
+    /// 2. PARALLEL MERGE EQUIVALENCE: two full builds over the SAME synonyms but
+    ///    with different shard counts (4 vs 2) — i.e. different per-shard run
+    ///    layouts merged by independent threads — must yield identical
+    ///    term -> set(CURIE) results.  Because each term's postings all land in one
+    ///    shard and the read path routes by the same `term_shard` oracle, the
+    ///    reconstructed CURIE set is shard-count-independent; any cross-shard
+    ///    duplication or drop in the parallel merges would break this equality.
+    #[test]
+    fn per_shard_spill_runs_and_parallel_merges_match_reference() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("many.ndjson");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..200 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}","alias{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+        drop(synonym_file);
+
+        // --- 1. write-time partitioning ------------------------------------
+        let spill_dir = dir.path().join("spill");
+        std::fs::create_dir_all(&spill_dir).unwrap();
+        let equivalents = EquivIndex::build(&[], &spill_dir, None).unwrap();
+        let shard_count = SHARD_COUNT_SHARDS;
+        // local_spill=30 forces many spills so each shard has several runs and the
+        // per-shard k-way merge does real grouping work.
+        let result = process_synonyms(
+            std::slice::from_ref(&synonyms),
+            &equivalents,
+            &spill_dir,
+            30,
+            1_000_000,
+            &HashSet::new(),
+            4,
+            shard_count,
+            DEFAULT_CHUNK_BYTES,
+            2,
+            None,
+        )
+        .unwrap();
+        drop(equivalents);
+
+        // Exactly one run list per shard.
+        assert_eq!(result.run_paths.len(), shard_count);
+
+        // Every shard produced runs, each file is named run_s{shard}_*.bin and
+        // exists on disk, and every term read back routes to that shard.
+        let mut total_runs = 0usize;
+        for (shard, paths) in result.run_paths.iter().enumerate() {
+            assert!(!paths.is_empty(), "shard {shard} produced no run files");
+            let expected_prefix = format!("run_s{shard}_");
+            for path in paths {
+                let name = path.file_name().unwrap().to_string_lossy().into_owned();
+                assert!(
+                    name.starts_with(&expected_prefix) && name.ends_with(".bin"),
+                    "unexpected run file name {name} in shard {shard}"
+                );
+                assert!(path.exists(), "run file missing on disk: {path:?}");
+                let mut reader = RunReader::new(path).unwrap();
+                while let Some((term, _pairs)) = reader.cur.take() {
+                    assert_eq!(
+                        term_shard(&term, shard_count),
+                        shard,
+                        "term {term} filed under shard {shard} but hashes elsewhere"
+                    );
+                    reader.advance().unwrap();
+                }
+                total_runs += 1;
+            }
+        }
+        // Many runs across the shards prove the per-shard merges each k-way merge
+        // more than one run (the whole point of the partition).
+        assert!(
+            total_runs > shard_count,
+            "expected multiple per-shard runs, got {total_runs}"
+        );
+
+        // --- 2. parallel merge equivalence (shards=4 vs shards=2) ----------
+        let out4 = dir.path().join("s4.redb");
+        let out2 = dir.path().join("s2.redb");
+        build_fullmap_inner(
+            out4.clone(),
+            Vec::new(),
+            vec![synonyms.clone()],
+            4,
+            4,
+            None,
+            100,
+            1_000_000,
+            HashSet::new(),
+            DEFAULT_CHUNK_BYTES,
+            2,
+            64 * 1024 * 1024,
+            1000,
+            dir.path().join("s4.spill.d"),
+        )
+        .unwrap();
+        build_fullmap_inner(
+            out2.clone(),
+            Vec::new(),
+            vec![synonyms],
+            4,
+            2,
+            None,
+            100,
+            1_000_000,
+            HashSet::new(),
+            DEFAULT_CHUNK_BYTES,
+            2,
+            64 * 1024 * 1024,
+            1000,
+            dir.path().join("s2.spill.d"),
+        )
+        .unwrap();
+
+        let probes: Vec<String> = (0..200)
+            .flat_map(|i| [format!("gene{i}"), format!("alias{i}")])
+            .collect();
+        let norm = |db: PathBuf| -> Vec<(String, Vec<String>)> {
+            let rows = lookup_terms(db, probes.clone(), Some(4)).unwrap();
+            let mut out: Vec<(String, Vec<String>)> = rows
+                .into_iter()
+                .map(|(t, recs)| {
+                    let mut curies: Vec<String> = recs.into_iter().map(|r| r.curie).collect();
+                    curies.sort();
+                    (t, curies)
+                })
+                .collect();
+            out.sort();
+            out
+        };
+        let r4 = norm(out4);
+        let r2 = norm(out2);
+        assert_eq!(r4.len(), 400);
+        assert_eq!(r4, r2, "shard count must not change term -> CURIE results");
     }
 
     /// US-103 fans the read path out across RECORDS shards: `lookup_pair_terms_db`
