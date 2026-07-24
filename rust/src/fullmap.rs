@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::thread;
+use xxhash_rust::xxh3::xxh3_128;
 use xxhash_rust::xxh64::xxh64;
 
 const RECORDS: TableDefinition<u64, &[u8]> = TableDefinition::new("records");
@@ -305,6 +306,47 @@ impl<V> ShardedMap<V> {
         }
         let v = f();
         shard.insert(key.to_string(), v.clone());
+        v
+    }
+}
+
+/// A sharded concurrent map keyed by the 128-bit hash of a CURIE, assigning
+/// dense u32 ids.  Keying by `xxh3_128(curie)` instead of the CURIE string cuts
+/// the dedup map's memory several-fold at full scale (hundreds of millions of
+/// CURIEs: ~16-byte key vs a heap-allocated string + HashMap overhead), while a
+/// 128-bit key makes collisions astronomically unlikely (~1e-21 at 5e8 keys),
+/// preserving one stable `curie_id` per unique CURIE.  Mirrors datassert's
+/// hash-keyed `curieCounter`, widened from 64 to 128 bits for safety.
+struct CurieIdMap {
+    shards: Vec<RwLock<HashMap<u128, u32>>>,
+}
+
+impl CurieIdMap {
+    fn new() -> Self {
+        let mut shards = Vec::with_capacity(SHARD_COUNT);
+        for _ in 0..SHARD_COUNT {
+            shards.push(RwLock::new(HashMap::new()));
+        }
+        CurieIdMap { shards }
+    }
+
+    /// Get the id for `hash`, or insert a new one computed by `f`.
+    fn get_or_insert_with(&self, hash: u128, f: impl FnOnce() -> u32) -> u32 {
+        let idx = (hash as usize) & SHARD_MASK;
+        // Fast path: read lock.
+        {
+            let shard = self.shards[idx].read().unwrap();
+            if let Some(v) = shard.get(&hash) {
+                return *v;
+            }
+        }
+        // Slow path: write lock.
+        let mut shard = self.shards[idx].write().unwrap();
+        if let Some(v) = shard.get(&hash) {
+            return *v;
+        }
+        let v = f();
+        shard.insert(hash, v);
         v
     }
 }
@@ -859,8 +901,9 @@ fn process_synonyms(
     let category_map: ShardedMap<u16> = ShardedMap::new();
     let category_counter = AtomicU32::new(0);
 
-    // Concurrent CURIE ID assignment + CurieRow storage.
-    let curie_map: ShardedMap<u32> = ShardedMap::new();
+    // Concurrent CURIE ID assignment + CurieRow storage.  The dedup map is keyed
+    // by xxh3_128(curie) (not the string) to bound memory at full scale.
+    let curie_map = CurieIdMap::new();
     let curie_counter = AtomicU32::new(0);
     let curie_rows_collected: RwLock<Vec<(u32, CurieRow)>> = RwLock::new(Vec::new());
 
@@ -908,7 +951,8 @@ fn process_synonyms(
                 let taxon_id = first_taxon(&row);
 
                 let mut is_new = false;
-                let curie_id = curie_map.get_or_insert_with(&curie, || {
+                let curie_hash = xxh3_128(curie.as_bytes());
+                let curie_id = curie_map.get_or_insert_with(curie_hash, || {
                     is_new = true;
                     curie_counter.fetch_add(1, Ordering::Relaxed)
                 });
