@@ -22,12 +22,26 @@ tablassert build-fullmap
 
 ### Data Pipeline
 
-The build is an in-memory, parallel pipeline (rayon) executed by the Rust extension — there is no staging database and no temporary-file copy:
+The build is a parallel, **memory-bounded** pipeline (rayon) executed by the Rust extension. Heavy intermediate state is spilled to a temporary directory (`<output>.spill.d`, removed on success) instead of being held in RAM, so a full BABEL build (hundreds of millions of CURIEs) completes within a fixed memory budget:
 
 1. **Download** — BABEL class and synonym files are downloaded from RENCI (`https://stars.renci.org/var/babel_outputs`) into `--cache` (resumable, range-request downloads; cached files are reused).
-2. **Equivalents map** — Class files are parsed in parallel into an in-memory map of each primary CURIE to its equivalent identifiers.
-3. **Synonym pass** — Synonym files are parsed in parallel. For each row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources), assigns compact integer CURIE IDs, and accumulates normalized-term → (CURIE, source) postings in a sharded in-memory map.
-4. **Write** — A single redb write transaction emits the dimension tables (`prefixes`, `categories`, `sources`), the `curies` table, and the `meta` schema tag, followed by the `records` table (normalized term → serialized postings) written to `--output`.
+2. **Equivalents index** — Class files are parsed in parallel into sorted on-disk runs, then k-way merged into a single memory-mapped index mapping each primary CURIE to its equivalent identifiers. Only a compact `(hash, offset)` index lives in RAM; the string data is mmap'd.
+3. **Synonym pass** — Synonym files are parsed in parallel. For each row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources), assigns compact integer CURIE IDs via a hash-keyed dedup map (`xxh3_128(curie) → id`), and accumulates normalized-term → (CURIE, source) postings. Both the per-CURIE rows and the term postings are drained to bounded on-disk spill runs once a per-thread buffer fills, so peak RAM stays flat regardless of input size. Terms matching the lookup path's dead-term filter (purely numeric, or generic labels like `none`/`nan`/`null`) are skipped, since they can never be queried.
+4. **Write** — A single redb write transaction emits the dimension tables (`prefixes`, `categories`, `sources`), the `curies` table (streamed from its spill runs), and the `meta` schema tag, followed by the `records` table — a k-way merge of the term spill runs streamed into redb in hash-sorted batches for near-sequential B-tree appends.
+
+### Build Tunables (environment)
+
+Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a typical large build; override only when targeting an unusual machine.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TABLASSERT_FULLMAP_EXCLUDE_PREFIXES` | *(empty)* | Comma-separated CURIE prefixes to drop at build time (e.g. `INCHIKEY,Publication`). Excluding prefixes you never resolve dramatically cuts build time, peak memory, and database size. |
+| `TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES` | `1000000` | Per-thread term-posting buffer size before spilling a sorted run to disk. Lower → less RAM, more run files. |
+| `TABLASSERT_FULLMAP_CURIE_SPILL_ENTRIES` | `250000` | Per-thread CURIE-row buffer size before spilling to disk. Lower → less RAM, more run files. |
+| `TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES` | `2000000` | Per-thread equivalents buffer size before spilling during the equivalents-index build. |
+| `TABLASSERT_FULLMAP_INSERT_BATCH` | `2000000` | Records buffered per hash-sorted batch during the redb write. Larger → faster writes, modestly more RAM. |
+| `TABLASSERT_FULLMAP_REDB_CACHE_BYTES` | `2147483648` (2 GiB) | redb write-cache size. |
+| `TABLASSERT_FULLMAP_SPILL_DIR` | `<output>.spill.d` | Directory for intermediate spill runs (removed on success). |
 
 ### Examples
 

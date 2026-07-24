@@ -52,7 +52,7 @@ const SHARD_MASK: usize = SHARD_COUNT - 1;
 const DEFAULT_LOCAL_SPILL_ENTRIES: usize = 1_000_000;
 const DEFAULT_EQUIV_SPILL_ENTRIES: usize = 2_000_000;
 const DEFAULT_REDB_CACHE_BYTES: usize = 2 * 1024 * 1024 * 1024;
-const DEFAULT_INSERT_BATCH: usize = 500_000;
+const DEFAULT_INSERT_BATCH: usize = 2_000_000;
 const DEFAULT_CURIE_SPILL_ENTRIES: usize = 250_000;
 
 fn env_usize(name: &str, default: usize) -> usize {
