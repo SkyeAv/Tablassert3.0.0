@@ -7,7 +7,7 @@ use redb::{Database, Durability, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -136,6 +136,36 @@ fn level_two(value: &str) -> String {
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
         .collect()
+}
+
+/// Terms the lookup path can never query: the fullmap `distinct()` bad-regex
+/// `^\d+$|^(none|nan|na|null|unknown|not applicable|p_value|variable|result|`
+/// `exposure|expression|symbol)$|^$` drops these from the query-term set before
+/// lookup, so storing them in the DB is dead weight.  `term` is already a
+/// normalized (level-one or level-two) form here.  Skipping them is provably
+/// safe: a stored term matching this can never meet a surviving query term.
+fn is_dead_term(term: &str) -> bool {
+    if term.is_empty() {
+        return true;
+    }
+    if term.bytes().all(|b| b.is_ascii_digit()) {
+        return true;
+    }
+    matches!(
+        term,
+        "none"
+            | "nan"
+            | "na"
+            | "null"
+            | "unknown"
+            | "not applicable"
+            | "p_value"
+            | "variable"
+            | "result"
+            | "exposure"
+            | "expression"
+            | "symbol"
+    )
 }
 
 fn open_reader(path: &Path) -> PyResult<Box<dyn Read>> {
@@ -932,10 +962,10 @@ fn emit_term(term: &str, pair: (u32, u8), local_terms: &mut HashMap<String, Vec<
         return;
     }
     let l1 = level_one(&cleaned);
-    if token_qc(&l1) {
+    if token_qc(&l1) && !is_dead_term(&l1) {
         local_terms.entry(l1.clone()).or_default().push(pair);
         let l2 = level_two(&l1);
-        if l2 != l1 && token_qc(&l2) {
+        if l2 != l1 && token_qc(&l2) && !is_dead_term(&l2) {
             local_terms.entry(l2).or_default().push(pair);
         }
     }
@@ -970,6 +1000,7 @@ fn process_synonyms(
     spill_dir: &Path,
     local_spill: usize,
     curie_spill: usize,
+    exclude_prefixes: &HashSet<String>,
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<SynonymBuildResult> {
     // Pre-compute source IDs from filenames (small, deterministic).
@@ -1021,6 +1052,12 @@ fn process_synonyms(
                 let Some((prefix, local_id)) = split_curie(&curie) else {
                     return Ok(());
                 };
+                // Skip CURIEs whose prefix the caller excludes (opt-in via
+                // TABLASSERT_FULLMAP_EXCLUDE_PREFIXES) — they are filtered out
+                // of downstream assertions anyway, so indexing them is wasted.
+                if exclude_prefixes.contains(prefix) {
+                    return Ok(());
+                }
                 row_count += 1;
 
                 let prefix_id = prefix_map.get_or_insert_with(prefix, || {
@@ -1296,6 +1333,7 @@ fn build_fullmap_inner(
     progress: Option<Arc<Progress>>,
     local_spill: usize,
     curie_spill: usize,
+    exclude_prefixes: HashSet<String>,
     cache_bytes: usize,
     insert_batch: usize,
     spill_dir: PathBuf,
@@ -1322,6 +1360,7 @@ fn build_fullmap_inner(
             &spill_dir,
             local_spill,
             curie_spill,
+            &exclude_prefixes,
             progress.as_ref(),
         )?;
         // Equivalents index (mmap + temp file) is dropped here; the data file
@@ -1417,6 +1456,17 @@ pub fn build_fullmap_db(
         "TABLASSERT_FULLMAP_CURIE_SPILL_ENTRIES",
         DEFAULT_CURIE_SPILL_ENTRIES,
     );
+    // Opt-in prefix exclusion: comma-separated CURIE prefixes dropped at build
+    // time (e.g. "INCHIKEY,Publication").  Empty/unset = index everything.
+    let exclude_prefixes: HashSet<String> = std::env::var("TABLASSERT_FULLMAP_EXCLUDE_PREFIXES")
+        .ok()
+        .map(|v| {
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
     let cache_bytes = env_usize(
         "TABLASSERT_FULLMAP_REDB_CACHE_BYTES",
         DEFAULT_REDB_CACHE_BYTES,
@@ -1443,6 +1493,7 @@ pub fn build_fullmap_db(
             progress,
             local_spill,
             curie_spill,
+            exclude_prefixes,
             cache_bytes,
             insert_batch,
             spill_dir,
@@ -1764,6 +1815,7 @@ mod tests {
             None,
             local_spill,
             1_000_000,
+            HashSet::new(),
             64 * 1024 * 1024,
             1000,
             spill_dir,
@@ -1959,6 +2011,7 @@ mod tests {
             None,
             4_000_000,
             2,
+            HashSet::new(),
             64 * 1024 * 1024,
             1000,
             spill_dir,
@@ -1988,6 +2041,90 @@ mod tests {
         got.dedup();
         let want: Vec<String> = (0..5).map(|i| format!("HGNC:{i}")).collect();
         assert_eq!(got, want);
+    }
+
+    #[test]
+    fn dead_term_filter_drops_numeric_synonyms() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("HGNC.ndjson");
+        let output = dir.path().join("fullmap.redb");
+
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        // "12345" matches the distinct() bad-regex (^\d+$) and must be dropped;
+        // "realname" survives.
+        writeln!(
+            synonym_file,
+            r#"{{"curie":"HGNC:1100","preferred_name":"BRCA1","names":["12345","realname"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+        )
+        .unwrap();
+
+        build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
+
+        let alive = lookup_terms(output.clone(), vec!["realname".to_string()], Some(1)).unwrap();
+        assert_eq!(alive.len(), 1);
+        assert_eq!(alive[0].1[0].curie, "HGNC:1100");
+
+        let dead = lookup_terms(output, vec!["12345".to_string()], Some(1)).unwrap();
+        assert!(dead.is_empty() || dead[0].1.is_empty());
+    }
+
+    #[test]
+    fn prefix_exclusion_drops_matching_rows() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("mixed.ndjson");
+        let output = dir.path().join("fullmap.redb");
+
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        writeln!(
+            synonym_file,
+            r#"{{"curie":"HGNC:1","preferred_name":"GENEA","names":["GENEA"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+        )
+        .unwrap();
+        writeln!(
+            synonym_file,
+            r#"{{"curie":"CHEBI:2","preferred_name":"water","names":["water"],"types":["ChemicalEntity"],"taxa":[]}}"#
+        )
+        .unwrap();
+
+        let spill_dir = {
+            let mut p = output.clone().into_os_string();
+            p.push(".spill.d");
+            PathBuf::from(p)
+        };
+        let mut exclude = HashSet::new();
+        exclude.insert("HGNC".to_string());
+        build_fullmap_inner(
+            output.clone(),
+            Vec::new(),
+            vec![synonyms],
+            1,
+            None,
+            4_000_000,
+            1_000_000,
+            exclude,
+            64 * 1024 * 1024,
+            1000,
+            spill_dir,
+        )
+        .unwrap();
+
+        // Only CHEBI:2 survives; HGNC:1 is excluded entirely.
+        let database = open_cached(output.clone()).unwrap();
+        let read = database.begin_read().unwrap();
+        let curies = read.open_table(CURIES).unwrap();
+        assert_eq!(curies.iter().unwrap().count(), 1);
+        drop(curies);
+        drop(read);
+        drop(database);
+
+        let kept = lookup_terms(output.clone(), vec!["water".to_string()], Some(1)).unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].1[0].curie, "CHEBI:2");
+
+        let dropped = lookup_terms(output, vec!["genea".to_string()], Some(1)).unwrap();
+        assert!(dropped.is_empty() || dropped[0].1.is_empty());
     }
 
     #[test]
