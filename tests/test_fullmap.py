@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -12,7 +13,7 @@ import tablassert.cli as cli
 from tablassert.cli import build_fullmap
 import tablassert.lib as lib
 from tablassert.enums import Categories
-from tablassert.fullmap import ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, resolve, resolve_batch
+from tablassert.fullmap import _TERM_CACHE, ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, lookup_rows, resolve, resolve_batch
 from tablassert.lib import to_store
 
 
@@ -300,6 +301,61 @@ def test_resolve_batch_makes_one_redb_call_regardless_of_spec_count(fullmap_db: 
     assert len(calls) == 1
 
 
+def test_resolve_batch_three_node_columns_on_sharded_db(fullmap_db: Path) -> None:
+    """resolve_batch resolves subject/object/qualifier from ONE sharded fetch.
+
+    US-104 acceptance: the fullmap DB is now a sharded layout (primary
+    ``fullmap.redb`` plus sibling ``fullmap.s*.redb`` RECORDS shards). The Python
+    consumer only ever hands the PRIMARY path to the rs layer, which derives the
+    shard paths internally. This test confirms the sibling shard files actually
+    exist on disk, that ``fullmap_db_path`` resolves the primary, then resolves
+    three node columns (subject, object, species_context_qualifier) in a single
+    ``resolve_batch`` call and asserts every column resolves to the correct
+    CURIE. The three columns share one pooled ``rs.lookup_fullmap_terms`` fetch
+    (see ``test_resolve_batch_makes_one_redb_call_regardless_of_spec_count``);
+    here we prove that pooled fetch fans out across the shards and hydrates all
+    three columns. The fixture's diverse terms (brca1, mapk1, shared, ambiguous,
+    contextual, ...) hash across multiple of the four shards, so the shared fetch
+    genuinely exercises more than one shard file.
+    """
+    # The sharded layout must actually be on disk: primary + sibling shard files.
+    assert fullmap_db.is_file()
+    shards: list[Path] = sorted(fullmap_db.parent.glob("fullmap.s*.redb"))
+    assert len(shards) >= 2  # default build fans RECORDS out across 4 shards
+
+    # fullmap_db_path resolves the PRIMARY file; the rs layer derives the shards.
+    assert fullmap_db_path(fullmap_db) == fullmap_db
+
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["brca1"],
+            "subject_two": ["brca1"],
+            "object": ["mapk1"],
+            "object_two": ["mapk1"],
+            "species_context_qualifier": ["shared"],
+            "species_context_qualifier_two": ["shared"],
+        }
+    ).lazy()
+
+    result: dict[str, Any] = (
+        resolve_batch(
+            lf, [ResolveSpec("subject"), ResolveSpec("object"), ResolveSpec("species_context_qualifier", taxon="9606")], fullmap_db, log=False
+        )
+        .collect()
+        .to_dicts()[0]
+    )
+
+    # Each of the three node columns resolves to the correct CURIE from the one
+    # shared sharded fetch.
+    assert result["subject"] == "HGNC:1100"
+    assert result["subject_category"] == "biolink:Gene"
+    assert result["object"] == "HGNC:6871"
+    assert result["object_category"] == "biolink:Gene"
+    assert result["species_context_qualifier"] == "HGNC:1"
+    assert result["species_context_qualifier_name"] == "HUMAN"
+    assert result["species_context_qualifier_taxon"] == "NCBITaxon:9606"
+
+
 def test_lookup_threads_match(fullmap_db: Path) -> None:
     """rust lookup is deterministic with one or more threads."""
     single: list[dict[str, Any]] = rs.lookup_fullmap_terms(fullmap_db, ["brca1", "mapk1"], threads=1)
@@ -314,6 +370,41 @@ def test_fullmap_db_path_variants(tmp_path: Path, fullmap_db: Path) -> None:
     assert fullmap_db_path(fullmap_db) == fullmap_db
     assert fullmap_db_path(tmp_path) == direct
     assert fullmap_db_path(tmp_path / "other") == tmp_path / "other" / "data" / "fullmap.redb"
+
+
+def test_term_cache_invalidates_across_rebuild(tmp_path: Path) -> None:
+    """rebuilding the fullmap DB invalidates the Python term cache.
+
+    US-104: ``_db_cache_key`` keys the caches on the PRIMARY file's resolved path
+    plus ``st_mtime`` (never the sibling shard files). ``rs.build_fullmap_db``
+    removes the old primary + shards and writes fresh ones, so the primary mtime
+    changes on every rebuild and the cached keys no longer match — stale entries
+    are orphaned and evicted rather than served. This test builds a DB, warms
+    ``_TERM_CACHE`` via ``lookup_rows``, rebuilds DIFFERENT content at the same
+    path, and asserts the second lookup returns the NEW curie (not the stale
+    cached one). The mtime is bumped explicitly so the test stays deterministic
+    even on filesystems with coarse mtime granularity; on Linux ``st_mtime`` has
+    sub-second precision, so a real rebuild changes the key on its own.
+    """
+    output: Path = tmp_path / "fullmap.redb"
+    classes: Path = write_jsonl(tmp_path / "classes.ndjson", [class_row("HGNC:1100", ["NCBIGene:672"])])
+
+    # v1: "brca1" resolves to HGNC:1100 and warms the term cache.
+    synonyms_v1: Path = write_jsonl(tmp_path / "v1.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["brca1"], "Gene")])
+    rs.build_fullmap_db(output, [classes], [synonyms_v1], threads=2)
+    first: list[dict[str, object]] = lookup_rows(output, ["brca1"])
+    assert first[0]["CURIE"] == "HGNC:1100"
+    assert any(term == "brca1" for _path, _mtime, term in _TERM_CACHE)
+
+    # v2: rebuild at the SAME path with different content ("brca1" -> HGNC:2222),
+    # then guarantee a distinct mtime so the cache key changes deterministically.
+    synonyms_v2: Path = write_jsonl(tmp_path / "v2.ndjson", [synonym_row("HGNC:2222", "BRCA1", ["brca1"], "Gene")])
+    rs.build_fullmap_db(output, [classes], [synonyms_v2], threads=2)
+    bumped: float = output.stat().st_mtime + 10.0
+    os.utime(output, (bumped, bumped))
+
+    second: list[dict[str, object]] = lookup_rows(output, ["brca1"])
+    assert second[0]["CURIE"] == "HGNC:2222"  # fresh, not the stale HGNC:1100
 
 
 def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
