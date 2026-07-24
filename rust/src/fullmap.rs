@@ -44,6 +44,10 @@ type MergeItem = (Reverse<String>, usize, Vec<(u32, u8)>);
 /// A RECORDS shard channel message: the term's xxh64 key and its bincode-encoded
 /// `(term, pairs)` payload, routed to the shard that owns that hash.
 type ShardRecord = (u64, Vec<u8>);
+/// A read-path fan-out job: the `(input_index, term)` bucket routed to one shard
+/// plus a clone of that shard's handle, so a worker thread owns both outright
+/// (no shared receiver or borrow).
+type ShardJob = (Vec<(usize, String)>, Arc<Database>);
 
 /// Database cache keyed by canonical path only.
 ///
@@ -2072,33 +2076,95 @@ fn lookup_pair_chunk(shards: &[Arc<Database>], terms: &[String]) -> PyResult<Pai
     Ok(out)
 }
 
+/// Query a single RECORDS shard for the `(input_index, term)` pairs routed to
+/// it.  Opens one read transaction + RECORDS table on `shard`, looks up each
+/// term by its xxh64 key, and keeps the `stored_term == term` collision guard.
+/// Hits are tagged with their original input index so the caller can re-merge
+/// every shard's results back into input order.  Pure Rust (no `Python`), so it
+/// is safe to run on a worker thread inside a `py.detach` region.
+fn lookup_shard_bucket(
+    shard: &Database,
+    bucket: &[(usize, String)],
+) -> PyResult<Vec<(usize, TermPairs)>> {
+    let read = shard.begin_read().map_err(py_err)?;
+    let table = read.open_table(RECORDS).map_err(py_err)?;
+    let mut out = Vec::new();
+    for (index, term) in bucket {
+        let hash = xxh64(term.as_bytes(), 0);
+        if let Some(bytes) = table.get(hash).map_err(py_err)? {
+            let (stored_term, records): (String, Vec<(u32, u8)>) =
+                bincode::deserialize(bytes.value()).map_err(py_err)?;
+            // Verify the term matches (guards against xxh64 collisions).
+            if &stored_term == term {
+                out.push((*index, (term.clone(), records)));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Fan the query terms out across RECORDS shards and read the non-empty shards
+/// concurrently.  Terms are partitioned by `term_shard` (the shared routing
+/// oracle) into per-shard buckets; one worker thread per NON-EMPTY shard — capped
+/// at `workers` — reads only its own shard's RECORDS, and the tagged hits are
+/// re-merged into the original input term order.  With shard_count=4 and
+/// workers>=4 this is up to 4 concurrent shard reads.  Surplus shards beyond the
+/// worker cap are read on the calling thread, which still overlaps with the
+/// spawned readers.  Pure Rust end-to-end (no `Python`).
 fn lookup_pair_terms_db(
     shards: &[Arc<Database>],
     terms: &[String],
     workers: usize,
 ) -> PyResult<PairRecords> {
-    if workers <= 1 || terms.len() <= 1 {
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+    let shard_count = shards.len();
+    // Single-threaded fast path: one worker, one term, or a single shard.
+    if workers <= 1 || terms.len() <= 1 || shard_count <= 1 {
         return lookup_pair_chunk(shards, terms);
     }
 
-    let chunk_size = terms.len().div_ceil(workers);
-    let mut handles = Vec::new();
-    for chunk in terms.chunks(chunk_size) {
-        let shards = shards.to_vec();
-        let chunk_terms = chunk.to_vec();
-        handles.push(thread::spawn(move || {
-            lookup_pair_chunk(&shards, &chunk_terms)
-        }));
+    // Partition the query terms into per-shard buckets, tagging each with its
+    // input position so hits can be re-merged in the original order afterwards.
+    let mut buckets: Vec<Vec<(usize, String)>> = vec![Vec::new(); shard_count];
+    for (index, term) in terms.iter().enumerate() {
+        buckets[term_shard(term, shard_count)].push((index, term.clone()));
     }
 
-    let mut out = Vec::new();
+    // One job per NON-EMPTY shard; each job owns its bucket and a clone of its
+    // shard handle so worker threads share neither a receiver nor a borrow.
+    let mut jobs: Vec<ShardJob> = buckets
+        .into_iter()
+        .enumerate()
+        .filter(|(_, bucket)| !bucket.is_empty())
+        .map(|(shard, bucket)| (bucket, Arc::clone(&shards[shard])))
+        .collect();
+
+    // Cap concurrent shard reads at `workers`; any surplus shards are read on
+    // the calling thread (split_off keeps the first `workers` jobs to spawn).
+    let split = jobs.len().min(workers);
+    let inline_jobs = jobs.split_off(split);
+
+    let mut handles = Vec::with_capacity(jobs.len());
+    for (bucket, shard) in jobs {
+        handles.push(thread::spawn(move || lookup_shard_bucket(&shard, &bucket)));
+    }
+
+    let mut tagged: Vec<(usize, TermPairs)> = Vec::new();
+    for (bucket, shard) in inline_jobs {
+        tagged.extend(lookup_shard_bucket(&shard, &bucket)?);
+    }
     for handle in handles {
-        let mut chunk = handle
+        let mut part = handle
             .join()
             .map_err(|_| PyRuntimeError::new_err("fullmap lookup thread panicked"))??;
-        out.append(&mut chunk);
+        tagged.append(&mut part);
     }
-    Ok(out)
+
+    // Re-merge hits into input term order; misses simply produced no row.
+    tagged.sort_by_key(|(index, _)| *index);
+    Ok(tagged.into_iter().map(|(_, pairs)| pairs).collect())
 }
 
 fn lookup_pair_terms(
@@ -2214,8 +2280,12 @@ pub fn lookup_fullmap_terms<'py>(
     return_format: &str,
 ) -> PyResult<Bound<'py, PyList>> {
     if return_format == "pairs" {
+        // Release the GIL for the whole lookup (pure-Rust shard reads); the
+        // PyList is built only after re-acquiring it so rich's Live display
+        // thread can repaint and Ctrl-C works mid-lookup.
+        let pair_rows = py.detach(move || lookup_pair_terms(db, terms, threads))?;
         let list = PyList::empty(py);
-        for (term, pairs) in lookup_pair_terms(db, terms, threads)? {
+        for (term, pairs) in pair_rows {
             let row = PyDict::new(py);
             row.set_item("term", term)?;
             row.set_item("records", pairs)?;
@@ -2228,8 +2298,12 @@ pub fn lookup_fullmap_terms<'py>(
             "return_format must be 'rows' or 'pairs'",
         ));
     }
+    // Release the GIL for the whole lookup (pure-Rust shard reads + CURIE/dim
+    // hydration against the primary); the PyList is built only after
+    // re-acquiring the GIL.
+    let rows = py.detach(move || lookup_terms(db, terms, threads))?;
     let list = PyList::empty(py);
-    for (term, records) in lookup_terms(db, terms, threads)? {
+    for (term, records) in rows {
         for record in records {
             let row = PyDict::new(py);
             row.set_item("term", &term)?;
@@ -2593,6 +2667,125 @@ mod tests {
         let parallel = norm(out_parallel);
         assert_eq!(serial.len(), 400);
         assert_eq!(serial, parallel);
+    }
+
+    /// US-103 fans the read path out across RECORDS shards: `lookup_pair_terms_db`
+    /// partitions query terms by `term_shard`, reads each NON-EMPTY shard on its
+    /// own thread (capped at `workers`), and re-merges hits in input order.  This
+    /// matters because a wrong routing or merge would silently drop, duplicate, or
+    /// reorder rows.  The fixture's probe terms provably hash to >=2 different
+    /// shards (asserted), misses are interleaved, and the parallel result
+    /// (threads=4) must equal the single-threaded chunk path in BOTH content and
+    /// order, with hits appearing in probe order and misses yielding no row.
+    #[test]
+    fn parallel_shard_fanout_merges_in_input_order() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("many.ndjson");
+        let output = dir.path().join("fullmap.redb");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..120 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+        drop(synonym_file);
+        build_test(output.clone(), Vec::new(), vec![synonyms], 4, 4_000_000).unwrap();
+
+        // Probe terms in a fixed order, interleaving real terms with misses.
+        let mut probes: Vec<String> = Vec::new();
+        for i in 0..80 {
+            probes.push(format!("gene{i}"));
+            if i % 7 == 0 {
+                probes.push(format!("missing{i}")); // no such term -> miss
+            }
+        }
+
+        // The real probe terms must span at least 2 shards, otherwise this test
+        // would not actually exercise the multi-shard fan-out.
+        let spanned: HashSet<usize> = probes
+            .iter()
+            .filter(|t| !t.starts_with("missing"))
+            .map(|t| term_shard(t, SHARD_COUNT_SHARDS))
+            .collect();
+        assert!(
+            spanned.len() >= 2,
+            "probe terms must span >=2 shards, got {spanned:?}"
+        );
+
+        let shards = open_cached_shards(&output).unwrap();
+        assert_eq!(shards.len(), SHARD_COUNT_SHARDS);
+
+        // Parallel fan-out (workers=4) vs the single-threaded chunk path (workers=1)
+        // must agree on both content and order.
+        let parallel = lookup_pair_terms_db(&shards, &probes, 4).unwrap();
+        let serial = lookup_pair_terms_db(&shards, &probes, 1).unwrap();
+        assert_eq!(parallel, serial, "parallel fan-out diverged from serial");
+
+        // Hits appear in probe order; misses produced no row.
+        let expected_order: Vec<String> = probes
+            .iter()
+            .filter(|t| !t.starts_with("missing"))
+            .cloned()
+            .collect();
+        let got_order: Vec<String> = parallel.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(got_order, expected_order, "merge broke input order");
+
+        // End-to-end hydration (through the primary) also agrees across thread
+        // counts and yields one row group per hit term.
+        let rows_par = lookup_terms(output.clone(), probes.clone(), Some(4)).unwrap();
+        let rows_ser = lookup_terms(output, probes, Some(1)).unwrap();
+        assert_eq!(rows_par.len(), expected_order.len());
+        assert_eq!(rows_par, rows_ser);
+    }
+
+    /// US-103's contract is that `lookup_fullmap_terms` releases the GIL for the
+    /// whole lookup: every pure-Rust data-fetch call (`lookup_terms` /
+    /// `lookup_pair_terms`) must be wrapped in `py.detach`, with the `PyList`
+    /// built only afterwards.  A behavioral GIL test is timing-dependent and
+    /// flaky from a Rust `#[test]` (and Python test files are out of scope for
+    /// this story), so this is a precise code-level guard: it isolates the
+    /// function source and asserts each fetch call appears exactly once and only
+    /// inside a `py.detach(move || ...)` wrapper.  If someone removes a detach or
+    /// adds a bare fetch call, the read path would silently hold the GIL again
+    /// (blocking rich's Live repaint thread) and this test fails loudly.
+    #[test]
+    fn lookup_fullmap_terms_wraps_every_fetch_in_detach() {
+        let src = include_str!("fullmap.rs");
+        let start = src
+            .find("pub fn lookup_fullmap_terms")
+            .expect("lookup_fullmap_terms present");
+        let tail = &src[start..];
+        let end = tail
+            .find("\n#[pyfunction]")
+            .expect("next pyfunction bounds fn");
+        let body = &tail[..end];
+
+        // Rows fetch: exactly one call, and it is the detached one.
+        let rows_calls = body.matches("lookup_terms(db, terms, threads)").count();
+        let rows_detached = body
+            .matches("py.detach(move || lookup_terms(db, terms, threads)")
+            .count();
+        assert_eq!(rows_calls, 1, "rows fetch must be called exactly once");
+        assert_eq!(
+            rows_detached, 1,
+            "rows fetch must be wrapped in py.detach (GIL released)"
+        );
+
+        // Pairs fetch: exactly one call, and it is the detached one.
+        let pair_calls = body
+            .matches("lookup_pair_terms(db, terms, threads)")
+            .count();
+        let pair_detached = body
+            .matches("py.detach(move || lookup_pair_terms(db, terms, threads)")
+            .count();
+        assert_eq!(pair_calls, 1, "pairs fetch must be called exactly once");
+        assert_eq!(
+            pair_detached, 1,
+            "pairs fetch must be wrapped in py.detach (GIL released)"
+        );
     }
 
     /// `TABLASSERT_FULLMAP_SHARDS` makes the shard count runtime-configurable.  A
