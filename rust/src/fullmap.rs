@@ -2167,12 +2167,42 @@ fn lookup_pair_terms_db(
     Ok(tagged.into_iter().map(|(_, pairs)| pairs).collect())
 }
 
+/// Smallest batch that defaults to parallel shard fan-out when the caller passes
+/// no `threads`.  Below this, lookups stay single-threaded: a point/small lookup
+/// (and any cache-warm path) finishes faster serially than the cost of spawning
+/// shard-reader threads.  At/above it, the per-shard fan-out in
+/// `lookup_pair_terms_db` wins.  1024 terms ~= a few ms of serial redb point
+/// reads, comfortably above the ~tens-of-µs cost of spawning up to 3 extra
+/// threads, so the crossover is safely on the parallel side for real batches
+/// while never penalizing small lookups.
+const LOOKUP_PARALLEL_MIN: usize = 1024;
+
+/// Default worker count for lookups when the caller passes no `threads`.
+/// The production build-graph resolve sends ONE batch of all distinct node-column
+/// terms (often huge) with `threads=None`; parallelizing that across the 4 shards
+/// is the win, so large batches default to `available_parallelism`.  Small batches
+/// (< `LOOKUP_PARALLEL_MIN`) stay single-threaded to avoid spawn overhead.  The
+/// fan-out is already capped by the non-empty shard count inside
+/// `lookup_pair_terms_db`, so returning `available_parallelism` yields <=4 actual
+/// shard threads regardless of core count.
+fn default_lookup_workers(terms_len: usize) -> usize {
+    if terms_len < LOOKUP_PARALLEL_MIN {
+        return 1;
+    }
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+}
+
 fn lookup_pair_terms(
     db: PathBuf,
     terms: Vec<String>,
     threads: Option<usize>,
 ) -> PyResult<PairRecords> {
-    let workers = threads.unwrap_or(1).max(1).min(terms.len().max(1));
+    let workers = threads
+        .unwrap_or_else(|| default_lookup_workers(terms.len()))
+        .max(1)
+        .min(terms.len().max(1));
     // Open (and schema-validate) the primary, then route pair lookups to shards.
     let _primary = open_cached(db.clone())?;
     let shards = open_cached_shards(&db)?;
@@ -2230,7 +2260,10 @@ fn lookup_terms(
     let category_map = load_string_table(&database, CATEGORIES)?;
     let source_map = load_sources(&database)?;
     let shards = open_cached_shards(&db)?;
-    let workers = threads.unwrap_or(1).max(1).min(terms.len().max(1));
+    let workers = threads
+        .unwrap_or_else(|| default_lookup_workers(terms.len()))
+        .max(1)
+        .min(terms.len().max(1));
     let pair_rows = lookup_pair_terms_db(&shards, &terms, workers)?;
     let mut curie_ids: Vec<u32> = pair_rows
         .iter()
@@ -2270,6 +2303,11 @@ fn lookup_terms(
     Ok(out)
 }
 
+/// Look up fullmap records for `terms`.  `threads=None` (the production
+/// build-graph default) auto-selects the worker count via `default_lookup_workers`:
+/// batches >= `LOOKUP_PARALLEL_MIN` fan out across the 4 RECORDS shards in
+/// parallel, smaller batches stay single-threaded.  An explicit `threads=Some(1)`
+/// always forces the serial path.  The GIL is released for the whole lookup.
 #[pyfunction]
 #[pyo3(signature = (db, terms, threads=None, return_format="rows"))]
 pub fn lookup_fullmap_terms<'py>(
@@ -2739,6 +2777,100 @@ mod tests {
         let rows_ser = lookup_terms(output, probes, Some(1)).unwrap();
         assert_eq!(rows_par.len(), expected_order.len());
         assert_eq!(rows_par, rows_ser);
+    }
+
+    /// The production build-graph resolve calls `lookup_fullmap_terms` with
+    /// `threads=None`, so the parallel shard fan-out must kick in from the Rust
+    /// DEFAULT alone — not just when a test passes `threads>=2`.  This builds a
+    /// large fixture and probes it with a batch that crosses `LOOKUP_PARALLEL_MIN`
+    /// and spans >=2 shards, then asserts: (a) the default worker count is >1 on
+    /// any multi-core host (so `lookup_pair_terms_db` takes its parallel branch and
+    /// spawns >1 shard-reader thread), and (b) `threads=None` returns results
+    /// IDENTICAL (content + order) to the forced-serial `threads=Some(1)`, with
+    /// misses dropped.  On a (rare) single-core host the parallelism assertion is
+    /// skipped but equivalence still holds.
+    #[test]
+    fn threads_none_defaults_to_parallel_for_large_batch() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("large.ndjson");
+        let output = dir.path().join("fullmap.redb");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..1100 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+        drop(synonym_file);
+        build_test(output.clone(), Vec::new(), vec![synonyms], 4, 4_000_000).unwrap();
+
+        // Large probe batch (>= LOOKUP_PARALLEL_MIN) with misses interleaved.
+        let mut probes: Vec<String> = Vec::new();
+        for i in 0..1100 {
+            probes.push(format!("gene{i}"));
+            if i % 50 == 0 {
+                probes.push(format!("absent{i}")); // miss -> dropped
+            }
+        }
+        assert!(
+            probes.len() >= LOOKUP_PARALLEL_MIN,
+            "batch must cross the parallel threshold, got {}",
+            probes.len()
+        );
+
+        // Real probe terms provably span >=2 shards, so the fan-out has >1
+        // non-empty shard to read concurrently.
+        let spanned: HashSet<usize> = probes
+            .iter()
+            .filter(|t| !t.starts_with("absent"))
+            .map(|t| term_shard(t, SHARD_COUNT_SHARDS))
+            .collect();
+        assert!(
+            spanned.len() >= 2,
+            "probes must span >=2 shards, got {spanned:?}"
+        );
+
+        // The Rust default must select >1 worker for this large batch on any
+        // multi-core host; after the `.max(1).min(len)` clamp in `lookup_pair_terms`
+        // the effective worker count is still >1, which (with >=2 non-empty shards)
+        // makes `lookup_pair_terms_db` spawn >1 shard-reader thread.
+        let cpus = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+        let default_workers = default_lookup_workers(probes.len());
+        if cpus > 1 {
+            assert!(default_workers > 1, "large batch must default to parallel");
+            let effective = default_workers.max(1).min(probes.len().max(1));
+            assert!(
+                effective > 1,
+                "clamp must not collapse a large batch to serial"
+            );
+        }
+        // Explicit threads=Some(1) still forces serial regardless of batch size.
+        assert_eq!(default_lookup_workers(0), 1, "empty batch stays serial");
+        assert_eq!(
+            default_lookup_workers(LOOKUP_PARALLEL_MIN - 1),
+            1,
+            "sub-threshold batch stays serial"
+        );
+
+        // threads=None (production default) == forced-serial Some(1): identical
+        // content AND order, misses dropped.
+        let via_default = lookup_pair_terms(output.clone(), probes.clone(), None).unwrap();
+        let via_serial = lookup_pair_terms(output, probes.clone(), Some(1)).unwrap();
+        assert_eq!(
+            via_default, via_serial,
+            "threads=None diverged from threads=Some(1)"
+        );
+        let expected_order: Vec<String> = probes
+            .iter()
+            .filter(|t| !t.starts_with("absent"))
+            .cloned()
+            .collect();
+        let got_order: Vec<String> = via_default.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(got_order, expected_order, "merge broke input order");
     }
 
     /// US-103's contract is that `lookup_fullmap_terms` releases the GIL for the
