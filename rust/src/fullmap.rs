@@ -53,6 +53,7 @@ const DEFAULT_LOCAL_SPILL_ENTRIES: usize = 1_000_000;
 const DEFAULT_EQUIV_SPILL_ENTRIES: usize = 2_000_000;
 const DEFAULT_REDB_CACHE_BYTES: usize = 2 * 1024 * 1024 * 1024;
 const DEFAULT_INSERT_BATCH: usize = 500_000;
+const DEFAULT_CURIE_SPILL_ENTRIES: usize = 250_000;
 
 fn env_usize(name: &str, default: usize) -> usize {
     std::env::var(name)
@@ -470,6 +471,90 @@ fn spill_run(
     Ok(path)
 }
 
+// ---------------------------------------------------------------------------
+// Curie-row spill runs: bounded on-disk chunks of (curie_id, encoded CurieRow).
+//
+// The synonym phase assigns one CurieRow per unique CURIE.  Holding all of them
+// in RAM is the dominant full-build memory cost (~50 GB+ at 300-500 M CURIEs),
+// so per-thread buffers are drained to these run files once they exceed
+// `curie_spill` entries, and Phase 4 streams them straight into the CURIES
+// table.  This bounds curie-row memory to O(threads * curie_spill).
+//
+// Frame format (little-endian): [u32 curie_id][u32 row_len][bincode CurieRow]
+// ---------------------------------------------------------------------------
+
+struct CurieRunWriter {
+    w: BufWriter<File>,
+}
+
+impl CurieRunWriter {
+    fn new(path: &Path) -> std::io::Result<Self> {
+        Ok(CurieRunWriter {
+            w: BufWriter::with_capacity(1 << 20, File::create(path)?),
+        })
+    }
+
+    fn write_row(&mut self, curie_id: u32, encoded: &[u8]) -> std::io::Result<()> {
+        self.w.write_all(&curie_id.to_le_bytes())?;
+        self.w.write_all(&(encoded.len() as u32).to_le_bytes())?;
+        self.w.write_all(encoded)?;
+        Ok(())
+    }
+
+    fn finish(mut self) -> std::io::Result<()> {
+        self.w.flush()
+    }
+}
+
+struct CurieRunReader {
+    reader: BufReader<File>,
+}
+
+impl CurieRunReader {
+    fn new(path: &Path) -> std::io::Result<Self> {
+        Ok(CurieRunReader {
+            reader: BufReader::with_capacity(1 << 20, File::open(path)?),
+        })
+    }
+
+    /// Read the next (curie_id, encoded row); None at clean EOF.
+    fn next_row(&mut self) -> std::io::Result<Option<(u32, Vec<u8>)>> {
+        // Read the first byte to detect EOF; a 1-byte read returns 0 only at a
+        // true EOF (multi-byte `read` can legally return a short count mid-file,
+        // so we mirror RunReader::read_frame and read_exact the remainder).
+        let mut first = [0u8; 1];
+        if self.reader.read(&mut first)? == 0 {
+            return Ok(None);
+        }
+        let mut rest = [0u8; 3];
+        self.reader.read_exact(&mut rest)?;
+        let curie_id = u32::from_le_bytes([first[0], rest[0], rest[1], rest[2]]);
+        let mut lb = [0u8; 4];
+        self.reader.read_exact(&mut lb)?;
+        let len = u32::from_le_bytes(lb) as usize;
+        let mut buf = vec![0u8; len];
+        self.reader.read_exact(&mut buf)?;
+        Ok(Some((curie_id, buf)))
+    }
+}
+
+/// Drain a thread-local curie-row buffer into a sorted-independent run file on
+/// disk.  Each unique curie_id is written exactly once (one row per CURIE hash).
+fn spill_curie_run(
+    local: &mut Vec<(u32, CurieRow)>,
+    spill_dir: &Path,
+    run_id: usize,
+) -> PyResult<PathBuf> {
+    let path = spill_dir.join(format!("curie_run_{:08}.bin", run_id));
+    let mut w = CurieRunWriter::new(&path).map_err(py_err)?;
+    for (curie_id, row) in local.drain(..) {
+        let encoded = bincode::serialize(&row).map_err(py_err)?;
+        w.write_row(curie_id, &encoded).map_err(py_err)?;
+    }
+    w.finish().map_err(py_err)?;
+    Ok(path)
+}
+
 /// K-way merge of sorted run files, grouping equal terms across runs.
 struct MergeHeap {
     readers: Vec<RunReader>,
@@ -873,8 +958,8 @@ struct SynonymBuildResult {
     category_ids: HashMap<String, u16>,
     /// source string -> u8 id
     source_ids: HashMap<String, u8>,
-    /// curie_id -> CurieRow (indexed by id)
-    curie_rows: Vec<CurieRow>,
+    /// curie-row spill-run files holding (curie_id, encoded CurieRow)
+    curie_run_paths: Vec<PathBuf>,
     /// sorted spill-run files holding term -> pairs
     run_paths: Vec<PathBuf>,
 }
@@ -884,6 +969,7 @@ fn process_synonyms(
     equivalents: &EquivIndex,
     spill_dir: &Path,
     local_spill: usize,
+    curie_spill: usize,
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<SynonymBuildResult> {
     // Pre-compute source IDs from filenames (small, deterministic).
@@ -905,7 +991,9 @@ fn process_synonyms(
     // by xxh3_128(curie) (not the string) to bound memory at full scale.
     let curie_map = CurieIdMap::new();
     let curie_counter = AtomicU32::new(0);
-    let curie_rows_collected: RwLock<Vec<(u32, CurieRow)>> = RwLock::new(Vec::new());
+    // Curie-row spill runs (bounded on-disk; see spill_curie_run).
+    let curie_run_paths: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
+    let curie_run_counter = AtomicUsize::new(0);
 
     // Spill-run bookkeeping.
     let run_paths: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
@@ -991,14 +1079,13 @@ fn process_synonyms(
                     spill_count += 1;
                 }
 
-                // Periodically flush curie rows to the shared collection to bound
-                // per-thread memory (large files like protein.txt.gz can accumulate
-                // 200 M+ CurieRows in one thread).
-                if local_curie_rows.len() >= 2_000_000 {
-                    curie_rows_collected
-                        .write()
-                        .unwrap()
-                        .append(&mut local_curie_rows);
+                // Spill curie rows to a disk run once the buffer exceeds the
+                // budget, bounding per-thread memory (large files like
+                // protein.txt.gz can hold 200 M+ unique CURIEs in one thread).
+                if local_curie_rows.len() >= curie_spill {
+                    let run_id = curie_run_counter.fetch_add(1, Ordering::Relaxed);
+                    let p = spill_curie_run(&mut local_curie_rows, spill_dir, run_id)?;
+                    curie_run_paths.write().unwrap().push(p);
                 }
 
                 Ok(())
@@ -1013,10 +1100,9 @@ fn process_synonyms(
             }
 
             if !local_curie_rows.is_empty() {
-                curie_rows_collected
-                    .write()
-                    .unwrap()
-                    .extend(local_curie_rows);
+                let run_id = curie_run_counter.fetch_add(1, Ordering::Relaxed);
+                let p = spill_curie_run(&mut local_curie_rows, spill_dir, run_id)?;
+                curie_run_paths.write().unwrap().push(p);
             }
 
             if let Some(p) = progress {
@@ -1047,32 +1133,14 @@ fn process_synonyms(
         category_ids.extend(shard.read().unwrap().iter().map(|(k, v)| (k.clone(), *v)));
     }
 
-    // Build curie_rows vec indexed by curie_id.
-    let collected = curie_rows_collected.into_inner().unwrap();
-    let max_id = collected.iter().map(|(id, _)| *id).max().unwrap_or(0);
-    let mut curie_rows: Vec<CurieRow> = Vec::with_capacity(max_id as usize + 1);
-    let mut sorted = collected;
-    sorted.sort_unstable_by_key(|(id, _)| *id);
-    for (id, row) in sorted {
-        while curie_rows.len() <= id as usize {
-            curie_rows.push(CurieRow {
-                prefix_id: 0,
-                local_id: String::new(),
-                preferred_name: String::new(),
-                category_id: 0,
-                taxon_id: 0,
-            });
-        }
-        curie_rows[id as usize] = row;
-    }
-
+    let curie_run_paths = curie_run_paths.into_inner().unwrap();
     let run_paths = run_paths.into_inner().unwrap();
 
     Ok(SynonymBuildResult {
         prefix_ids,
         category_ids,
         source_ids,
-        curie_rows,
+        curie_run_paths,
         run_paths,
     })
 }
@@ -1087,7 +1155,7 @@ fn write_final_database(
     prefix_ids: &HashMap<String, u16>,
     category_ids: &HashMap<String, u16>,
     source_ids: &HashMap<String, u8>,
-    curie_rows: Vec<CurieRow>,
+    curie_run_paths: &[PathBuf],
     run_paths: &[PathBuf],
     cache_bytes: usize,
     insert_batch: usize,
@@ -1125,12 +1193,17 @@ fn write_final_database(
         }
         drop(source_table);
 
+        // Stream curie rows from their spill runs straight into the CURIES
+        // table (never held in RAM as a whole).  Each unique curie_id appears
+        // exactly once across the runs.
         let mut curie_table = write.open_table(CURIES).map_err(py_err)?;
-        for (id, curie) in curie_rows.iter().enumerate() {
-            let encoded = bincode::serialize(curie).map_err(py_err)?;
-            curie_table
-                .insert(id as u32, encoded.as_slice())
-                .map_err(py_err)?;
+        for path in curie_run_paths {
+            let mut reader = CurieRunReader::new(path).map_err(py_err)?;
+            while let Some((curie_id, encoded)) = reader.next_row().map_err(py_err)? {
+                curie_table
+                    .insert(curie_id, encoded.as_slice())
+                    .map_err(py_err)?;
+            }
         }
         drop(curie_table);
 
@@ -1138,8 +1211,6 @@ fn write_final_database(
         meta.insert("schema", SCHEMA_VERSION).map_err(py_err)?;
     }
     write.commit().map_err(py_err)?;
-    // CURIES are written; free the (large) curie_rows before the merge/write.
-    drop(curie_rows);
 
     // K-way merge the sorted runs and stream into RECORDS.  All records go in
     // ONE Durability::None transaction (redb bounds it by the write cache and
@@ -1224,6 +1295,7 @@ fn build_fullmap_inner(
     worker_count: usize,
     progress: Option<Arc<Progress>>,
     local_spill: usize,
+    curie_spill: usize,
     cache_bytes: usize,
     insert_batch: usize,
     spill_dir: PathBuf,
@@ -1249,6 +1321,7 @@ fn build_fullmap_inner(
             &equivalents,
             &spill_dir,
             local_spill,
+            curie_spill,
             progress.as_ref(),
         )?;
         // Equivalents index (mmap + temp file) is dropped here; the data file
@@ -1259,7 +1332,7 @@ fn build_fullmap_inner(
             prefix_ids,
             category_ids,
             source_ids,
-            curie_rows,
+            curie_run_paths,
             run_paths,
         } = result;
 
@@ -1269,7 +1342,7 @@ fn build_fullmap_inner(
             &prefix_ids,
             &category_ids,
             &source_ids,
-            curie_rows,
+            &curie_run_paths,
             &run_paths,
             cache_bytes,
             insert_batch,
@@ -1340,6 +1413,10 @@ pub fn build_fullmap_db(
         "TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES",
         DEFAULT_LOCAL_SPILL_ENTRIES,
     );
+    let curie_spill = env_usize(
+        "TABLASSERT_FULLMAP_CURIE_SPILL_ENTRIES",
+        DEFAULT_CURIE_SPILL_ENTRIES,
+    );
     let cache_bytes = env_usize(
         "TABLASSERT_FULLMAP_REDB_CACHE_BYTES",
         DEFAULT_REDB_CACHE_BYTES,
@@ -1365,6 +1442,7 @@ pub fn build_fullmap_db(
             worker_count,
             progress,
             local_spill,
+            curie_spill,
             cache_bytes,
             insert_batch,
             spill_dir,
@@ -1685,6 +1763,7 @@ mod tests {
             threads.max(1),
             None,
             local_spill,
+            1_000_000,
             64 * 1024 * 1024,
             1000,
             spill_dir,
@@ -1813,6 +1892,102 @@ mod tests {
         let read = database.begin_read().unwrap();
         let curies = read.open_table(CURIES).unwrap();
         assert_eq!(curies.iter().unwrap().count(), 1);
+    }
+
+    #[test]
+    fn curie_run_roundtrip_spans_buffer_boundary() {
+        // 20k rows -> a run file larger than the 1 MB BufReader capacity, so
+        // next_row must correctly handle records spanning a buffer refill.
+        let dir = tempfile::tempdir().unwrap();
+        let mut rows: Vec<(u32, CurieRow)> = Vec::new();
+        for i in 0..20000u32 {
+            rows.push((
+                i,
+                CurieRow {
+                    prefix_id: (i % 100) as u16,
+                    local_id: format!("ID{i:06}"),
+                    preferred_name: format!(
+                        "Preferred Name Number {i} with padding to grow the record size"
+                    ),
+                    category_id: (i % 50) as u16,
+                    taxon_id: i as i32,
+                },
+            ));
+        }
+        let path = spill_curie_run(&mut rows, dir.path(), 0).unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() > (1 << 20));
+        let mut reader = CurieRunReader::new(&path).unwrap();
+        let mut count = 0u32;
+        while let Some((id, encoded)) = reader.next_row().unwrap() {
+            let row: CurieRow = bincode::deserialize(&encoded).unwrap();
+            assert_eq!(id, count);
+            assert_eq!(row.local_id, format!("ID{count:06}"));
+            count += 1;
+        }
+        assert_eq!(count, 20000);
+    }
+
+    #[test]
+    fn curie_rows_spill_to_disk_and_stream_back() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("multi.ndjson");
+        let output = dir.path().join("fullmap.redb");
+
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        // Five distinct CURIEs; with curie_spill=2 this forces multiple curie runs.
+        for i in 0..5 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+
+        let spill_dir = {
+            let mut p = output.clone().into_os_string();
+            p.push(".spill.d");
+            PathBuf::from(p)
+        };
+        // curie_spill = 2 forces the curie-row buffer to spill to disk run files,
+        // exercising spill_curie_run + the Phase-4 streaming reader.
+        build_fullmap_inner(
+            output.clone(),
+            Vec::new(),
+            vec![synonyms],
+            1,
+            None,
+            4_000_000,
+            2,
+            64 * 1024 * 1024,
+            1000,
+            spill_dir,
+        )
+        .unwrap();
+
+        let database = open_cached(output.clone()).unwrap();
+        let read = database.begin_read().unwrap();
+        let curies = read.open_table(CURIES).unwrap();
+        assert_eq!(curies.iter().unwrap().count(), 5);
+        drop(curies);
+        drop(read);
+        drop(database);
+
+        // Every gene resolves through the streamed CURIES table.
+        let rows = lookup_terms(
+            output,
+            (0..5).map(|i| format!("gene{i}")).collect(),
+            Some(1),
+        )
+        .unwrap();
+        let mut got: Vec<String> = rows
+            .iter()
+            .flat_map(|(_, recs)| recs.iter().map(|r| r.curie.clone()))
+            .collect();
+        got.sort();
+        got.dedup();
+        let want: Vec<String> = (0..5).map(|i| format!("HGNC:{i}")).collect();
+        assert_eq!(got, want);
     }
 
     #[test]
