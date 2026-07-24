@@ -439,7 +439,19 @@ def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
     class HasFullUrl(Protocol):
         full_url: str
 
+    base: str = "https://stars.renci.org/var/babel_outputs/2026jul22"
+    listings: dict[str, bytes] = {
+        f"{base}/kgx/": b'<a href="Protein_nodes.jsonl.gz"><a href="Publication_nodes.jsonl.gz"><a href="other.txt">',
+        f"{base}/synonyms/": (
+            b'<a href="DrugChemicalConflated.txt.gz"><a href="umls.txt.gz"><a href="GeneProteinConflated.txt.gz"><a href="Publication.txt.gz">'
+        ),
+        f"{base}/synonyms-conflated/": b'<a href="gene.txt.gz"><a href="protein.txt.gz"><a href="smallmolecule.txt.gz">',
+    }
+
     class FakeResponse:
+        def __init__(self, body: bytes) -> None:
+            self._body = body
+
         def __enter__(self) -> "FakeResponse":
             return self
 
@@ -447,17 +459,27 @@ def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
         def read(self) -> bytes:
-            return b'<a href="Protein_nodes.jsonl.gz"><a href="Publication_nodes.jsonl.gz"><a href="other.txt">'
+            return self._body
 
     def fake_urlopen(request: HasFullUrl, timeout: int) -> FakeResponse:
         assert timeout == 60
-        assert "https://stars.renci.org/var/babel_outputs/2025sep1/kgx/" in request.full_url
-        return FakeResponse()
+        return FakeResponse(listings[request.full_url])
 
     monkeypatch.setattr(cli, "urlopen", fake_urlopen)
 
-    urls: list[tuple[str, str]] = cli.babel_urls("2025sep1", cli.BABEL_CLASS_ENDPOINTS, cli.BABEL_CLASS_RE)
-    assert urls == [("protein_nodes.jsonl.gz", "https://stars.renci.org/var/babel_outputs/2025sep1/kgx/Protein_nodes.jsonl.gz")]
+    class_urls: list[tuple[str, str]] = cli.babel_urls("2026jul22", cli.BABEL_CLASS_ENDPOINTS, cli.BABEL_CLASS_RE)
+    assert class_urls == [("protein_nodes.jsonl.gz", f"{base}/kgx/Protein_nodes.jsonl.gz")]
+
+    synonym_urls: list[tuple[str, str]] = cli.babel_urls("2026jul22", cli.BABEL_SYNONYM_ENDPOINTS, cli.BABEL_SYNONYM_RE)
+    assert synonym_urls == [
+        ("drugchemicalconflated.txt.gz", f"{base}/synonyms/DrugChemicalConflated.txt.gz"),
+        ("umls.txt.gz", f"{base}/synonyms/umls.txt.gz"),
+        ("gene.txt.gz", f"{base}/synonyms-conflated/gene.txt.gz"),
+        ("protein.txt.gz", f"{base}/synonyms-conflated/protein.txt.gz"),
+        ("smallmolecule.txt.gz", f"{base}/synonyms-conflated/smallmolecule.txt.gz"),
+    ]
+    names: list[str] = [name for name, _ in synonym_urls]
+    assert not any(name.startswith("publication") or name.startswith("geneproteinconflated") for name in names)
 
 
 def test_polars_hash_dependency_removed() -> None:

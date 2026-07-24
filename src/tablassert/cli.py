@@ -35,9 +35,9 @@ APP: cyclopts.App = cyclopts.App(
 )
 
 BABEL_BASE: str = "https://stars.renci.org/var/babel_outputs"
-BABEL_VERSION: str = "2025sep1"
+BABEL_VERSION: str = "2026jul22"
 BABEL_CLASS_ENDPOINTS: tuple[str, ...] = ("kgx/",)
-BABEL_SYNONYM_ENDPOINTS: tuple[str, ...] = ("synonyms/", "synonyms/chemicals/", "synonyms/geneprotein/")
+BABEL_SYNONYM_ENDPOINTS: tuple[str, ...] = ("synonyms/", "synonyms-conflated/")
 BABEL_EXCLUDE_PREFIXES: tuple[str, ...] = ("Publication", "GeneProteinConflated")
 BABEL_CLASS_RE: re.Pattern[str] = re.compile(r'<a href="([^"]*_nodes[^"]*\.gz)"')
 BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')

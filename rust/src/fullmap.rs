@@ -28,7 +28,7 @@ const SCHEMA_VERSION: &str = "tablassert.fullmap.v4";
 const SCHEMA_VERSION_V3: &str = "tablassert.fullmap.v3";
 const SCHEMA_VERSION_V2: &str = "tablassert.fullmap.v2";
 const SCHEMA_VERSION_V1: &str = "tablassert.fullmap.v1";
-const FULLMAP_SOURCE_VERSION: &str = "2026sep1";
+const FULLMAP_SOURCE_VERSION: &str = "2026jul22";
 /// Compile-time maximum number of on-disk redb shard files the RECORDS table is
 /// hash-partitioned across, and the default when `TABLASSERT_FULLMAP_SHARDS` is
 /// unset.  Must be a power of two so `term_shard` can route with a bitmask.

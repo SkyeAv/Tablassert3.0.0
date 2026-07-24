@@ -53,7 +53,7 @@ Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a
 tablassert build-fullmap
 
 # Custom output location and BABEL version
-tablassert build-fullmap --output /data/fullmap/fullmap.redb --version 2025sep1
+tablassert build-fullmap --output /data/fullmap/fullmap.redb --version 2026jul22
 
 # Tune concurrency for large builds
 tablassert build-fullmap --threads 8
