@@ -1351,7 +1351,7 @@ fn process_synonyms(
     let workers = worker_count.max(1);
     // A modest bound keeps workers fed while bounding the in-flight line-buffer
     // memory (bound x chunk_bytes); decompression outpaces processing, so a
-    // processing, so a shallow queue never starves the workers.
+    // shallow queue never starves the workers.
     let (tx, rx) = sync_channel::<(u8, Vec<String>)>(workers);
     let rx = Arc::new(Mutex::new(rx));
 
@@ -1514,6 +1514,12 @@ fn write_final_database(
             .map_err(py_err)?;
     }
     write.commit().map_err(py_err)?;
+
+    // The primary's dims/CURIES/META transaction is now durable and `database`
+    // is never touched again (Phase 4 writes only the separate shard DBs below).
+    // Drop it here to release its redb cache and file lock during the long
+    // parallel RECORDS write — a free memory win while the shards are built.
+    drop(database);
 
     // Phase 4: one INDEPENDENT k-way merge per shard, run in parallel — one
     // thread per shard, merge + insert inline (datassert-style).  Because the
@@ -1974,7 +1980,13 @@ fn shard_count_of(database: &Database) -> PyResult<usize> {
         .map_err(py_err)?
         .and_then(|v| v.value().parse::<usize>().ok())
         .unwrap_or(SHARD_COUNT_SHARDS);
-    Ok(count.clamp(1, SHARD_COUNT_SHARDS))
+    // Round down to a power of two before clamping, mirroring the write path's
+    // `resolve_shard_count`: the routing mask `xxh64(term) & (count - 1)` is only
+    // correct for powers of two, so a hand-edited non-pow2 META.shards (e.g. 3 ->
+    // mask &2) would silently misroute/drop lookups onto a subset of shards.
+    // `round_down_pow2(SHARD_COUNT_SHARDS) == SHARD_COUNT_SHARDS` (4 is a pow2),
+    // so the default fallback above is preserved.
+    Ok(round_down_pow2(count).clamp(1, SHARD_COUNT_SHARDS))
 }
 
 /// Open (and cache) all RECORDS shard handles for a primary DB path.  The shard
@@ -2574,6 +2586,57 @@ mod tests {
         assert_eq!(round_down_pow2(7), 4);
         assert_eq!(round_down_pow2(8), 8);
         assert_eq!(round_down_pow2(9), 8);
+    }
+
+    /// The read path's `shard_count_of` must round a non-power-of-two META.shards
+    /// DOWN to a power of two, exactly like the write path's `resolve_shard_count`.
+    /// WHY: lookups route with the mask `xxh64(term) & (count - 1)`, which is only
+    /// correct for powers of two; a hand-edited META.shards of 3 (mask &2) would
+    /// route terms only onto shards {0,2}, silently misrouting/dropping lookups
+    /// (shard 1 opened but never queried, shard 3 never opened).  Rounding down
+    /// keeps the mask valid.  A missing/unparseable value falls back to the default
+    /// `SHARD_COUNT_SHARDS` (4) via `unwrap_or`, itself a power of two so the
+    /// round-down leaves it unchanged.  `"0"` PARSES (so the fallback does not fire)
+    /// and rounds down to 1, exactly mirroring the write path's `resolve_shard_count`
+    /// (`round_down_pow2(0) == 1`); 1 is still a valid mask (&0), so it is safe.
+    #[test]
+    fn shard_count_of_rounds_non_pow2_meta_down() {
+        pyo3::Python::initialize();
+
+        let check = |shards: Option<&str>| -> usize {
+            let dir = tempfile::tempdir().unwrap();
+            let output = dir.path().join("fullmap.redb");
+            let database = Database::create(&output).unwrap();
+            let write = database.begin_write().unwrap();
+            {
+                let mut meta = write.open_table(META).unwrap();
+                meta.insert("schema", SCHEMA_VERSION).unwrap();
+                if let Some(value) = shards {
+                    meta.insert("shards", value).unwrap();
+                }
+            }
+            write.commit().unwrap();
+            drop(database);
+
+            let database = Database::open(&output).unwrap();
+            let count = shard_count_of(&database).unwrap();
+            drop(database);
+            count
+        };
+
+        assert_eq!(check(Some("3")), 2);
+        assert_eq!(check(Some("5")), 4);
+        assert_eq!(check(Some("6")), 4);
+        assert_eq!(check(Some("7")), 4);
+        assert_eq!(check(Some("4")), 4);
+        assert_eq!(check(Some("2")), 2);
+        assert_eq!(check(Some("1")), 1);
+        // Missing / unparseable -> default SHARD_COUNT_SHARDS (4) via unwrap_or.
+        assert_eq!(check(None), SHARD_COUNT_SHARDS);
+        assert_eq!(check(Some("not-a-number")), SHARD_COUNT_SHARDS);
+        // "0" parses (fallback does NOT fire) and rounds down to 1, mirroring the
+        // write path; 1 is a valid mask, so this is safe, not a misroute.
+        assert_eq!(check(Some("0")), 1);
     }
 
     /// US-201 eliminated the single global merge producer: Phase 4 now runs one
