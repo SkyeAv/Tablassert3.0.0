@@ -24,10 +24,15 @@ const CATEGORIES: TableDefinition<u16, &str> = TableDefinition::new("categories"
 const SOURCES: TableDefinition<u8, &[u8]> = TableDefinition::new("sources");
 const CURIES: TableDefinition<u32, &[u8]> = TableDefinition::new("curies");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
-const SCHEMA_VERSION: &str = "tablassert.fullmap.v3";
+const SCHEMA_VERSION: &str = "tablassert.fullmap.v4";
+const SCHEMA_VERSION_V3: &str = "tablassert.fullmap.v3";
 const SCHEMA_VERSION_V2: &str = "tablassert.fullmap.v2";
 const SCHEMA_VERSION_V1: &str = "tablassert.fullmap.v1";
 const FULLMAP_SOURCE_VERSION: &str = "2026sep1";
+/// Number of on-disk redb shard files the RECORDS table is hash-partitioned
+/// across.  Must be a power of two so `term_shard` can route with a bitmask.
+/// Distinct from the in-memory `SHARD_COUNT` used by the concurrent build maps.
+const SHARD_COUNT_SHARDS: usize = 4;
 /// A normalized term grouped with its deduplicated `(curie_id, source_id)` pairs.
 type TermPairs = (String, Vec<(u32, u8)>);
 type PairRecords = Vec<TermPairs>;
@@ -1436,56 +1441,85 @@ fn write_final_database(
 
         let mut meta = write.open_table(META).map_err(py_err)?;
         meta.insert("schema", SCHEMA_VERSION).map_err(py_err)?;
+        let shard_count = SHARD_COUNT_SHARDS.to_string();
+        meta.insert("shards", shard_count.as_str())
+            .map_err(py_err)?;
     }
     write.commit().map_err(py_err)?;
 
-    // K-way merge the sorted runs and stream into RECORDS.  All records go in
-    // ONE Durability::None transaction (redb bounds it by the write cache and
-    // spills dirty pages to disk), which keeps the file compact; a final durable
-    // commit persists everything.  Inserts are hash-sorted in bounded batches for
-    // near-sequential B-tree appends.
-    let mut merge = MergeHeap::new(run_paths).map_err(py_err)?;
-    let mut write = database.begin_write().map_err(py_err)?;
-    write.set_durability(Durability::None);
-    let mut table = write.open_table(RECORDS).map_err(py_err)?;
+    // K-way merge the sorted runs ONCE and route each merged term group to its
+    // hash-partitioned RECORDS shard (`term_shard`).  Each shard is its own redb
+    // file with its own Durability::None write transaction (redb bounds each by
+    // its share of the cache and spills dirty pages to disk), keeping the files
+    // compact; a final durable commit per shard persists everything.  Inserts are
+    // hash-sorted in bounded batches (per shard) for near-sequential B-tree
+    // appends.  Single-threaded here — parallel writers land in a later story.
+    let shard_databases: Vec<Database> = (0..SHARD_COUNT_SHARDS)
+        .map(|i| {
+            redb::Builder::new()
+                .set_cache_size(cache_bytes / SHARD_COUNT_SHARDS)
+                .create(shard_path(output, i))
+                .map_err(py_err)
+        })
+        .collect::<PyResult<_>>()?;
 
-    let mut batch: Vec<(u64, Vec<u8>)> = Vec::with_capacity(insert_batch);
+    let mut merge = MergeHeap::new(run_paths).map_err(py_err)?;
     let mut written: u64 = 0;
 
-    loop {
-        let Some((term, pairs)) = merge.next_group().map_err(py_err)? else {
-            break;
-        };
-        let encoded = bincode::serialize(&(term.as_str(), &pairs)).map_err(py_err)?;
-        batch.push((xxh64(term.as_bytes(), 0), encoded));
+    {
+        let mut shard_writes: Vec<redb::WriteTransaction> = shard_databases
+            .iter()
+            .map(|db| db.begin_write().map_err(py_err))
+            .collect::<PyResult<_>>()?;
+        for write in &mut shard_writes {
+            write.set_durability(Durability::None);
+        }
+        let mut shard_tables: Vec<redb::Table<u64, &[u8]>> = shard_writes
+            .iter_mut()
+            .map(|write| write.open_table(RECORDS).map_err(py_err))
+            .collect::<PyResult<_>>()?;
 
-        if batch.len() >= insert_batch {
-            batch.sort_unstable_by_key(|(hash, _)| *hash);
-            for (hash, enc) in &batch {
-                table.insert(*hash, enc.as_slice()).map_err(py_err)?;
+        // Per-shard insert buffers; flushed together once the total buffered
+        // reaches `insert_batch` so peak memory stays bounded regardless of how
+        // the terms distribute across shards.
+        let mut batches: Vec<Vec<(u64, Vec<u8>)>> =
+            (0..SHARD_COUNT_SHARDS).map(|_| Vec::new()).collect();
+        let mut buffered: usize = 0;
+
+        loop {
+            let Some((term, pairs)) = merge.next_group().map_err(py_err)? else {
+                break;
+            };
+            let shard = term_shard(&term);
+            let encoded = bincode::serialize(&(term.as_str(), &pairs)).map_err(py_err)?;
+            batches[shard].push((xxh64(term.as_bytes(), 0), encoded));
+            buffered += 1;
+
+            if buffered >= insert_batch {
+                written += flush_shard_batches(&mut shard_tables, &mut batches)?;
+                buffered = 0;
+                if let Some(p) = progress {
+                    p.call(2, written, 0, &format!("writing {written} records"));
+                }
             }
-            written += batch.len() as u64;
-            batch.clear();
-            if let Some(p) = progress {
-                p.call(2, written, 0, &format!("writing {written} records"));
-            }
+        }
+
+        if buffered > 0 {
+            written += flush_shard_batches(&mut shard_tables, &mut batches)?;
+        }
+        drop(shard_tables);
+        for write in shard_writes {
+            write.commit().map_err(py_err)?;
         }
     }
 
-    if !batch.is_empty() {
-        batch.sort_unstable_by_key(|(hash, _)| *hash);
-        for (hash, enc) in &batch {
-            table.insert(*hash, enc.as_slice()).map_err(py_err)?;
-        }
-        written += batch.len() as u64;
-        batch.clear();
+    // Final durable commit per shard to persist all pages.  Every shard file is
+    // created above (even one that received zero terms), so the 4-file layout is
+    // always stable.
+    for database in &shard_databases {
+        let write = database.begin_write().map_err(py_err)?;
+        write.commit().map_err(py_err)?;
     }
-    drop(table);
-    write.commit().map_err(py_err)?;
-
-    // Final durable commit to persist all pages.
-    let write = database.begin_write().map_err(py_err)?;
-    write.commit().map_err(py_err)?;
 
     if let Some(p) = progress {
         p.call(2, written, written, &format!("wrote {written} records"));
@@ -1494,16 +1528,70 @@ fn write_final_database(
     Ok(())
 }
 
+/// Sort each shard's pending batch by hash and insert into that shard's RECORDS
+/// table, returning the number of records flushed.  Hash-sorted inserts give
+/// near-sequential B-tree appends; clearing the buffers keeps memory bounded.
+fn flush_shard_batches(
+    tables: &mut [redb::Table<u64, &[u8]>],
+    batches: &mut [Vec<(u64, Vec<u8>)>],
+) -> PyResult<u64> {
+    let mut flushed: u64 = 0;
+    for (table, batch) in tables.iter_mut().zip(batches.iter_mut()) {
+        if batch.is_empty() {
+            continue;
+        }
+        batch.sort_unstable_by_key(|(hash, _)| *hash);
+        for (hash, enc) in batch.iter() {
+            table.insert(*hash, enc.as_slice()).map_err(py_err)?;
+        }
+        flushed += batch.len() as u64;
+        batch.clear();
+    }
+    Ok(flushed)
+}
+
 // ---------------------------------------------------------------------------
 // Build orchestrator
 // ---------------------------------------------------------------------------
 
+/// Route a normalized term to its on-disk RECORDS shard index via xxh64 masked
+/// to the shard count.  The same hash is the RECORDS key, so a term's shard and
+/// its key are derived from one xxh64 call site each (write and read agree).
+fn term_shard(term: &str) -> usize {
+    (xxh64(term.as_bytes(), 0) as usize) & (SHARD_COUNT_SHARDS - 1)
+}
+
+/// Sibling shard file path for a primary DB path: `.../fullmap.redb` ->
+/// `.../fullmap.s{index}.redb` (same directory, primary file stem preserved).
+fn shard_path(primary: &Path, index: usize) -> PathBuf {
+    let stem = primary
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "fullmap".to_string());
+    let ext = primary
+        .extension()
+        .map(|e| e.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "redb".to_string());
+    let name = format!("{stem}.s{index}.{ext}");
+    match primary.parent() {
+        Some(dir) => dir.join(name),
+        None => PathBuf::from(name),
+    }
+}
+
 fn evict_cached_path(path: &Path) -> PyResult<()> {
-    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let Some(cache) = DB_CACHE.get() else {
         return Ok(());
     };
-    cache.write().map_err(py_err)?.remove(&canonical);
+    let mut map = cache.write().map_err(py_err)?;
+    let primary = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    map.remove(&primary);
+    // Evict every shard handle too so a rebuild never reads a stale shard file.
+    for index in 0..SHARD_COUNT_SHARDS {
+        let shard = shard_path(path, index);
+        let canonical = std::fs::canonicalize(&shard).unwrap_or(shard);
+        map.remove(&canonical);
+    }
     Ok(())
 }
 
@@ -1642,6 +1730,14 @@ pub fn build_fullmap_db(
     if output.exists() {
         std::fs::remove_file(&output).map_err(py_err)?;
     }
+    // Remove any stale shard files from a previous build so the new 4-file
+    // layout is never mixed with leftover shards.
+    for index in 0..SHARD_COUNT_SHARDS {
+        let shard = shard_path(&output, index);
+        if shard.exists() {
+            std::fs::remove_file(&shard).map_err(py_err)?;
+        }
+    }
 
     let local_spill = env_usize(
         "TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES",
@@ -1722,9 +1818,11 @@ fn validate_schema(database: &Database) -> PyResult<()> {
         .map(|x| x.value().to_string());
     match schema.as_deref() {
         Some(SCHEMA_VERSION) => Ok(()),
-        Some(SCHEMA_VERSION_V2) | Some(SCHEMA_VERSION_V1) => Err(PyRuntimeError::new_err(
-            "fullmap DB is outdated; rebuild with 'tablassert build-fullmap'",
-        )),
+        Some(SCHEMA_VERSION_V3) | Some(SCHEMA_VERSION_V2) | Some(SCHEMA_VERSION_V1) => {
+            Err(PyRuntimeError::new_err(
+                "fullmap DB is outdated; rebuild with 'tablassert build-fullmap'",
+            ))
+        }
         _ => Err(PyRuntimeError::new_err("unsupported fullmap redb schema")),
     }
 }
@@ -1742,12 +1840,44 @@ fn open_cached(db: PathBuf) -> PyResult<Arc<Database>> {
     Ok(cached)
 }
 
-fn lookup_pair_chunk(database: &Database, terms: &[String]) -> PyResult<PairRecords> {
-    let read = database.begin_read().map_err(py_err)?;
-    let table = read.open_table(RECORDS).map_err(py_err)?;
+/// Open (and cache) one RECORDS shard by index, deriving its path from the
+/// primary DB path.  Shards hold only RECORDS (no META), so they are not
+/// schema-validated here — the primary's `validate_schema` gates the layout.
+fn open_cached_shard(primary: &Path, index: usize) -> PyResult<Arc<Database>> {
+    let path = shard_path(primary, index);
+    let canonical = std::fs::canonicalize(&path).unwrap_or(path);
+    let cache = DB_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
+    if let Some(database) = cache.read().map_err(py_err)?.get(&canonical) {
+        return Ok(Arc::clone(database));
+    }
+    let database = Arc::new(Database::open(&canonical).map_err(py_err)?);
+    let cached = Arc::clone(&database);
+    cache.write().map_err(py_err)?.insert(canonical, database);
+    Ok(cached)
+}
+
+/// Open (and cache) all RECORDS shard handles for a primary DB path.
+fn open_cached_shards(primary: &Path) -> PyResult<Vec<Arc<Database>>> {
+    (0..SHARD_COUNT_SHARDS)
+        .map(|index| open_cached_shard(primary, index))
+        .collect()
+}
+
+fn lookup_pair_chunk(shards: &[Arc<Database>], terms: &[String]) -> PyResult<PairRecords> {
+    // One read transaction + RECORDS table per shard, opened once; each query
+    // term is routed to its shard via `term_shard`.
+    let reads: Vec<_> = shards
+        .iter()
+        .map(|db| db.begin_read().map_err(py_err))
+        .collect::<PyResult<_>>()?;
+    let tables: Vec<_> = reads
+        .iter()
+        .map(|read| read.open_table(RECORDS).map_err(py_err))
+        .collect::<PyResult<_>>()?;
     let mut out = Vec::new();
     for term in terms {
         let hash = xxh64(term.as_bytes(), 0);
+        let table = &tables[term_shard(term)];
         if let Some(bytes) = table.get(hash).map_err(py_err)? {
             let (stored_term, records): (String, Vec<(u32, u8)>) =
                 bincode::deserialize(bytes.value()).map_err(py_err)?;
@@ -1761,21 +1891,21 @@ fn lookup_pair_chunk(database: &Database, terms: &[String]) -> PyResult<PairReco
 }
 
 fn lookup_pair_terms_db(
-    database: Arc<Database>,
+    shards: &[Arc<Database>],
     terms: &[String],
     workers: usize,
 ) -> PyResult<PairRecords> {
     if workers <= 1 || terms.len() <= 1 {
-        return lookup_pair_chunk(&database, terms);
+        return lookup_pair_chunk(shards, terms);
     }
 
     let chunk_size = terms.len().div_ceil(workers);
     let mut handles = Vec::new();
     for chunk in terms.chunks(chunk_size) {
-        let database = Arc::clone(&database);
+        let shards = shards.to_vec();
         let chunk_terms = chunk.to_vec();
         handles.push(thread::spawn(move || {
-            lookup_pair_chunk(&database, &chunk_terms)
+            lookup_pair_chunk(&shards, &chunk_terms)
         }));
     }
 
@@ -1795,8 +1925,10 @@ fn lookup_pair_terms(
     threads: Option<usize>,
 ) -> PyResult<PairRecords> {
     let workers = threads.unwrap_or(1).max(1).min(terms.len().max(1));
-    let database = open_cached(db)?;
-    lookup_pair_terms_db(database, &terms, workers)
+    // Open (and schema-validate) the primary, then route pair lookups to shards.
+    let _primary = open_cached(db.clone())?;
+    let shards = open_cached_shards(&db)?;
+    lookup_pair_terms_db(&shards, &terms, workers)
 }
 
 fn load_string_table(
@@ -1843,14 +1975,15 @@ fn lookup_terms(
     terms: Vec<String>,
     threads: Option<usize>,
 ) -> PyResult<Vec<(String, Vec<FullmapRecord>)>> {
-    // Open the database ONCE and reuse the handle for the pair lookup (a second
-    // open would fail on redb's exclusive flock).
-    let database = open_cached(db)?;
+    // Open the primary ONCE for dims/CURIES hydration; pair lookups route to the
+    // shard files (a second open of any one file would fail on redb's flock).
+    let database = open_cached(db.clone())?;
     let prefix_map = load_string_table(&database, PREFIXES)?;
     let category_map = load_string_table(&database, CATEGORIES)?;
     let source_map = load_sources(&database)?;
+    let shards = open_cached_shards(&db)?;
     let workers = threads.unwrap_or(1).max(1).min(terms.len().max(1));
-    let pair_rows = lookup_pair_terms_db(Arc::clone(&database), &terms, workers)?;
+    let pair_rows = lookup_pair_terms_db(&shards, &terms, workers)?;
     let mut curie_ids: Vec<u32> = pair_rows
         .iter()
         .flat_map(|(_term, pairs)| pairs.iter().map(|(curie_id, _source_id)| *curie_id))
@@ -2046,6 +2179,42 @@ mod tests {
         assert_eq!(level_two("brca-1"), "brca1");
     }
 
+    /// `term_shard` is the single routing oracle shared by the writer and the
+    /// reader, so it must be deterministic (same term -> same shard every call,
+    /// or reads would look in the wrong file), agree with the raw xxh64-mask
+    /// definition, and spread a representative sample across all 4 shards so the
+    /// shard files stay roughly even-sized.
+    #[test]
+    fn term_shard_is_deterministic_and_balanced() {
+        // Deterministic, in range, and equal to an independent xxh64-mask
+        // re-derivation for known terms.
+        for term in ["brca1", "tp53", "water", "alias disease", "gene42"] {
+            let expected = (xxh64(term.as_bytes(), 0) as usize) & (SHARD_COUNT_SHARDS - 1);
+            assert_eq!(term_shard(term), expected, "routing mismatch for {term}");
+            assert_eq!(
+                term_shard(term),
+                term_shard(term),
+                "non-deterministic for {term}"
+            );
+            assert!(term_shard(term) < SHARD_COUNT_SHARDS);
+        }
+
+        // Balanced: 1000 distinct synthetic terms hit every shard, none
+        // dominating (xxh64 is well-mixed; allow a generous +/- 50% band).
+        let mut counts = [0usize; SHARD_COUNT_SHARDS];
+        for i in 0..1000 {
+            counts[term_shard(&format!("term{i}"))] += 1;
+        }
+        let expected = 1000 / SHARD_COUNT_SHARDS;
+        for (shard, count) in counts.iter().enumerate() {
+            assert!(*count > 0, "shard {shard} received no terms: {counts:?}");
+            assert!(
+                *count > expected / 2 && *count < expected * 2,
+                "shard distribution unbalanced: {counts:?}"
+            );
+        }
+    }
+
     #[test]
     fn builds_and_reads_redb_records() {
         pyo3::Python::initialize();
@@ -2081,8 +2250,13 @@ mod tests {
         assert_eq!(rows[0].1[0].source_version, FULLMAP_SOURCE_VERSION);
     }
 
+    /// The v4 layout keeps dims+CURIES+META in the primary and moves RECORDS
+    /// into 4 sibling shard files.  The primary must NOT carry a RECORDS table,
+    /// META must advertise both the schema and the shard count, and every shard
+    /// file must exist (even empty) holding a RECORDS table — this is the
+    /// on-disk contract the read path relies on.
     #[test]
-    fn build_fullmap_db_writes_schema_v2_tables() {
+    fn build_fullmap_db_writes_schema_v4_sharded_layout() {
         pyo3::Python::initialize();
         let dir = tempfile::tempdir().unwrap();
         let synonyms = dir.path().join("HGNC.ndjson");
@@ -2097,16 +2271,37 @@ mod tests {
 
         build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
 
-        let database = open_cached(output).unwrap();
+        // Primary: META (schema=v4, shards=4) + dims + CURIES, but NO RECORDS.
+        let database = open_cached(output.clone()).unwrap();
         let read = database.begin_read().unwrap();
         let meta = read.open_table(META).unwrap();
         assert_eq!(meta.get("schema").unwrap().unwrap().value(), SCHEMA_VERSION);
+        assert_eq!(meta.get("shards").unwrap().unwrap().value(), "4");
         drop(meta);
         let _prefixes = read.open_table(PREFIXES).unwrap();
         let _categories = read.open_table(CATEGORIES).unwrap();
         let _sources = read.open_table(SOURCES).unwrap();
         let _curies = read.open_table(CURIES).unwrap();
-        let _records = read.open_table(RECORDS).unwrap();
+        assert!(
+            read.open_table(RECORDS).is_err(),
+            "primary must not hold a RECORDS table in the v4 layout"
+        );
+        drop(read);
+        drop(database);
+
+        // All 4 shard files exist and each holds a RECORDS table.
+        for index in 0..SHARD_COUNT_SHARDS {
+            let shard = shard_path(&output, index);
+            assert!(shard.exists(), "missing shard file {shard:?}");
+            let db = Database::open(&shard).unwrap();
+            let read = db.begin_read().unwrap();
+            let _records = read.open_table(RECORDS).unwrap();
+        }
+
+        // The single indexed term still resolves (routed through its shard).
+        let rows = lookup_terms(output, vec!["brca1".to_string()], Some(1)).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1[0].curie, "HGNC:1100");
     }
 
     #[test]
@@ -2127,6 +2322,77 @@ mod tests {
         assert!(err
             .to_string()
             .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
+    }
+
+    /// v3 was the last single-file schema; the sharded read path must reject a
+    /// v3 primary as outdated (rebuild hint), not as a generic unsupported
+    /// schema, so migrating users get actionable guidance.
+    #[test]
+    fn lookup_rejects_v3_schema_as_outdated() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+        let database = Database::create(&output).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", SCHEMA_VERSION_V3).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+
+        let err = lookup_terms(output, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
+    }
+
+    /// `evict_cached_path` must drop the primary AND all 4 shard handles so a
+    /// rebuild never serves a stale file.  Verified by caching all 5 handles,
+    /// evicting, and confirming none of the 5 canonical paths remain in the
+    /// cache map.
+    #[test]
+    fn evict_cached_path_removes_primary_and_all_shards() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("HGNC.ndjson");
+        let output = dir.path().join("fullmap.redb");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        writeln!(
+            synonym_file,
+            r#"{{"curie":"HGNC:1100","preferred_name":"BRCA1","names":["BRCA1"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+        )
+        .unwrap();
+        drop(synonym_file);
+
+        build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
+
+        // Populate the cache with the primary + all 4 shards (5 handles).
+        let _primary = open_cached(output.clone()).unwrap();
+        let shards = open_cached_shards(&output).unwrap();
+        assert_eq!(shards.len(), SHARD_COUNT_SHARDS);
+
+        let cache = DB_CACHE.get().unwrap();
+        {
+            let map = cache.read().unwrap();
+            assert!(map.contains_key(&std::fs::canonicalize(&output).unwrap()));
+            for index in 0..SHARD_COUNT_SHARDS {
+                let key = std::fs::canonicalize(shard_path(&output, index)).unwrap();
+                assert!(map.contains_key(&key), "shard {index} not cached");
+            }
+        }
+
+        evict_cached_path(&output).unwrap();
+
+        // After eviction none of the 5 paths remain cached.
+        {
+            let map = cache.read().unwrap();
+            assert!(!map.contains_key(&std::fs::canonicalize(&output).unwrap()));
+            for index in 0..SHARD_COUNT_SHARDS {
+                let key = std::fs::canonicalize(shard_path(&output, index)).unwrap();
+                assert!(!map.contains_key(&key), "shard {index} survived eviction");
+            }
+        }
     }
 
     #[test]
