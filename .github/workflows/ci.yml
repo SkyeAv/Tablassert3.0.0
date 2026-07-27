@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Sync dev dependencies
+        run: uv sync --group dev
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+  python-type:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Sync dependencies
+        run: uv sync --group dev --extra qc
+      - name: Pyright
+        run: uv run pyright
+
+  python-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Sync dependencies
+        run: uv sync --group dev --extra qc
+      - name: Build Rust extension
+        run: uv run maturin develop --manifest-path rust/Cargo.toml
+      - name: Run tests
+        run: uv run pytest
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Cargo fmt
+        run: cargo fmt --check --manifest-path rust/Cargo.toml
+      - name: Cargo clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+      - name: Cargo test
+        run: cargo test --manifest-path rust/Cargo.toml
