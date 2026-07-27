@@ -1801,6 +1801,13 @@ pub fn build_fullmap_db(
         ));
     }
 
+    // Phase 4 opens every spill-run file for a shard at once (MergeHeap), across
+    // all shards in parallel — large corpora can need thousands of fds per
+    // shard. Best-effort: raise our soft NOFILE limit to the hard limit so
+    // this isn't capped by a low default (e.g. ulimit -n 1024). Never fails
+    // the build if this doesn't succeed.
+    let _ = rlimit::increase_nofile_limit(u64::MAX);
+
     let worker_count = threads
         .unwrap_or_else(|| {
             let cpus = std::thread::available_parallelism()
@@ -2404,6 +2411,19 @@ mod tests {
             1000,
             spill_dir,
         )
+    }
+
+    /// `build_fullmap_db` raises the soft NOFILE limit to the hard limit so
+    /// Phase 4's per-shard MergeHeap (which opens every spill-run file for a
+    /// shard at once) isn't capped by a low default (e.g. ulimit -n 1024).
+    #[test]
+    fn increase_nofile_limit_reaches_hard_limit() {
+        let (_, hard) = rlimit::Resource::NOFILE.get().expect("getrlimit");
+        let new_soft = rlimit::increase_nofile_limit(u64::MAX).expect("raise nofile limit");
+        assert_eq!(new_soft, hard);
+        let (soft_after, hard_after) = rlimit::Resource::NOFILE.get().expect("getrlimit");
+        assert_eq!(soft_after, hard);
+        assert_eq!(hard_after, hard);
     }
 
     #[test]

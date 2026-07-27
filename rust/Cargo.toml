@@ -20,6 +20,7 @@ md5 = "0.7"
 pyo3 = "0.29"
 rayon = "1"
 redb = "2"
+rlimit = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 uuid = "1"
