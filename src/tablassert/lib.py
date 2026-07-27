@@ -9,10 +9,10 @@ from operator import add, eq, le
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
 
-import lazy_loader as Lazy
 from pydantic import Field, NonNegativeInt
 
 from tablassert import rs
+from tablassert._lazy import LazyModule
 from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
@@ -21,11 +21,9 @@ from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
 
 if TYPE_CHECKING:
-    import numpy as np
     import polars as pl
 else:
-    np = Lazy.load("numpy")
-    pl = Lazy.load("polars")
+    pl = LazyModule("polars")
 
 logger = cat("PIPELINE")
 
@@ -268,19 +266,17 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
         formatted as strings.
 
     Notes:
-        Collection point: numpy batch formatting is required for notation
-        control across the full column at once.
+        Collection point: the column is formatted in one batch so notation is
+        controlled across all rows at once.
     """
-    # Collection point: numpy batch formatting required for notation control.
+    # Collection point: batch formatting for notation control.
     # P-value columns use scientific notation; others use decimal general format.
     df: pl.DataFrame = lf.collect()
     cols: list[str] = numeric_columns(df.columns)
     for c in cols:
         df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
-        mask: object = df[c].is_null().to_numpy()
-        arr: object = df[c].to_numpy()
         fmt: str = "{:.4e}" if "p_value" in c.lower() else "{:.4g}"
-        formatted: list[Optional[str]] = [None if m else fmt.format(float(v)) for v, m in zip(arr, mask)]  # pyright: ignore
+        formatted: list[Optional[str]] = [None if v is None else fmt.format(v) for v in df[c].to_list()]
         df = df.with_columns(pl.Series(c, formatted))
     return df.lazy()
 

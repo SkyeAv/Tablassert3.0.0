@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import lazy_loader as Lazy
+from tablassert._lazy import LazyModule
 
 if TYPE_CHECKING:
     import polars as pl
 else:
-    pl = Lazy.load("polars")
+    pl = LazyModule("polars")
 
 
 def level_one(lf: pl.LazyFrame, col: str) -> pl.LazyFrame:

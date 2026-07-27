@@ -5,9 +5,8 @@ from operator import add
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Optional, cast
 
-import lazy_loader as Lazy
-
 from tablassert import rs
+from tablassert._lazy import LazyModule
 from tablassert.enums import Categories
 from tablassert.log import cat
 
@@ -20,7 +19,7 @@ _SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], s
 if TYPE_CHECKING:
     import polars as pl
 else:
-    pl = Lazy.load("polars")
+    pl = LazyModule("polars")
 
 
 def empty_matches(column_context: bool) -> pl.DataFrame:

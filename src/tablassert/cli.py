@@ -11,8 +11,8 @@ import re
 import time
 
 import cyclopts
-import lazy_loader as Lazy
 
+from tablassert._lazy import LazyModule
 from tablassert.errors import BabelDownloadError, GraphValidationError, SectionValidationError
 from tablassert.log import cat
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from tablassert.models import Graph
     from tablassert.progress import PipelineProgress
 else:
-    pydantic = Lazy.load("pydantic")
+    pydantic = LazyModule("pydantic")
 
 # Pipeline completion events (BUILD, VALIDATE).
 logger = cat("PIPELINE")

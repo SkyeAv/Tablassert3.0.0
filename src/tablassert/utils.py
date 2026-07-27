@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-import lazy_loader as Lazy
-
-if TYPE_CHECKING:
-    import xxhash
-else:
-    xxhash = Lazy.load("xxhash")
+from tablassert import rs
 
 BASE: Path = Path("./.tablassert")
 STORE: Path = BASE / "store"
@@ -16,5 +11,4 @@ STORE.mkdir(parents=True, exist_ok=True)
 
 
 def mkhash(x: Any) -> str:
-    b: bytes = str(x).encode("utf-8")
-    return xxhash.xxh32(b).hexdigest()
+    return rs.xxh32(str(x))

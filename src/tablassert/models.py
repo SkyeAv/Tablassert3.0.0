@@ -5,9 +5,9 @@ from operator import eq
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional, Self, Union
 
-import lazy_loader as Lazy
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
+from tablassert._lazy import LazyModule
 from tablassert.errors import TablassertValidationError
 from tablassert.enums import (
     AgentTypes,
@@ -27,7 +27,7 @@ from tablassert.enums import (
 if TYPE_CHECKING:
     import polars as pl
 else:
-    pl = Lazy.load("polars")
+    pl = LazyModule("polars")
 
 
 class TablaBase(BaseModel):

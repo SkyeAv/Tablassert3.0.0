@@ -16,7 +16,7 @@ The loguru sink (`.tablassert/log/tablassert.log`, `log.LOGASSERT`) and the cach
 
 ## mkhash()
 
-Generates a compact `xxhash` **xxh32** digest (hex string, 8 characters) for arbitrary input.
+Generates a compact **xxh32** digest (hex string, 8 characters) for arbitrary input, computed by the Rust extension (`tablassert.rs.xxh32`).
 
 ```python
 def mkhash(x: Any) -> str

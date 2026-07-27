@@ -2,7 +2,7 @@
 
 The `qc` module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BioBERT semantic similarity.
 
-QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `torch`, `sentence-transformers`, `rapidfuzz`, `scikit-learn`, and `numpy`. If the audit stage runs without `sentence-transformers` installed, `fullmap_audit()` raises `QcRuntimeMissingError`.
+QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `rapidfuzz`, `scikit-learn`, and `sentence-transformers` (`torch` and `numpy` arrive transitively). If the audit stage runs without `sentence-transformers` installed, `fullmap_audit()` raises `QcRuntimeMissingError`.
 
 ## fullmap_audit()
 

@@ -43,14 +43,12 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "lazy-loader>=0.5",
     "loguru>=0.7.3",
     "polars>=1.39.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "cyclopts>=1.0.0",
     "rich>=13.0.0",
-    "xxhash>=3.6.0",
 ]
 
 [project.urls]
@@ -77,11 +75,9 @@ rt = [
     "polars[rtcompat]>=1.40.1",
 ]
 qc = [
-    "torch>=2.6.0",
     "rapidfuzz>=3.14.3",
     "scikit-learn>=1.8.0",
     "sentence-transformers>=5.3.0",
-    "numpy>=2.4.4",
 ]
 
 [dependency-groups]

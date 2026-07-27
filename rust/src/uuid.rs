@@ -5,15 +5,7 @@ use uuid::Uuid;
 const NIL_NAMESPACE: Uuid = Uuid::from_bytes([0; 16]);
 
 fn uuid3(namespace: Uuid, name: &str) -> Uuid {
-    let mut bytes: Vec<u8> = Vec::with_capacity(16 + name.len());
-    bytes.extend_from_slice(namespace.as_bytes());
-    bytes.extend_from_slice(name.as_bytes());
-
-    let digest: md5::Digest = md5::compute(bytes);
-    let mut raw: [u8; 16] = digest.0;
-    raw[6] = (raw[6] & 0x0f) | 0x30;
-    raw[8] = (raw[8] & 0x3f) | 0x80;
-    Uuid::from_bytes(raw)
+    Uuid::new_v3(&namespace, name.as_bytes())
 }
 
 fn uuid_part(value: &Value) -> Option<String> {

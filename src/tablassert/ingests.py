@@ -2,15 +2,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import Any, Union
 
-import lazy_loader as Lazy
+import yaml
 from yaml import CLoader
-
-if TYPE_CHECKING:
-    import yaml
-else:
-    yaml = Lazy.load("yaml")
 
 
 def fastmerge(a: Union[list[Any], dict[str, Any]], b: Union[list[Any], dict[str, Any]]) -> Any:

@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 // making millions of small String/Vec allocations).  Without it, per-thread
 // malloc arenas retain freed memory and inflate peak RSS several-fold.
 use mimalloc::MiMalloc;
+use xxhash_rust::xxh32::xxh32 as xxh32_digest;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -13,6 +14,16 @@ mod fullmap;
 mod json;
 mod ndjson;
 mod uuid;
+
+/// XXH32 hex digest (seed 0) of a string's UTF-8 bytes.
+///
+/// Mirrors Python ``xxhash.xxh32(s.encode()).hexdigest()`` so the pure-Python
+/// ``xxhash`` dependency can be dropped in favour of the already-bundled
+/// ``xxhash-rust`` crate.
+#[pyfunction]
+fn xxh32(data: &str) -> String {
+    format!("{:08x}", xxh32_digest(data.as_bytes(), 0))
+}
 
 #[pymodule]
 fn rs(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -25,5 +36,6 @@ fn rs(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fullmap::lookup_fullmap_terms, module)?)?;
     module.add_function(wrap_pyfunction!(ndjson::dedup_ndjson, module)?)?;
     module.add_function(wrap_pyfunction!(uuid::namespace_uuid, module)?)?;
+    module.add_function(wrap_pyfunction!(xxh32, module)?)?;
     Ok(())
 }

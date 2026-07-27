@@ -4,14 +4,14 @@ from operator import add, eq
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import lazy_loader as Lazy
+from tablassert._lazy import LazyModule
 
 if TYPE_CHECKING:
     import polars as pl
     import sentence_transformers
 else:
-    sentence_transformers = Lazy.load("sentence_transformers")
-    pl = Lazy.load("polars")
+    sentence_transformers = LazyModule("sentence_transformers")
+    pl = LazyModule("polars")
 
 from tablassert.errors import QcRuntimeMissingError
 from tablassert.log import cat
