@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -439,7 +440,9 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
             return [("classes.ndjson", "https://example.com/classes.ndjson")]
         return [("HGNC.ndjson", "https://example.com/HGNC.ndjson")]
 
-    def fake_download_babel_file(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+    def fake_download_babel_file(
+        filename: str, url: str, destination: Path, retries: int = 5, on_progress: Callable[[int, int], None] | None = None
+    ) -> Path:
         if filename == "classes.ndjson":
             return classes
         return synonyms

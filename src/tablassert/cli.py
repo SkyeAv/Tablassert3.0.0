@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
@@ -273,7 +274,7 @@ def babel_urls(version: str, endpoints: tuple[str, ...], pattern: re.Pattern[str
     return out
 
 
-def download_babel_file(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+def download_babel_file(filename: str, url: str, destination: Path, retries: int = 5, on_progress: Callable[[int, int], None] | None = None) -> Path:
     """Spool a BABEL download to disk so large responses are resumable and never held in memory.
 
     Downloads to ``{filename}.part`` with HTTP Range resume support, then
@@ -285,6 +286,9 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
         url: Source URL.
         destination: Directory to download into (created if missing).
         retries: Maximum number of attempts before giving up.
+        on_progress: Optional ``(downloaded_bytes, total_bytes)`` callback fired
+            after each chunk; ``total_bytes`` is 0 when the size is unknown.
+            ``None`` (default) keeps the original download behavior exactly.
 
     Returns:
         Path to the downloaded file.
@@ -312,8 +316,13 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
                 mode: str = "ab" if offset > 0 and status == 206 else "wb"
                 if offset > 0 and status != 206:
                     download_logger.warning("Server ignored Range header (HTTP {status}); restarting download: {url}", status=status, url=url)
+                # Resume base: bytes already on disk count only when appending (HTTP 206).
+                base: int = offset if mode == "ab" else 0
+                content_length: str | None = response.headers.get("Content-Length")
+                total: int = base + int(content_length) if content_length is not None else 0
+                reporter: Callable[[int], None] | None = None if on_progress is None else _byte_reporter(on_progress, base, total)
                 with part_path.open(mode) as handle:
-                    stream_copy(response, handle)
+                    stream_copy(response, handle, reporter)
             part_path.replace(final_path)
             download_logger.info("Downloaded {url} -> {path}", url=url, path=final_path)
             return final_path
@@ -326,12 +335,45 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
     raise BabelDownloadError(url, retries, last_error or RuntimeError("no attempts made")) from last_error
 
 
-def stream_copy(source: BinaryIO, destination: BinaryIO) -> None:
+def stream_copy(source: BinaryIO, destination: BinaryIO, on_bytes: Callable[[int], None] | None = None) -> None:
+    """Copy ``source`` to ``destination`` in 1 MiB chunks.
+
+    When ``on_bytes`` is given it is called after each write with the running
+    total of bytes written by THIS call; ``None`` (default) keeps the original
+    copy-only behavior exactly.
+    """
+    written: int = 0
     while True:
         chunk: bytes = source.read(1024 * 1024)
         if not chunk:
             return
         destination.write(chunk)
+        written += len(chunk)
+        if on_bytes is not None:
+            on_bytes(written)
+
+
+def _byte_reporter(on_progress: Callable[[int, int], None], base: int, total: int) -> Callable[[int], None]:
+    """Adapt ``stream_copy``'s cumulative-bytes callback to ``on_progress(downloaded, total)``.
+
+    ``base`` is the byte count already on disk (resume offset) so the reported
+    ``downloaded`` value reflects the whole file, not just this call's chunks.
+    """
+
+    def report(bytes_this_call: int) -> None:
+        on_progress(base + bytes_this_call, total)
+
+    return report
+
+
+def _download_detail(downloaded: int, total: int) -> str:
+    """Render the live download detail line in megabytes (1 MB = 1_000_000 bytes).
+
+    When ``total`` is unknown (``<= 0``) only the transferred amount is shown.
+    """
+    if total <= 0:
+        return f"{downloaded / 1_000_000:.1f} MB"
+    return f"{downloaded / 1_000_000:.1f}/{total / 1_000_000:.1f} MB"
 
 
 @APP.command(name="build-graph")
@@ -389,17 +431,21 @@ def build_fullmap_pipeline(
     progress.stage("Downloading BABEL Files")
     total_files: int = len(class_urls) + len(synonym_urls)
     start, advance, sub_step = progress.section_loop(total_files, "Download")
+
+    def report_progress(downloaded: int, total: int) -> None:
+        sub_step(_download_detail(downloaded, total))
+
     class_files: list[Path] = []
     for filename, url in class_urls:
         start(filename)
         sub_step("downloading")
-        class_files.append(download_babel_file(filename, url, cache / "classes"))
+        class_files.append(download_babel_file(filename, url, cache / "classes", on_progress=report_progress))
         advance()
     synonym_files: list[Path] = []
     for filename, url in synonym_urls:
         start(filename)
         sub_step("downloading")
-        synonym_files.append(download_babel_file(filename, url, cache / "synonyms"))
+        synonym_files.append(download_babel_file(filename, url, cache / "synonyms", on_progress=report_progress))
         advance()
 
     # Stage 3/3: build fullmap database.
