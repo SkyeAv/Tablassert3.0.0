@@ -126,11 +126,11 @@ def build_pipeline(
 
     # Stage 6/6: compile graph.
     progress.stage("Compiling Graph")
-    start, advance, sub_step = progress.section_loop(1, "Graph")
+    start, advance, sub_step = progress.section_loop(len(subgraphs), "Graph")
     start(f"{g.name} · v{g.version}")
-    sub_step("aggregating")
-    compile_graph(subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables)
-    advance()
+    # on_phase drives the phase tag (scan → normalize → write-nodes → write-edges → dedup → rig);
+    # on_subgraph ticks the bar once per subgraph, so the total is len(subgraphs).
+    compile_graph(subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables, on_phase=sub_step, on_subgraph=advance)
 
     logger.info("Built graph {name} v{version}: {n} sections", name=g.name, version=g.version, n=n)
 

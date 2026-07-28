@@ -914,6 +914,51 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     assert any(x["source_identifier_types"] == ["HGNC"] for x in node_types)
 
 
+def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatch: Any, tmp_path: Path) -> None:
+    """compile_graph threads on_phase/on_subgraph: ordered phases, one tick per subgraph, output unchanged."""
+    monkeypatch.chdir(tmp_path)
+
+    def write_sub(p: Path, subj: str, obj: str) -> None:
+        pl.DataFrame(
+            {
+                "subject": [subj],
+                "subject_name": [subj],
+                "subject_category": ["gene"],
+                "subject_taxon": [None],
+                "subject_source": [None],
+                "subject_source_version": [None],
+                "subject_pre_resolution": [subj],
+                "object": [obj],
+                "object_name": [obj],
+                "object_category": ["disease"],
+                "object_taxon": [None],
+                "object_source": [None],
+                "object_source_version": [None],
+                "object_pre_resolution": [obj],
+                "predicate": ["r"],
+            }
+        ).write_parquet(p)
+
+    sub_a: Path = tmp_path / "a.parquet"
+    sub_b: Path = tmp_path / "b.parquet"
+    write_sub(sub_a, "A", "X")
+    write_sub(sub_b, "B", "Y")
+
+    phases: list[str] = []
+    ticks: list[None] = []
+    lib.compile_graph([sub_a, sub_b], "cb", "1.0.0", on_phase=phases.append, on_subgraph=lambda: ticks.append(None))
+
+    # scan/normalize fire once per subgraph, then the shared write phases in order.
+    assert phases == ["scan", "normalize", "scan", "normalize", "write-nodes", "write-edges", "dedup", "rig"]
+    # on_subgraph ticks exactly once per subgraph (this is what drives the bar total).
+    assert len(ticks) == 2
+
+    # Callbacks are pure observation: KGX output is byte-identical to a no-callback run.
+    lib.compile_graph([sub_a, sub_b], "cb2", "1.0.0")
+    for stem in ("edges.ndjson", "nodes.ndjson"):
+        assert (tmp_path / f"cb_1.0.0.{stem}").read_bytes() == (tmp_path / f"cb2_1.0.0.{stem}").read_bytes()
+
+
 def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: Any, tmp_path: Path) -> None:
     """compile_graph keeps qualifier and publication columns on edges, out of nodes."""
     monkeypatch.chdir(tmp_path)

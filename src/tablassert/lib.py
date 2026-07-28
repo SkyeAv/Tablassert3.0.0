@@ -931,19 +931,27 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _collect_subframes(
-    subgraphs: list[Path], edges_tmp: Path, ui_explanation: str | None
+    subgraphs: list[Path],
+    edges_tmp: Path,
+    ui_explanation: str | None,
+    on_phase: Callable[[str], None] | None = None,
+    on_subgraph: Callable[[], None] | None = None,
 ) -> tuple[list[pl.LazyFrame], list[pl.LazyFrame], list[dict[str, object]]]:
     """Scan and normalize subgraph parquets into node/edge subframes.
 
     Covers the ``scan`` and ``normalize`` phases of ``compile_graph``; the
-    phase boundaries inside the loop are the intended hook points for the
-    US-009 ``on_phase`` progress callback.
+    phase boundaries inside the loop are the hook points for the US-009
+    ``on_phase`` progress callback.
 
     Args:
         subgraphs: Section parquet paths to merge.
         edges_tmp: Working ``.edges.ndjson.tmp`` path (its de-suffixed name is
             recorded under edge type info ``source_files``).
         ui_explanation: Optional UI explanation for the RIG edge type info.
+        on_phase: Optional callback fired with ``"scan"`` then ``"normalize"``
+            for each subgraph, used to drive progress UX.
+        on_subgraph: Optional callback fired once after each subgraph is
+            processed, used to tick the progress bar.
 
     Returns:
         Tuple of ``(subnodes, subedges, edge_type_info)``: per-section node and
@@ -954,10 +962,14 @@ def _collect_subframes(
     edge_type_info: list[dict[str, object]] = []
     for s in subgraphs:
         # Phase: scan.
+        if on_phase is not None:
+            on_phase("scan")
         lf: pl.LazyFrame = pl.scan_parquet(s)
         edge_type_info.extend(rig_edge_type_info(lf, edges_tmp.with_suffix(""), ui_explanation))
 
         # Phase: normalize. Only subject and object become nodes; qualifier columns stay as edge attributes.
+        if on_phase is not None:
+            on_phase("normalize")
         originals: list[str] = [c.removesuffix("_pre_resolution") for c in lf.collect_schema().names() if c.endswith("_pre_resolution")]
         node_cols: list[str] = [c for c in originals if c in ("subject", "object")]
         for col in node_cols:
@@ -967,6 +979,8 @@ def _collect_subframes(
         lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
         lf = fold_unknown_to_supporting_text(lf)
         subedges.append(lf)
+        if on_subgraph is not None:
+            on_subgraph()
     return subnodes, subedges, edge_type_info
 
 
@@ -982,12 +996,13 @@ def _write_ndjson(
     contributions: list[str] | None,
     ui_explanation: str | None,
     tables: list[Path] | None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> None:
     """Write, dedup, and RIG the KGX NDJSON outputs.
 
     Covers the ``write-nodes``, ``write-edges``, ``dedup`` and ``rig`` phases of
-    ``compile_graph``; each commented phase boundary below is an intended hook
-    point for the US-009 ``on_phase`` progress callback.
+    ``compile_graph``; each commented phase boundary below is a hook point for
+    the US-009 ``on_phase`` progress callback.
 
     Args:
         subnodes: Per-section node LazyFrames from ``_collect_subframes``.
@@ -1001,8 +1016,13 @@ def _write_ndjson(
         contributions: Optional RIG contributor list.
         ui_explanation: Optional RIG UI explanation.
         tables: Optional RIG source table list.
+        on_phase: Optional callback fired with ``"write-nodes"``,
+            ``"write-edges"``, ``"dedup"`` and ``"rig"`` at each phase
+            boundary, used to drive progress UX.
     """
     # Phase: write-nodes. Collection point: appending to output files.
+    if on_phase is not None:
+        on_phase("write-nodes")
     node_rows: list[dict[str, object]] = []
     with nodes_tmp.open("a") as f:
         for subnode in subnodes:
@@ -1011,16 +1031,22 @@ def _write_ndjson(
             eagernode.write_ndjson(f)
 
     # Phase: write-edges.
+    if on_phase is not None:
+        on_phase("write-edges")
     with edges_tmp.open("a") as f:
         for subedge in subedges:
             eageredge: pl.DataFrame = subedge.collect().unique()
             eageredge.write_ndjson(f)
 
     # Phase: dedup.
+    if on_phase is not None:
+        on_phase("dedup")
     dedup_stream(edges_tmp, is_edges=True)
     dedup_stream(nodes_tmp, is_edges=False)
 
     # Phase: rig.
+    if on_phase is not None:
+        on_phase("rig")
     compile_rig(
         name,
         version,
@@ -1043,6 +1069,8 @@ def compile_graph(
     contributions: list[str] | None = None,
     ui_explanation: str | None = None,
     tables: list[Path] | None = None,
+    on_phase: Callable[[str], None] | None = None,
+    on_subgraph: Callable[[], None] | None = None,
 ) -> None:
     """Aggregate subgraph parquets for NDJSON KGX export using a lazy scan.
 
@@ -1054,6 +1082,11 @@ def compile_graph(
         contributions: Optional contributor list for the RIG.
         ui_explanation: Optional UI explanation for the RIG.
         tables: Optional source table list for the RIG.
+        on_phase: Optional callback fired with the current phase label
+            (``scan`` / ``normalize`` per subgraph, then ``write-nodes`` /
+            ``write-edges`` / ``dedup`` / ``rig``), used to drive progress UX.
+        on_subgraph: Optional callback fired once per processed subgraph,
+            used to tick the progress bar.
 
     Returns:
         ``None``; writes ``<name>_<version>.nodes.ndjson``,
@@ -1073,8 +1106,8 @@ def compile_graph(
     subnodes: list[pl.LazyFrame]
     subedges: list[pl.LazyFrame]
     edge_type_info: list[dict[str, object]]
-    subnodes, subedges, edge_type_info = _collect_subframes(subgraphs, e, ui_explanation)
-    _write_ndjson(subnodes, subedges, edge_type_info, n, e, name, version, description, contributions, ui_explanation, tables)
+    subnodes, subedges, edge_type_info = _collect_subframes(subgraphs, e, ui_explanation, on_phase, on_subgraph)
+    _write_ndjson(subnodes, subedges, edge_type_info, n, e, name, version, description, contributions, ui_explanation, tables, on_phase)
 
 
 def resolve_many(
