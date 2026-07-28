@@ -159,6 +159,41 @@ def test_node_encoding_with_prioritize_avoid() -> None:
     assert len(node.avoid) == 1  # pyright: ignore
 
 
+def test_node_encoding_exclude_fields_default_none() -> None:
+    """NodeEncoding exclude_prefixes/exclude_regex default to None.
+
+    US-M3: the CURIE-exclusion fields are purely additive; an untouched config must
+    keep both as None so the resolution hot path stays byte-for-byte unchanged.
+    """
+    node: NodeEncoding = NodeEncoding(method="value", encoding="BRCA1")  # pyright: ignore
+    assert node.exclude_prefixes is None
+    assert node.exclude_regex is None
+
+
+def test_node_encoding_exclude_regex_invalid_rejected() -> None:
+    """Guard: every `exclude_regex` entry must be a polars-compatible regular expression.
+
+    Catches an invalid CURIE-exclusion pattern at config time instead of deep inside a
+    multi-hour build; reuses the `regex-bad-pattern` code from the `Regex.pattern` probe.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        NodeEncoding(method=EncodingMethods.VALUE, encoding="x", exclude_regex=["("])  # pyright: ignore
+    assert "regex-bad-pattern" in str(exc_info.value)
+
+
+def test_node_encoding_exclude_empty_lists_noop() -> None:
+    """Empty exclude lists validate and are preserved verbatim.
+
+    Downstream treats ``[]`` identically to ``None`` (a pure no-op), so the model must
+    accept and round-trip empty lists rather than coercing or rejecting them.
+    """
+    node: NodeEncoding = NodeEncoding(  # pyright: ignore
+        method="value", encoding="BRCA1", exclude_prefixes=[], exclude_regex=[]
+    )
+    assert node.exclude_prefixes == []
+    assert node.exclude_regex == []
+
+
 def test_statement_default_predicate() -> None:
     """statement with default predicate."""
     stmt: Statement = Statement(  # pyright: ignore

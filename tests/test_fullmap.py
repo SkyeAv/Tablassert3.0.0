@@ -223,6 +223,134 @@ def test_filter_and_rank_empty_raw_returns_empty_matches() -> None:
     assert "FREQUENCY" in matches.columns
 
 
+def test_filter_and_rank_exclude_prefixes_drops_curie_prefix() -> None:
+    """exclude_prefixes drops rows whose CURIE prefix (text before the first ':') is listed.
+
+    US-M3: two distinct terms each resolve to one row; excluding the OMIM prefix removes
+    only the OMIM term's row and leaves the HGNC row untouched. Distinct terms keep the
+    assertion unambiguous (dedup keeps one row per term, so no ranking tie is involved).
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1", "omimterm"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["brca1", "omimterm"],
+            "CURIE": ["HGNC:1100", "OMIM:123"],
+            "PREFERRED_NAME": ["BRCA1", "OMIM THING"],
+            "CATEGORY_NAME": ["Gene", "Gene"],
+            "TAXON_ID": [9606, 9606],
+            "SOURCE_NAME": ["HGNC", "OMIM"],
+            "SOURCE_VERSION": [rs.fullmap_source_version(), rs.fullmap_source_version()],
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon=None, prioritize=None, avoid=None, column_context=False, exclude_prefixes=["OMIM"])
+
+    assert matches["CURIE"].to_list() == ["HGNC:1100"]
+    assert matches["term"].to_list() == ["brca1"]
+
+
+def test_filter_and_rank_exclude_regex_drops_matching_curies() -> None:
+    """exclude_regex drops rows whose CURIE matches any supplied pattern.
+
+    A CURIE matching ``^OMIM:\\d+$`` is dropped while a non-matching CURIE survives,
+    proving the pattern is applied as a regex against the whole CURIE string.
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1", "omimterm"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["brca1", "omimterm"],
+            "CURIE": ["HGNC:1100", "OMIM:123"],
+            "PREFERRED_NAME": ["BRCA1", "OMIM THING"],
+            "CATEGORY_NAME": ["Gene", "Gene"],
+            "TAXON_ID": [9606, 9606],
+            "SOURCE_NAME": ["HGNC", "OMIM"],
+            "SOURCE_VERSION": [rs.fullmap_source_version(), rs.fullmap_source_version()],
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon=None, prioritize=None, avoid=None, column_context=False, exclude_regex=[r"^OMIM:\d+$"])
+
+    assert matches["CURIE"].to_list() == ["HGNC:1100"]
+
+
+def test_filter_and_rank_exclude_unicode_regex() -> None:
+    """exclude_regex handles unicode patterns (polars str.contains uses the Rust regex engine).
+
+    A CURIE containing ``é`` is dropped by the ``[é€]`` character class while a plain
+    ASCII CURIE survives, confirming unicode classes compile and match correctly.
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1", "unicodeterm"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["brca1", "unicodeterm"],
+            "CURIE": ["HGNC:1100", "HGNC:café"],
+            "PREFERRED_NAME": ["BRCA1", "UNICODE THING"],
+            "CATEGORY_NAME": ["Gene", "Gene"],
+            "TAXON_ID": [9606, 9606],
+            "SOURCE_NAME": ["HGNC", "HGNC"],
+            "SOURCE_VERSION": [rs.fullmap_source_version(), rs.fullmap_source_version()],
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon=None, prioritize=None, avoid=None, column_context=False, exclude_regex=["[é€]"])
+
+    assert matches["CURIE"].to_list() == ["HGNC:1100"]
+
+
+def test_filter_and_rank_default_none_byte_identical() -> None:
+    """Byte-identity guard: unset, None, and [] exclude args yield identical output.
+
+    US-M3 critical regression gate: the exclusion filters are purely additive, so with no
+    exclusions configured the result must be byte-for-byte identical to the pre-feature
+    six-positional call. Covers both column_context paths via a realistic multi-term frame.
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1", "ambiguous"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["brca1", "brca1", "ambiguous", "ambiguous"],
+            "CURIE": ["HGNC:1100", "HGNC:9999", "HGNC:2", "MONDO:2"],
+            "PREFERRED_NAME": ["BRCA1", "OTHER", "GENE HIT", "DISEASE HIT"],
+            "CATEGORY_NAME": ["Gene", "Gene", "Gene", "Disease"],
+            "TAXON_ID": [9606, 9606, 9606, 0],
+            "SOURCE_NAME": ["HGNC", "HGNC", "HGNC", "MONDO"],
+            "SOURCE_VERSION": [rs.fullmap_source_version()] * 4,
+        }
+    )
+
+    baseline: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, True)
+    with_none: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, True, exclude_prefixes=None, exclude_regex=None)
+    with_empty: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, True, exclude_prefixes=[], exclude_regex=[])
+
+    assert baseline.equals(with_none)
+    assert baseline.equals(with_empty)
+
+
+def test_filter_and_rank_empty_exclude_lists_noop() -> None:
+    """Empty exclude lists drop nothing (the guard treats [] exactly like None).
+
+    Even with an OMIM CURIE present that a non-empty list would remove, empty
+    exclude_prefixes/exclude_regex keep every row.
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1", "omimterm"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["brca1", "omimterm"],
+            "CURIE": ["HGNC:1100", "OMIM:123"],
+            "PREFERRED_NAME": ["BRCA1", "OMIM THING"],
+            "CATEGORY_NAME": ["Gene", "Gene"],
+            "TAXON_ID": [9606, 9606],
+            "SOURCE_NAME": ["HGNC", "OMIM"],
+            "SOURCE_VERSION": [rs.fullmap_source_version(), rs.fullmap_source_version()],
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(
+        raw, terms, taxon=None, prioritize=None, avoid=None, column_context=False, exclude_prefixes=[], exclude_regex=[]
+    )
+
+    assert sorted(matches["CURIE"].to_list()) == ["HGNC:1100", "OMIM:123"]
+
+
 def test_join_matches_coalesces_level_one_hit(fullmap_db: Path) -> None:
     """join_matches coalesces a level one hit back into lf exactly like resolve."""
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"]}).lazy()
@@ -291,6 +419,21 @@ def test_resolve_batch_applies_each_specs_filters_independently(fullmap_db: Path
     assert result["subject_category"] == "biolink:Gene"
     assert result["object"] == "MONDO:2"
     assert result["object_category"] == "biolink:Disease"
+
+
+def test_resolve_batch_carries_exclude_specs(fullmap_db: Path) -> None:
+    """resolve_batch threads each spec's exclude_prefixes into filter_and_rank.
+
+    US-M3: 'ambiguous' matches both HGNC:2 (Gene) and MONDO:2 (Disease); excluding the
+    HGNC prefix drops HGNC:2 so subject resolves deterministically to MONDO:2, proving
+    the ResolveSpec exclusion fields reach the hot resolution path.
+    """
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["ambiguous"], "subject_two": ["ambiguous"]}).lazy()
+
+    result: dict[str, Any] = resolve_batch(lf, [ResolveSpec("subject", exclude_prefixes=["HGNC"])], fullmap_db, log=False).collect().to_dicts()[0]
+
+    assert result["subject"] == "MONDO:2"
+    assert result["subject_category"] == "biolink:Disease"
 
 
 def test_resolve_batch_makes_one_redb_call_regardless_of_spec_count(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -183,6 +183,26 @@ class NodeEncoding(Encoding):
     avoid: list[Categories] | None = Field(
         None, description="Biolink categories excluded during entity resolution.", examples=[[Categories.DISEASE, Categories.PHENOTYPIC_FEATURE]]
     )
+    exclude_prefixes: list[str] | None = Field(
+        None, description="CURIE namespace prefixes (text before the first ':') dropped during entity resolution.", examples=[["OMIM", "NCBIGene"]]
+    )
+    exclude_regex: list[str] | None = Field(
+        None, description="Regex patterns; any resolved CURIE matching one is dropped during entity resolution.", examples=[["^OMIM:\\d+$"]]
+    )
+
+    @field_validator("exclude_regex", mode="after")
+    @classmethod
+    def polars_compatible_exclude_regex(cls, exclude_regex: list[str] | None) -> list[str] | None:
+        if exclude_regex:
+            for pattern in exclude_regex:
+                try:
+                    pl.Series([""]).str.contains(str(pattern))
+                except Exception as e:
+                    raise TablassertValidationError(
+                        f"`exclude_regex` entries must be polars-compatible regular expressions, got {pattern!r}: {e}", code="regex-bad-pattern"
+                    ) from e
+
+        return exclude_regex
 
 
 class Qualifier(NodeEncoding):
