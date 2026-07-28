@@ -149,8 +149,10 @@ tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>
 |--------|------|----------|---------|-------------|
 | `--output`, `-o` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
 | `--cache`, `-c` | Path | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
-| `--version`, `-v` | str | No | current BABEL release | BABEL release version to fetch |
-| `--threads`, `-t` | int | No | `None` | Worker threads for the parallel build (defaults to ~90% of available CPUs when unset) |
+| `--version`, `-v` | str | No | `BABEL_VERSION` literal (`2026jul22`) | BABEL release snapshot date to fetch (a RENCI snapshot date stamp, not Tablassert's version) |
+| `--threads`, `-t` | int | No | `None` (auto) | Worker threads; when unset, auto-capped by available memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
+
+> **Note:** `--version` defaults to the `BABEL_VERSION` literal in `cli.py` (a RENCI BABEL snapshot date stamp), and `--threads` unset lets the Rust build cap workers by available memory on Linux. See [Fullmap](fullmap.md) for the full default behavior.
 
 ### Example
 
