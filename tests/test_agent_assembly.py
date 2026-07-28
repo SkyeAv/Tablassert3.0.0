@@ -150,7 +150,7 @@ def test_build_agent_wires_checks_and_callback() -> None:
 def test_fake_model_drives_agent_run_offline() -> None:
     """A FakeModel-driven agent.run reaches a final answer offline (no network, terminates)."""
     pytest.importorskip("smolagents")
-    from smolagents import LogLevel
+    from smolagents import LogLevel  # pyright: ignore[reportMissingImports]
 
     agent: Any = build_agent(model=make_fake_model(), tools=[], max_steps=3, verbosity_level=LogLevel.ERROR)
     result = agent.run("Derive a Tablassert config.")

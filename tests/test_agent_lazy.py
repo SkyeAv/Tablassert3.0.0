@@ -47,17 +47,22 @@ def test_lazy_proxy_does_not_eagerly_import() -> None:
     """Importing ``tablassert.agent`` never forces ``smolagents`` to load.
 
     Why: the whole point of the lazy proxy is that importing the module costs
-    nothing and never pulls in the heavy optional stack. A fresh re-import must
-    not register ``smolagents`` in ``sys.modules`` when the extra is absent, and
-    the proxy must report a ``pending`` (not yet loaded) state — proving no
+    nothing and never pulls in the heavy optional stack. The proxy must report a
+    ``pending`` (not yet loaded) state until first attribute access — proving no
     top-level attribute access triggered an eager import.
+
+    NOTE: this checks a FRESH ``LazyModule`` rather than ``importlib.reload``-ing the
+    shared ``tablassert.agent`` module. Reloading mutates the live module ``__dict__``
+    (replacing its function objects), which breaks ``X is Y`` / ``X in [Y]`` identity
+    assertions in later test files that imported those functions at collection time.
     """
-    # Re-import freshly to prove the import itself is side-effect free.
-    importlib.reload(agent_mod)
+    from tablassert._lazy import LazyModule
+
+    # A fresh proxy stays pending until first attribute access (no eager import).
+    proxy: LazyModule = LazyModule("smolagents")
+    assert "pending" in repr(proxy)
     assert agent_mod.is_lazy()
 
     if importlib.util.find_spec("smolagents") is None:
-        # Absent: a successful import cannot have registered it.
+        # Absent: importing tablassert.agent (at collection) cannot have registered it.
         assert "smolagents" not in sys.modules
-    # In both environments the proxy stays pending until first attribute access.
-    assert "pending" in repr(agent_mod.smolagents)

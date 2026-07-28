@@ -467,7 +467,7 @@ def make_derive_config_tool() -> Tool:
     candidate YAML the agent submits for the schema gate to check.
     """
     _require("smolagents")
-    from smolagents import Tool  # local import keeps module import lazy
+    from smolagents import Tool  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     class DeriveConfigTool(Tool):  # pyright: ignore[reportMissingImports]
         name = "derive_config"
@@ -638,7 +638,7 @@ def make_map_coverage_tool(get_fullmap: Callable[[], Path]) -> Tool:
     import.
     """
     _require("smolagents")
-    from smolagents import Tool  # local import keeps module import lazy
+    from smolagents import Tool  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     class MapCoverageTool(Tool):  # pyright: ignore[reportMissingImports]
         name = "map_coverage"
@@ -849,7 +849,7 @@ def make_build_and_audit_tool(get_fullmap: Callable[[], Path], *, name: str = "a
     never forces the optional smolagents import.
     """
     _require("smolagents")
-    from smolagents import Tool  # local import keeps module import lazy
+    from smolagents import Tool  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     class BuildAndAuditTool(Tool):  # pyright: ignore[reportMissingImports]
         name = "build_and_audit"
@@ -1133,7 +1133,7 @@ def make_propose_config_edit_tool() -> Tool:
     INSIDE this factory so the module top never forces the optional smolagents import.
     """
     _require("smolagents")
-    from smolagents import Tool  # local import keeps module import lazy
+    from smolagents import Tool  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     class ProposeConfigEditTool(Tool):  # pyright: ignore[reportMissingImports]
         name = "propose_config_edit"
@@ -1221,10 +1221,10 @@ def build_model(model_id: str | None, api_base: str | None, api_key: str | None,
 
     _require("smolagents")
     if backend == "litellm":
-        from smolagents import LiteLLMModel  # local import keeps module import lazy
+        from smolagents import LiteLLMModel  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
         return LiteLLMModel(model_id=rid, api_base=rbase, api_key=rkey)
-    from smolagents import OpenAIModel  # local import keeps module import lazy
+    from smolagents import OpenAIModel  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     return OpenAIModel(model_id=rid, api_base=rbase, api_key=rkey)
 
@@ -1397,7 +1397,7 @@ def build_agent(
     smolagents ``LogLevel``) is forwarded only when not None.
     """
     _require("smolagents")
-    from smolagents import CodeAgent  # local import keeps module import lazy
+    from smolagents import CodeAgent  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     checks: list[Callable[..., bool]] = final_answer_checks if final_answer_checks is not None else [validate_section]
     imports: list[str] = additional_authorized_imports if additional_authorized_imports is not None else ["yaml"]
@@ -1453,10 +1453,10 @@ def make_fake_model(responses: list[str] | None = None, final_yaml: str | None =
     field, not a constructor arg). Pure test helper; kept behind the lazy import.
     """
     _require("smolagents")
-    from smolagents.models import ChatMessage, MessageRole, Model  # local import keeps module import lazy
+    from smolagents.models import ChatMessage, MessageRole, Model  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     try:
-        from smolagents.models import TokenUsage
+        from smolagents.models import TokenUsage  # pyright: ignore[reportMissingImports]
     except ImportError:  # pragma: no cover - extremely old smolagents; omit token usage
         TokenUsage = None  # pyright: ignore[reportAssignmentType]
 
@@ -1510,7 +1510,7 @@ def make_read_table_tool() -> Tool:
     never instructions (prompt-injection defense).
     """
     _require("smolagents")
-    from smolagents import Tool  # local import keeps module import lazy
+    from smolagents import Tool  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
     class ReadTableTool(Tool):  # pyright: ignore[reportMissingImports]
         name = "read_table"
@@ -1684,7 +1684,7 @@ def run_supervisor(
     out of this signature. Returns ``{"state", "records", "metrics"}`` after a final checkpoint.
     """
     try:
-        from smolagents import LogLevel  # local import keeps module import lazy
+        from smolagents import LogLevel  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
         verbosity: object = LogLevel.ERROR  # keep the inner agent quiet during batch runs
     except ImportError:  # pragma: no cover - the extra is present whenever the supervisor runs
@@ -2141,7 +2141,7 @@ def gepa_metric(bundle: dict[str, Any]) -> Any:
     wrong-call list) to propose instruction edits; ``score`` is :func:`quality_score` in [0,1].
     """
     _require("dspy")
-    import dspy as _dspy
+    import dspy as _dspy  # pyright: ignore[reportMissingImports]
 
     config_yaml: str = str(bundle.get("config_yaml", ""))
     report: dict[str, Any] = bundle.get("report") or {}
@@ -2172,7 +2172,7 @@ def gepa_metric(bundle: dict[str, Any]) -> Any:
 def _default_gepa_program(seed_instructions: str) -> Any:
     """Build the tiny default dspy program GEPA optimizes (one Predict over a config signature)."""
     _require("dspy")
-    import dspy as _dspy
+    import dspy as _dspy  # pyright: ignore[reportMissingImports]
 
     class _ConfigProposer(_dspy.Module):
         def __init__(self) -> None:
@@ -2206,7 +2206,7 @@ def run_gepa(
     raises (a failed real compile falls back to the seed instructions + a note in ``stats``).
     """
     _require("dspy")
-    import dspy as _dspy
+    import dspy as _dspy  # pyright: ignore[reportMissingImports]
 
     cls: Any = gepa_cls if gepa_cls is not None else _dspy.GEPA
     try:
