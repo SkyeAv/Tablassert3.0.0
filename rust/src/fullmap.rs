@@ -167,6 +167,10 @@ fn clean(value: &str) -> String {
 /// QC-ing the lowercase form is exactly equivalent to QC-ing the original value
 /// and lowercasing internally.
 fn token_qc(value: &str) -> bool {
+    // Tripwire (debug builds only; zero release cost): the banned-token checks
+    // are case-sensitive against lowercase needles, so a mixed-case caller would
+    // silently miss them.  Catch that contract violation early.
+    debug_assert_eq!(value, value.to_lowercase());
     !value.is_empty()
         && !value.contains('\t')
         && !value.contains('\n')
@@ -1209,6 +1213,7 @@ fn flush_buf(sh: &SynonymShared<'_>, buf: &mut WorkerBuf) -> PyResult<()> {
 /// with its source id) into the channel.  Decompression happens here; JSON
 /// parsing/processing happens in the workers.  The bounded channel provides
 /// backpressure so a fast decompressor cannot buffer a whole giant file in RAM.
+#[allow(clippy::too_many_arguments)]
 fn produce_file(
     path: &Path,
     tx: &SyncSender<(u8, Vec<String>)>,
@@ -1216,6 +1221,7 @@ fn produce_file(
     chunk_bytes: usize,
     progress: Option<&Arc<Progress>>,
     files_done: &AtomicUsize,
+    rows_done: &AtomicU64,
     total_files: usize,
 ) -> PyResult<()> {
     let src_name = source_name(path);
@@ -1226,13 +1232,15 @@ fn produce_file(
     let reader = BufReader::new(open_reader(path)?);
     let mut chunk: Vec<String> = Vec::new();
     let mut chunk_len: usize = 0;
-    let mut row_count: u64 = 0;
+    // Rows accumulated in the current (not-yet-flushed) chunk; folded into the
+    // shared cumulative counter at each flush and at EOF.
+    let mut chunk_rows: u64 = 0;
     for line in reader.lines() {
         let raw = line.map_err(py_err)?;
         if raw.trim().is_empty() {
             continue;
         }
-        row_count += 1;
+        chunk_rows += 1;
         chunk_len += raw.len();
         chunk.push(raw);
         // Flush once the chunk reaches the byte budget (bounds per-chunk memory
@@ -1242,25 +1250,35 @@ fn produce_file(
                 .map_err(py_err)?;
             chunk_len = 0;
             // Per-chunk Phase-1 progress (the big granularity win): report the
-            // rows read so far in this file instead of waiting for EOF.  total is
-            // 0 (file length unknown); the Python side clamps to a high-water
-            // mark, so per-file counts resetting across producer threads is fine.
+            // CUMULATIVE rows processed across the WHOLE synonym phase — a single
+            // monotonic unit shared by every producer via `rows_done` — with
+            // total=0 (indeterminate; no cheap global row total exists).  A
+            // per-file row count here would clash with a file-index count on the
+            // same phase's single high-water mark and overflow the bar.
             if let Some(p) = progress {
-                p.call(1, row_count, 0, &format!("{src_name} · {row_count} rows"));
+                let global = rows_done.fetch_add(chunk_rows, Ordering::Relaxed) + chunk_rows;
+                p.call(1, global, 0, &format!("{src_name} · {global} rows"));
             }
+            chunk_rows = 0;
         }
     }
     if !chunk.is_empty() {
         tx.send((source_id, chunk)).map_err(py_err)?;
     }
 
+    // EOF: fold the final partial chunk's rows into the cumulative count and emit
+    // a file-completion tick in the SAME unit (cumulative rows, total=0) so the
+    // phase-1 high-water mark stays monotonic and never mixes in a small file
+    // index.  The file count rides in the detail string only (not completed/total).
+    // This tick is essential for small files that never hit a chunk flush.
     if let Some(p) = progress {
+        let global = rows_done.fetch_add(chunk_rows, Ordering::Relaxed) + chunk_rows;
         let n = files_done.fetch_add(1, Ordering::Relaxed) + 1;
         p.call(
             1,
-            n as u64,
-            total_files as u64,
-            &format!("{src_name} · {row_count} rows"),
+            global,
+            0,
+            &format!("{src_name} · {global} rows ({n}/{total_files} files)"),
         );
     }
     Ok(())
@@ -1355,6 +1373,9 @@ fn process_synonyms(
     let run_paths: RwLock<Vec<Vec<PathBuf>>> = RwLock::new(vec![Vec::new(); shard_count]);
     let run_counter = AtomicUsize::new(0);
     let files_done = AtomicUsize::new(0);
+    // Cumulative rows processed across the whole synonym phase, shared by every
+    // producer so Phase-1 progress reports one monotonic unit (see produce_file).
+    let rows_done = AtomicU64::new(0);
     let total_files = synonyms.len();
 
     let shared = SynonymShared {
@@ -1399,6 +1420,7 @@ fn process_synonyms(
         let file_idx_ref = &file_idx;
         let source_ids_ref = &source_ids;
         let files_done_ref = &files_done;
+        let rows_done_ref = &rows_done;
         let mut handles: Vec<std::thread::ScopedJoinHandle<'_, PyResult<()>>> = Vec::new();
 
         // Workers: persistent private buffers, spilling at local_spill/curie_spill.
@@ -1422,6 +1444,7 @@ fn process_synonyms(
                     chunk_bytes,
                     progress,
                     files_done_ref,
+                    rows_done_ref,
                     total_files,
                 )?;
             }));
@@ -1591,8 +1614,9 @@ fn write_final_database(
     } else {
         0
     };
-    // Global record counter shared across shard writer threads so the callback
-    // reports one monotonic count (each thread adds its flushed batch).
+    // Global record counter shared across shard writer threads.  Its VALUE is
+    // monotonic (each thread adds its flushed batch); the delivery ORDER of the
+    // per-thread callbacks may vary, and the consumer clamps to a high-water mark.
     let global_written = AtomicU64::new(0);
     let scope_result: PyResult<u64> = std::thread::scope(|s| {
         let mut handles: Vec<std::thread::ScopedJoinHandle<'_, PyResult<u64>>> = Vec::new();
@@ -1753,7 +1777,11 @@ fn count_run_frames(path: &Path) -> std::io::Result<u64> {
 
 /// Report Phase-2 progress for a flushed batch: add `flushed` to the shared
 /// global counter and emit `(2, global, total, "shard {i}: writing {global}")`.
-/// A no-op for an empty flush or when there is no progress callback.
+/// The atomic counter VALUE is monotonic (it only grows), but the ORDER in which
+/// concurrent shard threads DELIVER these calls to Python is not guaranteed to be
+/// sorted (scheduling between `fetch_add` and the call can deliver e.g. 150 then
+/// 100).  That is harmless: the consumer (progress.py) clamps to a per-phase
+/// high-water mark.  A no-op for an empty flush or when there is no callback.
 fn report_shard_progress(
     progress: Option<&Arc<Progress>>,
     global_written: &AtomicU64,
