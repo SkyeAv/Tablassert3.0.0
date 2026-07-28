@@ -1033,7 +1033,7 @@ def _write_ndjson(
     if on_phase is not None:
         on_phase("write-nodes")
     node_rows: list[dict[str, object]] = []
-    with nodes_tmp.open("a") as f:
+    with nodes_tmp.open("a", encoding="utf-8") as f:
         for subnode in subnodes:
             eagernode: pl.DataFrame = subnode.collect().unique()
             node_rows.extend(eagernode.to_dicts())
@@ -1042,7 +1042,7 @@ def _write_ndjson(
     # Phase: write-edges.
     if on_phase is not None:
         on_phase("write-edges")
-    with edges_tmp.open("a") as f:
+    with edges_tmp.open("a", encoding="utf-8") as f:
         for subedge in subedges:
             eageredge: pl.DataFrame = subedge.collect().unique()
             eageredge.write_ndjson(f)

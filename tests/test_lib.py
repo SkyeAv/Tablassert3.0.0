@@ -918,6 +918,49 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     assert any(x["source_identifier_types"] == ["HGNC"] for x in node_types)
 
 
+def test_compile_graph_opens_ndjson_outputs_as_utf8(monkeypatch: Any, tmp_path: Path) -> None:
+    """compile_graph passes UTF-8 file handles to Polars NDJSON writers."""
+    monkeypatch.chdir(tmp_path)
+    original_open: Any = Path.open
+    append_encodings: list[tuple[str, str | None]] = []
+
+    def spy_open(
+        self: Path, mode: str = "r", buffering: int = -1, encoding: str | None = None, errors: str | None = None, newline: str | None = None
+    ) -> Any:
+        if mode == "a" and self.name.endswith(".ndjson.tmp"):
+            append_encodings.append((self.name, encoding))
+            return original_open(self, mode, buffering, encoding or "ascii", errors, newline)
+        return original_open(self, mode, buffering, encoding, errors, newline)
+
+    monkeypatch.setattr(Path, "open", spy_open)
+    sub: Path = tmp_path / "sub.parquet"
+    pl.DataFrame(
+        {
+            "subject": ["A-é"],
+            "subject_name": ["Alpha-é"],
+            "subject_category": ["gene"],
+            "subject_taxon": [None],
+            "subject_source": [None],
+            "subject_source_version": [None],
+            "subject_pre_resolution": ["A-é"],
+            "object": ["HGNC:1"],
+            "object_name": ["Xräy"],
+            "object_category": ["disease"],
+            "object_taxon": [None],
+            "object_source": [None],
+            "object_source_version": [None],
+            "object_pre_resolution": ["Xräy"],
+            "predicate": ["r"],
+        }
+    ).write_parquet(sub)
+
+    lib.compile_graph([sub], "utf8", "1.0.0")
+
+    assert append_encodings == [("utf8_1.0.0.nodes.ndjson.tmp", "utf-8"), ("utf8_1.0.0.edges.ndjson.tmp", "utf-8")]
+    assert "Alpha-é" in (tmp_path / "utf8_1.0.0.nodes.ndjson").read_text(encoding="utf-8")
+    assert "A-é" in (tmp_path / "utf8_1.0.0.edges.ndjson").read_text(encoding="utf-8")
+
+
 def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatch: Any, tmp_path: Path) -> None:
     """compile_graph threads on_phase/on_subgraph: ordered phases, one tick per subgraph, output unchanged."""
     monkeypatch.chdir(tmp_path)
