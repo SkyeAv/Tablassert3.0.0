@@ -22,6 +22,21 @@ logger = cat("QC")
 MODEL: Path = BASE / "biobert"
 
 
+def _cascade(passed: pl.DataFrame, scored: pl.DataFrame, out: str) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Concat already-passed rows with a newly-scored frame and split on ``out``.
+
+    Args:
+        passed: Rows accumulated as passing from prior scoring steps.
+        scored: Newly scored rows carrying the boolean ``out`` column.
+        out: Name of the boolean pass/fail column.
+
+    Returns:
+        Tuple of ``(passed, pending)`` split on the ``out`` column.
+    """
+    pairs: pl.DataFrame = pl.concat((passed, scored))
+    return pairs.filter(pl.col(out)), pairs.filter(~pl.col(out))
+
+
 @cache
 def get_biobert() -> object:
     """Lazy-load and memoize the BioBERT sentence-transformer (``functools.cache``).
@@ -97,28 +112,20 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     pairs: pl.DataFrame = df.select(cols).unique()
     pairs = pairs.with_columns((pl.col(cols[1]) == pl.col(cols[2])).alias(out))
 
-    passed: pl.DataFrame = pairs.filter(pl.col(out))
-    pending: pl.DataFrame = pairs.filter(~pl.col(out))
+    passed: pl.DataFrame
+    pending: pl.DataFrame
+    passed, pending = _cascade(pairs.clear(), pairs, out)
 
     exempt_curies: str = r"^CHEBI|^PR|^UniProtKB|^NCBIGene|^UMLS|^UNII|^PUBCHEM|^MONDO"
     is_exempt: pl.DataFrame = pending.with_columns(pl.col(cols[0]).str.contains(exempt_curies).alias(out))
-    pairs = pl.concat((passed, is_exempt))
-
-    passed = pairs.filter(pl.col(out))
-    pending = pairs.filter(~pl.col(out))
+    passed, pending = _cascade(passed, is_exempt, out)
 
     is_curie: pl.DataFrame = pending.with_columns(pl.col(cols[1]).str.contains(":").alias(out))
-    pairs = pl.concat((passed, is_curie))
-
-    passed = pairs.filter(pl.col(out))
-    pending = pairs.filter(~pl.col(out))
+    passed, pending = _cascade(passed, is_curie, out)
 
     exceptions: str = r"^LOC|^si:"
     is_exception: pl.DataFrame = pending.with_columns(pl.col(cols[2]).str.contains(exceptions).alias(out))
-    pairs = pl.concat((passed, is_exception))
-
-    passed = pairs.filter(pl.col(out))
-    pending = pairs.filter(~pl.col(out))
+    passed, pending = _cascade(passed, is_exception, out)
 
     # Stage 2: fuzzy matching via RapidFuzz (batched).
     originals: list[str] = pending.get_column(cols[1]).to_list()

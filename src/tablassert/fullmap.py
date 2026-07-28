@@ -343,6 +343,42 @@ def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_
             logger.info("Unresolved term in {config} ({hash}) col {col}: {term!r}", config=config_file, hash=section_hash, col=col, term=term)
 
 
+# (out_suffix, base_col, prefix, cast) coalesce specs for ``join_matches``: the
+# level-one column wins over its ``_l2`` counterpart. Suffix "" aliases back to
+# ``col`` itself; category/taxon carry biolink:/NCBITaxon: prefixes and taxon is
+# cast to String.
+_JOIN_COALESCE_SPECS: list[tuple[str, str, str, bool]] = [
+    ("", "CURIE", "", False),
+    ("_name", "PREFERRED_NAME", "", False),
+    ("_category", "CATEGORY_NAME", "biolink:", False),
+    ("_taxon", "TAXON_ID", "NCBITaxon:", True),
+    ("_source", "SOURCE_NAME", "", False),
+    ("_source_version", "SOURCE_VERSION", "", False),
+    ("_nlp_level", "NLP_LEVEL", "", False),
+]
+
+
+def _coalesce_expr(col: str, suffix: str, base: str, prefix: str, cast_str: bool) -> pl.Expr:
+    """Build one level-one-wins-over-level-two coalesce expression for ``join_matches``.
+
+    Args:
+        col: Base node column name the derived column hangs off.
+        suffix: Output column suffix ("" aliases back to ``col`` itself).
+        base: Level-one fullmap column name (level-two is ``f"{base}_l2"``).
+        prefix: Literal prefix prepended to both branches ("" for none).
+        cast_str: When True, cast both branches to String before prefixing.
+
+    Returns:
+        Coalesce expression aliased to ``col + suffix``.
+    """
+    l1: pl.Expr = pl.col(base).cast(pl.String) if cast_str else pl.col(base)
+    l2: pl.Expr = pl.col(f"{base}_l2").cast(pl.String) if cast_str else pl.col(f"{base}_l2")
+    if prefix:
+        l1 = pl.lit(prefix) + l1
+        l2 = pl.lit(prefix) + l2
+    return pl.when(pl.col(base).is_not_null()).then(l1).otherwise(l2).alias(col + suffix)
+
+
 def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "_two") -> pl.LazyFrame:
     """Join ranked fullmap matches back into ``lf`` for one column.
 
@@ -376,29 +412,7 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
     l2_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(2))
     result = result.join(l2_matches, left_on=l2, right_on="term", how="left", suffix="_l2")
 
-    result = result.with_columns(
-        [
-            pl.when(pl.col("CURIE").is_not_null()).then(pl.col("CURIE")).otherwise(pl.col("CURIE_l2")).alias(col),
-            pl.when(pl.col("PREFERRED_NAME").is_not_null())
-            .then(pl.col("PREFERRED_NAME"))
-            .otherwise(pl.col("PREFERRED_NAME_l2"))
-            .alias(f"{col}_name"),
-            pl.when(pl.col("CATEGORY_NAME").is_not_null())
-            .then(pl.lit("biolink:") + pl.col("CATEGORY_NAME"))
-            .otherwise(pl.lit("biolink:") + pl.col("CATEGORY_NAME_l2"))
-            .alias(f"{col}_category"),
-            pl.when(pl.col("TAXON_ID").is_not_null())
-            .then(pl.lit("NCBITaxon:") + pl.col("TAXON_ID").cast(pl.String))
-            .otherwise(pl.lit("NCBITaxon:") + pl.col("TAXON_ID_l2").cast(pl.String))
-            .alias(f"{col}_taxon"),
-            pl.when(pl.col("SOURCE_NAME").is_not_null()).then(pl.col("SOURCE_NAME")).otherwise(pl.col("SOURCE_NAME_l2")).alias(f"{col}_source"),
-            pl.when(pl.col("SOURCE_VERSION").is_not_null())
-            .then(pl.col("SOURCE_VERSION"))
-            .otherwise(pl.col("SOURCE_VERSION_l2"))
-            .alias(f"{col}_source_version"),
-            pl.when(pl.col("NLP_LEVEL").is_not_null()).then(pl.col("NLP_LEVEL")).otherwise(pl.col("NLP_LEVEL_l2")).alias(f"{col}_nlp_level"),
-        ]
-    )
+    result = result.with_columns([_coalesce_expr(col, suffix, base, prefix, cast_str) for suffix, base, prefix, cast_str in _JOIN_COALESCE_SPECS])
 
     result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)(_l2)?$"))
     result = result.select(pl.exclude(col + tag))

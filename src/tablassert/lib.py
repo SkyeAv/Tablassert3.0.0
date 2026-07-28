@@ -952,31 +952,14 @@ class Tcode(Section):
         """
         return [op for x in tcode if x for op in (self.clean(x) if isinstance(x, list) else [x])]
 
-    def collect(self: Self, db: Path) -> list[tuple[Callable, tuple[Any]]] | Path:
-        """Build the ordered operation list that drives section transformation.
-
-        Args:
-            db: Path to the fullmap redb used for entity resolution.
+    def _source_ops(self: Self) -> list[Any]:
+        """Collect the load/filter/clean/significance ops that precede entity resolution.
 
         Returns:
-            Either the existing store path (quick exit when the subgraph
-            parquet is already present), or a cleaned list of
-            ``(callable, args)`` tuples consumed by ``compile_subgraph``.
+            Raw (possibly nested, possibly ``None``-padded) op list ready for
+            ``clean``; order matches the pre-resolution pipeline exactly.
         """
-        if self.store.is_file():
-            # Quick exit if subgraph already exists.
-            return self.store
-
-        # Subject/object/qualifiers share one resolve_batch call instead of one per column.
-        node_columns: list[tuple[NodeEncoding, str]] = [
-            (self.statement.subject, "subject"),
-            (self.statement.object, "object"),
-            *[(x, x.qualifier) for x in (self.statement.qualifiers or [])],
-        ]
-        specs: list[ResolveSpec] = [ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid) for x, col in node_columns]
-
-        # Returns a list of: (function, (arguments)).
-        tcode: list[Any] | None = [
+        return [
             (csv, (self.source.local, self.source.delimiter)) if self.source.kind == Files.TEXT else None,  # pyright: ignore
             (excel, (self.source.local, self.source.sheet)) if self.source.kind == Files.EXCEL else None,  # pyright: ignore
             (idx, ()),
@@ -999,9 +982,40 @@ class Tcode(Section):
             # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
             (sig, ()),
             (drop_not_significant, ()) if self.release else None,
+        ]
+
+    def _node_ops(self: Self, db: Path) -> list[Any]:
+        """Collect the per-node encoding/resolve/QC ops shared across subject/object/qualifiers.
+
+        Args:
+            db: Path to the fullmap redb used for entity resolution.
+
+        Returns:
+            Raw op list: one ``node_prep`` block per node column, the single
+            shared ``resolve_batch`` op, then per-column ``fullmap_audit`` ops
+            when QC is enabled.
+        """
+        # Subject/object/qualifiers share one resolve_batch call instead of one per column.
+        node_columns: list[tuple[NodeEncoding, str]] = [
+            (self.statement.subject, "subject"),
+            (self.statement.object, "object"),
+            *[(x, x.qualifier) for x in (self.statement.qualifiers or [])],
+        ]
+        specs: list[ResolveSpec] = [ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid) for x, col in node_columns]
+        return [
             [self.node_prep(x, col) for x, col in node_columns],
             (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
             [(fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) for _, col in node_columns] if self.qc else None,
+        ]
+
+    def _provenance_ops(self: Self) -> list[Any]:
+        """Collect the edge/provenance/finalize ops that follow entity resolution.
+
+        Returns:
+            Raw op list: predicate and edge category, provenance metadata,
+            then the trim/format/write finalize ops.
+        """
+        return [
             (value, ("predicate", "biolink:" + self.statement.predicate)),
             (edge_category, ()),
             (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
@@ -1015,6 +1029,24 @@ class Tcode(Section):
             (format_numeric, ()),
             (to_store, (self.store, self.config.name)),
         ]
+
+    def collect(self: Self, db: Path) -> list[tuple[Callable, tuple[Any]]] | Path:
+        """Build the ordered operation list that drives section transformation.
+
+        Args:
+            db: Path to the fullmap redb used for entity resolution.
+
+        Returns:
+            Either the existing store path (quick exit when the subgraph
+            parquet is already present), or a cleaned list of
+            ``(callable, args)`` tuples consumed by ``compile_subgraph``.
+        """
+        if self.store.is_file():
+            # Quick exit if subgraph already exists.
+            return self.store
+
+        # Returns a list of: (function, (arguments)).
+        tcode: list[Any] = [*self._source_ops(), *self._node_ops(db), *self._provenance_ops()]
         return self.clean(tcode)
 
 
@@ -1477,6 +1509,111 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.with_columns(combined.alias("supporting_text")).drop(unknown)
 
 
+def _collect_subframes(
+    subgraphs: list[Path], edges_tmp: Path, ui_explanation: str | None
+) -> tuple[list[pl.LazyFrame], list[pl.LazyFrame], list[dict[str, object]]]:
+    """Scan and normalize subgraph parquets into node/edge subframes.
+
+    Covers the ``scan`` and ``normalize`` phases of ``compile_graph``; the
+    phase boundaries inside the loop are the intended hook points for the
+    US-009 ``on_phase`` progress callback.
+
+    Args:
+        subgraphs: Section parquet paths to merge.
+        edges_tmp: Working ``.edges.ndjson.tmp`` path (its de-suffixed name is
+            recorded under edge type info ``source_files``).
+        ui_explanation: Optional UI explanation for the RIG edge type info.
+
+    Returns:
+        Tuple of ``(subnodes, subedges, edge_type_info)``: per-section node and
+        edge LazyFrames plus the accumulated RIG edge type summaries.
+    """
+    subnodes: list[pl.LazyFrame] = []
+    subedges: list[pl.LazyFrame] = []
+    edge_type_info: list[dict[str, object]] = []
+    for s in subgraphs:
+        # Phase: scan.
+        lf: pl.LazyFrame = pl.scan_parquet(s)
+        edge_type_info.extend(rig_edge_type_info(lf, edges_tmp.with_suffix(""), ui_explanation))
+
+        # Phase: normalize. Only subject and object become nodes; qualifier columns stay as edge attributes.
+        originals: list[str] = [c.removesuffix("_pre_resolution") for c in lf.collect_schema().names() if c.endswith("_pre_resolution")]
+        node_cols: list[str] = [c for c in originals if c in ("subject", "object")]
+        for col in node_cols:
+            partial, lf = normalize(lf, col)
+            subnodes.append(partial)
+        # Drop internal pre-resolution snapshot columns from final edges.
+        lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
+        lf = fold_unknown_to_supporting_text(lf)
+        subedges.append(lf)
+    return subnodes, subedges, edge_type_info
+
+
+def _write_ndjson(
+    subnodes: list[pl.LazyFrame],
+    subedges: list[pl.LazyFrame],
+    edge_type_info: list[dict[str, object]],
+    nodes_tmp: Path,
+    edges_tmp: Path,
+    name: str,
+    version: str,
+    description: str | None,
+    contributions: list[str] | None,
+    ui_explanation: str | None,
+    tables: list[Path] | None,
+) -> None:
+    """Write, dedup, and RIG the KGX NDJSON outputs.
+
+    Covers the ``write-nodes``, ``write-edges``, ``dedup`` and ``rig`` phases of
+    ``compile_graph``; each commented phase boundary below is an intended hook
+    point for the US-009 ``on_phase`` progress callback.
+
+    Args:
+        subnodes: Per-section node LazyFrames from ``_collect_subframes``.
+        subedges: Per-section edge LazyFrames from ``_collect_subframes``.
+        edge_type_info: Accumulated RIG edge type summaries.
+        nodes_tmp: Working ``.nodes.ndjson.tmp`` output path.
+        edges_tmp: Working ``.edges.ndjson.tmp`` output path.
+        name: Graph name (output stems and RIG).
+        version: Graph version string.
+        description: Optional RIG description.
+        contributions: Optional RIG contributor list.
+        ui_explanation: Optional RIG UI explanation.
+        tables: Optional RIG source table list.
+    """
+    # Phase: write-nodes. Collection point: appending to output files.
+    node_rows: list[dict[str, object]] = []
+    with nodes_tmp.open("a") as f:
+        for subnode in subnodes:
+            eagernode: pl.DataFrame = subnode.collect().unique()
+            node_rows.extend(eagernode.to_dicts())
+            eagernode.write_ndjson(f)
+
+    # Phase: write-edges.
+    with edges_tmp.open("a") as f:
+        for subedge in subedges:
+            eageredge: pl.DataFrame = subedge.collect().unique()
+            eageredge.write_ndjson(f)
+
+    # Phase: dedup.
+    dedup_stream(edges_tmp, is_edges=True)
+    dedup_stream(nodes_tmp, is_edges=False)
+
+    # Phase: rig.
+    compile_rig(
+        name,
+        version,
+        description,
+        contributions,
+        ui_explanation,
+        tables,
+        nodes_tmp.with_suffix(""),
+        edges_tmp.with_suffix(""),
+        rig_node_type_info(node_rows),
+        unique_dicts(edge_type_info),
+    )
+
+
 def compile_graph(
     subgraphs: list[Path],
     name: str,
@@ -1512,51 +1649,11 @@ def compile_graph(
     if n.exists():
         n.unlink()
 
-    subnodes: list[pl.LazyFrame] = []
-    subedges: list[pl.LazyFrame] = []
-    edge_type_info: list[dict[str, object]] = []
-    for s in subgraphs:
-        lf: pl.LazyFrame = pl.scan_parquet(s)
-        edge_type_info.extend(rig_edge_type_info(lf, e.with_suffix(""), ui_explanation))
-
-        # Only subject and object become nodes; qualifier columns stay as edge attributes.
-        originals: list[str] = [c.removesuffix("_pre_resolution") for c in lf.collect_schema().names() if c.endswith("_pre_resolution")]
-        node_cols: list[str] = [c for c in originals if c in ("subject", "object")]
-        for col in node_cols:
-            partial, lf = normalize(lf, col)
-            subnodes.append(partial)
-        # Drop internal pre-resolution snapshot columns from final edges.
-        lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
-        lf = fold_unknown_to_supporting_text(lf)
-        subedges.append(lf)
-
-    # Collection point: appending to output files.
-    node_rows: list[dict[str, object]] = []
-    with n.open("a") as f:
-        for subnode in subnodes:
-            eagernode: pl.DataFrame = subnode.collect().unique()
-            node_rows.extend(eagernode.to_dicts())
-            eagernode.write_ndjson(f)
-
-    with e.open("a") as f:
-        for subedge in subedges:
-            eageredge: pl.DataFrame = subedge.collect().unique()
-            eageredge.write_ndjson(f)
-
-    dedup_stream(e, is_edges=True)
-    dedup_stream(n, is_edges=False)
-    compile_rig(
-        name,
-        version,
-        description,
-        contributions,
-        ui_explanation,
-        tables,
-        n.with_suffix(""),
-        e.with_suffix(""),
-        rig_node_type_info(node_rows),
-        unique_dicts(edge_type_info),
-    )
+    subnodes: list[pl.LazyFrame]
+    subedges: list[pl.LazyFrame]
+    edge_type_info: list[dict[str, object]]
+    subnodes, subedges, edge_type_info = _collect_subframes(subgraphs, e, ui_explanation)
+    _write_ndjson(subnodes, subedges, edge_type_info, n, e, name, version, description, contributions, ui_explanation, tables)
 
 
 def resolve_many(
