@@ -674,7 +674,9 @@ class Tcode(Section):
             (self.statement.object, "object"),
             *[(x, x.qualifier) for x in (self.statement.qualifiers or [])],
         ]
-        specs: list[ResolveSpec] = [ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid) for x, col in node_columns]
+        specs: list[ResolveSpec] = [
+            ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid, x.exclude_prefixes, x.exclude_regex) for x, col in node_columns
+        ]
         return [
             [self.node_prep(x, col) for x, col in node_columns],
             (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),

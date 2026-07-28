@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-from tablassert.progress import PipelineProgress
+import pytest
+from pydantic import ValidationError
+
+from tablassert.enums import Comparisons, EncodingMethods, Repositories
+from tablassert.errors import DOCS_URL
+from tablassert.models import Encoding, Provenance, Regex, Reindex, Text
+from tablassert.progress import PipelineProgress, flatten_pydantic_error
 
 
 def _section_task(p: PipelineProgress) -> Any:
@@ -110,3 +118,53 @@ def test_dynamic_loop_never_overflows_when_a_phase_total_resets_to_zero() -> Non
     for task in p.progress.tasks:
         if task.total is not None:
             assert task.completed <= task.total
+
+
+# code -> zero-arg callable that raises ValidationError (verbatim guard-test constructors, tests/test_models.py:285-363).
+TRIGGERS: dict[str, Callable[[], object]] = {
+    "comparison-bad-comparator-type": lambda: Reindex(column="A", comparison=Comparisons.EQ, comparator=5),
+    "comparison-nonnumeric-comparator": lambda: Reindex(column="A", comparison=Comparisons.GT, comparator="x"),
+    "config-rows-and-row-slice-conflict": lambda: Text(
+        local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[1], row_slice=[1, 5]
+    ),  # pyright: ignore
+    "regex-bad-pattern": lambda: Regex(pattern="(", replacement=" "),
+    "regex-bad-replacement": lambda: Regex(pattern="ok", replacement="("),
+    "encoding-bad-excel-column": lambda: Encoding(method=EncodingMethods.COLUMN, encoding="not_a_col_123"),  # pyright: ignore
+    "encoding-bad-remove-entry": lambda: Encoding(method=EncodingMethods.VALUE, encoding="x", remove=["("]),  # pyright: ignore
+    "provenance-bad-pmc-id": lambda: Provenance(repo=Repositories.PUBMED_CENTRAL, publication="12345"),  # pyright: ignore
+}
+
+
+@pytest.mark.parametrize("code", sorted(TRIGGERS))
+def test_flatten_pydantic_error_surfaces_code_and_docs_url(code: str) -> None:
+    """A coded validation error must surface its stable ``[code]`` plus docs URL.
+
+    Why: operators triaging a failed config need the machine-stable error code and
+    a direct link to its docs, not pydantic's generic ``[value_error]`` bucket.
+    Pydantic v2 stores the raised ``TablassertValidationError`` under
+    ``err["ctx"]["error"]`` with ``.code`` intact, so ``flatten_pydantic_error``
+    can recover the code and label the fragment ``[<code>]``. ``_Coded.__str__``
+    already appends the docs URL to the message, so it survives into ``msg``;
+    this test still asserts it explicitly to lock the contract.
+    """
+    with pytest.raises(ValidationError) as exc:
+        TRIGGERS[code]()
+    flat: str = flatten_pydantic_error(exc.value)
+    assert f"[{code}]" in flat
+    assert f"{DOCS_URL}{code}" in flat
+
+
+def test_flatten_pydantic_error_non_coded_falls_back_to_type() -> None:
+    """A non-coded pydantic error keeps the existing ``[<type>]`` bracket.
+
+    Why: only Tablassert-coded errors carry ``ctx.error.code``; a plain pydantic
+    error (e.g. a missing required field, ``ctx is None``) must fall back to the
+    pydantic ``type`` so the output never crashes on ``ctx`` access and never
+    mislabels a builtin error as ``[value_error]``. Output must stay one line.
+    """
+    with pytest.raises(ValidationError) as exc:
+        Reindex.model_validate({"column": "A"})
+    flat: str = flatten_pydantic_error(exc.value)
+    assert "[missing]" in flat
+    assert "[value_error]" not in flat
+    assert "\n" not in flat

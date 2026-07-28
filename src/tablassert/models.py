@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
@@ -17,10 +18,34 @@ else:
     pl = LazyModule("polars")
 
 
+# Deprecated config keys -> guidance. EMPTY today: the before-hook below is a silent no-op until a
+# future rename registers a key here to WARN on it. The hook only warns and returns the data
+# unchanged — a renamed key that is no longer a valid field is STILL rejected by extra="forbid"
+# unless the future hook also pops/translates it; registering a key here supplies the warning half only.
+DEPRECATED_KEYS: dict[str, str] = {}
+
+
 class TablaBase(BaseModel):
     model_config: ConfigDict = ConfigDict(  # pyright: ignore
         str_strip_whitespace=False, validate_assignment=True, use_enum_values=True, extra="forbid", populate_by_name=True
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _warn_deprecated_keys(cls, data: Any) -> Any:
+        """Soft-warn when a raw input key is registered in ``DEPRECATED_KEYS``.
+
+        Pure observation: returns ``data`` unchanged and never rejects (``extra="forbid"``
+        still governs truly-unknown keys). The registry is EMPTY today, so this is a silent
+        no-op; a future field rename registers its old key here to warn instead of hard-fail.
+        Note: with ``validate_assignment=True`` pydantic also re-runs this on attribute set,
+        so a registered key warns on assignment too — inert while the registry is empty.
+        """
+        if isinstance(data, dict):
+            for key in data:
+                if key in DEPRECATED_KEYS:
+                    warnings.warn(DEPRECATED_KEYS[key], UserWarning, stacklevel=2)
+        return data
 
 
 class Reindex(TablaBase):
@@ -183,6 +208,35 @@ class NodeEncoding(Encoding):
     avoid: list[Categories] | None = Field(
         None, description="Biolink categories excluded during entity resolution.", examples=[[Categories.DISEASE, Categories.PHENOTYPIC_FEATURE]]
     )
+    exclude_prefixes: list[str] | None = Field(
+        None, description="CURIE namespace prefixes (text before the first ':') dropped during entity resolution.", examples=[["OMIM", "NCBIGene"]]
+    )
+    exclude_regex: list[str] | None = Field(
+        None,
+        description="Regex patterns; any resolved CURIE matching one is dropped during entity resolution (case-sensitive).",
+        examples=[["^OMIM:\\d+$"]],
+    )
+
+    @field_validator("exclude_regex", mode="after")
+    @classmethod
+    def polars_compatible_exclude_regex(cls, exclude_regex: list[str] | None) -> list[str] | None:
+        if exclude_regex:
+            for pattern in exclude_regex:
+                # An empty pattern compiles but str.contains("") matches EVERY CURIE, silently dropping
+                # all candidates; reject empty/whitespace-only entries loudly at config time.
+                if not str(pattern).strip():
+                    raise TablassertValidationError(
+                        f"`exclude_regex` entries must be non-empty patterns (an empty pattern matches every CURIE), got {pattern!r}.",
+                        code="regex-bad-pattern",
+                    )
+                try:
+                    pl.Series([""]).str.contains(str(pattern))
+                except Exception as e:
+                    raise TablassertValidationError(
+                        f"`exclude_regex` entries must be polars-compatible regular expressions, got {pattern!r}: {e}", code="regex-bad-pattern"
+                    ) from e
+
+        return exclude_regex
 
 
 class Qualifier(NodeEncoding):

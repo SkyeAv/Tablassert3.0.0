@@ -256,6 +256,8 @@ def filter_and_rank(
     prioritize: list[Categories] | None,
     avoid: list[Categories] | None,
     column_context: bool,
+    exclude_prefixes: list[str] | None = None,
+    exclude_regex: list[str] | None = None,
 ) -> pl.DataFrame:
     """Join already-fetched redb rows against one column's own terms, then filter, rank, and dedup.
 
@@ -268,6 +270,8 @@ def filter_and_rank(
         prioritize: Categories to boost in ranking.
         avoid: Categories to drop entirely.
         column_context: Whether to compute/use category frequency as a tiebreaker.
+        exclude_prefixes: CURIE namespace prefixes (text before the first ':') to drop.
+        exclude_regex: Regex patterns; any CURIE matching one is dropped.
 
     Returns:
         Ranked matches DataFrame with one row per term.
@@ -283,6 +287,12 @@ def filter_and_rank(
     if taxon:
         taxon_id: int = int(taxon)
         result = result.filter((pl.col("TAXON_ID") == taxon_id) | (pl.col("CATEGORY_NAME") != Categories.GENE.value))
+    if exclude_prefixes:
+        curie_prefix: pl.Expr = pl.col("CURIE").str.split(":").list.first()
+        result = result.filter(~curie_prefix.is_in(exclude_prefixes))
+    if exclude_regex:
+        for pattern in exclude_regex:
+            result = result.filter(~pl.col("CURIE").str.contains(pattern))
     if result.height == 0:
         return empty_matches(column_context)
 
@@ -430,6 +440,8 @@ class ResolveSpec(NamedTuple):
     taxon: str | None = None
     prioritize: list[Categories] | None = None
     avoid: list[Categories] | None = None
+    exclude_prefixes: list[str] | None = None
+    exclude_regex: list[str] | None = None
 
 
 def resolve_batch(
@@ -484,7 +496,9 @@ def resolve_batch(
         if on_phase is not None:
             on_phase(f"resolve:{spec.col}")
         terms_df: pl.DataFrame = collected_terms[spec.col]
-        matches: pl.DataFrame = filter_and_rank(raw, terms_df, spec.taxon, spec.prioritize, spec.avoid, column_context)
+        matches: pl.DataFrame = filter_and_rank(
+            raw, terms_df, spec.taxon, spec.prioritize, spec.avoid, column_context, spec.exclude_prefixes, spec.exclude_regex
+        )
         if log:
             log_unmatched(spec.col, terms_by_col[spec.col], matches, section_hash, config_file)
         result = join_matches(result, spec.col, matches, tag)
@@ -499,6 +513,8 @@ def resolve(
     taxon: str | None = None,
     prioritize: list[Categories] | None = None,
     avoid: list[Categories] | None = None,
+    exclude_prefixes: list[str] | None = None,
+    exclude_regex: list[str] | None = None,
     log: bool = True,
     section_hash: str | None = None,
     config_file: str | None = None,
@@ -518,6 +534,8 @@ def resolve(
         taxon: Optional taxon filter applied to gene-category matches.
         prioritize: Categories to boost in ranking.
         avoid: Categories to drop entirely.
+        exclude_prefixes: CURIE namespace prefixes (text before the first ':') to drop.
+        exclude_regex: Regex patterns; any resolved CURIE matching one is dropped.
         log: When ``True``, log unmatched level-one terms.
         section_hash: Short section hash (for log context).
         config_file: Originating config file (for log context).
@@ -530,7 +548,7 @@ def resolve(
     """
     return resolve_batch(
         lf,
-        [ResolveSpec(col, taxon, prioritize, avoid)],
+        [ResolveSpec(col, taxon, prioritize, avoid, exclude_prefixes, exclude_regex)],
         db,
         log=log,
         section_hash=section_hash,
