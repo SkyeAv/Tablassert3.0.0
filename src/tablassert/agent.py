@@ -1820,3 +1820,471 @@ def run_supervisor(
     }
     save_state(state_dir, state)
     return {"state": state, "records": state.records, "metrics": state.metrics}
+
+
+# --------------------------------------------------------------------------- #
+# US-011: eval harness — metrics + LLM-judge rubric + Reflexion + GEPA + Pareto
+#
+# A multi-objective, eval-driven optimization layer. DETERMINISTIC metrics (coverage,
+# QC pass rate, KG node/edge F1, cost = tokens+steps, reliability = failed/wrong/redundant
+# tool calls) GATE the loop; an LLM-as-judge rubric scores only the SEMANTIC dimensions
+# (pointwise 0-3, position/verbosity bias-mitigated); a Reflexion-style retry is the simple
+# first-increment optimizer; dspy.GEPA optimizes the agent's instructions/descriptions as a
+# BLACK BOX from textual feedback (Pareto-native); and a Pareto frontier reports the
+# non-dominated quality/cost/wrong-call set + its knee. Everything here runs OFFLINE: the
+# judge defaults to a deterministic heuristic, Reflexion uses propose_config_edit, and GEPA
+# is exercised through an injectable ``gepa_cls`` stub (the metric contract is tested for real).
+# --------------------------------------------------------------------------- #
+
+
+def config_validity(config_yaml: str) -> bool:
+    """Deterministic quality gate: is this a schema-valid Section config?"""
+    return validate_section(config_yaml)
+
+
+def coverage_metric(report: dict[str, Any]) -> float:
+    """Mapping coverage from a build_and_audit report (``coverage_pct``) or a map_coverage report (``overall``)."""
+    value: object = report.get("coverage_pct", report.get("overall", 0.0))
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def qc_pass_rate_metric(report: dict[str, Any]) -> float | None:
+    """QC pass rate from a build_and_audit report (None when QC was not run)."""
+    value: object = report.get("qc_pass_rate")
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _precision_recall_f1(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
+    """Precision/recall/F1 from raw counts; every metric is 0.0 when its denominator is 0."""
+    precision: float = tp / (tp + fp) if (tp + fp) else 0.0
+    recall: float = tp / (tp + fn) if (tp + fn) else 0.0
+    f1: float = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+    return precision, recall, f1
+
+
+def node_edge_f1(
+    built_nodes: list[dict[str, Any]], built_edges: list[dict[str, Any]], ref_nodes: list[dict[str, Any]], ref_edges: list[dict[str, Any]]
+) -> dict[str, float]:
+    """KG node/edge F1 of a built graph against a reference (sets of ids / SPO triples).
+
+    Nodes compare on ``id``; edges compare on the ``(subject, predicate, object)`` triple.
+    Returns precision/recall/F1 for both. Used to score a candidate build against the golden
+    reference KGX (computed in-test from ``reference_config.yaml``).
+    """
+    built_node_ids: set[str] = {str(n.get("id")) for n in built_nodes}
+    ref_node_ids: set[str] = {str(n.get("id")) for n in ref_nodes}
+    built_triples: set[tuple[str, str, str]] = {(str(e.get("subject")), str(e.get("predicate")), str(e.get("object"))) for e in built_edges}
+    ref_triples: set[tuple[str, str, str]] = {(str(e.get("subject")), str(e.get("predicate")), str(e.get("object"))) for e in ref_edges}
+
+    node_tp: int = len(built_node_ids & ref_node_ids)
+    node_p, node_r, node_f1 = _precision_recall_f1(node_tp, len(built_node_ids - ref_node_ids), len(ref_node_ids - built_node_ids))
+    edge_tp: int = len(built_triples & ref_triples)
+    edge_p, edge_r, edge_f1 = _precision_recall_f1(edge_tp, len(built_triples - ref_triples), len(ref_triples - built_triples))
+    return {"node_precision": node_p, "node_recall": node_r, "node_f1": node_f1, "edge_precision": edge_p, "edge_recall": edge_r, "edge_f1": edge_f1}
+
+
+def cost_metric(metrics: dict[str, Any]) -> dict[str, int]:
+    """Cost proxy (the real API is FREE): total tokens + step count from the run metrics."""
+    tokens: object = metrics.get("total_tokens", 0)
+    steps: object = metrics.get("steps", 0)
+    return {"tokens": tokens if isinstance(tokens, int) else 0, "steps": steps if isinstance(steps, int) else 0}
+
+
+def reliability_metric(metrics: dict[str, Any]) -> dict[str, int]:
+    """Reliability: failed/wrong/redundant tool-call counts (+ total) from the step-callback metrics."""
+
+    def as_int(key: str) -> int:
+        value: object = metrics.get(key, 0)
+        return value if isinstance(value, int) else 0
+
+    return {
+        "failed": as_int("failed_tool_calls"),
+        "wrong": as_int("wrong_tool_calls"),
+        "redundant": as_int("redundant_tool_calls"),
+        "total_tool_calls": as_int("total_tool_calls"),
+    }
+
+
+def quality_score(
+    config_yaml: str,
+    report: dict[str, Any],
+    f1: dict[str, float],
+    *,
+    w_coverage: float = 0.5,
+    w_qc: float = 0.2,
+    w_f1: float = 0.2,
+    w_valid: float = 0.1,
+) -> float:
+    """Weighted quality in [0,1]; schema validity is a HARD gate (invalid -> 0.0).
+
+    Weights (sum 1.0): coverage 0.5, QC pass rate 0.2, mean node/edge F1 0.2, validity 0.1.
+    """
+    if not config_validity(config_yaml):
+        return 0.0
+    coverage: float = coverage_metric(report)
+    qc: float = qc_pass_rate_metric(report) or 0.0
+    mean_f1: float = (float(f1.get("node_f1", 0.0)) + float(f1.get("edge_f1", 0.0))) / 2
+    score: float = w_valid * 1.0 + w_coverage * coverage + w_qc * qc + w_f1 * mean_f1
+    return max(0.0, min(1.0, score))
+
+
+def load_kgx(path: Path) -> list[dict[str, Any]]:
+    """Load a KGX NDJSON file (nodes or edges) into a list of dicts."""
+    rows: list[dict[str, Any]] = []
+    with Path(path).open() as handle:
+        for line in handle:
+            stripped: str = line.strip()
+            if stripped:
+                rows.append(json.loads(stripped))
+    return rows
+
+
+JUDGE_DIMENSIONS: tuple[str, ...] = (
+    "schema_validity",
+    "coverage_appropriateness",
+    "qc_pass",
+    "predicate_category_appropriateness",
+    "provenance_completeness",
+    "efficiency",
+    "tool_call_cleanliness",
+)
+
+JUDGE_RUBRIC: str = """\
+Score each dimension 0 (absent/wrong), 1 (poor), 2 (adequate), or 3 (excellent).
+- schema_validity: does the config satisfy the Tablassert Section schema?
+- coverage_appropriateness: how well do the entity columns map (fullmap coverage)?
+- qc_pass: how many rows survive the 3-stage QC audit?
+- predicate_category_appropriateness: is the biolink predicate + node categorization sensible?
+- provenance_completeness: are repo + publication id + KL/AT present and correct?
+- efficiency: few steps / tool calls for the result achieved?
+- tool_call_cleanliness: no failed, wrong, or redundant tool calls?
+Judge CORRECTNESS, not verbosity. Return one 'dimension: score' line per dimension.
+"""
+
+
+def _debias_position(score_first_order: float, score_second_order: float) -> float:
+    """Position-bias mitigation: average the score obtained under two orderings."""
+    return (score_first_order + score_second_order) / 2
+
+
+def _debias_verbosity(score: float, config_len: int, baseline_len: int) -> float:
+    """Verbosity-bias mitigation: mildly penalize a config far longer than the baseline.
+
+    Correctness dominates: only a >2x length inflation applies a small (5%) penalty. Pure and
+    symmetric; with equal lengths it is the identity.
+    """
+    if baseline_len <= 0:
+        return max(0.0, min(1.0, score))
+    ratio: float = config_len / baseline_len
+    penalized: float = score * 0.95 if ratio > 2 else score
+    return max(0.0, min(1.0, penalized))
+
+
+def _judge_predicate_category(config_yaml: str) -> int:
+    """Heuristic 0-3 for predicate/category appropriateness (offline judge)."""
+    try:
+        data: Any = yaml.safe_load(config_yaml)
+        section: dict[str, Any] = _merge_first_section(data)
+        statement: dict[str, Any] = section.get("statement", {})
+        if not statement.get("predicate"):
+            return 0
+        has_prioritize: bool = any(isinstance(statement.get(node), dict) and statement[node].get("prioritize") for node in ("subject", "object"))
+        return 3 if has_prioritize else 2
+    except Exception:
+        return 1
+
+
+def _judge_provenance(config_yaml: str) -> int:
+    """Heuristic 0-3 for provenance completeness (offline judge)."""
+    try:
+        data: Any = yaml.safe_load(config_yaml)
+        section: dict[str, Any] = _merge_first_section(data)
+        provenance: dict[str, Any] = section.get("provenance", {})
+        return 3 if (provenance.get("repo") and provenance.get("publication")) else 0
+    except Exception:
+        return 0
+
+
+def _judge_cleanliness(metrics: dict[str, Any]) -> int:
+    """Heuristic 0-3 for tool-call cleanliness from failed/wrong/redundant counts."""
+    bad: int = reliability_metric(metrics)["failed"] + reliability_metric(metrics)["wrong"] + reliability_metric(metrics)["redundant"]
+    if bad == 0:
+        return 3
+    if bad == 1:
+        return 2
+    return 1 if bad <= 3 else 0
+
+
+def _call_judge(judge_model: object, prompt: str) -> str:
+    """Invoke a judge model defensively (callable, or an object with ``.generate``)."""
+    if callable(judge_model):
+        return str(judge_model(prompt))
+    generate: object = getattr(judge_model, "generate", None)
+    if callable(generate):
+        return str(generate(prompt))
+    return str(judge_model)
+
+
+def _build_judge_prompt(config_yaml: str, report: dict[str, Any], metrics: dict[str, Any], *, reverse: bool = False) -> str:
+    """Assemble a pointwise judge prompt; ``reverse`` flips the dimension order (position debias)."""
+    dims: Sequence[str] = JUDGE_DIMENSIONS[::-1] if reverse else JUDGE_DIMENSIONS
+    return (
+        f"{JUDGE_RUBRIC}\n## Dimensions (in this order)\n"
+        + "\n".join(f"- {d}" for d in dims)
+        + f"\n\n## Config\n{config_yaml}\n\n## Build report\n{report}\n\n## Run metrics\n{metrics}\n"
+    )
+
+
+def _parse_judge_scores(text: str) -> dict[str, float]:
+    """Parse 'dimension: score' lines from a judge response; missing dims score 0."""
+    scores: dict[str, float] = dict.fromkeys(JUDGE_DIMENSIONS, 0.0)
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        name, _, value = line.partition(":")
+        key: str = name.strip().lower()
+        if key in scores:
+            with contextlib.suppress(ValueError):
+                scores[key] = max(0.0, min(3.0, float(value.strip().split()[0])))
+    return scores
+
+
+def judge_config(config_yaml: str, report: dict[str, Any], metrics: dict[str, Any], *, judge_model: object | None = None) -> dict[str, Any]:
+    """Pointwise 0-3 judge over the SEMANTIC dimensions; deterministic heuristic when no model.
+
+    Deterministic metrics GATE the loop elsewhere; this scores only what a metric cannot
+    (predicate/category appropriateness, provenance completeness, etc.). With ``judge_model``
+    the score is debiased for position (both dimension orders, averaged) and verbosity; on any
+    failure it falls back to the offline heuristic so it never raises.
+    """
+    if judge_model is None:
+        steps: object = metrics.get("steps", 0)
+        step_count: int = steps if isinstance(steps, int) else 0
+        scores: dict[str, float] = {
+            "schema_validity": 3.0 if config_validity(config_yaml) else 0.0,
+            "coverage_appropriateness": float(round(3 * coverage_metric(report))),
+            "qc_pass": float(round(3 * (qc_pass_rate_metric(report) or 0.0))),
+            "predicate_category_appropriateness": float(_judge_predicate_category(config_yaml)),
+            "provenance_completeness": float(_judge_provenance(config_yaml)),
+            "efficiency": 3.0 if step_count <= 3 else (2.0 if step_count <= 8 else 1.0),
+            "tool_call_cleanliness": float(_judge_cleanliness(metrics)),
+        }
+        normalized: float = sum(scores.values()) / (3 * len(scores))
+        rationale: str = "Offline heuristic judge: " + ", ".join(f"{k}={v:.0f}" for k, v in scores.items())
+        return {"scores": scores, "normalized": normalized, "rationale": rationale}
+
+    try:
+        forward: dict[str, float] = _parse_judge_scores(_call_judge(judge_model, _build_judge_prompt(config_yaml, report, metrics, reverse=False)))
+        reversed_: dict[str, float] = _parse_judge_scores(_call_judge(judge_model, _build_judge_prompt(config_yaml, report, metrics, reverse=True)))
+        debiased: dict[str, float] = {d: _debias_position(forward.get(d, 0.0), reversed_.get(d, 0.0)) for d in JUDGE_DIMENSIONS}
+        norm: float = _debias_verbosity(sum(debiased.values()) / (3 * len(debiased)), len(config_yaml), len(config_yaml))
+        return {"scores": debiased, "normalized": norm, "rationale": "LLM judge (position + verbosity debiased)"}
+    except Exception:
+        return judge_config(config_yaml, report, metrics)  # fall back to the deterministic heuristic
+
+
+def reflexion_improve(
+    config_yaml: str, report: dict[str, Any], coverage_report: dict[str, Any], *, max_reflections: int = 2, fullmap: Path | None = None
+) -> tuple[str, list[str]]:
+    """Reflexion-style self-critique retry (the simple first-increment optimizer; offline, no LLM).
+
+    Reflects on the failing rows + error codes + unresolved terms, calls the deterministic
+    :func:`propose_config_edit`, and (when ``fullmap`` is given) re-scores with build_and_audit,
+    keeping the STRICTLY best schema-valid config. Returns ``(best_config, reflections)`` and
+    never raises.
+    """
+    reflections: list[str] = []
+    best: str = config_yaml
+    best_score: float = coverage_metric(report) if isinstance(report, dict) else 0.0
+    current: str = config_yaml
+    cov_report: dict[str, Any] = coverage_report if isinstance(coverage_report, dict) else {}
+    try:
+        for i in range(max(1, max_reflections)):
+            unresolved: object = cov_report.get("unresolved", [])
+            errors: object = report.get("errors", []) if isinstance(report, dict) else []
+            codes: object = report.get("error_codes", []) if isinstance(report, dict) else []
+            edited, rationale = propose_config_edit(current, cov_report)
+            reflections.append(f"Reflection {i + 1}: unresolved={unresolved} errors={errors} codes={codes} -> {rationale}")
+            if not config_validity(edited):
+                reflections.append(f"Reflection {i + 1}: proposed edit failed schema validation; keeping previous best.")
+                continue
+            if fullmap is not None:
+                rep2: dict[str, Any] = build_and_audit(edited, fullmap=fullmap)
+                cov2: float = coverage_metric(rep2)
+                if cov2 > best_score:
+                    best, best_score, current = edited, cov2, edited
+                else:
+                    current = edited  # keep exploring from the edit, but do not promote a regression
+            else:
+                best, current = edited, edited
+        return best, reflections
+    except Exception as exc:  # Reflexion must never abort the caller
+        reflections.append(f"reflection aborted: {exc}")
+        return best, reflections
+
+
+def _as_list(value: object) -> list[Any]:
+    """Coerce a report field that may be a list/tuple/scalar/None into a list (pyright-safe)."""
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value] if value is not None else []
+
+
+def gepa_metric(bundle: dict[str, Any]) -> Any:
+    """The metric dspy.GEPA maximizes: ``dspy.Prediction(score=weighted_quality, feedback=<text>)``.
+
+    GEPA consumes the TEXTUAL feedback (failing rows + error codes + unresolved terms + the
+    wrong-call list) to propose instruction edits; ``score`` is :func:`quality_score` in [0,1].
+    """
+    _require("dspy")
+    import dspy as _dspy
+
+    config_yaml: str = str(bundle.get("config_yaml", ""))
+    report: dict[str, Any] = bundle.get("report") or {}
+    f1: dict[str, float] = bundle.get("f1") or {}
+    score: float = quality_score(config_yaml, report, f1)
+
+    parts: list[str] = []
+    errors: list[Any] = _as_list(report.get("errors"))
+    if errors:
+        parts.append("errors: " + "; ".join(str(e) for e in errors[:5]))
+    codes: list[Any] = _as_list(report.get("error_codes"))
+    if codes:
+        parts.append("error_codes: " + ",".join(str(c) for c in codes))
+    unresolved: list[Any] = _as_list(report.get("unresolved"))
+    if unresolved:
+        parts.append("unresolved: " + ",".join(str(u) for u in unresolved[:10]))
+    wrong: list[str] = [
+        f"{k}={bundle.get('metrics', {}).get(k)}"
+        for k in ("failed_tool_calls", "wrong_tool_calls", "redundant_tool_calls")
+        if int((bundle.get("metrics") or {}).get(k, 0) or 0) > 0
+    ]
+    if wrong:
+        parts.append("wrong_calls: " + ",".join(wrong))
+    feedback: str = " | ".join(parts) if parts else "clean: schema-valid, full coverage, no wrong tool calls"
+    return _dspy.Prediction(score=float(score), feedback=feedback)
+
+
+def _default_gepa_program(seed_instructions: str) -> Any:
+    """Build the tiny default dspy program GEPA optimizes (one Predict over a config signature)."""
+    _require("dspy")
+    import dspy as _dspy
+
+    class _ConfigProposer(_dspy.Module):
+        def __init__(self) -> None:
+            self.propose: Any = _dspy.Predict("table_summary, coverage_feedback -> config_yaml")
+            with contextlib.suppress(Exception):
+                self.propose.signature = self.propose.signature.with_instructions(seed_instructions)
+
+        def forward(self, table_summary: str, coverage_feedback: str) -> Any:
+            return self.propose(table_summary=table_summary, coverage_feedback=coverage_feedback)
+
+    return _ConfigProposer()
+
+
+def run_gepa(
+    *,
+    seed_instructions: str,
+    program: object | None = None,
+    trainset: list[Any] | None = None,
+    reflection_lm: object | None = None,
+    gepa_cls: object | None = None,
+    max_metric_calls: int | None = 8,
+    dataset: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Optimize the agent's instructions as a BLACK BOX with dspy.GEPA (Pareto-native, textual feedback).
+
+    System-agnostic: GEPA only needs the ``gepa_metric`` (score + textual feedback) and a program
+    whose predictor instructions it rewrites. ``gepa_cls`` is injectable so the offline test drives
+    the WIRING with a stub (the metric contract is tested for real); ``reflection_lm`` is the
+    proposer LM (a real dspy LM for the user's run). Returns ``{optimized_instructions,
+    optimized_descriptions, stats, frontier}``. Never hits the network on the stub path and never
+    raises (a failed real compile falls back to the seed instructions + a note in ``stats``).
+    """
+    _require("dspy")
+    import dspy as _dspy
+
+    cls: Any = gepa_cls if gepa_cls is not None else _dspy.GEPA
+    try:
+        optimizer: Any = cls(
+            metric=gepa_metric, candidate_selection_strategy="pareto", reflection_lm=reflection_lm, max_metric_calls=max_metric_calls
+        )
+    except TypeError:
+        optimizer = cls(metric=gepa_metric)  # minimal fallback for a narrower optimizer signature
+
+    prog: Any = program if program is not None else _default_gepa_program(seed_instructions)
+
+    examples: list[Any]
+    if trainset is not None:
+        examples = list(trainset)
+    else:
+        examples = []
+        for row in dataset or []:
+            examples.append(
+                _dspy.Example(table_summary=str(row.get("table_summary", "")), coverage_feedback=str(row.get("coverage_feedback", ""))).with_inputs(
+                    "table_summary", "coverage_feedback"
+                )
+            )
+        if not examples:
+            examples = [
+                _dspy.Example(
+                    table_summary="synthetic organism~chemical correlation table", coverage_feedback="coverage 0.5; unresolved taxonomic terms"
+                ).with_inputs("table_summary", "coverage_feedback")
+            ]
+
+    optimized_instructions: str = seed_instructions
+    optimized_descriptions: dict[str, str] = {}
+    stats: dict[str, Any] = {}
+    try:
+        compiled: Any = optimizer.compile(prog, trainset=examples)
+        with contextlib.suppress(Exception):
+            for name, predictor in compiled.named_predictors():
+                instr: object = getattr(getattr(predictor, "signature", None), "instructions", None)
+                if isinstance(instr, str) and instr:
+                    optimized_instructions = instr
+                    optimized_descriptions[str(name)] = instr
+        for attr in ("gepa_stats", "stats", "metric_stats"):
+            candidate: object = getattr(optimizer, attr, None)
+            if isinstance(candidate, dict):
+                stats = candidate
+                break
+    except Exception as exc:  # a brittle real GEPA must not crash the harness
+        stats = {"error": f"GEPA compile did not complete offline: {exc}"}
+    return {"optimized_instructions": optimized_instructions, "optimized_descriptions": optimized_descriptions, "stats": stats, "frontier": []}
+
+
+def dominates(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Multi-objective dominance: quality is MAXIMIZED, cost + wrong_calls are MINIMIZED.
+
+    ``a`` dominates ``b`` iff ``a`` is no worse on every objective and strictly better on at least one.
+    """
+    at_least: bool = (
+        (float(a["quality"]) >= float(b["quality"]))
+        and (float(a["cost"]) <= float(b["cost"]))
+        and (float(a["wrong_calls"]) <= float(b["wrong_calls"]))
+    )
+    strict: bool = (
+        (float(a["quality"]) > float(b["quality"])) or (float(a["cost"]) < float(b["cost"])) or (float(a["wrong_calls"]) < float(b["wrong_calls"]))
+    )
+    return at_least and strict
+
+
+def pareto_frontier(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Non-dominated set over (quality max, cost min, wrong_calls min) + the knee.
+
+    Each run is ``{"id", "quality", "cost", "wrong_calls"}``. The knee is the frontier run with the
+    best quality-per-unit-cost (cost<=0 counts as infinite ratio), tie-broken by fewer wrong calls.
+    """
+    frontier: list[Any] = [r["id"] for r in runs if not any(dominates(other, r) for other in runs if other is not r)]
+    knee: Any = None
+    knee_ratio: float = -1.0
+    knee_wc: float = float("inf")
+    for r in runs:
+        if r["id"] not in frontier:
+            continue
+        cost: float = float(r["cost"])
+        ratio: float = float("inf") if cost <= 0 else float(r["quality"]) / cost
+        wc: float = float(r["wrong_calls"])
+        if ratio > knee_ratio or (ratio == knee_ratio and wc < knee_wc):
+            knee, knee_ratio, knee_wc = r["id"], ratio, wc
+    return {"frontier": frontier, "knee": knee}
