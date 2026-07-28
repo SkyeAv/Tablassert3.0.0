@@ -10,8 +10,7 @@ fn uuid3(namespace: Uuid, name: &str) -> Uuid {
 
 fn uuid_part(value: &Value) -> Option<String> {
     match value {
-        Value::Null => None,
-        Value::Bool(false) => None,
+        Value::Null | Value::Bool(false) => None,
         Value::Bool(true) => Some("true".to_string()),
         Value::Number(number) => Some(number.to_string()),
         Value::String(text) => (!text.is_empty()).then_some(text.clone()),

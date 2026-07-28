@@ -59,7 +59,7 @@ pub fn strip_nulls(value: &Value) -> Value {
     match value {
         Value::Object(entries) => {
             let mut kept: Map<String, Value> = Map::new();
-            for (key, val) in entries.iter() {
+            for (key, val) in entries {
                 if keep(val) {
                     kept.insert(key.clone(), transform(val));
                 }
