@@ -7,7 +7,7 @@ from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, BinaryIO
+from typing import TYPE_CHECKING, Annotated, Any, BinaryIO, Literal
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -392,6 +392,33 @@ def build_graph(
 def validate_table(table_configuration_file: Path) -> None:
     """Validate section syntax from a YAML configuration file."""
     run(3, validate_pipeline, table_configuration_file)
+
+
+@APP.command(name="schema")
+def schema(
+    model: Annotated[Literal["graph", "section"], cyclopts.Parameter(name=["--model", "-m"])] = "section",
+    output: Annotated[Path | None, cyclopts.Parameter(name=["--output", "-o"])] = None,
+) -> None:
+    """Emit the JSON schema for the Graph or Section config model.
+
+    Prints an indented (indent=2) JSON schema for config authoring, to stdout or
+    to a file. Uses deferred imports so the command never pulls in lib.py/Rust at
+    import time and stays free of pipeline/network dependencies.
+
+    Args:
+        model: Which config model's schema to emit.
+        output: Optional destination file; prints to stdout when ``None``.
+    """
+    import json
+
+    from tablassert.models import Graph, Section
+
+    chosen: type[Graph] | type[Section] = Graph if model == "graph" else Section
+    text: str = json.dumps(chosen.model_json_schema(), indent=2)
+    if output is not None:
+        output.write_text(text + "\n")
+    else:
+        print(text)
 
 
 def build_fullmap_pipeline(
