@@ -24,7 +24,7 @@ The base install includes everything needed to build knowledge graphs from CSV/T
 
 ```bash
 pip install "tablassert[rt]"  # Polars build for CPUs without the required instructions
-pip install "tablassert[qc]"  # Enable QC (torch + sentence-transformers BioBERT, rapidfuzz, scikit-learn)
+pip install "tablassert[qc]"  # Enable QC (torch + sentence-transformers BioBERT, scikit-learn)
 ```
 
 Excel (`.xlsx`) inputs are read through Polars' `calamine` engine and additionally require `python-calamine` (`pip install python-calamine`).

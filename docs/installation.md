@@ -63,7 +63,7 @@ pip install tablassert
 | Extra | Description | Includes |
 |---|---|---|
 | `rt` | Runtime-compatible Polars build | `polars[rtcompat]` |
-| `qc` | QC runtime (exact → fuzzy → BioBERT audit) | `rapidfuzz`, `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively) |
+| `qc` | QC runtime (exact → fuzzy → BioBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
 
 ```bash
 # Install with runtime-compatible Polars
