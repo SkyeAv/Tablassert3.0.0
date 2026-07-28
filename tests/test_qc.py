@@ -107,3 +107,51 @@ def test_fullmap_audit_log_score_values(monkeypatch: Any) -> None:
     assert len(messages) == 1
     assert "fuzz=8.0" in messages[0]
     assert "bert=0.05" in messages[0]
+
+
+def test_fullmap_audit_on_phase_fires_all_stages_when_bert_runs(monkeypatch: Any) -> None:
+    """fullmap_audit fires qc:exact, qc:fuzzy, qc:bert in order when Stage 3 runs; output unchanged."""
+    phases: list[str] = []
+
+    class DummyBioBERT:
+        def encode(self, values: list[str]) -> object:
+            return np.array([[0.0], [1.0]])
+
+    def fake_cpdist(left: list[str], right: list[str], scorer: Any) -> object:
+        return np.array([0.0])
+
+    def fake_cosine_similarity(left: object, right: object) -> object:
+        return np.array([[0.1]])
+
+    monkeypatch.setattr(qc, "get_biobert", lambda: DummyBioBERT())
+    monkeypatch.setattr(rf_process, "cpdist", fake_cpdist)
+    monkeypatch.setattr(pairwise, "cosine_similarity", fake_cosine_similarity)
+
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["FOO:1"], "subject_pre_resolution": ["foo"], "subject_name": ["bar"]}).lazy()
+    with_cb: pl.DataFrame = qc.fullmap_audit(lf, "subject", "s", "c.yaml", log=False, on_phase=phases.append).collect()
+    without_cb: pl.DataFrame = qc.fullmap_audit(lf, "subject", "s", "c.yaml", log=False).collect()
+
+    assert phases == ["qc:exact", "qc:fuzzy", "qc:bert"]
+    assert with_cb.to_dicts() == without_cb.to_dicts()
+
+
+def test_fullmap_audit_on_phase_skips_bert_on_fuzzy_quick_exit(monkeypatch: Any) -> None:
+    """fullmap_audit fires qc:exact then qc:fuzzy but NOT qc:bert when fuzzy resolves every row."""
+    phases: list[str] = []
+
+    class DummyBioBERT:
+        def encode(self, values: list[str]) -> object:
+            raise AssertionError("Stage 3 (BioBERT) must not run on the fuzzy quick-exit path")
+
+    def fake_cpdist(left: list[str], right: list[str], scorer: Any) -> object:
+        # High ratio score: fuzzy resolves every pending row, so Stage 3 is skipped.
+        return np.array([100.0])
+
+    monkeypatch.setattr(qc, "get_biobert", lambda: DummyBioBERT())
+    monkeypatch.setattr(rf_process, "cpdist", fake_cpdist)
+
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["FOO:1"], "subject_pre_resolution": ["foo"], "subject_name": ["bar"]}).lazy()
+    result: pl.DataFrame = qc.fullmap_audit(lf, "subject", "s", "c.yaml", log=False, on_phase=phases.append).collect()
+
+    assert phases == ["qc:exact", "qc:fuzzy"]
+    assert result.height == 1  # fuzzy passed the row; nothing reached BioBERT

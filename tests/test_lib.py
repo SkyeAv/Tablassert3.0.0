@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional, Self, cast
+from typing import Any, Self, cast
 
 import polars as pl
 
@@ -32,8 +32,8 @@ from tablassert.lib import (
     parse_edge_name,
     publications,
     pvalue_target,
-    study_size_target,
     strip_nulls,
+    study_size_target,
 )
 
 
@@ -54,7 +54,7 @@ def install_fake_fullmap(monkeypatch: Any, rows: dict[str, list[dict[str, object
     """Monkeypatch fullmap lookup and return captured term batches."""
     calls: list[list[str]] = []
 
-    def fake_lookup(db: Path, terms: list[str], threads: Optional[int] = None, return_format: str = "rows") -> list[dict[str, object]]:
+    def fake_lookup(db: Path, terms: list[str], threads: int | None = None, return_format: str = "rows") -> list[dict[str, object]]:
         del db, threads, return_format
         calls.append(terms)
         return [row for term in terms for row in rows.get(term, [])]
@@ -117,6 +117,10 @@ class SyncPool:
 
     def starmap(self, fn: Any, items: object) -> list[Any]:
         return [fn(*item) for item in items]  # pyright: ignore
+
+    def imap_unordered(self, fn: Any, items: object) -> list[Any]:
+        # Synchronous stand-in: yields fn(item) for each input (consumed by a for-loop, so a list suffices).
+        return [fn(item) for item in items]  # pyright: ignore
 
 
 def test_idxname_single_letter() -> None:
@@ -721,7 +725,7 @@ def test_drop_not_significant_noop_without_column() -> None:
 
 def test_drop_not_significant_keeps_all_other_bands() -> None:
     """drop_not_significant keeps every band except biolink:not_significant."""
-    bands: list[Optional[str]] = [
+    bands: list[str | None] = [
         "biolink:very_strongly_significant",
         "biolink:strongly_significant",
         "biolink:significant",
@@ -912,6 +916,51 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     node_types: list[dict[str, Any]] = rig["target_info"]["node_type_info"]  # pyright: ignore
     assert {x["node_category"] for x in node_types} == {"biolink:gene", "biolink:disease"}
     assert any(x["source_identifier_types"] == ["HGNC"] for x in node_types)
+
+
+def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatch: Any, tmp_path: Path) -> None:
+    """compile_graph threads on_phase/on_subgraph: ordered phases, one tick per subgraph, output unchanged."""
+    monkeypatch.chdir(tmp_path)
+
+    def write_sub(p: Path, subj: str, obj: str) -> None:
+        pl.DataFrame(
+            {
+                "subject": [subj],
+                "subject_name": [subj],
+                "subject_category": ["gene"],
+                "subject_taxon": [None],
+                "subject_source": [None],
+                "subject_source_version": [None],
+                "subject_pre_resolution": [subj],
+                "object": [obj],
+                "object_name": [obj],
+                "object_category": ["disease"],
+                "object_taxon": [None],
+                "object_source": [None],
+                "object_source_version": [None],
+                "object_pre_resolution": [obj],
+                "predicate": ["r"],
+            }
+        ).write_parquet(p)
+
+    sub_a: Path = tmp_path / "a.parquet"
+    sub_b: Path = tmp_path / "b.parquet"
+    write_sub(sub_a, "A", "X")
+    write_sub(sub_b, "B", "Y")
+
+    phases: list[str] = []
+    ticks: list[None] = []
+    lib.compile_graph([sub_a, sub_b], "cb", "1.0.0", on_phase=phases.append, on_subgraph=lambda: ticks.append(None))
+
+    # scan/normalize fire once per subgraph, then the shared write phases in order.
+    assert phases == ["scan", "normalize", "scan", "normalize", "write-nodes", "write-edges", "dedup", "rig"]
+    # on_subgraph ticks exactly once per subgraph (this is what drives the bar total).
+    assert len(ticks) == 2
+
+    # Callbacks are pure observation: KGX output is byte-identical to a no-callback run.
+    lib.compile_graph([sub_a, sub_b], "cb2", "1.0.0")
+    for stem in ("edges.ndjson", "nodes.ndjson"):
+        assert (tmp_path / f"cb_1.0.0.{stem}").read_bytes() == (tmp_path / f"cb2_1.0.0.{stem}").read_bytes()
 
 
 def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1496,7 +1545,7 @@ def test_fold_unknown_skips_null_and_blank() -> None:
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
-    rows: list[list[Optional[str]]] = out["supporting_text"].to_list()
+    rows: list[list[str | None]] = out["supporting_text"].to_list()
     assert rows[0] == ["miscellaneous_notes: present"]
     # null and whitespace only both yield an empty list
     assert rows[1] == []
@@ -1913,3 +1962,43 @@ def test_build_pipeline_head_mode_isolates_store_and_caps_rows(monkeypatch: Any,
     assert len(edge_rows) == 5
     assert store_files, "expected a cached subgraph parquet"
     assert all(f.name.endswith(".head.parquet") for f in store_files)
+
+
+def test_compile_subgraph_threads_fine_phases_into_resolve_and_qc(monkeypatch: Any, tmp_path: Path) -> None:
+    """compile_subgraph forwards on_phase into resolve_batch/fullmap_audit so fine sub-phases fire in order."""
+    rows: dict[str, list[dict[str, object]]] = {
+        "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
+        "tp53": [fake_fullmap_row("tp53", "HGNC:11998", "TP53", "Gene", 9606)],
+    }
+    install_fake_fullmap(monkeypatch, rows)
+
+    # Safety net: this data passes QC at the exact stage, so BioBERT must never run (keeps the test offline).
+    class DummyBioBERT:
+        def encode(self, values: list[str]) -> object:
+            raise AssertionError("Stage 3 (BioBERT) must not run for exact-match QC data")
+
+    monkeypatch.setattr("tablassert.qc.get_biobert", lambda: DummyBioBERT())
+
+    table_path, _ = write_text_section(
+        tmp_path,
+        "fine_phases",
+        {
+            "statement": {"subject": {"method": "value", "encoding": "BRCA1"}, "object": {"method": "value", "encoding": "TP53"}},
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["ignored"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "fine_phases.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "qc": True})  # pyright: ignore
+
+    phases: list[str] = []
+    result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"), on_phase=phases.append)  # pyright: ignore
+
+    assert result_path == store
+    # Per-column resolve sub-phases fire in spec order, before any QC sub-phase.
+    assert phases.index("resolve:subject") < phases.index("resolve:object")
+    assert phases.index("resolve:object") < phases.index("qc:exact")
+    # QC sub-phases fire for the audits: exact then fuzzy; bert never (exact-match quick exit).
+    assert phases.index("qc:exact") < phases.index("qc:fuzzy")
+    assert "qc:bert" not in phases

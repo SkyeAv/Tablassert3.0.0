@@ -24,7 +24,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ## Installation Methods
 
-### Method 1: Development Installation with UV (Recommended)
+### Method 1: Development Installation with UV (Recommended for contributors)
 
 Best for development, testing, and active work on Tablassert.
 
@@ -33,14 +33,17 @@ Best for development, testing, and active work on Tablassert.
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
-# Install dependencies with UV
-uv sync
+# Install development dependencies and optional QC runtime
+uv sync --group dev --extra qc
 
-# Run Tablassert
+# Build the editable Rust extension into the uv environment
+uv run maturin develop --manifest-path rust/Cargo.toml
+
+# Verify the CLI
 uv run tablassert --help
 ```
 
-This creates a virtual environment in `.venv/` and installs the base dependencies. The `tablassert` command is available through `uv run`.
+This creates a virtual environment in `.venv/`, installs the development dependencies, and builds the local PyO3 extension. The `tablassert` command is available through `uv run`. See [Development](development.md) and the repository `CONTRIBUTING.md` for the daily edit/check loop.
 
 ### Method 2: Install from PyPI
 
@@ -127,26 +130,29 @@ You should see the Tablassert CLI help message with available commands.
 
 ## Development Setup
 
-For contributing to Tablassert or running tests, follow these additional steps:
+For contributing to Tablassert, use the source install above, then run the local task runner:
 
 ```bash
-# Install development dependencies (includes pre-commit hooks)
-uv sync --dev
+make setup
+make check
+```
 
-# Add the QC runtime for QC tests
-uv sync --dev --extra qc
+The underlying stable gate commands are:
 
-# Install pre-commit hooks
-pre-commit install
-
-# Run tests
-uv run pytest
-
-# Run type checking
-uv run pyright
-
-# Run linting
+```bash
 uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest
+cargo fmt --check --manifest-path rust/Cargo.toml
+cargo test --manifest-path rust/Cargo.toml
+cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+```
+
+Install pre-commit hooks if you want the gates to run automatically before commits:
+
+```bash
+uv run pre-commit install
 ```
 
 ## Upgrading Development Installation
@@ -157,8 +163,9 @@ To upgrade to the latest version:
 # Pull latest changes
 git pull origin main
 
-# Update dependencies
-uv sync
+# Update dependencies and rebuild the editable extension
+uv sync --group dev --extra qc
+uv run maturin develop --manifest-path rust/Cargo.toml
 ```
 
 ## Troubleshooting
@@ -181,9 +188,9 @@ uv python pin 3.11
 If you encounter dependency installation issues, try:
 
 ```bash
-# Clear UV cache and reinstall
-uv cache clean
-uv sync --reinstall
+# Reinstall dependencies and rebuild the editable extension
+uv sync --group dev --extra qc --reinstall
+uv run maturin develop --manifest-path rust/Cargo.toml
 ```
 
 ### Polars CPU Instruction Issues

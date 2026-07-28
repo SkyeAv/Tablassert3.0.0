@@ -11,7 +11,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
@@ -159,15 +159,25 @@ fn clean(value: &str) -> String {
     }
 }
 
+/// QC a NORMALIZED (level-one / lowercase) term.  Callers must pass an
+/// already-lowercased form (emit_term feeds it the level-one value), so the
+/// banned-token checks compare lowercase needles directly and skip a per-term
+/// `to_lowercase` heap allocation on the hot path.  Behavior is unchanged:
+/// lowercasing is case-only and never affects the empty/tab/newline guards, so
+/// QC-ing the lowercase form is exactly equivalent to QC-ing the original value
+/// and lowercasing internally.
 fn token_qc(value: &str) -> bool {
-    let lower = value.to_lowercase();
+    // Tripwire (debug builds only; zero release cost): the banned-token checks
+    // are case-sensitive against lowercase needles, so a mixed-case caller would
+    // silently miss them.  Catch that contract violation early.
+    debug_assert_eq!(value, value.to_lowercase());
     !value.is_empty()
         && !value.contains('\t')
         && !value.contains('\n')
         && !value.contains('\r')
-        && !lower.contains("inchikey")
-        && !lower.contains("uncharacterized")
-        && !lower.contains("hypothetical")
+        && !value.contains("inchikey")
+        && !value.contains("uncharacterized")
+        && !value.contains("hypothetical")
 }
 
 fn level_one(value: &str) -> String {
@@ -240,37 +250,28 @@ fn string_field(value: &Value, keys: &[&str]) -> Option<String> {
     None
 }
 
-fn string_array(value: &Value, key: &str) -> Vec<String> {
+/// Borrow the first string element of `value`'s array at `key` (skipping
+/// non-string elements), or None.  Zero-copy: returns a `&str` into the live
+/// `Value` instead of allocating an owned `Vec<String>` just to take its head.
+fn first_str<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value
         .get(key)
         .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(String::from)
-                .collect()
-        })
-        .unwrap_or_default()
+        .and_then(|items| items.iter().find_map(Value::as_str))
 }
 
 fn first_category(value: &Value) -> String {
-    string_array(value, "types")
-        .into_iter()
-        .next()
-        .or_else(|| string_array(value, "categories").into_iter().next())
-        .unwrap_or_else(|| "NamedThing".to_string())
+    first_str(value, "types")
+        .or_else(|| first_str(value, "categories"))
+        .unwrap_or("NamedThing")
         .trim_start_matches("biolink:")
         .to_string()
 }
 
 fn first_taxon(value: &Value) -> i32 {
-    let taxon = string_array(value, "taxa")
-        .into_iter()
-        .next()
-        .or_else(|| string_array(value, "taxon").into_iter().next())
-        .unwrap_or_default();
-    taxon
+    first_str(value, "taxa")
+        .or_else(|| first_str(value, "taxon"))
+        .unwrap_or_default()
         .trim_start_matches("NCBITaxon:")
         .parse::<i32>()
         .unwrap_or(0)
@@ -340,6 +341,7 @@ fn hydrate_record(
 // Sharded concurrent map (inspired by datassert's sharded curieCounter)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::cast_possible_truncation)] // xxh64->usize: only the low bits feed the shard mask, so truncation is the intended routing
 fn shard_index(key: &str) -> usize {
     (xxh64(key.as_bytes(), 0) as usize) & SHARD_MASK
 }
@@ -356,7 +358,7 @@ impl<V> ShardedMap<V> {
         for _ in 0..SHARD_COUNT {
             shards.push(RwLock::new(HashMap::new()));
         }
-        ShardedMap { shards }
+        Self { shards }
     }
 
     /// Get an existing value or insert a new one computed by `f`.
@@ -401,10 +403,11 @@ impl CurieIdMap {
         for _ in 0..SHARD_COUNT {
             shards.push(RwLock::new(HashMap::new()));
         }
-        CurieIdMap { shards }
+        Self { shards }
     }
 
     /// Get the id for `hash`, or insert a new one computed by `f`.
+    #[allow(clippy::cast_possible_truncation)] // u128 hash->usize: only the low bits select the shard, so truncation is the intended routing
     fn get_or_insert_with(&self, hash: u128, f: impl FnOnce() -> u32) -> u32 {
         let idx = (hash as usize) & SHARD_MASK;
         // Fast path: read lock.
@@ -437,6 +440,8 @@ struct Progress {
 impl Progress {
     fn call(&self, phase: i32, completed: u64, total: u64, detail: &str) {
         Python::attach(|py| {
+            // Progress is best-effort: a failing Python callback must never kill
+            // the build, so the call result is deliberately discarded.
             let _ = self.cb.call1(py, (phase, completed, total, detail));
         });
     }
@@ -459,13 +464,15 @@ struct RunWriter {
 
 impl RunWriter {
     fn new(path: &Path) -> std::io::Result<Self> {
-        Ok(RunWriter {
+        Ok(Self {
             w: BufWriter::with_capacity(1 << 20, File::create(path)?),
         })
     }
 
+    #[allow(clippy::cast_possible_truncation)] // frame format stores term/pair counts as u32 lengths
     fn write_term(&mut self, term: &str, pairs: &[(u32, u8)]) -> std::io::Result<()> {
         let tb = term.as_bytes();
+        debug_assert!(u32::try_from(tb.len()).is_ok() && u32::try_from(pairs.len()).is_ok());
         self.w.write_all(&(tb.len() as u32).to_le_bytes())?;
         self.w.write_all(tb)?;
         self.w.write_all(&(pairs.len() as u32).to_le_bytes())?;
@@ -490,7 +497,7 @@ impl RunReader {
     fn new(path: &Path) -> std::io::Result<Self> {
         let mut reader = BufReader::with_capacity(1 << 20, File::open(path)?);
         let cur = Self::read_frame(&mut reader)?;
-        Ok(RunReader { reader, cur })
+        Ok(Self { reader, cur })
     }
 
     fn read_frame(r: &mut BufReader<File>) -> std::io::Result<Option<TermPairs>> {
@@ -581,12 +588,14 @@ struct CurieRunWriter {
 
 impl CurieRunWriter {
     fn new(path: &Path) -> std::io::Result<Self> {
-        Ok(CurieRunWriter {
+        Ok(Self {
             w: BufWriter::with_capacity(1 << 20, File::create(path)?),
         })
     }
 
+    #[allow(clippy::cast_possible_truncation)] // frame format stores the encoded row length as a u32
     fn write_row(&mut self, curie_id: u32, encoded: &[u8]) -> std::io::Result<()> {
+        debug_assert!(u32::try_from(encoded.len()).is_ok());
         self.w.write_all(&curie_id.to_le_bytes())?;
         self.w.write_all(&(encoded.len() as u32).to_le_bytes())?;
         self.w.write_all(encoded)?;
@@ -604,7 +613,7 @@ struct CurieRunReader {
 
 impl CurieRunReader {
     fn new(path: &Path) -> std::io::Result<Self> {
-        Ok(CurieRunReader {
+        Ok(Self {
             reader: BufReader::with_capacity(1 << 20, File::open(path)?),
         })
     }
@@ -637,7 +646,7 @@ fn spill_curie_run(
     spill_dir: &Path,
     run_id: usize,
 ) -> PyResult<PathBuf> {
-    let path = spill_dir.join(format!("curie_run_{:08}.bin", run_id));
+    let path = spill_dir.join(format!("curie_run_{run_id:08}.bin"));
     let mut w = CurieRunWriter::new(&path).map_err(py_err)?;
     for (curie_id, row) in local.drain(..) {
         let encoded = bincode::serialize(&row).map_err(py_err)?;
@@ -664,7 +673,7 @@ impl MergeHeap {
             }
             readers.push(rr);
         }
-        Ok(MergeHeap { readers, heap })
+        Ok(Self { readers, heap })
     }
 
     /// Return the next term with its merged, sorted, de-duplicated pairs.
@@ -709,6 +718,7 @@ type EquivEntry = (u64, String, Vec<String>);
 type EquivMergeItem = (Reverse<u64>, Reverse<String>, usize, Vec<String>);
 
 /// Write an equiv entry to a buffered writer (run-file format with hash).
+#[allow(clippy::cast_possible_truncation)] // equiv run format stores key/equiv counts and byte lengths as u32
 fn write_equiv_entry(
     w: &mut impl Write,
     hash: u64,
@@ -717,6 +727,7 @@ fn write_equiv_entry(
 ) -> std::io::Result<()> {
     w.write_all(&hash.to_le_bytes())?;
     let kb = key.as_bytes();
+    debug_assert!(u32::try_from(kb.len()).is_ok() && u32::try_from(equivs.len()).is_ok());
     w.write_all(&(kb.len() as u32).to_le_bytes())?;
     w.write_all(kb)?;
     w.write_all(&(equivs.len() as u32).to_le_bytes())?;
@@ -787,7 +798,7 @@ fn spill_equiv_local(
     // distinct CURIEs in the same run.
     entries.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
-    let rp = equiv_dir.join(format!("run_{:08}.bin", run_id));
+    let rp = equiv_dir.join(format!("run_{run_id:08}.bin"));
     let mut w = BufWriter::with_capacity(1 << 20, File::create(&rp).map_err(py_err)?);
     for (h, k, e) in &entries {
         write_equiv_entry(&mut w, *h, k, e).map_err(py_err)?;
@@ -861,7 +872,7 @@ impl EquivIndex {
             std::fs::write(&data_path, b"").map_err(py_err)?;
             let file = File::open(&data_path).map_err(py_err)?;
             let data = unsafe { memmap2::Mmap::map(&file).map_err(py_err)? };
-            return Ok(EquivIndex {
+            return Ok(Self {
                 hashes: Vec::new(),
                 offsets: Vec::new(),
                 data,
@@ -934,6 +945,12 @@ impl EquivIndex {
             }
         }
 
+        // Throttled Phase-0 progress: the merge is single-threaded and can group
+        // hundreds of millions of entries, so report every 1M groups (not per
+        // group) to bound the GIL re-acquire count.  total is 0 (indeterminate):
+        // the merged-group count is unknown until the merge completes, and a
+        // pre-pass over the (potentially huge) equiv runs would double their I/O.
+        let mut entries_merged: u64 = 0;
         while let Some((Reverse(hash), Reverse(key), idx, mut equivs)) = heap.pop() {
             let mut to_advance = vec![idx];
             while let Some((Reverse(h), Reverse(k), _, _)) = heap.peek() {
@@ -966,6 +983,13 @@ impl EquivIndex {
             offsets.push(offset);
             offset += entry_len as u64;
 
+            entries_merged += 1;
+            if entries_merged.is_multiple_of(1_000_000) {
+                if let Some(p) = progress {
+                    p.call(0, entries_merged, 0, "merging equivalents");
+                }
+            }
+
             for i in to_advance {
                 if let Some((h, k, e)) = read_equiv_entry(&mut readers[i]).map_err(py_err)? {
                     heap.push((Reverse(h), Reverse(k), i, e));
@@ -982,7 +1006,7 @@ impl EquivIndex {
         let file = File::open(&data_path).map_err(py_err)?;
         let data = unsafe { memmap2::Mmap::map(&file).map_err(py_err)? };
 
-        Ok(EquivIndex {
+        Ok(Self {
             hashes,
             offsets,
             data,
@@ -1016,20 +1040,23 @@ impl EquivIndex {
     }
 }
 
-/// Process a single term through clean → token_qc → level_one → level_two
-/// and insert the resulting normalized forms into `local_terms`.
+/// Process a single term through clean → level_one → token_qc → level_two and
+/// insert the resulting normalized forms into `local_terms`.  token_qc runs on
+/// the level-one (lowercase) form — exactly equivalent to QC-ing the cleaned
+/// value, since lowercasing is case-only — but avoids a redundant per-term
+/// `to_lowercase`.  The level-one key is moved straight into the entry (no
+/// per-hit clone); level-two is derived first so it survives the move.
 fn emit_term(term: &str, pair: (u32, u8), local_terms: &mut HashMap<String, Vec<(u32, u8)>>) {
     let cleaned = clean(term);
-    if !token_qc(&cleaned) {
+    let l1 = level_one(&cleaned);
+    if !token_qc(&l1) || is_dead_term(&l1) {
         return;
     }
-    let l1 = level_one(&cleaned);
-    if token_qc(&l1) && !is_dead_term(&l1) {
-        local_terms.entry(l1.clone()).or_default().push(pair);
-        let l2 = level_two(&l1);
-        if l2 != l1 && token_qc(&l2) && !is_dead_term(&l2) {
-            local_terms.entry(l2).or_default().push(pair);
-        }
+    let l2 = level_two(&l1);
+    let emit_l2 = l2 != l1 && token_qc(&l2) && !is_dead_term(&l2);
+    local_terms.entry(l1).or_default().push(pair);
+    if emit_l2 {
+        local_terms.entry(l2).or_default().push(pair);
     }
 }
 
@@ -1135,8 +1162,12 @@ fn process_row(
     }
 
     let pair = (curie_id, source_id);
-    for name in string_array(row, "names") {
-        emit_term(&name, pair, &mut buf.terms);
+    // Borrow each name as a &str straight from the live Value instead of
+    // building an owned Vec<String>; emit_term only needs a &str.
+    if let Some(names) = row.get("names").and_then(Value::as_array) {
+        for name in names.iter().filter_map(Value::as_str) {
+            emit_term(name, pair, &mut buf.terms);
+        }
     }
     emit_term(&curie, pair, &mut buf.terms);
     if let Some(iter) = sh.equivalents.lookup(&curie) {
@@ -1184,6 +1215,7 @@ fn flush_buf(sh: &SynonymShared<'_>, buf: &mut WorkerBuf) -> PyResult<()> {
 /// with its source id) into the channel.  Decompression happens here; JSON
 /// parsing/processing happens in the workers.  The bounded channel provides
 /// backpressure so a fast decompressor cannot buffer a whole giant file in RAM.
+#[allow(clippy::too_many_arguments)]
 fn produce_file(
     path: &Path,
     tx: &SyncSender<(u8, Vec<String>)>,
@@ -1191,6 +1223,7 @@ fn produce_file(
     chunk_bytes: usize,
     progress: Option<&Arc<Progress>>,
     files_done: &AtomicUsize,
+    rows_done: &AtomicU64,
     total_files: usize,
 ) -> PyResult<()> {
     let src_name = source_name(path);
@@ -1201,13 +1234,15 @@ fn produce_file(
     let reader = BufReader::new(open_reader(path)?);
     let mut chunk: Vec<String> = Vec::new();
     let mut chunk_len: usize = 0;
-    let mut row_count: u64 = 0;
+    // Rows accumulated in the current (not-yet-flushed) chunk; folded into the
+    // shared cumulative counter at each flush and at EOF.
+    let mut chunk_rows: u64 = 0;
     for line in reader.lines() {
         let raw = line.map_err(py_err)?;
         if raw.trim().is_empty() {
             continue;
         }
-        row_count += 1;
+        chunk_rows += 1;
         chunk_len += raw.len();
         chunk.push(raw);
         // Flush once the chunk reaches the byte budget (bounds per-chunk memory
@@ -1216,19 +1251,36 @@ fn produce_file(
             tx.send((source_id, std::mem::take(&mut chunk)))
                 .map_err(py_err)?;
             chunk_len = 0;
+            // Per-chunk Phase-1 progress (the big granularity win): report the
+            // CUMULATIVE rows processed across the WHOLE synonym phase — a single
+            // monotonic unit shared by every producer via `rows_done` — with
+            // total=0 (indeterminate; no cheap global row total exists).  A
+            // per-file row count here would clash with a file-index count on the
+            // same phase's single high-water mark and overflow the bar.
+            if let Some(p) = progress {
+                let global = rows_done.fetch_add(chunk_rows, Ordering::Relaxed) + chunk_rows;
+                p.call(1, global, 0, &format!("{src_name} · {global} rows"));
+            }
+            chunk_rows = 0;
         }
     }
     if !chunk.is_empty() {
         tx.send((source_id, chunk)).map_err(py_err)?;
     }
 
+    // EOF: fold the final partial chunk's rows into the cumulative count and emit
+    // a file-completion tick in the SAME unit (cumulative rows, total=0) so the
+    // phase-1 high-water mark stays monotonic and never mixes in a small file
+    // index.  The file count rides in the detail string only (not completed/total).
+    // This tick is essential for small files that never hit a chunk flush.
     if let Some(p) = progress {
+        let global = rows_done.fetch_add(chunk_rows, Ordering::Relaxed) + chunk_rows;
         let n = files_done.fetch_add(1, Ordering::Relaxed) + 1;
         p.call(
             1,
-            n as u64,
-            total_files as u64,
-            &format!("{src_name} · {row_count} rows"),
+            global,
+            0,
+            &format!("{src_name} · {global} rows ({n}/{total_files} files)"),
         );
     }
     Ok(())
@@ -1323,6 +1375,9 @@ fn process_synonyms(
     let run_paths: RwLock<Vec<Vec<PathBuf>>> = RwLock::new(vec![Vec::new(); shard_count]);
     let run_counter = AtomicUsize::new(0);
     let files_done = AtomicUsize::new(0);
+    // Cumulative rows processed across the whole synonym phase, shared by every
+    // producer so Phase-1 progress reports one monotonic unit (see produce_file).
+    let rows_done = AtomicU64::new(0);
     let total_files = synonyms.len();
 
     let shared = SynonymShared {
@@ -1367,6 +1422,7 @@ fn process_synonyms(
         let file_idx_ref = &file_idx;
         let source_ids_ref = &source_ids;
         let files_done_ref = &files_done;
+        let rows_done_ref = &rows_done;
         let mut handles: Vec<std::thread::ScopedJoinHandle<'_, PyResult<()>>> = Vec::new();
 
         // Workers: persistent private buffers, spilling at local_spill/curie_spill.
@@ -1390,6 +1446,7 @@ fn process_synonyms(
                     chunk_bytes,
                     progress,
                     files_done_ref,
+                    rows_done_ref,
                     total_files,
                 )?;
             }));
@@ -1544,16 +1601,45 @@ fn write_final_database(
     // Owned per-thread progress handle (cheap Arc clone); `Progress::call`
     // re-acquires the GIL via Python::attach, which is safe from many threads.
     let progress: Option<Arc<Progress>> = progress.map(Arc::clone);
+    // Estimate a Phase-2 progress total ONLY when a progress callback is present
+    // (tests / no-bar builds skip this read pass entirely): the number of
+    // term-frames across every shard's spill runs.  This is an UPPER BOUND on the
+    // records written (a term recurs across runs and is merged), so the bar
+    // climbs toward ~100% during the merge and the final emission below snaps
+    // completed to the exact written count.
+    let total_estimate: u64 = if progress.is_some() {
+        run_paths
+            .iter()
+            .flatten()
+            .map(|path| count_run_frames(path).unwrap_or(0))
+            .sum()
+    } else {
+        0
+    };
+    // Global record counter shared across shard writer threads.  Its VALUE is
+    // monotonic (each thread adds its flushed batch); the delivery ORDER of the
+    // per-thread callbacks may vary, and the consumer clamps to a high-water mark.
+    let global_written = AtomicU64::new(0);
     let scope_result: PyResult<u64> = std::thread::scope(|s| {
         let mut handles: Vec<std::thread::ScopedJoinHandle<'_, PyResult<u64>>> = Vec::new();
         for i in 0..shard_count {
             // Each thread owns its shard DB handle, its shard's run list, and a
-            // progress handle outright — no shared receiver or borrow.
+            // progress handle outright — no shared receiver or borrow — but shares
+            // the global record counter so progress reports a single count.
             let db = &shard_databases[i];
             let shard_runs: Vec<PathBuf> = run_paths[i].clone();
             let progress = progress.clone();
+            let global = &global_written;
             handles.push(s.spawn(move || {
-                write_shard_records(db, &shard_runs, insert_batch, progress.as_ref())
+                write_shard_records(
+                    db,
+                    &shard_runs,
+                    insert_batch,
+                    i,
+                    global,
+                    total_estimate,
+                    progress.as_ref(),
+                )
             }));
         }
 
@@ -1603,6 +1689,9 @@ fn write_shard_records(
     database: &Database,
     run_paths: &[PathBuf],
     insert_batch: usize,
+    shard_index: usize,
+    global_written: &AtomicU64,
+    total: u64,
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<u64> {
     let mut write = database.begin_write().map_err(py_err)?;
@@ -1619,13 +1708,14 @@ fn write_shard_records(
         let encoded = bincode::serialize(&(term.as_str(), &pairs)).map_err(py_err)?;
         batch.push((hash, encoded));
         if insert_batch > 0 && batch.len() >= insert_batch {
-            written += flush_shard_batch(&mut table, &mut batch)?;
-            if let Some(p) = progress {
-                p.call(2, written, 0, &format!("writing {written} records"));
-            }
+            let flushed = flush_shard_batch(&mut table, &mut batch)?;
+            written += flushed;
+            report_shard_progress(progress, global_written, total, shard_index, flushed);
         }
     }
-    written += flush_shard_batch(&mut table, &mut batch)?;
+    let flushed = flush_shard_batch(&mut table, &mut batch)?;
+    written += flushed;
+    report_shard_progress(progress, global_written, total, shard_index, flushed);
     drop(table);
     write.commit().map_err(py_err)?;
     // Final durable commit to persist all pages.
@@ -1653,6 +1743,68 @@ fn flush_shard_batch(
     Ok(flushed)
 }
 
+/// Count the term-frames in one spill-run file WITHOUT allocating the pairs:
+/// parse the `[u32 term_len][term][u32 pair_count][5*pair_count]` frame headers
+/// and skip the payloads.  Used ONLY to estimate a Phase-2 progress total (and
+/// only when a progress callback is present).  The count is an UPPER BOUND on the
+/// records actually written: a term recurs across runs and is merged/deduped, so
+/// the bar climbs toward ~100% during the merge and the final emission snaps
+/// completed to the exact written count.  Mirrors `RunReader::read_frame`'s
+/// 1-byte EOF detection so a clean trailing read returns the exact count.
+fn count_run_frames(path: &Path) -> std::io::Result<u64> {
+    let mut r = BufReader::with_capacity(1 << 20, File::open(path)?);
+    let mut count: u64 = 0;
+    loop {
+        let mut first = [0u8; 1];
+        if r.read(&mut first)? == 0 {
+            return Ok(count);
+        }
+        let mut rest = [0u8; 3];
+        r.read_exact(&mut rest)?;
+        let term_len = u32::from_le_bytes([first[0], rest[0], rest[1], rest[2]]) as u64;
+        {
+            let mut skip = (&mut r).take(term_len);
+            std::io::copy(&mut skip, &mut std::io::sink())?;
+        }
+        let mut cb = [0u8; 4];
+        r.read_exact(&mut cb)?;
+        let pair_count = u32::from_le_bytes(cb) as u64;
+        {
+            let mut skip = (&mut r).take(pair_count * 5);
+            std::io::copy(&mut skip, &mut std::io::sink())?;
+        }
+        count += 1;
+    }
+}
+
+/// Report Phase-2 progress for a flushed batch: add `flushed` to the shared
+/// global counter and emit `(2, global, total, "shard {i}: writing {global}")`.
+/// The atomic counter VALUE is monotonic (it only grows), but the ORDER in which
+/// concurrent shard threads DELIVER these calls to Python is not guaranteed to be
+/// sorted (scheduling between `fetch_add` and the call can deliver e.g. 150 then
+/// 100).  That is harmless: the consumer (progress.py) clamps to a per-phase
+/// high-water mark.  A no-op for an empty flush or when there is no callback.
+fn report_shard_progress(
+    progress: Option<&Arc<Progress>>,
+    global_written: &AtomicU64,
+    total: u64,
+    shard_index: usize,
+    flushed: u64,
+) {
+    if flushed == 0 {
+        return;
+    }
+    if let Some(p) = progress {
+        let global = global_written.fetch_add(flushed, Ordering::Relaxed) + flushed;
+        p.call(
+            2,
+            global,
+            total,
+            &format!("shard {shard_index}: writing {global} records"),
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Build orchestrator
 // ---------------------------------------------------------------------------
@@ -1662,6 +1814,7 @@ fn flush_shard_batch(
 /// the RECORDS key, so a term's shard and its key are derived from one xxh64 call
 /// site each (write and read agree).  This is the single routing oracle shared by
 /// the writer and the reader.
+#[allow(clippy::cast_possible_truncation)] // xxh64->usize: only the low bits feed the shard mask, so truncation is the intended routing
 fn term_shard(term: &str, shard_count: usize) -> usize {
     (xxh64(term.as_bytes(), 0) as usize) & (shard_count - 1)
 }
@@ -1811,7 +1964,7 @@ pub fn build_fullmap_db(
     let worker_count = threads
         .unwrap_or_else(|| {
             let cpus = std::thread::available_parallelism()
-                .map(|n| n.get())
+                .map(std::num::NonZero::get)
                 .unwrap_or(1);
             // Cap at available_memory_gb / 2 to prevent swap on memory-constrained
             // machines.  Each thread uses ~400 MB of local buffers; the cap is
@@ -1937,7 +2090,7 @@ fn validate_schema(database: &Database) -> PyResult<()> {
         .map(|x| x.value().to_string());
     match schema.as_deref() {
         Some(SCHEMA_VERSION) => Ok(()),
-        Some(SCHEMA_VERSION_V3) | Some(SCHEMA_VERSION_V2) | Some(SCHEMA_VERSION_V1) => {
+        Some(SCHEMA_VERSION_V3 | SCHEMA_VERSION_V2 | SCHEMA_VERSION_V1) => {
             Err(PyRuntimeError::new_err(
                 "fullmap DB is outdated; rebuild with 'tablassert build-fullmap'",
             ))
@@ -2148,7 +2301,7 @@ fn default_lookup_workers(terms_len: usize) -> usize {
         return 1;
     }
     std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(std::num::NonZero::get)
         .unwrap_or(1)
 }
 
@@ -3015,7 +3168,7 @@ mod tests {
         // the effective worker count is still >1, which (with >=2 non-empty shards)
         // makes `lookup_pair_terms_db` spawn >1 shard-reader thread.
         let cpus = std::thread::available_parallelism()
-            .map(|n| n.get())
+            .map(std::num::NonZero::get)
             .unwrap_or(1);
         let default_workers = default_lookup_workers(probes.len());
         if cpus > 1 {
@@ -3717,5 +3870,317 @@ mod tests {
         let a = open_cached(output.clone()).unwrap();
         let b = open_cached(output).unwrap();
         assert!(Arc::ptr_eq(&a, &b));
+    }
+
+    /// `MergeHeap::next_group` must k-way merge several term-sorted runs: terms
+    /// emerge in globally sorted order, and for each term the pair lists from
+    /// every run that carries it are concatenated then sorted+deduped (the pairs
+    /// within a single run are deliberately unsorted/duplicated here to prove the
+    /// merge, not the writer, establishes the final ordering).  Returns None at a
+    /// clean EOF.
+    #[test]
+    fn merge_heap_merges_overlapping_runs_sorted_and_deduped() {
+        let dir = tempfile::tempdir().unwrap();
+        // Each run is term-sorted (the MergeHeap invariant); pairs inside a run
+        // are intentionally unsorted and duplicated.
+        let run0 = dir.path().join("r0.bin");
+        let run1 = dir.path().join("r1.bin");
+        let run2 = dir.path().join("r2.bin");
+
+        let mut w = RunWriter::new(&run0).unwrap();
+        w.write_term("apple", &[(3, 1), (1, 0), (2, 2)]).unwrap();
+        w.write_term("cherry", &[(5, 0)]).unwrap();
+        w.finish().unwrap();
+
+        let mut w = RunWriter::new(&run1).unwrap();
+        w.write_term("apple", &[(1, 0), (9, 3)]).unwrap();
+        w.write_term("banana", &[(7, 2), (7, 2)]).unwrap();
+        w.finish().unwrap();
+
+        let mut w = RunWriter::new(&run2).unwrap();
+        w.write_term("banana", &[(4, 1)]).unwrap();
+        w.write_term("cherry", &[(5, 0), (0, 0)]).unwrap();
+        w.finish().unwrap();
+
+        let paths = vec![run0, run1, run2];
+        let mut merge = MergeHeap::new(&paths).unwrap();
+
+        // "apple" appears in run0 + run1: merged, sorted, deduped.
+        let apple = merge.next_group().unwrap().expect("apple group");
+        assert_eq!(apple.0, "apple");
+        assert_eq!(apple.1, vec![(1, 0), (2, 2), (3, 1), (9, 3)]);
+
+        // "banana" appears in run1 (dup pair) + run2.
+        let banana = merge.next_group().unwrap().expect("banana group");
+        assert_eq!(banana.0, "banana");
+        assert_eq!(banana.1, vec![(4, 1), (7, 2)]);
+
+        // "cherry" appears in run0 + run2 (overlapping (5,0) pair).
+        let cherry = merge.next_group().unwrap().expect("cherry group");
+        assert_eq!(cherry.0, "cherry");
+        assert_eq!(cherry.1, vec![(0, 0), (5, 0)]);
+
+        // Terms emerged in sorted order (apple < banana < cherry) and the heap is
+        // now exhausted: a clean EOF yields None.
+        assert!(merge.next_group().unwrap().is_none(), "clean EOF expected");
+    }
+
+    /// `RunWriter`/`RunReader` must roundtrip term frames exactly: an empty pair
+    /// list, a 100k-pair term, a unicode term, and enough padding terms to grow
+    /// the file past the 1 MB BufReader capacity so frames span a buffer refill.
+    /// The reader returns frames in file order and reports a clean EOF (cur=None).
+    #[test]
+    fn term_run_writer_reader_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("terms.bin");
+
+        let big_pairs: Vec<(u32, u8)> = (0..100_000).map(|i| (i, (i % 256) as u8)).collect();
+        let unicode = "héllo–wörld·αβγ";
+
+        let mut w = RunWriter::new(&path).unwrap();
+        w.write_term("empty", &[]).unwrap();
+        w.write_term("big", &big_pairs).unwrap();
+        w.write_term(unicode, &[(1, 2)]).unwrap();
+        // Padding terms push the file well past the 1 MB BufReader capacity.
+        for i in 0..20_000u32 {
+            w.write_term(&format!("pad{i:08}"), &[(i, 0), (i, 1)])
+                .unwrap();
+        }
+        w.finish().unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() > (1 << 20));
+
+        let mut reader = RunReader::new(&path).unwrap();
+
+        let (term, pairs) = reader.cur.take().unwrap();
+        assert_eq!(term, "empty");
+        assert!(pairs.is_empty());
+        reader.advance().unwrap();
+
+        let (term, pairs) = reader.cur.take().unwrap();
+        assert_eq!(term, "big");
+        assert_eq!(pairs, big_pairs);
+        reader.advance().unwrap();
+
+        let (term, pairs) = reader.cur.take().unwrap();
+        assert_eq!(term, unicode);
+        assert_eq!(pairs, vec![(1, 2)]);
+        reader.advance().unwrap();
+
+        for i in 0..20_000u32 {
+            let (term, pairs) = reader.cur.take().unwrap();
+            assert_eq!(term, format!("pad{i:08}"));
+            assert_eq!(pairs, vec![(i, 0), (i, 1)]);
+            reader.advance().unwrap();
+        }
+        assert!(reader.cur.is_none(), "clean EOF expected");
+    }
+
+    /// `EquivIndex::build` must k-way merge MULTIPLE equiv spill runs (forced here
+    /// via a tiny `TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES`) so a curie that recurs
+    /// across several class files/runs resolves to the union of its equivalents,
+    /// sorted and deduped.  Two distinct curies must both resolve, and a miss must
+    /// return None.
+    #[test]
+    fn equiv_index_multi_run_merge_and_lookup() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        // A tiny spill threshold forces one run per row, so X:1 (present in all
+        // three files) is merged across several runs in Phase 1b.  A small
+        // threshold only changes HOW MANY runs are written, never the merged
+        // result, so concurrent builds in other tests stay correct.
+        std::env::set_var("TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES", "1");
+
+        let write_classes = |name: &str, rows: &[&str]| -> PathBuf {
+            let path = dir.path().join(name);
+            let mut file = File::create(&path).unwrap();
+            for row in rows {
+                writeln!(file, "{row}").unwrap();
+            }
+            path
+        };
+        let a = write_classes(
+            "a.ndjson",
+            &[
+                r#"{"id":"X:1","equivalent_identifiers":[{"identifier":"E:b"},{"identifier":"E:a"}]}"#,
+                r#"{"id":"Y:2","equivalent_identifiers":[{"identifier":"E:z"}]}"#,
+            ],
+        );
+        let b = write_classes(
+            "b.ndjson",
+            &[
+                r#"{"id":"X:1","equivalent_identifiers":[{"identifier":"E:c"},{"identifier":"E:a"}]}"#,
+            ],
+        );
+        let c = write_classes(
+            "c.ndjson",
+            &[
+                r#"{"id":"X:1","equivalent_identifiers":[{"identifier":"E:b"}]}"#,
+                r#"{"id":"Z:3","equivalent_identifiers":[{"identifier":"E:q"}]}"#,
+            ],
+        );
+
+        let spill_dir = dir.path().join("spill");
+        std::fs::create_dir_all(&spill_dir).unwrap();
+        let index = EquivIndex::build(&[a, b, c], &spill_dir, None).unwrap();
+        std::env::remove_var("TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES");
+
+        // X:1 appears in all three files: equivs merged across runs, sorted+deduped
+        // (E:a duplicated across a+b, E:b duplicated across a+c).
+        let x: Vec<String> = index
+            .lookup("X:1")
+            .expect("X:1 present")
+            .map(String::from)
+            .collect();
+        assert_eq!(
+            x,
+            vec!["E:a".to_string(), "E:b".to_string(), "E:c".to_string()]
+        );
+
+        // Two distinct curies both resolve to their own equiv sets.
+        let y: Vec<String> = index
+            .lookup("Y:2")
+            .expect("Y:2 present")
+            .map(String::from)
+            .collect();
+        assert_eq!(y, vec!["E:z".to_string()]);
+        let z: Vec<String> = index
+            .lookup("Z:3")
+            .expect("Z:3 present")
+            .map(String::from)
+            .collect();
+        assert_eq!(z, vec!["E:q".to_string()]);
+
+        // A curie that was never indexed is a miss.
+        assert!(index.lookup("ABSENT:9").is_none());
+    }
+
+    /// `emit_term` inserts the level-one form and, when distinct, the level-two
+    /// form; skips level-two when it equals level-one; drops dead terms and
+    /// token_qc failures; and accumulates one pair per call under each key.
+    #[test]
+    fn emit_term_inserts_normalized_forms_and_accumulates() {
+        // l1 and l2 both inserted when they differ ("BRCA-1" -> "brca-1" + "brca1").
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("BRCA-1", (1, 0), &mut terms);
+        assert_eq!(
+            terms.get("brca-1").map(Vec::as_slice),
+            Some([(1, 0)].as_slice())
+        );
+        assert_eq!(
+            terms.get("brca1").map(Vec::as_slice),
+            Some([(1, 0)].as_slice())
+        );
+        assert_eq!(terms.len(), 2);
+
+        // l2 skipped when it equals l1 ("TP53" -> "tp53" is already alnum).
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("TP53", (2, 1), &mut terms);
+        assert_eq!(
+            terms.get("tp53").map(Vec::as_slice),
+            Some([(2, 1)].as_slice())
+        );
+        assert_eq!(terms.len(), 1, "l2 == l1 must not insert a second key");
+
+        // Dead terms (banned token + all-digit) are dropped at level one.
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("none", (3, 0), &mut terms);
+        emit_term("12345", (3, 0), &mut terms);
+        assert!(terms.is_empty(), "dead terms must not be indexed");
+
+        // A token_qc failure skips the term entirely.
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("hypothetical protein", (4, 0), &mut terms);
+        assert!(terms.is_empty(), "qc-failing term must not be indexed");
+
+        // Pair accumulation: the same term called twice keeps both pairs in order.
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("gene", (5, 0), &mut terms);
+        emit_term("gene", (6, 1), &mut terms);
+        assert_eq!(
+            terms.get("gene").map(Vec::as_slice),
+            Some([(5, 0), (6, 1)].as_slice())
+        );
+    }
+
+    /// `is_dead_term` is an exact-match filter: every named banned token, the
+    /// empty string, and all-digit strings are dead; ordinary terms (and terms
+    /// that merely CONTAIN a banned token as a substring) are alive.
+    #[test]
+    fn is_dead_term_classifies_banned_empty_and_numeric() {
+        for banned in [
+            "none",
+            "nan",
+            "na",
+            "null",
+            "unknown",
+            "not applicable",
+            "p_value",
+            "variable",
+            "result",
+            "exposure",
+            "expression",
+            "symbol",
+        ] {
+            assert!(is_dead_term(banned), "{banned} must be dead");
+        }
+        assert!(is_dead_term(""), "empty must be dead");
+        assert!(is_dead_term("0"), "all-digit must be dead");
+        assert!(is_dead_term("1234567890"), "all-digit must be dead");
+        assert!(!is_dead_term("brca1"), "normal term must be alive");
+        assert!(!is_dead_term("gene42"), "normal term must be alive");
+        // Exact match, not a substring test.
+        assert!(!is_dead_term("none-like"), "substring is not an exact ban");
+    }
+
+    /// `validate_schema` must reject a v2 primary as OUTDATED (rebuild hint,
+    /// mirroring the v1/v3 tests) and a missing or garbage schema as a generic
+    /// UNSUPPORTED schema, so migrating users get actionable guidance while a
+    /// corrupt/foreign DB fails loudly.
+    #[test]
+    fn lookup_rejects_v2_and_unsupported_schemas() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+
+        // v2 => outdated (rebuild hint).
+        let v2 = dir.path().join("v2.redb");
+        let database = Database::create(&v2).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", SCHEMA_VERSION_V2).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+        let err = lookup_terms(v2, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
+
+        // Missing schema key => unsupported.
+        let missing = dir.path().join("missing.redb");
+        let database = Database::create(&missing).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            // Create the META table but write no "schema" entry.
+            let meta = write.open_table(META).unwrap();
+            drop(meta);
+        }
+        write.commit().unwrap();
+        drop(database);
+        let err = lookup_terms(missing, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        assert!(err.to_string().contains("unsupported fullmap redb schema"));
+
+        // Garbage schema value => unsupported.
+        let garbage = dir.path().join("garbage.redb");
+        let database = Database::create(&garbage).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", "tablassert.fullmap.v999").unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+        let err = lookup_terms(garbage, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        assert!(err.to_string().contains("unsupported fullmap redb schema"));
     }
 }

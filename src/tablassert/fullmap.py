@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable
 from enum import Enum
-from operator import add
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from tablassert import rs
 from tablassert._lazy import LazyModule
@@ -13,7 +13,7 @@ from tablassert.log import cat
 
 logger = cat("FULLMAP")
 
-_TERM_CACHE: OrderedDict[tuple[Path, float, str], Optional[list[tuple[int, int]]]] = OrderedDict()
+_TERM_CACHE: OrderedDict[tuple[Path, float, str], list[tuple[int, int]] | None] = OrderedDict()
 _TERM_CACHE_MAX: int = 100_000
 _SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], str]] = {}
 
@@ -67,7 +67,7 @@ def _db_cache_key(db: Path) -> tuple[Path, float]:
         return resolved, -1.0
 
 
-def _remember_term(key: tuple[Path, float, str], value: Optional[list[tuple[int, int]]]) -> None:
+def _remember_term(key: tuple[Path, float, str], value: list[tuple[int, int]] | None) -> None:
     """Store one term lookup in the bounded FIFO cache.
 
     Args:
@@ -89,7 +89,7 @@ def _dimension_maps(db: Path, cache_key: tuple[Path, float]) -> tuple[list[str],
     Returns:
         Prefix, category, source, and source-version maps.
     """
-    cached: Optional[tuple[list[str], list[str], list[str], str]] = _SOURCE_CACHE.get(cache_key)
+    cached: tuple[list[str], list[str], list[str], str] | None = _SOURCE_CACHE.get(cache_key)
     if cached is not None:
         return cached
     source_version: str = rs.fullmap_source_version()
@@ -104,7 +104,7 @@ def _dimension_maps(db: Path, cache_key: tuple[Path, float]) -> tuple[list[str],
     return value
 
 
-def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> list[dict[str, object]]:
+def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[dict[str, object]]:
     """Lookup terms using the v2 raw-pair path and hydrate rows once per batch.
 
     Args:
@@ -118,7 +118,7 @@ def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> li
     if not terms:
         return []
     cache_key: tuple[Path, float] = _db_cache_key(db)
-    pairs_by_term: dict[str, Optional[list[tuple[int, int]]]] = {}
+    pairs_by_term: dict[str, list[tuple[int, int]] | None] = {}
     misses: list[str] = []
     for term in terms:
         term_key: tuple[Path, float, str] = (cache_key[0], cache_key[1], term)
@@ -151,11 +151,11 @@ def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> li
     if not curie_ids:
         return []
     hydrated: list[dict[str, Any]] = rs.hydrate_curies(db, curie_ids)
-    curie_map: dict[int, dict[str, Any]] = dict(zip(curie_ids, hydrated))
+    curie_map: dict[int, dict[str, Any]] = dict(zip(curie_ids, hydrated, strict=True))
     prefixes, categories, sources, source_version = _dimension_maps(db, cache_key)
     rows: list[dict[str, object]] = []
     for term in terms:
-        pairs: Optional[list[tuple[int, int]]] = pairs_by_term.get(term)
+        pairs: list[tuple[int, int]] | None = pairs_by_term.get(term)
         if not pairs:
             continue
         for curie_id, source_id in pairs:
@@ -165,7 +165,7 @@ def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> li
             rows.append(
                 {
                     "term": term,
-                    "CURIE": add(add(prefix, ":"), str(curie["local_id"])),
+                    "CURIE": f"{prefix}:{curie['local_id']}",
                     "PREFERRED_NAME": str(curie["preferred_name"]),
                     "CATEGORY_NAME": category,
                     "TAXON_ID": int(curie["taxon_id"]),
@@ -202,8 +202,7 @@ def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFr
     terms: pl.LazyFrame = pl.concat([t1, t2]).unique(subset=[col], keep="first")
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown|not applicable|p_value|variable|result|exposure|expression|symbol)$|^$"
-    terms = terms.filter(~pl.col(col).str.contains(bad))
-    return terms
+    return terms.filter(~pl.col(col).str.contains(bad))
 
 
 def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFrame:
@@ -253,9 +252,9 @@ def _category_values(categories: list[Any]) -> list[str]:
 def filter_and_rank(
     raw: pl.DataFrame,
     terms: pl.DataFrame,
-    taxon: Optional[str],
-    prioritize: Optional[list[Categories]],
-    avoid: Optional[list[Categories]],
+    taxon: str | None,
+    prioritize: list[Categories] | None,
+    avoid: list[Categories] | None,
     column_context: bool,
 ) -> pl.DataFrame:
     """Join already-fetched redb rows against one column's own terms, then filter, rank, and dedup.
@@ -324,7 +323,7 @@ def fullmap_db_path(fullmap: Path) -> Path:
     return fullmap / "data" / "fullmap.redb"
 
 
-def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]) -> None:
+def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: str | None, config_file: str | None) -> None:
     """Log level-one terms that did not resolve to any CURIE.
 
     Args:
@@ -343,6 +342,42 @@ def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_
     if unnmatched.height > 0:
         for term in unnmatched.get_column("term").to_list():
             logger.info("Unresolved term in {config} ({hash}) col {col}: {term!r}", config=config_file, hash=section_hash, col=col, term=term)
+
+
+# (out_suffix, base_col, prefix, cast) coalesce specs for ``join_matches``: the
+# level-one column wins over its ``_l2`` counterpart. Suffix "" aliases back to
+# ``col`` itself; category/taxon carry biolink:/NCBITaxon: prefixes and taxon is
+# cast to String.
+_JOIN_COALESCE_SPECS: list[tuple[str, str, str, bool]] = [
+    ("", "CURIE", "", False),
+    ("_name", "PREFERRED_NAME", "", False),
+    ("_category", "CATEGORY_NAME", "biolink:", False),
+    ("_taxon", "TAXON_ID", "NCBITaxon:", True),
+    ("_source", "SOURCE_NAME", "", False),
+    ("_source_version", "SOURCE_VERSION", "", False),
+    ("_nlp_level", "NLP_LEVEL", "", False),
+]
+
+
+def _coalesce_expr(col: str, suffix: str, base: str, prefix: str, cast_str: bool) -> pl.Expr:
+    """Build one level-one-wins-over-level-two coalesce expression for ``join_matches``.
+
+    Args:
+        col: Base node column name the derived column hangs off.
+        suffix: Output column suffix ("" aliases back to ``col`` itself).
+        base: Level-one fullmap column name (level-two is ``f"{base}_l2"``).
+        prefix: Literal prefix prepended to both branches ("" for none).
+        cast_str: When True, cast both branches to String before prefixing.
+
+    Returns:
+        Coalesce expression aliased to ``col + suffix``.
+    """
+    l1: pl.Expr = pl.col(base).cast(pl.String) if cast_str else pl.col(base)
+    l2: pl.Expr = pl.col(f"{base}_l2").cast(pl.String) if cast_str else pl.col(f"{base}_l2")
+    if prefix:
+        l1 = pl.lit(prefix) + l1
+        l2 = pl.lit(prefix) + l2
+    return pl.when(pl.col(base).is_not_null()).then(l1).otherwise(l2).alias(col + suffix)
 
 
 def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "_two") -> pl.LazyFrame:
@@ -369,7 +404,7 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
     """
     # Split out of resolve so resolve_batch can apply per-column matches from one shared redb fetch.
     l1: str = col
-    l2: str = add(l1, tag)
+    l2: str = l1 + tag
 
     # Collection point: join after redb query, then re-lazy.
     df: pl.DataFrame = lf.collect()
@@ -378,33 +413,11 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
     l2_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(2))
     result = result.join(l2_matches, left_on=l2, right_on="term", how="left", suffix="_l2")
 
-    result = result.with_columns(
-        [
-            pl.when(pl.col("CURIE").is_not_null()).then(pl.col("CURIE")).otherwise(pl.col("CURIE_l2")).alias(col),
-            pl.when(pl.col("PREFERRED_NAME").is_not_null())
-            .then(pl.col("PREFERRED_NAME"))
-            .otherwise(pl.col("PREFERRED_NAME_l2"))
-            .alias(add(col, "_name")),
-            pl.when(pl.col("CATEGORY_NAME").is_not_null())
-            .then(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME")))
-            .otherwise(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME_l2")))
-            .alias(add(col, "_category")),
-            pl.when(pl.col("TAXON_ID").is_not_null())
-            .then(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID").cast(pl.String)))
-            .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID_l2").cast(pl.String)))
-            .alias(add(col, "_taxon")),
-            pl.when(pl.col("SOURCE_NAME").is_not_null()).then(pl.col("SOURCE_NAME")).otherwise(pl.col("SOURCE_NAME_l2")).alias(add(col, "_source")),
-            pl.when(pl.col("SOURCE_VERSION").is_not_null())
-            .then(pl.col("SOURCE_VERSION"))
-            .otherwise(pl.col("SOURCE_VERSION_l2"))
-            .alias(add(col, "_source_version")),
-            pl.when(pl.col("NLP_LEVEL").is_not_null()).then(pl.col("NLP_LEVEL")).otherwise(pl.col("NLP_LEVEL_l2")).alias(add(col, "_nlp_level")),
-        ]
-    )
+    result = result.with_columns([_coalesce_expr(col, suffix, base, prefix, cast_str) for suffix, base, prefix, cast_str in _JOIN_COALESCE_SPECS])
 
     result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)(_l2)?$"))
-    result = result.select(pl.exclude(add(col, tag)))
-    result = result.with_columns(pl.col(add(col, "_taxon")).replace("NCBITaxon:0", None))
+    result = result.select(pl.exclude(col + tag))
+    result = result.with_columns(pl.col(f"{col}_taxon").replace("NCBITaxon:0", None))
     result = result.filter(pl.col(col).is_not_null())
 
     return result.lazy()
@@ -414,9 +427,9 @@ class ResolveSpec(NamedTuple):
     """One node column's resolution settings for ``resolve_batch``."""
 
     col: str
-    taxon: Optional[str] = None
-    prioritize: Optional[list[Categories]] = None
-    avoid: Optional[list[Categories]] = None
+    taxon: str | None = None
+    prioritize: list[Categories] | None = None
+    avoid: list[Categories] | None = None
 
 
 def resolve_batch(
@@ -424,11 +437,12 @@ def resolve_batch(
     specs: list[ResolveSpec],
     db: Path,
     log: bool = True,
-    section_hash: Optional[str] = None,
-    config_file: Optional[str] = None,
+    section_hash: str | None = None,
+    config_file: str | None = None,
     column_context: bool = True,
     tag: str = "_two",
-    threads: Optional[int] = None,
+    threads: int | None = None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> pl.LazyFrame:
     """Resolve multiple node columns against one shared redb fetch.
 
@@ -446,6 +460,8 @@ def resolve_batch(
         column_context: Whether to compute/use category frequency as a tiebreaker.
         tag: Suffix used to derive level-two column names.
         threads: Optional thread count forwarded to the Rust lookup.
+        on_phase: Optional callback fired with ``"resolve:<col>"`` before each
+            column is processed, used to drive fine-grained progress UX.
 
     Returns:
         LazyFrame with resolved columns added.
@@ -455,7 +471,7 @@ def resolve_batch(
     if not specs:
         return lf
 
-    terms_by_col: dict[str, pl.LazyFrame] = {spec.col: distinct(lf, spec.col, add(spec.col, tag)) for spec in specs}
+    terms_by_col: dict[str, pl.LazyFrame] = {spec.col: distinct(lf, spec.col, spec.col + tag) for spec in specs}
     collected_terms: dict[str, pl.DataFrame] = {col: terms.collect() for col, terms in terms_by_col.items()}
 
     union_terms: list[str] = pl.concat([t.select("term") for t in collected_terms.values()]).unique().get_column("term").to_list()
@@ -465,6 +481,8 @@ def resolve_batch(
 
     result: pl.LazyFrame = lf
     for spec in specs:
+        if on_phase is not None:
+            on_phase(f"resolve:{spec.col}")
         terms_df: pl.DataFrame = collected_terms[spec.col]
         matches: pl.DataFrame = filter_and_rank(raw, terms_df, spec.taxon, spec.prioritize, spec.avoid, column_context)
         if log:
@@ -478,15 +496,15 @@ def resolve(
     lf: pl.LazyFrame,
     col: str,
     db: Path,
-    taxon: Optional[str] = None,
-    prioritize: Optional[list[Categories]] = None,
-    avoid: Optional[list[Categories]] = None,
+    taxon: str | None = None,
+    prioritize: list[Categories] | None = None,
+    avoid: list[Categories] | None = None,
     log: bool = True,
-    section_hash: Optional[str] = None,
-    config_file: Optional[str] = None,
+    section_hash: str | None = None,
+    config_file: str | None = None,
     column_context: bool = True,
     tag: str = "_two",
-    threads: Optional[int] = None,
+    threads: int | None = None,
 ) -> pl.LazyFrame:
     """Case-dependent, provenance-rich named-entity recognition (single-column wrapper).
 

@@ -62,9 +62,15 @@ Point `resolve_many()` at a fullmap database and resolve any iterable of entity 
 - **KGX Compliance** — NCATS Translator-compatible NDJSON output
 - **Performance** — Lazy evaluation pipelines with Polars and an embedded redb-accelerated entity resolution database
 
-## Contributing
+## Developing
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for development setup, code style, and pull request guidelines.
+```bash
+uv sync --group dev --extra qc
+uv run maturin develop --manifest-path rust/Cargo.toml
+make check
+```
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development loop, quality gates, and pull request guidelines.
 
 ## License
 

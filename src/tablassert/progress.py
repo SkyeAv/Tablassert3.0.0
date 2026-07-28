@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from importlib.metadata import version as get_version
 from pathlib import Path
 from time import monotonic
 from types import TracebackType
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from tablassert.lib import Tcode
 
 
-def format_section_compact(x: "Tcode") -> str:
+def format_section_compact(x: Tcode) -> str:
     """Build a one-line section identifier (config stem plus 8-char hash stem).
 
     Args:
@@ -31,7 +32,7 @@ def format_section_compact(x: "Tcode") -> str:
     return f"{Path(x.config.name).stem} · {x.store.stem[:8]}"
 
 
-def flatten_pydantic_error(e: "ValidationError") -> str:
+def flatten_pydantic_error(e: ValidationError) -> str:
     parts: list[str] = []
     for err in e.errors():
         loc: str = ".".join(str(p) for p in err.get("loc", ())) or "<root>"
@@ -60,7 +61,7 @@ def _truncate(s: str, max_width: int) -> str:
 
 
 class PipelineProgress(AbstractContextManager["PipelineProgress"]):
-    def __init__(self: "PipelineProgress", total_stages: int) -> None:
+    def __init__(self: PipelineProgress, total_stages: int) -> None:
         self.total_stages: int = total_stages
         self.console: Console = Console(stderr=True)
         # Middle row: label + bar + count + elapsed + ETA. No description, no spinner.
@@ -82,29 +83,27 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         self.detail_text: Text = Text("")
         self._group: Group = Group(self.stage_text, Padding(self.progress, (0, 0)), self.detail_text)
         self.live: Live = Live(self._group, console=self.console, refresh_per_second=10, transient=False)
-        self.section_task: Optional[TaskID] = None
+        self.section_task: TaskID | None = None
         self.stage_step: int = 0
         self._stage_name: str = ""
         self._stage_started_at: float = monotonic()
         self._current_detail: str = ""
         self._current_phase: str = ""
 
-    def __enter__(self: "PipelineProgress") -> "PipelineProgress":
+    def __enter__(self: PipelineProgress) -> PipelineProgress:
         self.console.line(1)
         self.live.start()
         self._render_stage(f"Stage 0 of {self.total_stages}  ·  STARTING")
         return self
 
-    def __exit__(
-        self: "PipelineProgress", exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
-    ) -> None:
+    def __exit__(self: PipelineProgress, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
         # Print a final completion line for the last stage before tearing down.
         if self.stage_step >= 1:
             self._print_completion()
         self.live.stop()
         self.console.line(1)
 
-    def stage(self: "PipelineProgress", name: str) -> None:
+    def stage(self: PipelineProgress, name: str) -> None:
         """Advance to the next pipeline stage.
 
         Emits a completion line for the previous stage (if any) before advancing
@@ -123,7 +122,7 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         self._clear_detail()
         self._render_stage(f"Stage {self.stage_step} of {self.total_stages}  ·  {name.upper()}")
 
-    def section_loop(self: "PipelineProgress", total: int, label: str) -> tuple[Callable[[str], None], Callable[[], None], Callable[[str], None]]:
+    def section_loop(self: PipelineProgress, total: int, label: str) -> tuple[Callable[[str], None], Callable[[], None], Callable[[str], None]]:
         """Start a progress loop over the sections of the current stage.
 
         Args:
@@ -160,19 +159,21 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
 
         return start, advance, sub_step
 
-    def end_section_task(self: "PipelineProgress") -> None:
+    def end_section_task(self: PipelineProgress) -> None:
         if self.section_task is not None:
             self.progress.update(self.section_task, visible=False)
             self.section_task = None
 
-    def dynamic_loop(self: "PipelineProgress", label: str) -> Callable[[int, int, int, str], None]:
+    def dynamic_loop(self: PipelineProgress, label: str) -> Callable[[int, int, int, str], None]:
         """Start a progress task driven by an external ``(phase, completed, total, detail)`` callback.
 
         Used for the fullmap build, where Rust reports progress across phases
         (equivalents / synonyms / writing) whose totals differ and are not all
         known up front. A fresh bar is created on each phase change; a phase
         whose ``total`` is ``0`` renders as an indeterminate bar until a later
-        callback supplies the real total.
+        callback supplies the real total. The reverse (a phase that starts with
+        a real total then reports ``total=0``) re-creates the bar as
+        indeterminate so a later, larger count never overflows the earlier total.
 
         Args:
             label: Fallback label rendered on the progress bar.
@@ -189,16 +190,27 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         # arrive out of order (e.g. 6, 3, 21, 8).  Feeding a regression to rich
         # makes the bar jump backwards and breaks the ETA (``--:--:--``).  Track
         # the high-water mark per phase and clamp to keep the bar monotonic.
-        state: dict[str, int] = {"phase": -1, "max_completed": 0}
+        state: dict[str, int] = {"phase": -1, "max_completed": 0, "determinate": 0}
 
         def update(phase: int, completed: int, total: int, detail: str) -> None:
             if phase != state["phase"]:
                 state["phase"] = phase
                 state["max_completed"] = 0
+                state["determinate"] = 1 if total > 0 else 0
                 self.end_section_task()
                 self.section_task = self.progress.add_task(
                     description="", total=total if total > 0 else None, label=phase_labels.get(phase, label.upper())
                 )
+            elif total == 0 and state["determinate"]:
+                # Same phase switched from a real total to indeterminate: phase 0
+                # scatters per-file counts (total = number of class files) and then
+                # the equiv-merge reports entry counts in the millions with total=0.
+                # Re-create the bar as indeterminate and restart the high-water mark
+                # so a huge entry count never overflows the small file-count total.
+                state["determinate"] = 0
+                state["max_completed"] = 0
+                self.end_section_task()
+                self.section_task = self.progress.add_task(description="", total=None, label=phase_labels.get(phase, label.upper()))
             if completed > state["max_completed"]:
                 state["max_completed"] = completed
             mono = state["max_completed"]
@@ -213,16 +225,16 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
 
         return update
 
-    def log_sink(self: "PipelineProgress", message: str) -> None:
+    def log_sink(self: PipelineProgress, message: str) -> None:
         self.console.print(message, end="", highlight=False, markup=False)
 
-    def _render_stage(self: "PipelineProgress", text: str) -> None:
+    def _render_stage(self: PipelineProgress, text: str) -> None:
         # Stage header: bold stage count + dimmed version, single line, no metadata.
         self.stage_text.plain = ""
         self.stage_text.append(text, style="bold")
         self.stage_text.append(f"   tablassert v{get_version('tablassert')}", style="dim")
 
-    def _render_detail(self: "PipelineProgress") -> None:
+    def _render_detail(self: PipelineProgress) -> None:
         # Compose indented item detail with optional phase suffix, truncated to console width.
         body: str = f"  ↳ {self._current_detail}" if self._current_detail else "  ↳ …"
         if self._current_phase:
@@ -231,12 +243,12 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         self.detail_text.plain = ""
         self.detail_text.append(_truncate(body, max_width), style="dim")
 
-    def _clear_detail(self: "PipelineProgress") -> None:
+    def _clear_detail(self: PipelineProgress) -> None:
         self._current_detail = ""
         self._current_phase = ""
         self.detail_text.plain = ""
 
-    def _print_completion(self: "PipelineProgress") -> None:
+    def _print_completion(self: PipelineProgress) -> None:
         # Print above the live region: ✓ Stage N · NAME · 0:00:42
         elapsed: float = monotonic() - self._stage_started_at
         mins: int = int(elapsed) // 60

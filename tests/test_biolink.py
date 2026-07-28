@@ -14,9 +14,9 @@ from enum import Enum
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any
 
+import biolink_model.datamodel.pydanticmodel_v2 as bm
 import pytest
 
-import biolink_model.datamodel.pydanticmodel_v2 as bm
 from tablassert.biolink import ALLOWED_EDGE_FIELDS, BIOLINK_VERSION, AgentTypes, Categories, EdgeCategories, KnowledgeLevels, Predicates, Qualifiers
 
 if TYPE_CHECKING:

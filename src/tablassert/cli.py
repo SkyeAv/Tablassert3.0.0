@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import re
+import time
+from collections.abc import Callable
 from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Annotated, TYPE_CHECKING, Any, BinaryIO, Optional
+from typing import TYPE_CHECKING, Annotated, Any, BinaryIO
 from urllib.error import URLError
 from urllib.request import Request, urlopen
-import re
-import time
 
 import cyclopts
 
@@ -43,8 +44,48 @@ BABEL_CLASS_RE: re.Pattern[str] = re.compile(r'<a href="([^"]*_nodes[^"]*\.gz)"'
 BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
 
 
+def _load_table_indexed(args: tuple[int, Path]) -> tuple[int, object]:
+    """Load one table, tagged with its input index (multiprocessing worker).
+
+    Runs in a pool subprocess, so it re-imports ``from_yaml`` locally (the
+    deferred import mirrors ``build_pipeline``). The carried index lets the
+    caller reassemble results in input order even though ``imap_unordered``
+    yields them in completion order.
+
+    Args:
+        args: ``(index, table_path)`` pair for one table.
+
+    Returns:
+        ``(index, parsed_yaml)`` so the caller can position the result by index.
+    """
+    from tablassert.ingests import from_yaml
+
+    idx, table = args
+    return idx, from_yaml(table)
+
+
+def _extract_sections_indexed(args: tuple[int, object, Path]) -> tuple[int, list[dict[str, Any]]]:
+    """Extract sections from one loaded table, tagged with its input index (multiprocessing worker).
+
+    Runs in a pool subprocess, so it re-imports ``to_sections`` locally (the
+    deferred import mirrors ``build_pipeline``). The carried index lets the
+    caller reassemble per-table section lists in input order so the flattened
+    ``sections`` order is byte-identical to the old ``starmap`` result.
+
+    Args:
+        args: ``(index, parsed_yaml, table_path)`` triple for one table.
+
+    Returns:
+        ``(index, section_list)`` so the caller can position the result by index.
+    """
+    from tablassert.ingests import to_sections
+
+    idx, raw, table = args
+    return idx, to_sections(raw, table)  # pyright: ignore
+
+
 def build_pipeline(
-    graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False, qc: bool = False, log: bool = False, head: bool = False
+    graph_configuration_file: Path, progress: PipelineProgress, release: bool = False, qc: bool = False, log: bool = False, head: bool = False
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
@@ -64,7 +105,7 @@ def build_pipeline(
         SectionValidationError: If any section fails Pydantic validation.
     """
     from tablassert.fullmap import fullmap_db_path
-    from tablassert.ingests import from_yaml, to_sections
+    from tablassert.ingests import from_yaml
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
     from tablassert.models import Graph
     from tablassert.progress import flatten_pydantic_error, format_section_compact
@@ -77,13 +118,27 @@ def build_pipeline(
         g: Graph = Graph.model_validate(r)
     except pydantic.ValidationError as e:
         raise GraphValidationError(graph_configuration_file, flatten_pydantic_error(e)) from e
+    # imap_unordered yields in completion order, so each worker carries its input
+    # index and we reassemble by index to keep raw[i] aligned with g.tables[i].
+    start, advance, _ = progress.section_loop(len(g.tables), "Load")
+    raw: list[object] = [None for _ in g.tables]
     with Pool() as pool:
-        raw: list[object] = pool.map(from_yaml, g.tables)
+        for idx, parsed in pool.imap_unordered(_load_table_indexed, enumerate(g.tables)):
+            raw[idx] = parsed
+            start(str(g.tables[idx]))
+            advance()
 
     # Stage 2/6: extract sections.
     progress.stage("Extracting Sections")
+    # Same index-carrying reassembly keeps temp[i] aligned with g.tables[i], so the
+    # flattened sections order is byte-identical to the old starmap result.
+    start, advance, _ = progress.section_loop(len(g.tables), "Extract")
+    temp: list[list[dict[str, Any]]] = [[] for _ in g.tables]
     with Pool() as pool:
-        temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
+        for idx, section_list in pool.imap_unordered(_extract_sections_indexed, zip(range(len(g.tables)), raw, g.tables, strict=True)):
+            temp[idx] = section_list
+            start(str(g.tables[idx]))
+            advance()
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
 
@@ -118,7 +173,7 @@ def build_pipeline(
     progress.stage("Building Subgraphs")
     start, advance, sub_step = progress.section_loop(n, "Subgraph")
     subgraphs: list[Path] = []
-    for x, op in zip(tcode, instructions):
+    for x, op in zip(tcode, instructions, strict=True):
         start(format_section_compact(x))
         # on_phase drives the per-op sub-step indicator (load → filter → resolve → write ...).
         subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op, on_phase=sub_step))
@@ -126,16 +181,16 @@ def build_pipeline(
 
     # Stage 6/6: compile graph.
     progress.stage("Compiling Graph")
-    start, advance, sub_step = progress.section_loop(1, "Graph")
+    start, advance, sub_step = progress.section_loop(len(subgraphs), "Graph")
     start(f"{g.name} · v{g.version}")
-    sub_step("aggregating")
-    compile_graph(subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables)
-    advance()
+    # on_phase drives the phase tag (scan → normalize → write-nodes → write-edges → dedup → rig);
+    # on_subgraph ticks the bar once per subgraph, so the total is len(subgraphs).
+    compile_graph(subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables, on_phase=sub_step, on_subgraph=advance)
 
     logger.info("Built graph {name} v{version}: {n} sections", name=g.name, version=g.version, n=n)
 
 
-def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgress") -> None:
+def validate_pipeline(table_configuration_file: Path, progress: PipelineProgress) -> None:
     """Validate section syntax from a YAML configuration file.
 
     Runs the three-stage validate pipeline: load tables → extract sections →
@@ -219,7 +274,7 @@ def babel_urls(version: str, endpoints: tuple[str, ...], pattern: re.Pattern[str
     return out
 
 
-def download_babel_file(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+def download_babel_file(filename: str, url: str, destination: Path, retries: int = 5, on_progress: Callable[[int, int], None] | None = None) -> Path:
     """Spool a BABEL download to disk so large responses are resumable and never held in memory.
 
     Downloads to ``{filename}.part`` with HTTP Range resume support, then
@@ -231,6 +286,9 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
         url: Source URL.
         destination: Directory to download into (created if missing).
         retries: Maximum number of attempts before giving up.
+        on_progress: Optional ``(downloaded_bytes, total_bytes)`` callback fired
+            after each chunk; ``total_bytes`` is 0 when the size is unknown.
+            ``None`` (default) keeps the original download behavior exactly.
 
     Returns:
         Path to the downloaded file.
@@ -245,7 +303,7 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
         download_logger.info("Reusing cached BABEL file: {path}", path=final_path)
         return final_path
 
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         offset: int = part_path.stat().st_size if part_path.exists() else 0
         headers: dict[str, str] = {"User-Agent": "tablassert"}
@@ -258,8 +316,13 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
                 mode: str = "ab" if offset > 0 and status == 206 else "wb"
                 if offset > 0 and status != 206:
                     download_logger.warning("Server ignored Range header (HTTP {status}); restarting download: {url}", status=status, url=url)
+                # Resume base: bytes already on disk count only when appending (HTTP 206).
+                base: int = offset if mode == "ab" else 0
+                content_length: str | None = response.headers.get("Content-Length")
+                total: int = base + int(content_length) if content_length is not None else 0
+                reporter: Callable[[int], None] | None = None if on_progress is None else _byte_reporter(on_progress, base, total)
                 with part_path.open(mode) as handle:
-                    stream_copy(response, handle)
+                    stream_copy(response, handle, reporter)
             part_path.replace(final_path)
             download_logger.info("Downloaded {url} -> {path}", url=url, path=final_path)
             return final_path
@@ -272,12 +335,45 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
     raise BabelDownloadError(url, retries, last_error or RuntimeError("no attempts made")) from last_error
 
 
-def stream_copy(source: BinaryIO, destination: BinaryIO) -> None:
+def stream_copy(source: BinaryIO, destination: BinaryIO, on_bytes: Callable[[int], None] | None = None) -> None:
+    """Copy ``source`` to ``destination`` in 1 MiB chunks.
+
+    When ``on_bytes`` is given it is called after each write with the running
+    total of bytes written by THIS call; ``None`` (default) keeps the original
+    copy-only behavior exactly.
+    """
+    written: int = 0
     while True:
         chunk: bytes = source.read(1024 * 1024)
         if not chunk:
             return
         destination.write(chunk)
+        written += len(chunk)
+        if on_bytes is not None:
+            on_bytes(written)
+
+
+def _byte_reporter(on_progress: Callable[[int, int], None], base: int, total: int) -> Callable[[int], None]:
+    """Adapt ``stream_copy``'s cumulative-bytes callback to ``on_progress(downloaded, total)``.
+
+    ``base`` is the byte count already on disk (resume offset) so the reported
+    ``downloaded`` value reflects the whole file, not just this call's chunks.
+    """
+
+    def report(bytes_this_call: int) -> None:
+        on_progress(base + bytes_this_call, total)
+
+    return report
+
+
+def _download_detail(downloaded: int, total: int) -> str:
+    """Render the live download detail line in megabytes (1 MB = 1_000_000 bytes).
+
+    When ``total`` is unknown (``<= 0``) only the transferred amount is shown.
+    """
+    if total <= 0:
+        return f"{downloaded / 1_000_000:.1f} MB"
+    return f"{downloaded / 1_000_000:.1f}/{total / 1_000_000:.1f} MB"
 
 
 @APP.command(name="build-graph")
@@ -300,10 +396,10 @@ def validate_table(table_configuration_file: Path) -> None:
 
 def build_fullmap_pipeline(
     output: Path,
-    progress: "PipelineProgress",
+    progress: PipelineProgress,
     cache: Path = Path("./fullmap/downloads/fullmap"),
     version: str = BABEL_VERSION,
-    threads: Optional[int] = None,
+    threads: int | None = None,
 ) -> None:
     """Build an embedded fullmap redb database from BABEL outputs.
 
@@ -335,17 +431,21 @@ def build_fullmap_pipeline(
     progress.stage("Downloading BABEL Files")
     total_files: int = len(class_urls) + len(synonym_urls)
     start, advance, sub_step = progress.section_loop(total_files, "Download")
+
+    def report_progress(downloaded: int, total: int) -> None:
+        sub_step(_download_detail(downloaded, total))
+
     class_files: list[Path] = []
     for filename, url in class_urls:
         start(filename)
         sub_step("downloading")
-        class_files.append(download_babel_file(filename, url, cache / "classes"))
+        class_files.append(download_babel_file(filename, url, cache / "classes", on_progress=report_progress))
         advance()
     synonym_files: list[Path] = []
     for filename, url in synonym_urls:
         start(filename)
         sub_step("downloading")
-        synonym_files.append(download_babel_file(filename, url, cache / "synonyms"))
+        synonym_files.append(download_babel_file(filename, url, cache / "synonyms", on_progress=report_progress))
         advance()
 
     # Stage 3/3: build fullmap database.
@@ -370,7 +470,7 @@ def build_fullmap(
     output: Annotated[Path, cyclopts.Parameter(name=["--output", "-o"])] = Path("./fullmap/data/fullmap.redb"),
     cache: Annotated[Path, cyclopts.Parameter(name=["--cache", "-c"])] = Path("./fullmap/downloads/fullmap"),
     version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,
-    threads: Annotated[Optional[int], cyclopts.Parameter(name=["--threads", "-t"])] = None,
+    threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
 ) -> None:
     """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
     run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads)

@@ -17,8 +17,13 @@ tablassert build-fullmap
 |------|----------|---------|-------------|
 | `--output`, `-o` | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
 | `--cache`, `-c` | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
-| `--version`, `-v` | No | current BABEL release (see `cli.py`) | BABEL release version to fetch |
-| `--threads`, `-t` | No | `None` (~90% of available CPUs) | Worker threads for the parallel build |
+| `--version`, `-v` | No | `BABEL_VERSION` literal (currently `2026jul22`) | BABEL release snapshot date to fetch |
+| `--threads`, `-t` | No | `None` (auto: memory-capped on Linux, else ~90% of CPUs) | Worker threads for the parallel build |
+
+> **Sensible defaults:**
+>
+> - **`--version`** defaults to the `BABEL_VERSION` literal in `cli.py` (currently `2026jul22`) — a date stamp naming the RENCI BABEL export snapshot to download, *not* Tablassert's own package version. Bumping it fetches a different BABEL snapshot and requires rebuilding the database; the value used is recorded in the primary's `meta` table (`source_version`).
+> - **`--threads`** unset means the Rust build chooses the worker count itself: on Linux it reads `MemAvailable:` from `/proc/meminfo` and caps workers at `min(available_CPUs, MemAvailable_GB / 2)` (each worker budgets ~2 GB of local buffers) to avoid swapping; where `/proc/meminfo` is absent (non-Linux) it falls back to ~90% of available CPUs. Pass `--threads N` to override the cap entirely.
 
 ### Data Pipeline
 

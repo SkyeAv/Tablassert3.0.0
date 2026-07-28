@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
@@ -85,6 +85,6 @@ def test_docs_have_no_removed_8_0_0_tokens(path: Path) -> None:
     """
     text: str = path.read_text(encoding="utf-8")
     for pattern, description in BANNED_PATTERNS:
-        match: Optional[re.Match[str]] = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
+        match: re.Match[str] | None = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
         if match is not None:
             raise AssertionError(f"{path.relative_to(ROOT)} references {description}: {match.group(0)!r}")

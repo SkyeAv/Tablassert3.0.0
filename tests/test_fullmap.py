@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
 import polars as pl
 import pytest
 
-from tablassert import rs
 import tablassert.cli as cli
-from tablassert.cli import build_fullmap
 import tablassert.lib as lib
+from tablassert import rs
 from tablassert.biolink import Categories
+from tablassert.cli import build_fullmap
 from tablassert.fullmap import _TERM_CACHE, ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, lookup_rows, resolve, resolve_batch
 from tablassert.lib import to_store
 
@@ -439,7 +440,9 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
             return [("classes.ndjson", "https://example.com/classes.ndjson")]
         return [("HGNC.ndjson", "https://example.com/HGNC.ndjson")]
 
-    def fake_download_babel_file(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+    def fake_download_babel_file(
+        filename: str, url: str, destination: Path, retries: int = 5, on_progress: Callable[[int, int], None] | None = None
+    ) -> Path:
         if filename == "classes.ndjson":
             return classes
         return synonyms
@@ -472,7 +475,7 @@ def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, body: bytes) -> None:
             self._body = body
 
-        def __enter__(self) -> "FakeResponse":
+        def __enter__(self) -> FakeResponse:
             return self
 
         def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
@@ -499,10 +502,24 @@ def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
         ("smallmolecule.txt.gz", f"{base}/synonyms-conflated/smallmolecule.txt.gz"),
     ]
     names: list[str] = [name for name, _ in synonym_urls]
-    assert not any(name.startswith("publication") or name.startswith("geneproteinconflated") for name in names)
+    assert not any(name.startswith(("publication", "geneproteinconflated")) for name in names)
 
 
 def test_polars_hash_dependency_removed() -> None:
     """polars-hash dependency is not needed for fullmap resolution."""
     pyproject: str = Path("pyproject.toml").read_text()
     assert "polars-hash" not in pyproject
+
+
+def test_resolve_batch_on_phase_fires_per_column_in_order(fullmap_db: Path) -> None:
+    """resolve_batch fires resolve:<col> per spec column in order; output is unchanged vs no callback."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"], "object": ["mapk1"], "object_two": ["mapk1"]}).lazy()
+
+    phases: list[str] = []
+    with_cb: pl.DataFrame = resolve_batch(
+        lf, [ResolveSpec("subject"), ResolveSpec("object")], fullmap_db, log=False, on_phase=phases.append
+    ).collect()
+    without_cb: pl.DataFrame = resolve_batch(lf, [ResolveSpec("subject"), ResolveSpec("object")], fullmap_db, log=False).collect()
+
+    assert phases == ["resolve:subject", "resolve:object"]
+    assert with_cb.to_dicts() == without_cb.to_dicts()

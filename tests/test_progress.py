@@ -83,3 +83,30 @@ def test_stage_prints_completion_line_for_previous_stage(capsys: Any) -> None:
     captured: Any = capsys.readouterr()
     assert "Stage 1" in captured.err
     assert "FIRST" in captured.err
+
+
+def test_dynamic_loop_never_overflows_when_a_phase_total_resets_to_zero() -> None:
+    """a same-phase real->0 total transition must not overflow the bar.
+
+    Regression test: phase 0 emits a real total (the class-file count) for the
+    per-file scatter, then ``total=0`` with ``completed`` in the millions for the
+    equiv-merge. Every determinate bar (``total is not None``) must keep
+    ``completed <= total``; indeterminate bars (``total is None``) are exempt.
+    Also pins the phase-1 out-of-order clamp and the phase-2 upper-bound snap.
+    """
+    p: PipelineProgress = PipelineProgress(total_stages=1)
+    update = p.dynamic_loop("Build")
+    # Phase 0: per-file scatter (real total) then equiv-merge (total=0, huge completed).
+    update(0, 1, 20, "a.jsonl")
+    update(0, 20, 20, "t.jsonl")
+    update(0, 1_000_000, 0, "merging equivalents")
+    update(0, 5_000_000, 0, "merging equivalents")
+    # Phase 1: out-of-order cumulative rows, indeterminate (clamp keeps monotonic).
+    update(1, 900, 0, "x · 900 rows")
+    update(1, 3, 0, "x · 3 rows")
+    # Phase 2: upper-bound total then final snap to the exact count.
+    update(2, 500, 800, "writing")
+    update(2, 800, 800, "wrote 800 records")
+    for task in p.progress.tasks:
+        if task.total is not None:
+            assert task.completed <= task.total

@@ -25,7 +25,7 @@ class LazyModule:
         name: Fully-qualified module name (e.g. ``"polars"``).
     """
 
-    __slots__ = ("_name", "_module")
+    __slots__ = ("_module", "_name")
 
     def __init__(self, name: str) -> None:
         self._name = name

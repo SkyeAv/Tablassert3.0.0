@@ -32,3 +32,14 @@ tempfile = "3"
 unused_imports = "deny"
 unused_variables = "deny"
 dead_code = "deny"
+
+# Curated low-false-positive clippy lints enforced across the crate (lib +
+# tests + examples).  Deliberately NOT denied: needless_pass_by_value and
+# doc_markdown (too noisy / stylistic for this codebase).
+[lints.clippy]
+use_self = "deny"
+uninlined_format_args = "deny"
+redundant_closure_for_method_calls = "deny"
+explicit_iter_loop = "deny"
+match_same_arms = "deny"
+unnested_or_patterns = "deny"
