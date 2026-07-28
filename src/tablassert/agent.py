@@ -10,19 +10,24 @@ them at import time. Install the extra with ``pip install tablassert[agent]``.
 from __future__ import annotations
 
 import json
+import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.request import Request, urlopen
 
 import pydantic
 import yaml
 
 from tablassert._lazy import LazyModule
+from tablassert.enums import EncodingMethods
 from tablassert.errors import TablassertValidationError
+from tablassert.fullmap import distinct, fullmap_db_path, lookup_rows
+from tablassert.lib import Tcode
 from tablassert.log import cat
-from tablassert.models import Section
+from tablassert.models import NodeEncoding, Section
 
 if TYPE_CHECKING:
     import dspy  # pyright: ignore[reportMissingImports,reportUnusedImport]
@@ -402,6 +407,24 @@ def section_json_schema() -> dict[str, object]:
     return Section.model_json_schema()
 
 
+def _merge_first_section(cfg: dict[str, object]) -> dict[str, object]:
+    """Reduce a parsed config dict to a single merged section dict.
+
+    A ``{template: {...}}`` table config is fast-merged via ``to_sections`` (first
+    section), dropping the Tcode-only ``config`` stamp that ``extra="forbid"`` would
+    reject; a bare merged section dict is returned unchanged. Shared by
+    ``validate_section`` and ``map_coverage`` so both parse configs identically.
+    """
+    if "template" in cfg:
+        from tablassert.ingests import to_sections
+
+        sections: list[dict[str, object]] = to_sections(cfg, Path("inline.yaml"))  # pyright: ignore[reportAssignmentType]
+        section: dict[str, object] = dict(sections[0])
+        section.pop("config", None)  # to_sections stamps a Tcode-only key the pure Section schema forbids
+        return section
+    return cfg
+
+
 def validate_section(cfg: str, agent_memory: object = None, agent: object = None) -> bool:
     """Final-answer gate: return True iff ``cfg`` is schema-valid Section YAML.
 
@@ -410,23 +433,14 @@ def validate_section(cfg: str, agent_memory: object = None, agent: object = None
     can only terminate with a config that parses as YAML into a dict AND validates
     against the constrained :class:`Section` schema. Accepts either a bare merged
     section dict or a ``{template: {...}}`` table config (the template branch
-    fast-merges via ``to_sections`` and validates the first merged section, dropping
-    the Tcode-only ``config`` stamp that ``extra="forbid"`` would reject). NEVER
-    raises: any parse/validation failure returns False.
+    fast-merges via ``_merge_first_section``). NEVER raises: any parse/validation
+    failure returns False.
     """
     try:
         data: object = yaml.safe_load(cfg)
         if not isinstance(data, dict):
             return False
-        if "template" in data:
-            from tablassert.ingests import to_sections
-
-            sections: list[dict[str, object]] = to_sections(data, Path("inline.yaml"))  # pyright: ignore[reportAssignmentType]
-            section: dict[str, object] = dict(sections[0])
-            section.pop("config", None)  # to_sections stamps a Tcode-only key the pure Section schema forbids
-            Section.model_validate(section)
-        else:
-            Section.model_validate(data)
+        Section.model_validate(_merge_first_section(data))
     except (pydantic.ValidationError, TablassertValidationError, yaml.YAMLError, ValueError, KeyError, AttributeError):
         return False
     return True
@@ -471,3 +485,166 @@ def make_derive_config_tool() -> Tool:
             return config_yaml
 
     return DeriveConfigTool()
+
+
+# --------------------------------------------------------------------------- #
+# US-006: map_coverage — fullmap term-resolution coverage (per-column + overall)
+#
+# Measures how many of a config's level-one entity terms the fullmap redb can
+# resolve, WITHOUT running a full build. It reuses the EXACT normalization the
+# production build uses: ``Tcode._source_ops()`` + ``Tcode.node_prep()`` are
+# reduced into the pre-resolution frame (mirroring ``compile_subgraph``'s
+# ``(lf, *args) -> lf`` reduction), then ``fullmap.distinct`` + ``fullmap.lookup_rows``
+# measure resolution exactly as ``fullmap.log_unmatched`` does. Only ``method:
+# column`` nodes are measured (free-text entity resolution); a ``method: value``
+# node is a pre-resolved literal and contributes vacuously (coverage 1.0). Only
+# base deps + the real Rust redb are used, so the core needs no ``[agent]`` extra;
+# the smolagents ``Tool`` wrapper is built lazily in a factory.
+# --------------------------------------------------------------------------- #
+
+
+def _is_column_method(method: object) -> bool:
+    """Return True iff a node encoding method is COLUMN (free-text entity resolution).
+
+    ``use_enum_values=True`` unwraps ``EncodingMethods`` to its plain string value on
+    a validated Tcode, so compare against BOTH the enum member and its ``.value`` to
+    be robust to either representation.
+    """
+    return method == EncodingMethods.COLUMN or method == EncodingMethods.COLUMN.value
+
+
+def _reduce_ops(ops: list[tuple[Callable[..., object], tuple[Any, ...]]], acc: pl.LazyFrame | None = None) -> pl.LazyFrame:
+    """Reduce a cleaned Tcode op list into a LazyFrame (mirrors ``compile_subgraph``).
+
+    The FIRST op (the csv/excel load) is called as ``fn(*args)`` to create the frame;
+    every later op is called as ``fn(acc, *args)`` to transform it. Used to reproduce
+    the pre-resolution frame from ``_source_ops`` / ``node_prep`` without resolving.
+    """
+    for fn, args in ops:
+        acc = fn(*args) if acc is None else fn(acc, *args)  # pyright: ignore
+    return acc  # pyright: ignore
+
+
+def map_coverage(config_yaml: str | dict[str, object], *, fullmap: Path, workdir: Path | None = None) -> dict[str, object]:
+    """Measure fullmap term-resolution coverage (per-column + overall) for a config.
+
+    Builds the pre-resolution frame with the SAME normalization the production build
+    uses (``Tcode._source_ops`` + ``Tcode.node_prep`` reduced like ``compile_subgraph``),
+    then for each ``method: column`` node collects the unique level-one terms
+    (``fullmap.distinct``) and checks how many resolve in the fullmap redb
+    (``fullmap.lookup_rows``), mirroring ``fullmap.log_unmatched``. A ``method: value``
+    node is a pre-resolved literal: it is reported with ``method="value"`` and a vacuous
+    coverage of 1.0 and is never counted against overall coverage. Coverage for a column
+    with zero level-one terms is defined as 1.0 (vacuous); overall coverage is the union
+    of resolved terms over the union of all terms across COLUMN nodes (1.0 when there are
+    no column nodes).
+
+    Args:
+        config_yaml: A Tablassert Section config as a YAML string or a parsed dict;
+            either a bare merged section or a ``{template: {...}}`` table config.
+        fullmap: Fullmap redb file or base directory (see ``fullmap_db_path``).
+        workdir: Optional directory anchoring the (never-written) temp store path;
+            defaults to the system temp dir.
+
+    Returns:
+        ``{"overall": float, "per_column": {col: {"coverage": float, "total": int,
+        "resolved": int, "unresolved": list[str], "method": "column"|"value"}},
+        "unresolved": list[str]}`` where the top-level ``unresolved`` is the sorted
+        union of every column's unresolved level-one terms.
+
+    Notes:
+        A config with no resolvable structure (odd/invalid section, unreadable source,
+        a reduction that cannot run) yields a vacuous ``{"overall": 1.0, "per_column":
+        {}, "unresolved": []}`` instead of raising. Genuine fullmap I/O errors are NOT
+        swallowed: a bad ``fullmap`` path raises (``RuntimeError``/``FileNotFoundError``)
+        from the redb lookup.
+    """
+    cfg: object = yaml.safe_load(config_yaml) if isinstance(config_yaml, str) else config_yaml
+    empty: dict[str, object] = {"overall": 1.0, "per_column": {}, "unresolved": []}
+    if not isinstance(cfg, dict):
+        return empty
+
+    # Phase 1: reproduce the pre-resolution frame and collect each COLUMN node's unique
+    # level-one terms. Any structural failure here is an unresolvable config -> vacuous
+    # perfect score (documented). Fullmap I/O is untouched in this phase, so a bad
+    # fullmap path cannot be masked by this broad guard.
+    column_terms: dict[str, list[str]] = {}
+    per_column: dict[str, dict[str, object]] = {}
+    try:
+        section: dict[str, object] = _merge_first_section(cfg)
+        store: Path = (workdir or Path(tempfile.gettempdir())) / ".tablassert-coverage" / "coverage.parquet"
+        tcode: Tcode = Tcode.model_validate({**section, "config": Path("inline.yaml"), "store": store})
+        source: pl.LazyFrame = _reduce_ops(tcode.clean(tcode._source_ops()))
+
+        node_columns: list[tuple[NodeEncoding, str]] = [
+            (tcode.statement.subject, "subject"),
+            (tcode.statement.object, "object"),
+            *[(q, q.qualifier) for q in (tcode.statement.qualifiers or [])],
+        ]
+        for node, col in node_columns:
+            if not _is_column_method(node.method):
+                # A pre-resolved literal: vacuous coverage, never counted against overall.
+                per_column[col] = {"coverage": 1.0, "total": 0, "resolved": 0, "unresolved": [], "method": "value"}
+                continue
+            frame: pl.LazyFrame = _reduce_ops(tcode.clean(tcode.node_prep(node, col)), acc=source)
+            level_one_df: pl.DataFrame = distinct(frame, col, col + "_two").filter(pl.col("nlp_level") == 1).select("term").unique().collect()
+            column_terms[col] = [str(term) for term in level_one_df.get_column("term").to_list()]
+            per_column[col] = {"coverage": 1.0, "total": len(column_terms[col]), "resolved": 0, "unresolved": [], "method": "column"}
+    except Exception:  # an odd config must never crash coverage; fullmap I/O errors surface in phase 2, not here
+        return empty
+
+    # Phase 2: resolve the collected terms against the fullmap redb. A bad fullmap path
+    # raises here BY DESIGN (never swallowed) so callers learn the redb is unusable.
+    db: Path = fullmap_db_path(fullmap)
+    union_total: set[str] = set()
+    union_resolved: set[str] = set()
+    all_unresolved: set[str] = set()
+    for col, terms_list in column_terms.items():
+        rows: list[dict[str, object]] = lookup_rows(db, terms_list)
+        resolved_terms: set[str] = {str(row["term"]) for row in rows}
+        unique_terms: set[str] = set(terms_list)
+        resolved: set[str] = unique_terms & resolved_terms
+        unresolved: list[str] = sorted(unique_terms - resolved_terms)
+        entry: dict[str, object] = per_column[col]
+        entry["coverage"] = (len(resolved) / len(terms_list)) if terms_list else 1.0
+        entry["resolved"] = len(resolved)
+        entry["unresolved"] = unresolved
+        union_total |= unique_terms
+        union_resolved |= resolved
+        all_unresolved.update(unresolved)
+
+    overall: float = (len(union_resolved) / len(union_total)) if union_total else 1.0
+    return {"overall": overall, "per_column": per_column, "unresolved": sorted(all_unresolved)}
+
+
+def make_map_coverage_tool(get_fullmap: Callable[[], Path]) -> Tool:
+    """Build the ``map_coverage`` smolagents Tool lazily, binding the fullmap via closure.
+
+    ``get_fullmap`` is a zero-arg callable returning the fullmap redb path (the
+    supervisor supplies it when assembling tools); ``forward(config_yaml)`` returns the
+    JSON-encoded coverage report so the agent can read per-column + overall resolution
+    coverage and the unresolved terms to target with encoding edits. The subclass is
+    defined INSIDE this factory so the module top never forces the optional smolagents
+    import.
+    """
+    _require("smolagents")
+    from smolagents import Tool  # local import keeps module import lazy
+
+    class MapCoverageTool(Tool):  # pyright: ignore[reportMissingImports]
+        name = "map_coverage"
+        description = (
+            "Measure fullmap term-resolution coverage for a candidate Tablassert Section config (YAML). Returns a "
+            "JSON report: the overall resolved fraction, per-column coverage/total/resolved/unresolved (method "
+            "'column' is measured, 'value' is a pre-resolved literal reported vacuously), and the sorted union of "
+            "unresolved level-one terms. Use it to find which entity columns hold terms the fullmap cannot resolve, "
+            "then refine encodings to raise coverage before building."
+        )
+        inputs: ClassVar[dict[str, dict[str, str | type | bool]]] = {  # pyright: ignore[reportIncompatibleVariableOverride]
+            "config_yaml": {"type": "string", "description": "A Tablassert Section config YAML to measure coverage for."}
+        }
+        output_type = "string"
+
+        def forward(self, config_yaml: str) -> str:
+            return json.dumps(map_coverage(config_yaml, fullmap=get_fullmap()))
+
+    return MapCoverageTool()
