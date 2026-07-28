@@ -222,13 +222,17 @@ def is_open_access(metadata: str | dict[str, object]) -> bool:
 
 def _http_get_text(url: str, *, timeout: int = 120) -> str:
     """GET a URL and return decoded text (the single I/O seam tests monkeypatch)."""
-    with urlopen(Request(url, headers={"User-Agent": "tablassert"}), timeout=timeout) as resp:
+    with urlopen(
+        Request(url, headers={"User-Agent": "tablassert"}), timeout=timeout
+    ) as resp:  # pragma: no cover - live network seam; tests monkeypatch this function
         return resp.read().decode("utf-8")
 
 
 def _http_get_bytes(url: str, *, timeout: int = 120) -> bytes:
     """GET a URL and return raw bytes (the single I/O seam tests monkeypatch)."""
-    with urlopen(Request(url, headers={"User-Agent": "tablassert"}), timeout=timeout) as resp:
+    with urlopen(
+        Request(url, headers={"User-Agent": "tablassert"}), timeout=timeout
+    ) as resp:  # pragma: no cover - live network seam; tests monkeypatch this function
         return resp.read()
 
 
