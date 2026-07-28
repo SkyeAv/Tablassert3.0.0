@@ -50,6 +50,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "cyclopts>=1.0.0",
     "rich>=13.0.0",
+    "fastexcel>=0.20.2",
 ]
 
 [project.urls]
