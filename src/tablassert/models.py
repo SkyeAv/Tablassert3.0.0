@@ -31,6 +31,14 @@ class TablaBase(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _warn_deprecated_keys(cls, data: Any) -> Any:
+        """Soft-warn when a raw input key is registered in ``DEPRECATED_KEYS``.
+
+        Pure observation: returns ``data`` unchanged and never rejects (``extra="forbid"``
+        still governs truly-unknown keys). The registry is EMPTY today, so this is a silent
+        no-op; a future field rename registers its old key here to warn instead of hard-fail.
+        Note: with ``validate_assignment=True`` pydantic also re-runs this on attribute set,
+        so a registered key warns on assignment too — inert while the registry is empty.
+        """
         if isinstance(data, dict):
             for key in data:
                 if key in DEPRECATED_KEYS:
@@ -202,7 +210,9 @@ class NodeEncoding(Encoding):
         None, description="CURIE namespace prefixes (text before the first ':') dropped during entity resolution.", examples=[["OMIM", "NCBIGene"]]
     )
     exclude_regex: list[str] | None = Field(
-        None, description="Regex patterns; any resolved CURIE matching one is dropped during entity resolution.", examples=[["^OMIM:\\d+$"]]
+        None,
+        description="Regex patterns; any resolved CURIE matching one is dropped during entity resolution (case-sensitive).",
+        examples=[["^OMIM:\\d+$"]],
     )
 
     @field_validator("exclude_regex", mode="after")
@@ -210,6 +220,13 @@ class NodeEncoding(Encoding):
     def polars_compatible_exclude_regex(cls, exclude_regex: list[str] | None) -> list[str] | None:
         if exclude_regex:
             for pattern in exclude_regex:
+                # An empty pattern compiles but str.contains("") matches EVERY CURIE, silently dropping
+                # all candidates; reject empty/whitespace-only entries loudly at config time.
+                if not str(pattern).strip():
+                    raise TablassertValidationError(
+                        f"`exclude_regex` entries must be non-empty patterns (an empty pattern matches every CURIE), got {pattern!r}.",
+                        code="regex-bad-pattern",
+                    )
                 try:
                     pl.Series([""]).str.contains(str(pattern))
                 except Exception as e:

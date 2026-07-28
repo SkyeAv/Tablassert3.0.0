@@ -249,6 +249,32 @@ def test_filter_and_rank_exclude_prefixes_drops_curie_prefix() -> None:
     assert matches["term"].to_list() == ["brca1"]
 
 
+def test_filter_and_rank_exclude_prefixes_drops_colonless_curie() -> None:
+    """exclude_prefixes treats a CURIE with no ':' as its own prefix (the whole string).
+
+    US-M3 edge (spec REQ-M3): the prefix is the text before the first ':', so a colon-less
+    CURIE like "FOO" has prefix "FOO" and is dropped by exclude_prefixes=["FOO"], while a
+    normally-namespaced CURIE survives. Pins the split-on-':' semantics for prefix-less CURIEs.
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1", "bare"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["brca1", "bare"],
+            "CURIE": ["HGNC:1", "FOO"],
+            "PREFERRED_NAME": ["BRCA1", "BARE THING"],
+            "CATEGORY_NAME": ["Gene", "Gene"],
+            "TAXON_ID": [9606, 9606],
+            "SOURCE_NAME": ["HGNC", "FOO"],
+            "SOURCE_VERSION": [rs.fullmap_source_version(), rs.fullmap_source_version()],
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon=None, prioritize=None, avoid=None, column_context=False, exclude_prefixes=["FOO"])
+
+    assert matches["CURIE"].to_list() == ["HGNC:1"]
+    assert matches["term"].to_list() == ["brca1"]
+
+
 def test_filter_and_rank_exclude_regex_drops_matching_curies() -> None:
     """exclude_regex drops rows whose CURIE matches any supplied pattern.
 
@@ -323,6 +349,14 @@ def test_filter_and_rank_default_none_byte_identical() -> None:
 
     assert baseline.equals(with_none)
     assert baseline.equals(with_empty)
+
+    # column_context=False path (no FREQUENCY tiebreaker) must be byte-identical too.
+    baseline_nc: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, False)
+    with_none_nc: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, False, exclude_prefixes=None, exclude_regex=None)
+    with_empty_nc: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, False, exclude_prefixes=[], exclude_regex=[])
+
+    assert baseline_nc.equals(with_none_nc)
+    assert baseline_nc.equals(with_empty_nc)
 
 
 def test_filter_and_rank_empty_exclude_lists_noop() -> None:

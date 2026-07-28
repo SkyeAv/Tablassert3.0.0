@@ -187,6 +187,19 @@ def test_node_encoding_exclude_regex_invalid_rejected() -> None:
     assert "regex-bad-pattern" in str(exc_info.value)
 
 
+def test_node_encoding_exclude_regex_empty_pattern_rejected() -> None:
+    """Guard: an empty or whitespace-only `exclude_regex` entry is rejected.
+
+    An empty pattern compiles, but polars ``str.contains("")`` matches EVERY CURIE, so it
+    would silently drop all resolution candidates (data loss). Fail loudly at config time
+    with the same `regex-bad-pattern` code instead of emptying a build hours in.
+    """
+    for bad in ("", "   "):
+        with pytest.raises(ValidationError) as exc_info:
+            NodeEncoding(method=EncodingMethods.VALUE, encoding="x", exclude_regex=[bad])  # pyright: ignore
+        assert "regex-bad-pattern" in str(exc_info.value)
+
+
 def test_node_encoding_exclude_empty_lists_noop() -> None:
     """Empty exclude lists validate and are preserved verbatim.
 
