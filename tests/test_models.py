@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from tablassert.biolink import Categories
+from tablassert.enums import Comparisons, EncodingMethods, Repositories
 from tablassert.ingests import from_yaml
 from tablassert.models import (
     DEFAULT_RIG_UI_EXPLANATION,
@@ -16,6 +17,7 @@ from tablassert.models import (
     Graph,
     NodeEncoding,
     Provenance,
+    Regex,
     Reindex,
     Section,
     Statement,
@@ -279,3 +281,83 @@ def test_section_with_annotations() -> None:
     }
     section: Section = Section.model_validate(data)  # pyright: ignore
     assert len(section.annotations) == 2  # pyright: ignore
+
+
+def test_reindex_eq_with_non_string_comparator_rejected() -> None:
+    """Guard: `eq`/`ne` reindex filters require a str comparator.
+
+    Catches a misconfigured row filter at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Reindex(column="A", comparison=Comparisons.EQ, comparator=5)
+    assert "comparison-bad-comparator-type" in str(exc_info.value)
+
+
+def test_reindex_ordering_with_non_numeric_comparator_rejected() -> None:
+    """Guard: ordering comparisons (`gt`/`ge`/`lt`/`le`) require a numeric comparator.
+
+    Catches a misconfigured row filter at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Reindex(column="A", comparison=Comparisons.GT, comparator="x")
+    assert "comparison-nonnumeric-comparator" in str(exc_info.value)
+
+
+def test_source_with_both_rows_and_row_slice_rejected() -> None:
+    """Guard: a source cannot declare both explicit `rows` and a `row_slice`.
+
+    Catches an ambiguous row-selection config at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[1], row_slice=[1, 5])  # pyright: ignore
+    assert "config-rows-and-row-slice-conflict" in str(exc_info.value)
+
+
+def test_regex_with_invalid_pattern_rejected() -> None:
+    """Guard: a regex `pattern` must be a polars-compatible regular expression.
+
+    Catches an invalid replacement pattern at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Regex(pattern="(", replacement=" ")
+    assert "regex-bad-pattern" in str(exc_info.value)
+
+
+def test_regex_with_invalid_replacement_rejected() -> None:
+    """Guard: a regex `replacement` must itself be a polars-compatible regular expression.
+
+    Catches an invalid replacement value at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Regex(pattern="ok", replacement="(")
+    assert "regex-bad-replacement" in str(exc_info.value)
+
+
+def test_encoding_column_method_with_non_column_encoding_rejected() -> None:
+    """Guard: the `column` encoding method requires an Excel-style column name (A-ZZ).
+
+    Catches a mistyped source column reference at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Encoding(method=EncodingMethods.COLUMN, encoding="not_a_col_123")  # pyright: ignore
+    assert "encoding-bad-excel-column" in str(exc_info.value)
+
+
+def test_encoding_remove_with_invalid_regex_rejected() -> None:
+    """Guard: every `remove` entry must be a polars-compatible regular expression.
+
+    Catches an invalid text-cleaning pattern at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Encoding(method=EncodingMethods.VALUE, encoding="x", remove=["("])  # pyright: ignore
+    assert "encoding-bad-remove-entry" in str(exc_info.value)
+
+
+def test_provenance_pmc_repo_with_non_pmc_publication_rejected() -> None:
+    """Guard: a PubMed Central `repo` requires a publication id starting with `PMC`.
+
+    Catches a mismatched provenance namespace at config time instead of deep inside a multi-hour build.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Provenance(repo=Repositories.PUBMED_CENTRAL, publication="12345")  # pyright: ignore
+    assert "provenance-bad-pmc-id" in str(exc_info.value)
