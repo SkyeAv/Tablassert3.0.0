@@ -337,6 +337,7 @@ fn hydrate_record(
 // Sharded concurrent map (inspired by datassert's sharded curieCounter)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::cast_possible_truncation)] // xxh64->usize: only the low bits feed the shard mask, so truncation is the intended routing
 fn shard_index(key: &str) -> usize {
     (xxh64(key.as_bytes(), 0) as usize) & SHARD_MASK
 }
@@ -353,7 +354,7 @@ impl<V> ShardedMap<V> {
         for _ in 0..SHARD_COUNT {
             shards.push(RwLock::new(HashMap::new()));
         }
-        ShardedMap { shards }
+        Self { shards }
     }
 
     /// Get an existing value or insert a new one computed by `f`.
@@ -398,10 +399,11 @@ impl CurieIdMap {
         for _ in 0..SHARD_COUNT {
             shards.push(RwLock::new(HashMap::new()));
         }
-        CurieIdMap { shards }
+        Self { shards }
     }
 
     /// Get the id for `hash`, or insert a new one computed by `f`.
+    #[allow(clippy::cast_possible_truncation)] // u128 hash->usize: only the low bits select the shard, so truncation is the intended routing
     fn get_or_insert_with(&self, hash: u128, f: impl FnOnce() -> u32) -> u32 {
         let idx = (hash as usize) & SHARD_MASK;
         // Fast path: read lock.
@@ -456,13 +458,15 @@ struct RunWriter {
 
 impl RunWriter {
     fn new(path: &Path) -> std::io::Result<Self> {
-        Ok(RunWriter {
+        Ok(Self {
             w: BufWriter::with_capacity(1 << 20, File::create(path)?),
         })
     }
 
+    #[allow(clippy::cast_possible_truncation)] // frame format stores term/pair counts as u32 lengths
     fn write_term(&mut self, term: &str, pairs: &[(u32, u8)]) -> std::io::Result<()> {
         let tb = term.as_bytes();
+        debug_assert!(u32::try_from(tb.len()).is_ok() && u32::try_from(pairs.len()).is_ok());
         self.w.write_all(&(tb.len() as u32).to_le_bytes())?;
         self.w.write_all(tb)?;
         self.w.write_all(&(pairs.len() as u32).to_le_bytes())?;
@@ -487,7 +491,7 @@ impl RunReader {
     fn new(path: &Path) -> std::io::Result<Self> {
         let mut reader = BufReader::with_capacity(1 << 20, File::open(path)?);
         let cur = Self::read_frame(&mut reader)?;
-        Ok(RunReader { reader, cur })
+        Ok(Self { reader, cur })
     }
 
     fn read_frame(r: &mut BufReader<File>) -> std::io::Result<Option<TermPairs>> {
@@ -578,12 +582,14 @@ struct CurieRunWriter {
 
 impl CurieRunWriter {
     fn new(path: &Path) -> std::io::Result<Self> {
-        Ok(CurieRunWriter {
+        Ok(Self {
             w: BufWriter::with_capacity(1 << 20, File::create(path)?),
         })
     }
 
+    #[allow(clippy::cast_possible_truncation)] // frame format stores the encoded row length as a u32
     fn write_row(&mut self, curie_id: u32, encoded: &[u8]) -> std::io::Result<()> {
+        debug_assert!(u32::try_from(encoded.len()).is_ok());
         self.w.write_all(&curie_id.to_le_bytes())?;
         self.w.write_all(&(encoded.len() as u32).to_le_bytes())?;
         self.w.write_all(encoded)?;
@@ -601,7 +607,7 @@ struct CurieRunReader {
 
 impl CurieRunReader {
     fn new(path: &Path) -> std::io::Result<Self> {
-        Ok(CurieRunReader {
+        Ok(Self {
             reader: BufReader::with_capacity(1 << 20, File::open(path)?),
         })
     }
@@ -634,7 +640,7 @@ fn spill_curie_run(
     spill_dir: &Path,
     run_id: usize,
 ) -> PyResult<PathBuf> {
-    let path = spill_dir.join(format!("curie_run_{:08}.bin", run_id));
+    let path = spill_dir.join(format!("curie_run_{run_id:08}.bin"));
     let mut w = CurieRunWriter::new(&path).map_err(py_err)?;
     for (curie_id, row) in local.drain(..) {
         let encoded = bincode::serialize(&row).map_err(py_err)?;
@@ -661,7 +667,7 @@ impl MergeHeap {
             }
             readers.push(rr);
         }
-        Ok(MergeHeap { readers, heap })
+        Ok(Self { readers, heap })
     }
 
     /// Return the next term with its merged, sorted, de-duplicated pairs.
@@ -706,6 +712,7 @@ type EquivEntry = (u64, String, Vec<String>);
 type EquivMergeItem = (Reverse<u64>, Reverse<String>, usize, Vec<String>);
 
 /// Write an equiv entry to a buffered writer (run-file format with hash).
+#[allow(clippy::cast_possible_truncation)] // equiv run format stores key/equiv counts and byte lengths as u32
 fn write_equiv_entry(
     w: &mut impl Write,
     hash: u64,
@@ -714,6 +721,7 @@ fn write_equiv_entry(
 ) -> std::io::Result<()> {
     w.write_all(&hash.to_le_bytes())?;
     let kb = key.as_bytes();
+    debug_assert!(u32::try_from(kb.len()).is_ok() && u32::try_from(equivs.len()).is_ok());
     w.write_all(&(kb.len() as u32).to_le_bytes())?;
     w.write_all(kb)?;
     w.write_all(&(equivs.len() as u32).to_le_bytes())?;
@@ -784,7 +792,7 @@ fn spill_equiv_local(
     // distinct CURIEs in the same run.
     entries.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
-    let rp = equiv_dir.join(format!("run_{:08}.bin", run_id));
+    let rp = equiv_dir.join(format!("run_{run_id:08}.bin"));
     let mut w = BufWriter::with_capacity(1 << 20, File::create(&rp).map_err(py_err)?);
     for (h, k, e) in &entries {
         write_equiv_entry(&mut w, *h, k, e).map_err(py_err)?;
@@ -858,7 +866,7 @@ impl EquivIndex {
             std::fs::write(&data_path, b"").map_err(py_err)?;
             let file = File::open(&data_path).map_err(py_err)?;
             let data = unsafe { memmap2::Mmap::map(&file).map_err(py_err)? };
-            return Ok(EquivIndex {
+            return Ok(Self {
                 hashes: Vec::new(),
                 offsets: Vec::new(),
                 data,
@@ -979,7 +987,7 @@ impl EquivIndex {
         let file = File::open(&data_path).map_err(py_err)?;
         let data = unsafe { memmap2::Mmap::map(&file).map_err(py_err)? };
 
-        Ok(EquivIndex {
+        Ok(Self {
             hashes,
             offsets,
             data,
@@ -1666,6 +1674,7 @@ fn flush_shard_batch(
 /// the RECORDS key, so a term's shard and its key are derived from one xxh64 call
 /// site each (write and read agree).  This is the single routing oracle shared by
 /// the writer and the reader.
+#[allow(clippy::cast_possible_truncation)] // xxh64->usize: only the low bits feed the shard mask, so truncation is the intended routing
 fn term_shard(term: &str, shard_count: usize) -> usize {
     (xxh64(term.as_bytes(), 0) as usize) & (shard_count - 1)
 }
@@ -1815,7 +1824,7 @@ pub fn build_fullmap_db(
     let worker_count = threads
         .unwrap_or_else(|| {
             let cpus = std::thread::available_parallelism()
-                .map(|n| n.get())
+                .map(std::num::NonZero::get)
                 .unwrap_or(1);
             // Cap at available_memory_gb / 2 to prevent swap on memory-constrained
             // machines.  Each thread uses ~400 MB of local buffers; the cap is
@@ -1941,7 +1950,7 @@ fn validate_schema(database: &Database) -> PyResult<()> {
         .map(|x| x.value().to_string());
     match schema.as_deref() {
         Some(SCHEMA_VERSION) => Ok(()),
-        Some(SCHEMA_VERSION_V3) | Some(SCHEMA_VERSION_V2) | Some(SCHEMA_VERSION_V1) => {
+        Some(SCHEMA_VERSION_V3 | SCHEMA_VERSION_V2 | SCHEMA_VERSION_V1) => {
             Err(PyRuntimeError::new_err(
                 "fullmap DB is outdated; rebuild with 'tablassert build-fullmap'",
             ))
@@ -2152,7 +2161,7 @@ fn default_lookup_workers(terms_len: usize) -> usize {
         return 1;
     }
     std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(std::num::NonZero::get)
         .unwrap_or(1)
 }
 
@@ -3019,7 +3028,7 @@ mod tests {
         // the effective worker count is still >1, which (with >=2 non-empty shards)
         // makes `lookup_pair_terms_db` spawn >1 shard-reader thread.
         let cpus = std::thread::available_parallelism()
-            .map(|n| n.get())
+            .map(std::num::NonZero::get)
             .unwrap_or(1);
         let default_workers = default_lookup_workers(probes.len());
         if cpus > 1 {
