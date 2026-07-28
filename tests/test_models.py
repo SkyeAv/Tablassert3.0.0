@@ -156,6 +156,25 @@ def test_node_encoding_with_taxon() -> None:
     assert node.taxon == 9606
 
 
+def test_node_encoding_defaults_to_human_taxon() -> None:
+    """NodeEncoding defaults omitted taxon to Homo sapiens."""
+    node: NodeEncoding = NodeEncoding(method="value", encoding="BRCA1")  # pyright: ignore
+    assert node.taxon == 9606
+
+
+def test_node_encoding_explicit_null_disables_taxon() -> None:
+    """NodeEncoding preserves explicit null taxon to disable taxon filtering."""
+    node: NodeEncoding = NodeEncoding(method="value", encoding="BRCA1", taxon=None)  # pyright: ignore
+    assert node.taxon is None
+
+
+def test_qualifier_rejects_species_context_qualifier() -> None:
+    """species_context_qualifier is auto-derived and cannot be manually declared."""
+    with pytest.raises(ValidationError) as exc_info:
+        models.Qualifier(qualifier="species_context_qualifier", method="value", encoding="Homo sapiens")  # pyright: ignore
+    assert "qualifier-auto-derived" in str(exc_info.value)
+
+
 def test_node_encoding_with_prioritize_avoid() -> None:
     """NodeEncoding with prioritize and avoid."""
     node: NodeEncoding = NodeEncoding(  # pyright: ignore

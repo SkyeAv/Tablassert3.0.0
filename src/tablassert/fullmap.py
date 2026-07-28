@@ -266,7 +266,7 @@ def filter_and_rank(
     Args:
         raw: Rows looked up from the fullmap redb.
         terms: Distinct terms for the column being resolved (from ``distinct``).
-        taxon: Optional taxon filter applied to gene-category matches.
+        taxon: Optional taxon filter applied to taxon-bearing matches; rows with TAXON_ID 0 are retained.
         prioritize: Categories to boost in ranking.
         avoid: Categories to drop entirely.
         column_context: Whether to compute/use category frequency as a tiebreaker.
@@ -286,7 +286,7 @@ def filter_and_rank(
         result = result.filter(~pl.col("CATEGORY_NAME").is_in(avoid_values))
     if taxon:
         taxon_id: int = int(taxon)
-        result = result.filter((pl.col("TAXON_ID") == taxon_id) | (pl.col("CATEGORY_NAME") != Categories.GENE.value))
+        result = result.filter((pl.col("TAXON_ID") == taxon_id) | (pl.col("TAXON_ID") == 0))
     if exclude_prefixes:
         curie_prefix: pl.Expr = pl.col("CURIE").str.split(":").list.first()
         result = result.filter(~curie_prefix.is_in(exclude_prefixes))
@@ -459,8 +459,9 @@ def resolve_batch(
     """Resolve multiple node columns against one shared redb fetch.
 
     Each column still gets its own taxon/prioritize/avoid filtering and its own
-    join back into ``lf``; only the redb round trip itself
-    (``rs.lookup_fullmap_terms``) is pooled across columns.
+    join back into ``lf``. Taxon constraints apply to every taxon-bearing
+    match while retaining rows with no taxon metadata (TAXON_ID 0); only the
+    redb round trip itself (``rs.lookup_fullmap_terms``) is pooled across columns.
 
     Args:
         lf: Source LazyFrame.
@@ -531,7 +532,7 @@ def resolve(
         lf: Source LazyFrame.
         col: Column to resolve.
         db: Path to the fullmap redb file.
-        taxon: Optional taxon filter applied to gene-category matches.
+        taxon: Optional taxon filter applied to taxon-bearing matches; rows with TAXON_ID 0 are retained.
         prioritize: Categories to boost in ranking.
         avoid: Categories to drop entirely.
         exclude_prefixes: CURIE namespace prefixes (text before the first ':') to drop.

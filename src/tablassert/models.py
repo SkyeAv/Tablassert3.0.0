@@ -201,7 +201,14 @@ class Encoding(TablaBase):
 
 
 class NodeEncoding(Encoding):
-    taxon: PositiveInt | None = Field(None, description="NCBI taxon id used to constrain gene-oriented mapping.", examples=[9606, 10090])
+    taxon: PositiveInt | None = Field(
+        9606,
+        description=(
+            "NCBI taxon id used to constrain taxon-scoped entity resolution. Defaults to 9606 (Homo sapiens); "
+            "set null to disable. Applies to all taxon-bearing categories (genes, diseases, phenotypes, proteins, etc.)."
+        ),
+        examples=[9606, 10090],
+    )
     prioritize: list[Categories] | None = Field(
         None, description="Biolink categories ranked higher during entity resolution.", examples=[[Categories.GENE, Categories.PROTEIN]]
     )
@@ -245,6 +252,21 @@ class Qualifier(NodeEncoding):
         description="Qualifier predicate key used as the output qualifier column.",
         examples=[Qualifiers.OBJECT_DIRECTION_QUALIFIER, Qualifiers.SUBJECT_CONTEXT_QUALIFIER],
     )
+
+    @model_validator(mode="after")
+    def reject_auto_derived_qualifiers(self: Self) -> Self:
+        """Reject qualifiers that Tablassert derives from resolved node metadata.
+
+        ``species_context_qualifier`` is populated automatically from resolved
+        subject/object taxon, so declaring it manually would make fullmap treat
+        it as an independently resolved query column and risk conflicting output.
+        """
+        if self.qualifier == "species_context_qualifier":
+            raise TablassertValidationError(
+                "species_context_qualifier is auto-derived from resolved subject/object taxon; remove it from qualifiers.",
+                code="qualifier-auto-derived",
+            )
+        return self
 
 
 class Statement(TablaBase):

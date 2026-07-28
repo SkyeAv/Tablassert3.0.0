@@ -181,6 +181,22 @@ def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
     return lf.with_columns(pl.lit(x).alias(col))
 
 
+def derive_species_context(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Derive ``species_context_qualifier`` from resolved node taxon columns.
+
+    Uses ``subject_taxon`` first and falls back to ``object_taxon``. Null values
+    indicate no resolved taxon metadata and are later stripped from NDJSON
+    output by ``dedup_stream``.
+
+    Args:
+        lf: Source LazyFrame after subject/object fullmap resolution.
+
+    Returns:
+        LazyFrame with an auto-derived ``species_context_qualifier`` edge column.
+    """
+    return lf.with_columns(pl.coalesce(pl.col("subject_taxon"), pl.col("object_taxon")).alias("species_context_qualifier"))
+
+
 def source_record_urls(lf: pl.LazyFrame, url: str) -> pl.LazyFrame:
     """Add Biolink/Translator ``source_record_urls`` as a single-element list column.
 
@@ -691,6 +707,7 @@ class Tcode(Section):
             then the trim/format/write finalize ops.
         """
         return [
+            (derive_species_context, ()),
             (value, ("predicate", "biolink:" + self.statement.predicate)),
             (edge_category, ()),
             (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
@@ -743,6 +760,7 @@ PHASE_OF: dict[Callable, str] = {
     resolve_batch: "resolve",
     fullmap_audit: "qc",
     column: "encode",
+    derive_species_context: "edge",
     edge_category: "edge",
     publications: "provenance",
     source_record_urls: "provenance",
@@ -1135,7 +1153,7 @@ def resolve_many(
         col: Source column name to normalize.
         entities: Raw entity strings to resolve.
         fullmap: Path to ``fullmap.redb`` (or its parent directory).
-        taxon: Optional NCBITaxon constraint.
+        taxon: Optional NCBITaxon constraint applied to taxon-bearing matches while retaining rows with no taxon metadata.
         prioritize: Optional Biolink categories preferred on ties.
         avoid: Optional Biolink categories deprioritized on ties.
         qc: When True, attach fullmap audit metadata to the result.

@@ -400,19 +400,21 @@ Use the `"values"` token to reference column values in transformations.
 
 ### Qualifiers
 
-Add context to edges (anatomical location, species, etc.).
+Add context to edges (anatomical location, disease context, etc.).
+`species_context_qualifier` is auto-derived from resolved subject/object taxon
+metadata and should not be declared manually.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `qualifier` | String | Yes | Biolink qualifier from the `Qualifiers` enum (e.g., `"species_context_qualifier"`) |
+| `qualifier` | String | Yes | Biolink qualifier from the `Qualifiers` enum (e.g., `"anatomical_context_qualifier"`) |
 | (inherits NodeEncoding) | | | All NodeEncoding fields available |
 
 **Example:**
 ```yaml
 qualifiers:
-  - qualifier: species_context_qualifier
+  - qualifier: anatomical_context_qualifier
     method: value
-    encoding: NCBITaxon:9606
+    encoding: UBERON:0000061
 ```
 
 ### Provenance

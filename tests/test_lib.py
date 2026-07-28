@@ -291,7 +291,7 @@ def test_tcode_collect_emits_single_resolve_batch_for_all_node_columns(fixtures_
     data["statement"]["subject"]["taxon"] = 9606
     data["statement"]["object"]["prioritize"] = ["Gene"]
     data["statement"]["qualifiers"] = [
-        {"qualifier": "species_context_qualifier", "method": "value", "encoding": "NCBITaxon:9606", "avoid": ["Disease"]},
+        {"qualifier": "disease_context_qualifier", "method": "value", "encoding": "MONDO:0000001", "avoid": ["Gene"]},
         {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"},
     ]
 
@@ -304,17 +304,17 @@ def test_tcode_collect_emits_single_resolve_batch_for_all_node_columns(fixtures_
 
     assert len(batch_ops) == 1
     specs: list[ResolveSpec] = batch_ops[0][1][0]
-    assert [spec.col for spec in specs] == ["subject", "object", "species_context_qualifier", "anatomical_context_qualifier"]
+    assert [spec.col for spec in specs] == ["subject", "object", "disease_context_qualifier", "anatomical_context_qualifier"]
     assert specs[0].taxon == "9606"
     assert specs[1].prioritize == [Categories.GENE]
-    assert specs[2].avoid == [Categories.DISEASE]
+    assert specs[2].avoid == [Categories.GENE]
 
 
 def test_tcode_collect_audits_follow_single_resolve_batch_with_qualifiers(fixtures_path: Path) -> None:
     """tcode collect runs every node column's QC audit after the single resolve_batch op."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash_batch_qc.parquet")
-    data["statement"]["qualifiers"] = [{"qualifier": "species_context_qualifier", "method": "value", "encoding": "NCBITaxon:9606"}]
+    data["statement"]["qualifiers"] = [{"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"}]
 
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
@@ -324,7 +324,7 @@ def test_tcode_collect_audits_follow_single_resolve_batch_with_qualifiers(fixtur
     batch_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "resolve_batch")
     audit_ops: list[tuple[int, tuple[Any, tuple[Any]]]] = [(i, op) for i, op in enumerate(collected) if op[0].__name__ == "fullmap_audit"]
 
-    assert [op[1][0] for _, op in audit_ops] == ["subject", "object", "species_context_qualifier"]
+    assert [op[1][0] for _, op in audit_ops] == ["subject", "object", "anatomical_context_qualifier"]
     assert all(i > batch_idx for i, _ in audit_ops)
 
 
@@ -479,6 +479,17 @@ def test_normalize_category_null_stays_null() -> None:
     nodes, _ = lib.normalize(edges, "subject")
     result: list[Any] = nodes.collect()["category"].to_list()
     assert result == [None]
+
+
+def test_derive_species_context_coalesces_taxon() -> None:
+    """derive_species_context uses subject taxon first, then object taxon."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject_taxon": ["NCBITaxon:9606", None, None], "object_taxon": ["NCBITaxon:10090", "NCBITaxon:9606", None]}
+    ).lazy()
+
+    result: list[Any] = lib.derive_species_context(lf).collect()["species_context_qualifier"].to_list()
+
+    assert result == ["NCBITaxon:9606", "NCBITaxon:9606", None]
 
 
 def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None:
@@ -1864,7 +1875,7 @@ def test_compile_subgraph_e2e_head_caps_rows_to_five(monkeypatch: Any, tmp_path:
 
 
 def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypatch: Any, tmp_path: Path) -> None:
-    """resolved qualifiers survive graph export as edge attributes without creating nodes."""
+    """auto-derived species context survives graph export as an edge attribute without creating nodes."""
     monkeypatch.chdir(tmp_path)
     rows: dict[str, list[dict[str, object]]] = {
         "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
@@ -1879,7 +1890,7 @@ def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypat
             "statement": {
                 "subject": {"method": "value", "encoding": "BRCA1"},
                 "object": {"method": "value", "encoding": "Disease X"},
-                "qualifiers": [{"qualifier": "species_context_qualifier", "method": "value", "encoding": "Homo sapiens"}],
+                "qualifiers": [],
             },
             "provenance": {"repo": "PMC", "publication": "PMC0000000"},
         },
@@ -1900,6 +1911,35 @@ def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypat
     assert all("species_context_qualifier_pre_resolution" not in edge for edge in edges)
     assert {node["id"] for node in nodes} == {"HGNC:1100", "MONDO:0000001"}
     assert "NCBITaxon:9606" not in {node["id"] for node in nodes}
+
+
+def test_node_output_reflects_disease_taxon(monkeypatch: Any, tmp_path: Path) -> None:
+    """Taxon-bearing disease nodes surface their taxon in KGX nodes NDJSON."""
+    monkeypatch.chdir(tmp_path)
+    rows: dict[str, list[dict[str, object]]] = {
+        "disease taxon": [fake_fullmap_row("disease taxon", "MONDO:50", "Taxon-bearing disease", "Disease", 9606)],
+        "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
+    }
+    install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "disease_taxon_node",
+        {
+            "statement": {"subject": {"method": "value", "encoding": "Disease Taxon"}, "object": {"method": "value", "encoding": "BRCA1"}},
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["ignored"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "disease_taxon_node.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "DISEASE_TAXON_KG"})  # pyright: ignore
+
+    subgraph: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
+    lib.compile_graph([subgraph], "disease_taxon", "1.0.0")
+    nodes: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "disease_taxon_1.0.0.nodes.ndjson").read_text().splitlines()]
+
+    disease_node: dict[str, Any] = next(node for node in nodes if node["id"] == "MONDO:50")
+    assert disease_node["taxon"] == "NCBITaxon:9606"
 
 
 def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, tmp_path: Path) -> None:

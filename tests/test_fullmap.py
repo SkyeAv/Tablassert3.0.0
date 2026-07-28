@@ -45,6 +45,10 @@ def fullmap_db(tmp_path: Path) -> Path:
             synonym_row("HGNC:6871", "MAPK1", ["mapk1"], "Gene"),
             synonym_row("UniProtKB:P28482", "MAPK1 protein", ["mapk1"], "Protein"),
             synonym_row("MONDO:9", "Rare disease", ["contextual"], "Disease", taxon="NCBITaxon:0"),
+            synonym_row("HP:1", "Human phenotype", ["phenotype_term"], "PhenotypicFeature", taxon="NCBITaxon:9606"),
+            synonym_row("MP:1", "Mouse phenotype", ["phenotype_term"], "PhenotypicFeature", taxon="NCBITaxon:40674"),
+            synonym_row("MONDO:50", "Taxon-bearing disease", ["disease_taxon"], "Disease", taxon="NCBITaxon:9606"),
+            synonym_row("MONDO:51", "Wrong-taxon disease", ["disease_taxon"], "Disease", taxon="NCBITaxon:40674"),
             synonym_row("HGNC:9", "Gene A", ["contextual"], "Gene"),
             synonym_row("HGNC:10", "Gene B", ["contextual"], "Gene"),
         ],
@@ -101,8 +105,8 @@ def test_resolve_uses_equivalent_identifier(fullmap_db: Path) -> None:
     assert result["subject"] == "HGNC:1100"
 
 
-def test_resolve_honors_gene_taxon_filter(fullmap_db: Path) -> None:
-    """resolve honors gene taxon filter."""
+def test_resolve_honors_taxon_filter(fullmap_db: Path) -> None:
+    """resolve honors taxon filter."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["shared"], "subject_two": ["shared"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, taxon="9606", log=False).collect().to_dicts()[0]
@@ -110,6 +114,39 @@ def test_resolve_honors_gene_taxon_filter(fullmap_db: Path) -> None:
     assert result["subject"] == "HGNC:1"
     assert result["subject_name"] == "HUMAN"
     assert result["subject_taxon"] == "NCBITaxon:9606"
+
+
+def test_resolve_honors_phenotype_taxon_filter(fullmap_db: Path) -> None:
+    """resolve applies taxon filtering to taxon-bearing phenotypes."""
+    source: pl.DataFrame = pl.DataFrame({"subject": ["phenotype_term"], "subject_two": ["phenotype_term"]})
+
+    result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, taxon="9606", log=False).collect().to_dicts()[0]
+
+    assert result["subject"] == "HP:1"
+    assert result["subject_category"] == "biolink:PhenotypicFeature"
+    assert result["subject_taxon"] == "NCBITaxon:9606"
+
+
+def test_resolve_honors_disease_taxon_filter(fullmap_db: Path) -> None:
+    """resolve applies taxon filtering to taxon-bearing diseases."""
+    source: pl.DataFrame = pl.DataFrame({"subject": ["disease_taxon"], "subject_two": ["disease_taxon"]})
+
+    result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, taxon="9606", log=False).collect().to_dicts()[0]
+
+    assert result["subject"] == "MONDO:50"
+    assert result["subject_category"] == "biolink:Disease"
+    assert result["subject_taxon"] == "NCBITaxon:9606"
+
+
+def test_taxon_filter_keeps_zero_taxon_entities(fullmap_db: Path) -> None:
+    """taxon filtering retains rows with no taxon metadata (TAXON_ID 0)."""
+    source: pl.DataFrame = pl.DataFrame({"subject": ["ambiguous"], "subject_two": ["ambiguous"]})
+
+    result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, taxon="10090", log=False).collect().to_dicts()[0]
+
+    assert result["subject"] == "MONDO:2"
+    assert result["subject_category"] == "biolink:Disease"
+    assert result["subject_taxon"] is None
 
 
 def test_resolve_honors_avoid_category(fullmap_db: Path) -> None:
@@ -221,6 +258,27 @@ def test_filter_and_rank_empty_raw_returns_empty_matches() -> None:
 
     assert matches.height == 0
     assert "FREQUENCY" in matches.columns
+
+
+def test_filter_and_rank_taxon_drops_all_returns_empty() -> None:
+    """filter_and_rank returns empty matches schema when taxon removes every match."""
+    terms: pl.DataFrame = pl.DataFrame({"term": ["mouse phenotype"], "nlp_level": [1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["mouse phenotype"],
+            "CURIE": ["MP:1"],
+            "PREFERRED_NAME": ["Mouse phenotype"],
+            "CATEGORY_NAME": ["PhenotypicFeature"],
+            "TAXON_ID": [40674],
+            "SOURCE_NAME": ["MP"],
+            "SOURCE_VERSION": [rs.fullmap_source_version()],
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon="9606", prioritize=None, avoid=None, column_context=False)
+
+    assert matches.height == 0
+    assert "FREQUENCY" not in matches.columns
 
 
 def test_filter_and_rank_exclude_prefixes_drops_curie_prefix() -> None:
@@ -487,13 +545,13 @@ def test_resolve_batch_makes_one_redb_call_regardless_of_spec_count(fullmap_db: 
             "subject_two": ["brca1"],
             "object": ["mapk1"],
             "object_two": ["mapk1"],
-            "species_context_qualifier": ["shared"],
-            "species_context_qualifier_two": ["shared"],
+            "disease_context_qualifier": ["shared"],
+            "disease_context_qualifier_two": ["shared"],
         }
     ).lazy()
 
     resolve_batch(
-        lf, [ResolveSpec("subject"), ResolveSpec("object"), ResolveSpec("species_context_qualifier", taxon="9606")], fullmap_db, log=False
+        lf, [ResolveSpec("subject"), ResolveSpec("object"), ResolveSpec("disease_context_qualifier", taxon="9606")], fullmap_db, log=False
     ).collect()
 
     assert len(calls) == 1
@@ -507,7 +565,7 @@ def test_resolve_batch_three_node_columns_on_sharded_db(fullmap_db: Path) -> Non
     consumer only ever hands the PRIMARY path to the rs layer, which derives the
     shard paths internally. This test confirms the sibling shard files actually
     exist on disk, that ``fullmap_db_path`` resolves the primary, then resolves
-    three node columns (subject, object, species_context_qualifier) in a single
+    three node columns (subject, object, disease_context_qualifier) in a single
     ``resolve_batch`` call and asserts every column resolves to the correct
     CURIE. The three columns share one pooled ``rs.lookup_fullmap_terms`` fetch
     (see ``test_resolve_batch_makes_one_redb_call_regardless_of_spec_count``);
@@ -530,14 +588,14 @@ def test_resolve_batch_three_node_columns_on_sharded_db(fullmap_db: Path) -> Non
             "subject_two": ["brca1"],
             "object": ["mapk1"],
             "object_two": ["mapk1"],
-            "species_context_qualifier": ["shared"],
-            "species_context_qualifier_two": ["shared"],
+            "disease_context_qualifier": ["shared"],
+            "disease_context_qualifier_two": ["shared"],
         }
     ).lazy()
 
     result: dict[str, Any] = (
         resolve_batch(
-            lf, [ResolveSpec("subject"), ResolveSpec("object"), ResolveSpec("species_context_qualifier", taxon="9606")], fullmap_db, log=False
+            lf, [ResolveSpec("subject"), ResolveSpec("object"), ResolveSpec("disease_context_qualifier", taxon="9606")], fullmap_db, log=False
         )
         .collect()
         .to_dicts()[0]
@@ -549,9 +607,9 @@ def test_resolve_batch_three_node_columns_on_sharded_db(fullmap_db: Path) -> Non
     assert result["subject_category"] == "biolink:Gene"
     assert result["object"] == "HGNC:6871"
     assert result["object_category"] == "biolink:Gene"
-    assert result["species_context_qualifier"] == "HGNC:1"
-    assert result["species_context_qualifier_name"] == "HUMAN"
-    assert result["species_context_qualifier_taxon"] == "NCBITaxon:9606"
+    assert result["disease_context_qualifier"] == "HGNC:1"
+    assert result["disease_context_qualifier_name"] == "HUMAN"
+    assert result["disease_context_qualifier_taxon"] == "NCBITaxon:9606"
 
 
 def test_lookup_threads_match(fullmap_db: Path) -> None:
