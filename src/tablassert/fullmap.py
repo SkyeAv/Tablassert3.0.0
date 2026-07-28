@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from enum import Enum
-from operator import add
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
@@ -165,7 +164,7 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
             rows.append(
                 {
                     "term": term,
-                    "CURIE": add(add(prefix, ":"), str(curie["local_id"])),
+                    "CURIE": f"{prefix}:{curie['local_id']}",
                     "PREFERRED_NAME": str(curie["preferred_name"]),
                     "CATEGORY_NAME": category,
                     "TAXON_ID": int(curie["taxon_id"]),
@@ -368,7 +367,7 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
     """
     # Split out of resolve so resolve_batch can apply per-column matches from one shared redb fetch.
     l1: str = col
-    l2: str = add(l1, tag)
+    l2: str = l1 + tag
 
     # Collection point: join after redb query, then re-lazy.
     df: pl.DataFrame = lf.collect()
@@ -383,27 +382,27 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
             pl.when(pl.col("PREFERRED_NAME").is_not_null())
             .then(pl.col("PREFERRED_NAME"))
             .otherwise(pl.col("PREFERRED_NAME_l2"))
-            .alias(add(col, "_name")),
+            .alias(f"{col}_name"),
             pl.when(pl.col("CATEGORY_NAME").is_not_null())
-            .then(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME")))
-            .otherwise(add(pl.lit("biolink:"), pl.col("CATEGORY_NAME_l2")))
-            .alias(add(col, "_category")),
+            .then(pl.lit("biolink:") + pl.col("CATEGORY_NAME"))
+            .otherwise(pl.lit("biolink:") + pl.col("CATEGORY_NAME_l2"))
+            .alias(f"{col}_category"),
             pl.when(pl.col("TAXON_ID").is_not_null())
-            .then(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID").cast(pl.String)))
-            .otherwise(add(pl.lit("NCBITaxon:"), pl.col("TAXON_ID_l2").cast(pl.String)))
-            .alias(add(col, "_taxon")),
-            pl.when(pl.col("SOURCE_NAME").is_not_null()).then(pl.col("SOURCE_NAME")).otherwise(pl.col("SOURCE_NAME_l2")).alias(add(col, "_source")),
+            .then(pl.lit("NCBITaxon:") + pl.col("TAXON_ID").cast(pl.String))
+            .otherwise(pl.lit("NCBITaxon:") + pl.col("TAXON_ID_l2").cast(pl.String))
+            .alias(f"{col}_taxon"),
+            pl.when(pl.col("SOURCE_NAME").is_not_null()).then(pl.col("SOURCE_NAME")).otherwise(pl.col("SOURCE_NAME_l2")).alias(f"{col}_source"),
             pl.when(pl.col("SOURCE_VERSION").is_not_null())
             .then(pl.col("SOURCE_VERSION"))
             .otherwise(pl.col("SOURCE_VERSION_l2"))
-            .alias(add(col, "_source_version")),
-            pl.when(pl.col("NLP_LEVEL").is_not_null()).then(pl.col("NLP_LEVEL")).otherwise(pl.col("NLP_LEVEL_l2")).alias(add(col, "_nlp_level")),
+            .alias(f"{col}_source_version"),
+            pl.when(pl.col("NLP_LEVEL").is_not_null()).then(pl.col("NLP_LEVEL")).otherwise(pl.col("NLP_LEVEL_l2")).alias(f"{col}_nlp_level"),
         ]
     )
 
     result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)(_l2)?$"))
-    result = result.select(pl.exclude(add(col, tag)))
-    result = result.with_columns(pl.col(add(col, "_taxon")).replace("NCBITaxon:0", None))
+    result = result.select(pl.exclude(col + tag))
+    result = result.with_columns(pl.col(f"{col}_taxon").replace("NCBITaxon:0", None))
     result = result.filter(pl.col(col).is_not_null())
 
     return result.lazy()
@@ -454,7 +453,7 @@ def resolve_batch(
     if not specs:
         return lf
 
-    terms_by_col: dict[str, pl.LazyFrame] = {spec.col: distinct(lf, spec.col, add(spec.col, tag)) for spec in specs}
+    terms_by_col: dict[str, pl.LazyFrame] = {spec.col: distinct(lf, spec.col, spec.col + tag) for spec in specs}
     collected_terms: dict[str, pl.DataFrame] = {col: terms.collect() for col, terms in terms_by_col.items()}
 
     union_terms: list[str] = pl.concat([t.select("term") for t in collected_terms.values()]).unique().get_column("term").to_list()

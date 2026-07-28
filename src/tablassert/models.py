@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from operator import eq
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Self
 
@@ -36,7 +35,7 @@ class Reindex(TablaBase):
         x: Comparisons = self.comparison
         y: str | int | float = self.comparator
 
-        if eq(x, Comparisons.NE) or eq(x, Comparisons.EQ):
+        if x == Comparisons.NE or x == Comparisons.EQ:
             if not isinstance(y, str):
                 raise TablassertValidationError(
                     f"`eq`/`ne` comparisons require a str comparator, got {type(y).__name__}.", code="comparison-bad-comparator-type"
@@ -133,7 +132,7 @@ class Encoding(TablaBase):
 
     @model_validator(mode="after")
     def excel_style_columns(self: Self) -> Self:
-        if eq(self.method, EncodingMethods.COLUMN):
+        if self.method == EncodingMethods.COLUMN:
             x: str | int | float = self.encoding
             if not re.search(r"^[A-Z]{1,3}$", str(x)):
                 raise TablassertValidationError(f"`encoding` must be an Excel-style column name (A-ZZ), got {x!r}.", code="encoding-bad-excel-column")
@@ -211,7 +210,7 @@ class Provenance(TablaBase):
 
     @model_validator(mode="after")
     def is_valid_pmc_id(self: Self) -> Self:
-        if eq(self.repo, Repositories.PUBMED_CENTRAL):
+        if self.repo == Repositories.PUBMED_CENTRAL:
             publication: str = self.publication
             if not re.search(r"^PMC\d+", publication):
                 raise TablassertValidationError(

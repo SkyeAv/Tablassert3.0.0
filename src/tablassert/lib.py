@@ -5,7 +5,6 @@ import operator
 import re
 from collections.abc import Callable, Iterable
 from functools import cache
-from operator import add, eq, le
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
@@ -111,7 +110,7 @@ def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
     EDGE_MAP[("ChemicalEntity", "Gene")] = EdgeCategories.CHEMICAL_GENE_INTERACTION_ASSOCIATION
 
     # Flattened "subj_role|obj_role" -> biolink CURIE (for polars replace_strict).
-    EDGE_LOOKUP: dict[str, str] = {f"{s}|{o}": add("biolink:", ec.value) for (s, o), ec in EDGE_MAP.items()}
+    EDGE_LOOKUP: dict[str, str] = {f"{s}|{o}": f"biolink:{ec.value}" for (s, o), ec in EDGE_MAP.items()}
 
     return CATEGORY_ROLE, EDGE_LOOKUP
 
@@ -138,7 +137,7 @@ def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
     or_: pl.Expr = pl.col(object_col).str.replace("biolink:", "").replace(cat_role).fill_null("")
     return lf.with_columns(
         pl.concat_list(
-            pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=add("biolink:", EdgeCategories.ASSOCIATION.value))
+            pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=f"biolink:{EdgeCategories.ASSOCIATION.value}")
         ).alias("category")
     )
 
@@ -220,7 +219,7 @@ def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Literal[Tokens.VAL
     df: pl.DataFrame = lf.collect()
     expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
     attr: Callable[[Any], Any] = getattr(math, func)
-    df = df.with_columns(expr.map_elements(lambda x: attr(*(x if eq(a, Tokens.VALUES) else a for a in args)), return_dtype=pl.Float64).alias(col))
+    df = df.with_columns(expr.map_elements(lambda x: attr(*(x if a == Tokens.VALUES else a for a in args)), return_dtype=pl.Float64).alias(col))
     return df.lazy()
 
 
@@ -289,12 +288,12 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
-    expr: pl.Expr = add(pl.lit(prefix), pl.col(col).cast(pl.String))
+    expr: pl.Expr = pl.lit(prefix) + pl.col(col).cast(pl.String)
     return lf.with_columns(expr.alias(col))
 
 
 def suffix(lf: pl.LazyFrame, col: str, suffix: str) -> pl.LazyFrame:
-    expr: pl.Expr = add(pl.col(col).cast(pl.String), pl.lit(suffix))
+    expr: pl.Expr = pl.col(col).cast(pl.String) + pl.lit(suffix)
     return lf.with_columns(expr.alias(col))
 
 
@@ -362,13 +361,13 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
     band: pl.Expr = (
         pl.when(expr.is_null())
         .then(pl.lit(None, dtype=pl.String))
-        .when(le(expr, 0.001))
+        .when(expr <= 0.001)
         .then(pl.lit("biolink:very_strongly_significant"))
-        .when(le(expr, 0.01))
+        .when(expr <= 0.01)
         .then(pl.lit("biolink:strongly_significant"))
-        .when(le(expr, 0.05))
+        .when(expr <= 0.05)
         .then(pl.lit("biolink:significant"))
-        .when(le(expr, 0.10))
+        .when(expr <= 0.10)
         .then(pl.lit("biolink:suggestive"))
         .otherwise(pl.lit("biolink:not_significant"))
     )
@@ -746,8 +745,8 @@ def crop(lf: pl.LazyFrame, row_slice: list[NonNegativeInt | Literal[Tokens.AUTO]
     n: int = df.select(pl.len()).item()
     start: int | Literal[Tokens.AUTO] = row_slice[0]
     stop: int | Literal[Tokens.AUTO] = row_slice[1]
-    offset: int = 0 if eq(start, Tokens.AUTO) else start  # pyright: ignore
-    length: int = n if eq(stop, Tokens.AUTO) else (stop - offset)  # pyright: ignore
+    offset: int = 0 if start == Tokens.AUTO else start  # pyright: ignore
+    length: int = n if stop == Tokens.AUTO else (stop - offset)  # pyright: ignore
     df = df.slice(offset=offset, length=length)
     return df.lazy()
 
@@ -910,9 +909,9 @@ class Tcode(Section):
             containing ``None`` placeholders) ready for ``clean`` to filter.
         """
         return [
-            (value, (col, x.encoding)) if eq(x.method, EncodingMethods.VALUE) else None,
-            (column, (col, idxname(x.encoding))) if eq(x.method, EncodingMethods.COLUMN) else None,
-            (column, (add("original_", col), col)) if table_literal else None,
+            (value, (col, x.encoding)) if x.method == EncodingMethods.VALUE else None,
+            (column, (col, idxname(x.encoding))) if x.method == EncodingMethods.COLUMN else None,
+            (column, (f"original_{col}", col)) if table_literal else None,
             (fill, (col, x.fill)) if x.fill else None,
             (explode, (col, x.explode_by)) if x.explode_by else None,
             [(regex, (col, r.pattern, r.replacement)) for r in x.regex] if x.regex else None,
@@ -936,8 +935,8 @@ class Tcode(Section):
             copy and ``level_one``/``level_two`` normalization tuples.
         """
         encoding: list[Any] = self.encoding(x, col, table_literal=True)
-        prep: list[Any] = [(column, (add(col, "_pre_resolution"), col)), (level_one, (col,)), (level_two, (col,))]
-        return add(encoding, prep)
+        prep: list[Any] = [(column, (f"{col}_pre_resolution", col)), (level_one, (col,)), (level_two, (col,))]
+        return encoding + prep
 
     def clean(self: Self, tcode: list[tuple[Callable, Any]]) -> list[tuple[Callable, tuple[Any]]]:
         """Clean a Tcode list so it can be used with ``reduce`` from functools.
@@ -985,8 +984,8 @@ class Tcode(Section):
 
         # Returns a list of: (function, (arguments)).
         tcode: list[Any] | None = [
-            (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
-            (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
+            (csv, (self.source.local, self.source.delimiter)) if self.source.kind == Files.TEXT else None,  # pyright: ignore
+            (excel, (self.source.local, self.source.sheet)) if self.source.kind == Files.EXCEL else None,  # pyright: ignore
             (idx, ()),
             (crop, (self.source.row_slice,)) if self.source.row_slice else None,
             (pick, (self.source.rows,)) if self.source.rows else None,
@@ -1010,7 +1009,7 @@ class Tcode(Section):
             [self.node_prep(x, col) for x, col in node_columns],
             (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
             [(fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) for _, col in node_columns] if self.qc else None,
-            (value, ("predicate", add("biolink:", self.statement.predicate))),
+            (value, ("predicate", "biolink:" + self.statement.predicate)),
             (edge_category, ()),
             (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
             (value, ("knowledge_level", self.provenance.knowledge_level)),
@@ -1018,7 +1017,7 @@ class Tcode(Section):
             (value, ("resource_id", infores(self.name))) if self.name else None,
             (publications, (publication_curie(self.provenance.repo, self.provenance.publication),)),
             (source_record_urls, (str(self.source.url),)),
-            (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
+            (value, ("sheet_name", self.source.sheet)) if self.source.kind == Files.EXCEL else None,  # pyright: ignore
             (trim, ()),
             (format_numeric, ()),
             (to_store, (self.store, self.config.name)),
@@ -1120,13 +1119,13 @@ def normalize(edges: pl.LazyFrame, col: str, names: list[str] | None = None) -> 
     """
     if names is None:
         names = ["id", "name", "category", "taxon", "source", "source_version"]
-    cols: list[str] = [col, add(col, "_name"), add(col, "_category"), add(col, "_taxon"), add(col, "_source"), add(col, "_source_version")]
+    cols: list[str] = [col, f"{col}_name", f"{col}_category", f"{col}_taxon", f"{col}_source", f"{col}_source_version"]
     nodes: pl.LazyFrame = edges.select(cols).unique().rename(dict(zip(cols, names, strict=True)))
     # Ensures category has biolink: prefix.
     nodes = nodes.with_columns(
         pl.when(pl.col("category").str.starts_with("biolink:"))
         .then(pl.col("category"))
-        .otherwise(add(pl.lit("biolink:"), pl.col("category")))
+        .otherwise(pl.lit("biolink:") + pl.col("category"))
         .alias("category")
     )
     # Exports category within a list (null categories stay null for strip_nulls).
@@ -1148,9 +1147,9 @@ def publication_curie(repo: str, publication: str) -> str:
     Returns:
         CURIE string of the form ``"<prefix>:<publication>"``.
     """
-    if eq(repo, Repositories.PUBMED_CENTRAL):
-        return add("PMCID:", publication)
-    return add(repo, add(":", publication))
+    if repo == Repositories.PUBMED_CENTRAL:
+        return "PMCID:" + publication
+    return repo + ":" + publication
 
 
 def infores(name: str) -> str:
@@ -1162,7 +1161,7 @@ def infores(name: str) -> str:
     Returns:
         ``"infores:<kebab-name>"``.
     """
-    return add("infores:", name.lower().replace("_", "-"))
+    return f"infores:{name.lower().replace('_', '-')}"
 
 
 def upstream_resource_ids(repo: Repositories) -> list[str]:
@@ -1174,7 +1173,7 @@ def upstream_resource_ids(repo: Repositories) -> list[str]:
     Returns:
         Single-element list containing the matching infores identifier.
     """
-    if eq(repo, Repositories.PUBMED_CENTRAL):
+    if repo == Repositories.PUBMED_CENTRAL:
         return [InformationResources.PUBMED_CENTRAL.value]
     return [InformationResources.PUBMED.value]
 
@@ -1230,7 +1229,7 @@ def normalize_biolink_category(v: object) -> str | None:
         return None
     if v.startswith("biolink:"):
         return v
-    return add("biolink:", v)
+    return f"biolink:{v}"
 
 
 def curie_prefix(v: object) -> str | None:
@@ -1305,10 +1304,10 @@ def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: str |
     info: list[dict[str, object]] = []
     for row in rows:
         primary_sources: list[str] = clean_values(
-            add(
-                add(as_list(row.get("primary_knowledge_source")), as_list(row.get("primary_knowledge_sources"))),
-                add(as_list(row.get("resource_id")), as_list(row.get("upstream_resource_ids"))),
-            )
+            as_list(row.get("primary_knowledge_source"))
+            + as_list(row.get("primary_knowledge_sources"))
+            + as_list(row.get("resource_id"))
+            + as_list(row.get("upstream_resource_ids"))
         )
         edge_type: dict[str, object] = strip_nulls(
             {
@@ -1596,8 +1595,8 @@ def resolve_many(
     series: pl.Series = pl.Series(col, entities)
     lf: pl.LazyFrame = series.to_frame().lazy()
 
-    lf = column(lf, add("original_", col), col)
-    lf = column(lf, add(col, "_pre_resolution"), col)
+    lf = column(lf, f"original_{col}", col)
+    lf = column(lf, f"{col}_pre_resolution", col)
     lf = level_one(lf, col)
     lf = level_two(lf, col)
 

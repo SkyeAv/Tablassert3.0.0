@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from operator import add, eq
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -92,15 +91,15 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     from rapidfuzz.process import cpdist
     from sklearn.metrics.pairwise import cosine_similarity
 
-    original: str = add(col, "_pre_resolution")
-    preferred: str = add(col, "_name")
+    original: str = f"{col}_pre_resolution"
+    preferred: str = f"{col}_name"
     cols: list[str] = [col, original, preferred]
 
     # Stage 1: exact string matching or is CURIE (can stay lazy until filter).
     # Collection point: pending pairs require eager.
     df: pl.DataFrame = lf.collect()
     pairs: pl.DataFrame = df.select(cols).unique()
-    pairs = pairs.with_columns(eq(pl.col(cols[1]), pl.col(cols[2])).alias(out))
+    pairs = pairs.with_columns((pl.col(cols[1]) == pl.col(cols[2])).alias(out))
 
     passed: pl.DataFrame = pairs.filter(pl.col(out))
     pending: pl.DataFrame = pairs.filter(~pl.col(out))
