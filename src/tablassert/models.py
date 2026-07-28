@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
@@ -17,10 +18,24 @@ else:
     pl = LazyModule("polars")
 
 
+# Deprecated config keys -> guidance. EMPTY today: the before-hook below is a silent no-op until a
+# future rename registers a key here, letting old YAML soft-warn instead of hard-failing extra="forbid".
+DEPRECATED_KEYS: dict[str, str] = {}
+
+
 class TablaBase(BaseModel):
     model_config: ConfigDict = ConfigDict(  # pyright: ignore
         str_strip_whitespace=False, validate_assignment=True, use_enum_values=True, extra="forbid", populate_by_name=True
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _warn_deprecated_keys(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for key in data:
+                if key in DEPRECATED_KEYS:
+                    warnings.warn(DEPRECATED_KEYS[key], UserWarning, stacklevel=2)
+        return data
 
 
 class Reindex(TablaBase):

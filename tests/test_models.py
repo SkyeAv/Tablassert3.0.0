@@ -6,9 +6,10 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from tablassert import models
 from tablassert.biolink import Categories
 from tablassert.enums import Comparisons, EncodingMethods, Repositories
-from tablassert.ingests import from_yaml
+from tablassert.ingests import from_yaml, to_sections
 from tablassert.models import (
     DEFAULT_RIG_UI_EXPLANATION,
     Annotation,
@@ -23,6 +24,11 @@ from tablassert.models import (
     Statement,
     Text,
 )
+
+# Repository root (parent of tests/) and the shipped docs examples, used to prove the
+# deprecation scaffold stays silent across the real example corpus.
+ROOT: Path = Path(__file__).resolve().parent.parent
+EXAMPLES: Path = ROOT / "docs" / "examples"
 
 
 def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
@@ -396,3 +402,54 @@ def test_provenance_pmc_repo_with_non_pmc_publication_rejected() -> None:
     with pytest.raises(ValidationError) as exc_info:
         Provenance(repo=Repositories.PUBMED_CENTRAL, publication="12345")  # pyright: ignore
     assert "provenance-bad-pmc-id" in str(exc_info.value)
+
+
+def test_no_deprecation_warnings_for_current_fixtures(fixtures_path: Path, recwarn: pytest.WarningsRecorder) -> None:
+    """US-M4: an EMPTY DEPRECATED_KEYS registry makes the before-hook a silent no-op.
+
+    Every shipped fixture and docs example must load and validate with ZERO UserWarnings,
+    proving the deprecation scaffold never regresses today's corpus. Scoped to UserWarning so
+    unrelated DeprecationWarnings (multiprocessing/polars) cannot interfere with the assertion.
+    """
+    # Single-section fixture validates directly.
+    Section.model_validate(from_yaml(fixtures_path / "minimal_section.yaml"))
+
+    # Template/sections configs expand via to_sections; the stamped `config` path is a
+    # Tcode-only key, so drop it before validating the pure Section schema.
+    for path in (fixtures_path / "minimal_section_with_sections.yaml", EXAMPLES / "tutorial-table.yaml"):
+        raw: Any = from_yaml(path)
+        sections: list[dict[str, Any]] = to_sections(raw, path)  # pyright: ignore
+        for section in sections:
+            section.pop("config", None)
+            Section.model_validate(section)
+
+    # Graph example validates directly.
+    Graph.model_validate(from_yaml(EXAMPLES / "tutorial-graph.yaml"))
+
+    assert [w for w in recwarn if issubclass(w.category, UserWarning)] == []
+
+
+def test_deprecated_key_in_registry_warns_but_still_validates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """US-M4: a registered deprecated key soft-warns but never blocks validation.
+
+    Monkeypatching a REAL current field name (`delimiter`) into DEPRECATED_KEYS makes the
+    before-hook emit a UserWarning while `extra="forbid"` still accepts the key and the value
+    round-trips intact -- isolating "warn, don't fail". monkeypatch restores the empty registry
+    so no other test observes the temporary entry.
+    """
+    monkeypatch.setitem(models.DEPRECATED_KEYS, "delimiter", "delimiter is deprecated; use 'sep' instead")
+    with pytest.warns(UserWarning, match="sep"):
+        source: Text = Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", delimiter="\t")  # pyright: ignore
+    assert source.delimiter == "\t"
+
+
+def test_deprecated_hook_is_noop_for_non_dict_input(recwarn: pytest.WarningsRecorder) -> None:
+    """US-M4: the before-hook passes non-mapping raw input through untouched.
+
+    pydantic hands a mode="before" validator whatever raw value model_validate receives, so the
+    hook must neither warn nor mutate non-dicts (None/list/instance); normal validation still
+    rejects the bad shape, proving the scaffold only ever observes dict keys.
+    """
+    with pytest.raises(ValidationError):
+        Section.model_validate(["not", "a", "mapping"])
+    assert [w for w in recwarn if issubclass(w.category, UserWarning)] == []
