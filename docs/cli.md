@@ -148,7 +148,7 @@ tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `--output`, `-o` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
-| `--cache`, `-c` | Path | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
+| `--cache`, `-c` | Path | No | `./fullmap/downloads` | Directory for downloaded BABEL files (with `classes/` and `synonyms/` subdirectories) |
 | `--version`, `-v` | str | No | `BABEL_VERSION` literal (`2026jul22`) | BABEL release snapshot date to fetch (a RENCI snapshot date stamp, not Tablassert's version) |
 | `--threads`, `-t` | int | No | `None` (auto) | Worker threads; when unset, auto-capped by available memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
 

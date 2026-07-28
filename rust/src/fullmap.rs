@@ -35,7 +35,7 @@ const FULLMAP_SOURCE_VERSION: &str = "2026jul22";
 /// The runtime shard count (`resolve_shard_count`) is clamped to this cap; raise
 /// this const to allow more shard files.  Distinct from the in-memory
 /// `SHARD_COUNT` used by the concurrent build maps.
-const SHARD_COUNT_SHARDS: usize = 4;
+const SHARD_COUNT_SHARDS: usize = 16;
 /// A normalized term grouped with its deduplicated `(curie_id, source_id)` pairs.
 type TermPairs = (String, Vec<(u32, u8)>);
 type PairRecords = Vec<TermPairs>;
@@ -2038,7 +2038,8 @@ pub fn build_fullmap_db(
     );
     let insert_batch = env_usize("TABLASSERT_FULLMAP_INSERT_BATCH", DEFAULT_INSERT_BATCH);
     // On-disk RECORDS shard count (one redb file + concurrent writer per shard).
-    // Defaults to 4; non-powers-of-two round down, clamped to SHARD_COUNT_SHARDS.
+    // Defaults to SHARD_COUNT_SHARDS (16); non-powers-of-two round down,
+    // clamped to SHARD_COUNT_SHARDS.
     let shard_count = resolve_shard_count();
     let spill_dir = std::env::var("TABLASSERT_FULLMAP_SPILL_DIR")
         .map(PathBuf::from)
@@ -2144,7 +2145,7 @@ fn shard_count_of(database: &Database) -> PyResult<usize> {
     // `resolve_shard_count`: the routing mask `xxh64(term) & (count - 1)` is only
     // correct for powers of two, so a hand-edited non-pow2 META.shards (e.g. 3 ->
     // mask &2) would silently misroute/drop lookups onto a subset of shards.
-    // `round_down_pow2(SHARD_COUNT_SHARDS) == SHARD_COUNT_SHARDS` (4 is a pow2),
+    // `round_down_pow2(SHARD_COUNT_SHARDS) == SHARD_COUNT_SHARDS` (16 is a pow2),
     // so the default fallback above is preserved.
     Ok(round_down_pow2(count).clamp(1, SHARD_COUNT_SHARDS))
 }
@@ -2218,10 +2219,11 @@ fn lookup_shard_bucket(
 /// concurrently.  Terms are partitioned by `term_shard` (the shared routing
 /// oracle) into per-shard buckets; one worker thread per NON-EMPTY shard — capped
 /// at `workers` — reads only its own shard's RECORDS, and the tagged hits are
-/// re-merged into the original input term order.  With shard_count=4 and
-/// workers>=4 this is up to 4 concurrent shard reads.  Surplus shards beyond the
-/// worker cap are read on the calling thread, which still overlaps with the
-/// spawned readers.  Pure Rust end-to-end (no `Python`).
+/// re-merged into the original input term order.  With
+/// shard_count=SHARD_COUNT_SHARDS and enough workers this is up to
+/// SHARD_COUNT_SHARDS concurrent shard reads.  Surplus shards beyond the worker
+/// cap are read on the calling thread, which still overlaps with the spawned
+/// readers.  Pure Rust end-to-end (no `Python`).
 fn lookup_pair_terms_db(
     shards: &[Arc<Database>],
     terms: &[String],
@@ -2290,12 +2292,12 @@ const LOOKUP_PARALLEL_MIN: usize = 1024;
 
 /// Default worker count for lookups when the caller passes no `threads`.
 /// The production build-graph resolve sends ONE batch of all distinct node-column
-/// terms (often huge) with `threads=None`; parallelizing that across the 4 shards
-/// is the win, so large batches default to `available_parallelism`.  Small batches
-/// (< `LOOKUP_PARALLEL_MIN`) stay single-threaded to avoid spawn overhead.  The
-/// fan-out is already capped by the non-empty shard count inside
-/// `lookup_pair_terms_db`, so returning `available_parallelism` yields <=4 actual
-/// shard threads regardless of core count.
+/// terms (often huge) with `threads=None`; parallelizing that across the RECORDS
+/// shards is the win, so large batches default to `available_parallelism`.  Small
+/// batches (< `LOOKUP_PARALLEL_MIN`) stay single-threaded to avoid spawn overhead.
+/// The fan-out is already capped by the non-empty shard count inside
+/// `lookup_pair_terms_db`, so returning `available_parallelism` yields up to
+/// SHARD_COUNT_SHARDS actual shard threads regardless of core count.
 fn default_lookup_workers(terms_len: usize) -> usize {
     if terms_len < LOOKUP_PARALLEL_MIN {
         return 1;
@@ -2416,9 +2418,10 @@ fn lookup_terms(
 
 /// Look up fullmap records for `terms`.  `threads=None` (the production
 /// build-graph default) auto-selects the worker count via `default_lookup_workers`:
-/// batches >= `LOOKUP_PARALLEL_MIN` fan out across the 4 RECORDS shards in
-/// parallel, smaller batches stay single-threaded.  An explicit `threads=Some(1)`
-/// always forces the serial path.  The GIL is released for the whole lookup.
+/// batches >= `LOOKUP_PARALLEL_MIN` fan out across the RECORDS shards in
+/// parallel (up to 16 by default), smaller batches stay single-threaded.  An
+/// explicit `threads=Some(1)` always forces the serial path.  The GIL is released
+/// for the whole lookup.
 #[pyfunction]
 #[pyo3(signature = (db, terms, threads=None, return_format="rows"))]
 pub fn lookup_fullmap_terms<'py>(
@@ -2601,7 +2604,7 @@ mod tests {
     /// `term_shard` is the single routing oracle shared by the writer and the
     /// reader, so it must be deterministic (same term -> same shard every call,
     /// or reads would look in the wrong file), agree with the raw xxh64-mask
-    /// definition, and spread a representative sample across all 4 shards so the
+    /// definition, and spread a representative sample across all default shards so the
     /// shard files stay roughly even-sized.
     #[test]
     fn term_shard_is_deterministic_and_balanced() {
@@ -2674,7 +2677,7 @@ mod tests {
     }
 
     /// The v4 layout keeps dims+CURIES+META in the primary and moves RECORDS
-    /// into 4 sibling shard files.  The primary must NOT carry a RECORDS table,
+    /// into sibling shard files.  The primary must NOT carry a RECORDS table,
     /// META must advertise both the schema and the shard count, and every shard
     /// file must exist (even empty) holding a RECORDS table — this is the
     /// on-disk contract the read path relies on.
@@ -2694,12 +2697,16 @@ mod tests {
 
         build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
 
-        // Primary: META (schema=v4, shards=4) + dims + CURIES, but NO RECORDS.
+        // Primary: META (schema=v4, shards=SHARD_COUNT_SHARDS) + dims + CURIES,
+        // but NO RECORDS.
         let database = open_cached(output.clone()).unwrap();
         let read = database.begin_read().unwrap();
         let meta = read.open_table(META).unwrap();
         assert_eq!(meta.get("schema").unwrap().unwrap().value(), SCHEMA_VERSION);
-        assert_eq!(meta.get("shards").unwrap().unwrap().value(), "4");
+        assert_eq!(
+            meta.get("shards").unwrap().unwrap().value(),
+            SHARD_COUNT_SHARDS.to_string()
+        );
         drop(meta);
         let _prefixes = read.open_table(PREFIXES).unwrap();
         let _categories = read.open_table(CATEGORIES).unwrap();
@@ -2712,7 +2719,7 @@ mod tests {
         drop(read);
         drop(database);
 
-        // All 4 shard files exist and each holds a RECORDS table.
+        // All default shard files exist and each holds a RECORDS table.
         for index in 0..SHARD_COUNT_SHARDS {
             let shard = shard_path(&output, index);
             assert!(shard.exists(), "missing shard file {shard:?}");
@@ -2768,7 +2775,7 @@ mod tests {
     /// route terms only onto shards {0,2}, silently misrouting/dropping lookups
     /// (shard 1 opened but never queried, shard 3 never opened).  Rounding down
     /// keeps the mask valid.  A missing/unparseable value falls back to the default
-    /// `SHARD_COUNT_SHARDS` (4) via `unwrap_or`, itself a power of two so the
+    /// `SHARD_COUNT_SHARDS` (16) via `unwrap_or`, itself a power of two so the
     /// round-down leaves it unchanged.  `"0"` PARSES (so the fallback does not fire)
     /// and rounds down to 1, exactly mirroring the write path's `resolve_shard_count`
     /// (`round_down_pow2(0) == 1`); 1 is still a valid mask (&0), so it is safe.
@@ -2804,7 +2811,7 @@ mod tests {
         assert_eq!(check(Some("4")), 4);
         assert_eq!(check(Some("2")), 2);
         assert_eq!(check(Some("1")), 1);
-        // Missing / unparseable -> default SHARD_COUNT_SHARDS (4) via unwrap_or.
+        // Missing / unparseable -> default SHARD_COUNT_SHARDS (16) via unwrap_or.
         assert_eq!(check(None), SHARD_COUNT_SHARDS);
         assert_eq!(check(Some("not-a-number")), SHARD_COUNT_SHARDS);
         // "0" parses (fallback does NOT fire) and rounds down to 1, mirroring the
@@ -2899,7 +2906,8 @@ mod tests {
     ///    invariant of the partition.  Multiple runs must exist (small local_spill)
     ///    so the per-shard k-way merge has real work.
     /// 2. PARALLEL MERGE EQUIVALENCE: two full builds over the SAME synonyms but
-    ///    with different shard counts (4 vs 2) — i.e. different per-shard run
+    ///    with different shard counts (4 vs 2) — i.e. a legacy-compatible count
+    ///    and a smaller runtime override, producing different per-shard run
     ///    layouts merged by independent threads — must yield identical
     ///    term -> set(CURIE) results.  Because each term's postings all land in one
     ///    shard and the read path routes by the same `term_shard` oracle, the
@@ -3114,12 +3122,13 @@ mod tests {
     /// `threads=None`, so the parallel shard fan-out must kick in from the Rust
     /// DEFAULT alone — not just when a test passes `threads>=2`.  This builds a
     /// large fixture and probes it with a batch that crosses `LOOKUP_PARALLEL_MIN`
-    /// and spans >=2 shards, then asserts: (a) the default worker count is >1 on
-    /// any multi-core host (so `lookup_pair_terms_db` takes its parallel branch and
-    /// spawns >1 shard-reader thread), and (b) `threads=None` returns results
-    /// IDENTICAL (content + order) to the forced-serial `threads=Some(1)`, with
-    /// misses dropped.  On a (rare) single-core host the parallelism assertion is
-    /// skipped but equivalence still holds.
+    /// and spans every default shard, then asserts: (a) the default worker count
+    /// is >1 on any multi-core host, and reaches the 16-shard fan-out cap on a
+    /// host with at least 16 CPUs (so `lookup_pair_terms_db` can spawn one reader
+    /// per non-empty shard), and (b) `threads=None` returns results IDENTICAL
+    /// (content + order) to the forced-serial `threads=Some(1)`, with misses
+    /// dropped.  On smaller hosts the maximum-fanout assertion is skipped but
+    /// equivalence still holds.
     #[test]
     fn threads_none_defaults_to_parallel_for_large_batch() {
         pyo3::Python::initialize();
@@ -3151,22 +3160,25 @@ mod tests {
             probes.len()
         );
 
-        // Real probe terms provably span >=2 shards, so the fan-out has >1
-        // non-empty shard to read concurrently.
+        // Real probe terms provably span every default shard, so on a sufficiently
+        // large machine the default worker policy can drive the full 16-shard
+        // lookup fan-out.
         let spanned: HashSet<usize> = probes
             .iter()
             .filter(|t| !t.starts_with("absent"))
             .map(|t| term_shard(t, SHARD_COUNT_SHARDS))
             .collect();
-        assert!(
-            spanned.len() >= 2,
-            "probes must span >=2 shards, got {spanned:?}"
+        assert_eq!(
+            spanned.len(),
+            SHARD_COUNT_SHARDS,
+            "probes must span every default shard, got {spanned:?}"
         );
 
         // The Rust default must select >1 worker for this large batch on any
         // multi-core host; after the `.max(1).min(len)` clamp in `lookup_pair_terms`
-        // the effective worker count is still >1, which (with >=2 non-empty shards)
-        // makes `lookup_pair_terms_db` spawn >1 shard-reader thread.
+        // the effective worker count is still >1. On hosts with at least the
+        // default shard count, it reaches that count so all non-empty shards may
+        // be queried concurrently.
         let cpus = std::thread::available_parallelism()
             .map(std::num::NonZero::get)
             .unwrap_or(1);
@@ -3177,6 +3189,12 @@ mod tests {
             assert!(
                 effective > 1,
                 "clamp must not collapse a large batch to serial"
+            );
+        }
+        if cpus >= SHARD_COUNT_SHARDS {
+            assert!(
+                default_workers >= SHARD_COUNT_SHARDS,
+                "large batch should be able to fan out across all default shards"
             );
         }
         // Explicit threads=Some(1) still forces serial regardless of batch size.
@@ -3253,9 +3271,10 @@ mod tests {
 
     /// `TABLASSERT_FULLMAP_SHARDS` makes the shard count runtime-configurable.  A
     /// 2-shard build must write META.shards="2", create exactly s0+s1 (each with a
-    /// RECORDS table, even the one that receives no terms), create NO s2/s3, and
-    /// the read path must open exactly 2 shards (from META) and still resolve every
-    /// term — proving writer and reader agree on the runtime shard mask.
+    /// RECORDS table, even the one that receives no terms), create no higher shard
+    /// files up to the compile-time cap, and the read path must open exactly 2
+    /// shards (from META) and still resolve every term — proving writer and reader
+    /// agree on the runtime shard mask.
     #[test]
     fn runtime_shard_count_builds_and_reads_fewer_shards() {
         pyo3::Python::initialize();
@@ -3304,8 +3323,9 @@ mod tests {
         drop(meta);
         drop(read);
 
-        // Exactly s0+s1 exist, each holding a RECORDS table; s2/s3 must NOT exist.
-        // (Direct opens are scoped so their flocks drop before the cached opens.)
+        // Exactly s0+s1 exist, each holding a RECORDS table; higher shard files
+        // up to the compile-time cap must NOT exist. (Direct opens are scoped so
+        // their flocks drop before the cached opens.)
         for index in 0..2 {
             let shard = shard_path(&output, index);
             assert!(shard.exists(), "missing shard file {shard:?}");
@@ -3313,8 +3333,12 @@ mod tests {
             let read = db.begin_read().unwrap();
             let _records = read.open_table(RECORDS).unwrap();
         }
-        assert!(!shard_path(&output, 2).exists(), "s2 must not exist");
-        assert!(!shard_path(&output, 3).exists(), "s3 must not exist");
+        for index in 2..SHARD_COUNT_SHARDS {
+            assert!(
+                !shard_path(&output, index).exists(),
+                "shard {index} must not exist for a 2-shard build"
+            );
+        }
 
         // Read path opens exactly 2 shards and resolves every term.
         let shards = open_cached_shards(&output).unwrap();
@@ -3322,6 +3346,75 @@ mod tests {
         let terms: Vec<String> = (0..50).map(|i| format!("gene{i}")).collect();
         let rows = lookup_terms(output, terms, Some(4)).unwrap();
         assert_eq!(rows.len(), 50);
+    }
+
+    /// Backward compatibility: databases built/advertising the former 4-shard
+    /// layout must continue to open exactly those four shard files and route terms
+    /// with a 4-shard mask, even though new default builds now write 16 shards.
+    #[test]
+    fn legacy_four_shard_db_reads_only_four_shards() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("HGNC.ndjson");
+        let output = dir.path().join("fullmap.redb");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..80 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+        drop(synonym_file);
+
+        let spill_dir = {
+            let mut p = output.clone().into_os_string();
+            p.push(".spill.d");
+            PathBuf::from(p)
+        };
+        build_fullmap_inner(
+            output.clone(),
+            Vec::new(),
+            vec![synonyms],
+            4,
+            4,
+            None,
+            4_000_000,
+            1_000_000,
+            HashSet::new(),
+            DEFAULT_CHUNK_BYTES,
+            2,
+            64 * 1024 * 1024,
+            1000,
+            spill_dir,
+        )
+        .unwrap();
+
+        let database = open_cached(output.clone()).unwrap();
+        let read = database.begin_read().unwrap();
+        let meta = read.open_table(META).unwrap();
+        assert_eq!(meta.get("shards").unwrap().unwrap().value(), "4");
+        drop(meta);
+        drop(read);
+
+        let shards = open_cached_shards(&output).unwrap();
+        assert_eq!(shards.len(), 4);
+        for index in 0..4 {
+            assert!(
+                shard_path(&output, index).exists(),
+                "missing legacy shard {index}"
+            );
+        }
+        for index in 4..SHARD_COUNT_SHARDS {
+            assert!(
+                !shard_path(&output, index).exists(),
+                "new default shard {index} must not be required for legacy 4-shard DBs"
+            );
+        }
+
+        let terms: Vec<String> = (0..80).map(|i| format!("gene{i}")).collect();
+        let rows = lookup_terms(output, terms, Some(SHARD_COUNT_SHARDS)).unwrap();
+        assert_eq!(rows.len(), 80);
     }
 
     #[test]
@@ -3367,10 +3460,10 @@ mod tests {
             .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
     }
 
-    /// `evict_cached_path` must drop the primary AND all 4 shard handles so a
-    /// rebuild never serves a stale file.  Verified by caching all 5 handles,
-    /// evicting, and confirming none of the 5 canonical paths remain in the
-    /// cache map.
+    /// `evict_cached_path` must drop the primary AND all default shard handles so
+    /// a rebuild never serves a stale file.  Verified by caching the primary plus
+    /// all shard handles, evicting, and confirming none of the canonical paths
+    /// remain in the cache map.
     #[test]
     fn evict_cached_path_removes_primary_and_all_shards() {
         pyo3::Python::initialize();
@@ -3387,7 +3480,7 @@ mod tests {
 
         build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
 
-        // Populate the cache with the primary + all 4 shards (5 handles).
+        // Populate the cache with the primary + all default shards.
         let _primary = open_cached(output.clone()).unwrap();
         let shards = open_cached_shards(&output).unwrap();
         assert_eq!(shards.len(), SHARD_COUNT_SHARDS);
@@ -3404,7 +3497,7 @@ mod tests {
 
         evict_cached_path(&output).unwrap();
 
-        // After eviction none of the 5 paths remain cached.
+        // After eviction none of the primary/shard paths remain cached.
         {
             let map = cache.read().unwrap();
             assert!(!map.contains_key(&std::fs::canonicalize(&output).unwrap()));

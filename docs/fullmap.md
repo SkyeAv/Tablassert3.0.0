@@ -1,6 +1,6 @@
 # Fullmap
 
-Fullmap is Tablassert's embedded entity-resolution database: a small set of [redb](https://github.com/cberner/redb) files — a primary file holding the dimensions, CURIEs, and schema metadata, plus a handful of hash-sharded RECORDS files (`fullmap.s0.redb` … `fullmap.s3.redb` by default) holding the term→postings index — containing biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS Translator BABEL export files. It powers `resolve()` / `resolve_many()`, mapping free-text strings to standardized identifiers.
+Fullmap is Tablassert's embedded entity-resolution database: a small set of [redb](https://github.com/cberner/redb) files — a primary file holding the dimensions, CURIEs, and schema metadata, plus hash-sharded RECORDS files (`fullmap.s0.redb` … `fullmap.s15.redb` by default) holding the term→postings index — containing biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS Translator BABEL export files. It powers `resolve()` / `resolve_many()`, mapping free-text strings to standardized identifiers.
 
 Unlike the DuckDB-shard architecture used in earlier versions (built by a separate external `datassert` Go CLI), Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step is required. The sharding described here is a distinct, in-process redb shard scheme — a few sibling redb files written and read by the extension itself — not the old external DuckDB shards.
 
@@ -16,7 +16,7 @@ tablassert build-fullmap
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--output`, `-o` | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
-| `--cache`, `-c` | No | `./fullmap/downloads/fullmap` | Directory for downloaded BABEL files |
+| `--cache`, `-c` | No | `./fullmap/downloads` | Directory for downloaded BABEL files (with `classes/` and `synonyms/` subdirectories) |
 | `--version`, `-v` | No | `BABEL_VERSION` literal (currently `2026jul22`) | BABEL release snapshot date to fetch |
 | `--threads`, `-t` | No | `None` (auto: memory-capped on Linux, else ~90% of CPUs) | Worker threads for the parallel build |
 
@@ -41,7 +41,7 @@ Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TABLASSERT_FULLMAP_EXCLUDE_PREFIXES` | *(empty)* | Comma-separated CURIE prefixes to drop at build time (e.g. `INCHIKEY,Publication`). Excluding prefixes you never resolve dramatically cuts build time, peak memory, and database size. |
-| `TABLASSERT_FULLMAP_SHARDS` | `4` | Number of on-disk RECORDS shard files (`fullmap.s0..s<N-1>.redb`) the term index is hash-partitioned across, and the number of concurrent redb writers in the write phase. Non-powers-of-two round down to the nearest power of two (6→4, 3→2); clamped to the compile-time cap (4). The resolved count is recorded in the primary's `meta` table (`shards`) and the read path opens exactly that many shard files. |
+| `TABLASSERT_FULLMAP_SHARDS` | `16` | Number of on-disk RECORDS shard files (`fullmap.s0..s<N-1>.redb`) the term index is hash-partitioned across, and the number of concurrent redb writers in the write phase. Non-powers-of-two round down to the nearest power of two (6→4, 3→2); clamped to the compile-time cap (16). The resolved count is recorded in the primary's `meta` table (`shards`) and the read path opens exactly that many shard files. |
 | `TABLASSERT_FULLMAP_CHUNK_BYTES` | `8388608` (8 MiB) | Byte budget per producer→worker line-chunk. Bounded by bytes (not line count) so chunk memory is fixed even for large synonym records. |
 | `TABLASSERT_FULLMAP_PRODUCERS` | `clamp(workers/4, 4, #files)` | Number of producer (decompressor) threads. Decompression far outpaces parallel processing, so a handful keeps all workers fed. |
 | `TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES` | `1000000` | Per-worker term-posting buffer size before spilling a sorted run to disk. Lower → less RAM, more run files. |
@@ -66,7 +66,7 @@ tablassert build-fullmap --threads 8
 
 ## Output Artifact
 
-A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling RECORDS shard files (`fullmap.s0.redb` … `fullmap.s3.redb` by default — one per `TABLASSERT_FULLMAP_SHARDS`, named after the output file stem in the same directory). Together they hold six tables (see `rust/src/fullmap.rs`):
+A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling RECORDS shard files (`fullmap.s0.redb` … `fullmap.s15.redb` by default — one per `TABLASSERT_FULLMAP_SHARDS`, named after the output file stem in the same directory). Together they hold six tables (see `rust/src/fullmap.rs`):
 
 | Table | Description |
 |-------|-------------|

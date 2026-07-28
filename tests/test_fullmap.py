@@ -513,13 +513,13 @@ def test_resolve_batch_three_node_columns_on_sharded_db(fullmap_db: Path) -> Non
     (see ``test_resolve_batch_makes_one_redb_call_regardless_of_spec_count``);
     here we prove that pooled fetch fans out across the shards and hydrates all
     three columns. The fixture's diverse terms (brca1, mapk1, shared, ambiguous,
-    contextual, ...) hash across multiple of the four shards, so the shared fetch
-    genuinely exercises more than one shard file.
+    contextual, ...) hash across multiple shards, so the shared fetch genuinely
+    exercises more than one shard file.
     """
     # The sharded layout must actually be on disk: primary + sibling shard files.
     assert fullmap_db.is_file()
     shards: list[Path] = sorted(fullmap_db.parent.glob("fullmap.s*.redb"))
-    assert len(shards) >= 2  # default build fans RECORDS out across 4 shards
+    assert len(shards) == 16  # default build fans RECORDS out across 16 shards
 
     # fullmap_db_path resolves the PRIMARY file; the rs layer derives the shards.
     assert fullmap_db_path(fullmap_db) == fullmap_db
@@ -617,18 +617,23 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
             return [("classes.ndjson", "https://example.com/classes.ndjson")]
         return [("HGNC.ndjson", "https://example.com/HGNC.ndjson")]
 
+    downloaded_paths: list[Path] = []
+
     def fake_download_babel_file(
         filename: str, url: str, destination: Path, retries: int = 5, on_progress: Callable[[int, int], None] | None = None
     ) -> Path:
+        downloaded_paths.append(destination / filename)
         if filename == "classes.ndjson":
             return classes
         return synonyms
 
     monkeypatch.setattr(cli, "babel_urls", fake_babel_urls)
     monkeypatch.setattr(cli, "download_babel_file", fake_download_babel_file)
+    monkeypatch.chdir(tmp_path)
 
-    build_fullmap(output=output, cache=tmp_path / "cache", version="test-version", threads=1)
+    build_fullmap(output=output, version="test-version", threads=1)
 
+    assert downloaded_paths == [Path("fullmap/downloads/classes/classes.ndjson"), Path("fullmap/downloads/synonyms/HGNC.ndjson")]
     rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"], threads=1)
     assert rows[0]["CURIE"] == "HGNC:1100"
 
