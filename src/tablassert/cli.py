@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import time
 from collections.abc import Callable
 from importlib.metadata import version as get_version
@@ -419,6 +420,103 @@ def schema(
         output.write_text(text + "\n")
     else:
         print(text)
+
+
+@APP.command(name="agent")
+def agent(
+    pmc_ids: Annotated[list[str], cyclopts.Parameter(allow_leading_hyphen=False)],
+    *,
+    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])],
+    model_id: Annotated[str | None, cyclopts.Parameter(name=["--model-id"])] = None,
+    api_base: Annotated[str | None, cyclopts.Parameter(name=["--api-base"])] = None,
+    api_key: Annotated[str | None, cyclopts.Parameter(name=["--api-key"])] = None,
+    max_steps: Annotated[int, cyclopts.Parameter(name=["--max-steps"])] = 20,
+    map_threshold: Annotated[float, cyclopts.Parameter(name=["--map-threshold"])] = 0.8,
+    qc_threshold: Annotated[float, cyclopts.Parameter(name=["--qc-threshold"])] = 0.9,
+    max_improve_iters: Annotated[int, cyclopts.Parameter(name=["--max-improve-iters"])] = 3,
+    state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir"])] = Path(".tablassert-agent"),
+    executor: Annotated[Literal["local", "docker"], cyclopts.Parameter(name=["--executor"])] = "local",
+    backend: Annotated[Literal["openai", "litellm"], cyclopts.Parameter(name=["--backend"])] = "openai",
+    no_fetch: Annotated[bool, cyclopts.Parameter(name=["--no-fetch"], negative="")] = False,
+) -> None:
+    """Autonomously derive, build, audit, and improve KG configs from PMC articles.
+
+    Takes one or more PMC ids POSITIONALLY (``tablassert agent PMC11708054 [PMC...]``) and runs the
+    deterministic supervisor over them. For each article the loop is: fetch the open-access
+    supplementary tables -> an inner LLM agent derives a schema-gated Section config -> build_and_audit
+    scores it -> a deterministic improve loop proposes/accepts edits IFF strictly better -> the config is
+    accepted when coverage reaches ``--map-threshold`` or SKIPPED when the improve budget is exhausted.
+    State checkpoints to ``--state-dir`` so an interrupted batch resumes, skipping finished articles.
+
+    Model config comes from ``--model-id``/``--api-base``/``--api-key`` OR the ``TABLASSERT_AGENT_MODEL_ID``
+    / ``TABLASSERT_AGENT_API_BASE`` / ``TABLASSERT_AGENT_API_KEY`` environment variables (explicit flags win).
+    Secrets are NEVER hardcoded or defaulted: a missing value fails loud (exit 2) BEFORE any model is built.
+    ``--executor docker`` is the hardened, sandboxed code-execution option (``local`` runs in-process and is
+    not a security boundary). Requires the ``[agent]`` extra (``pip install tablassert[agent]``).
+
+    Args:
+        pmc_ids: One or more PMC article ids (positional).
+        fullmap: Fullmap redb file or base directory (required).
+        model_id: Model id (falls back to ``TABLASSERT_AGENT_MODEL_ID``).
+        api_base: API base URL (falls back to ``TABLASSERT_AGENT_API_BASE``).
+        api_key: API key (falls back to ``TABLASSERT_AGENT_API_KEY``).
+        max_steps: Max inner-agent steps per article.
+        map_threshold: Coverage an article must reach to be MAPPED.
+        qc_threshold: Target QC pass rate.
+        max_improve_iters: Max deterministic improve iterations per article.
+        state_dir: Checkpoint/resume directory.
+        executor: Code-execution backend; ``docker`` is the hardened sandbox.
+        backend: Model backend (``openai`` or ``litellm``).
+        no_fetch: Skip PMC download (use already-fetched snapshot tables).
+    """
+    from tablassert import agent as agent_mod
+
+    resolved_id, resolved_base, resolved_key = agent_mod.resolve_model_config(model_id, api_base, api_key)
+    # Fail loud on any missing secret BEFORE building a model (so this path never touches smolagents).
+    checks: tuple[tuple[str | None, str, str, str], ...] = (
+        (resolved_id, "model_id", "model-id", agent_mod.ENV_MODEL_ID),
+        (resolved_base, "api_base", "api-base", agent_mod.ENV_API_BASE),
+        (resolved_key, "api_key", "api-key", agent_mod.ENV_API_KEY),
+    )
+    for value, which, flag, env in checks:
+        if not value:
+            print(f"tablassert agent: missing {which}. Set --{flag} or the {env} environment variable. Never hardcode secrets.", file=sys.stderr)
+            raise SystemExit(2)
+
+    def build_model_factory() -> object:
+        return agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend)
+
+    result: dict[str, object] = agent_mod.run_supervisor(
+        list(pmc_ids),
+        fullmap=fullmap,
+        build_model_factory=build_model_factory,
+        map_threshold=map_threshold,
+        qc_threshold=qc_threshold,
+        max_improve_iters=max_improve_iters,
+        max_steps=max_steps,
+        state_dir=state_dir,
+        executor=executor,
+        fetch=not no_fetch,
+    )
+
+    metrics_raw: object = result.get("metrics")
+    metrics: dict[str, object] = metrics_raw if isinstance(metrics_raw, dict) else {}
+    records_raw: object = result.get("records")
+    records: dict[str, object] = records_raw if isinstance(records_raw, dict) else {}
+
+    def metric(key: str, default: float) -> float:
+        value: object = metrics.get(key, default)
+        return float(value) if isinstance(value, (int, float)) else default
+
+    mapped: int = int(metric("mapped", 0))
+    skipped: int = int(metric("skipped", 0))
+    mean_best: float = metric("mean_best_coverage", 0.0)
+    total_tokens: int = int(metric("total_tokens", 0))
+    total_steps: int = int(metric("total_steps", 0))
+    print(
+        f"tablassert agent: processed {len(records)} article(s) ({mapped} mapped, {skipped} skipped); "
+        f"mean best coverage {mean_best:.3f}; {total_tokens} tokens over {total_steps} steps."
+    )
 
 
 def build_fullmap_pipeline(
