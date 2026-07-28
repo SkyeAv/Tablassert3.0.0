@@ -19,7 +19,9 @@ else:
 
 
 # Deprecated config keys -> guidance. EMPTY today: the before-hook below is a silent no-op until a
-# future rename registers a key here, letting old YAML soft-warn instead of hard-failing extra="forbid".
+# future rename registers a key here to WARN on it. The hook only warns and returns the data
+# unchanged — a renamed key that is no longer a valid field is STILL rejected by extra="forbid"
+# unless the future hook also pops/translates it; registering a key here supplies the warning half only.
 DEPRECATED_KEYS: dict[str, str] = {}
 
 

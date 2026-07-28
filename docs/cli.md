@@ -166,6 +166,35 @@ This command downloads BABEL class and synonym files from RENCI and builds a sin
 
 ---
 
+## schema
+
+Emit the JSON Schema for a Tablassert config model, for editor autocomplete and config authoring.
+
+### Synopsis
+
+```bash
+tablassert schema [--model graph|section] [--output <path>]
+```
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--model`, `-m` | `graph` \| `section` | No | `section` | Which config model's JSON Schema to emit |
+| `--output`, `-o` | Path | No | stdout | Write the schema to a file instead of printing to stdout |
+
+### Example
+
+```bash
+tablassert schema --model section --output section-schema.json
+```
+
+### Description
+
+This command prints the [JSON Schema](https://json-schema.org/) for the `Graph` or `Section` pydantic model (the runtime-only `Tcode` fields are excluded). Point your editor at the emitted schema for autocomplete and validation while authoring table/graph configs. See [Table Configuration](configuration/table.md) and [Graph Configuration](configuration/graph.md) for the config format.
+
+---
+
 ## Examples
 
 ### Check Version
@@ -190,6 +219,12 @@ tablassert validate-table table-config.yaml
 
 ```bash
 tablassert build-fullmap
+```
+
+### Export Config Schema
+
+```bash
+tablassert schema --model section --output section-schema.json
 ```
 
 ## Workflow
