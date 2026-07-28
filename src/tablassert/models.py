@@ -3,14 +3,14 @@ from __future__ import annotations
 import re
 from operator import eq
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional, Self, Union
+from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
 
 from tablassert._lazy import LazyModule
-from tablassert.errors import TablassertValidationError
 from tablassert.biolink import AgentTypes, Categories, KnowledgeLevels, Predicates, Qualifiers
 from tablassert.enums import Comparisons, EncodingMethods, Files, FillMethods, Functions, Repositories, Tokens
+from tablassert.errors import TablassertValidationError
 
 if TYPE_CHECKING:
     import polars as pl
@@ -29,12 +29,12 @@ class Reindex(TablaBase):
     comparison: Comparisons = Field(
         Comparisons.NE, description="Comparison operator used in reindex filtering.", examples=[Comparisons.NE, Comparisons.EQ, Comparisons.GT]
     )
-    comparator: Union[str, int, float] = Field(..., description="Right-side value compared against the selected column.", examples=["N/A", 0, 1.5])
+    comparator: str | int | float = Field(..., description="Right-side value compared against the selected column.", examples=["N/A", 0, 1.5])
 
     @model_validator(mode="after")
     def comparison_datatypes(self: Self) -> Self:
         x: Comparisons = self.comparison
-        y: Union[str, int, float] = self.comparator
+        y: str | int | float = self.comparator
 
         if eq(x, Comparisons.NE) or eq(x, Comparisons.EQ):
             if not isinstance(y, str):
@@ -42,7 +42,7 @@ class Reindex(TablaBase):
                     f"`eq`/`ne` comparisons require a str comparator, got {type(y).__name__}.", code="comparison-bad-comparator-type"
                 )
         else:
-            if not (isinstance(y, int) or isinstance(y, float)):
+            if not isinstance(y, (int, float)):
                 raise TablassertValidationError(
                     f"Comparisons other than `eq`/`ne` require a float or int comparator, got {type(y).__name__}.",
                     code="comparison-nonnumeric-comparator",
@@ -55,8 +55,8 @@ class BaseSource(TablaBase):
     local: Path = Field(..., description="Local path to read from or download into.")
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
 
-    rows: Optional[list[PositiveInt]] = Field(None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]])
-    row_slice: Optional[list[Union[PositiveInt, Literal[Tokens.AUTO]]]] = Field(
+    rows: list[PositiveInt] | None = Field(None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]])
+    row_slice: list[PositiveInt | Literal[Tokens.AUTO]] | None = Field(
         None,
         description="Two-value row bounds [start, stop]; each value can be an index or 'auto'.",
         examples=[[1, 50], [Tokens.AUTO, 100], [5, Tokens.AUTO]],
@@ -71,7 +71,7 @@ class BaseSource(TablaBase):
 
         return self
 
-    reindex: Optional[list[Reindex]] = Field(
+    reindex: list[Reindex] | None = Field(
         None,
         description="Sequential row filters applied using source column values.",
         examples=[[{"column": "A", "comparison": Comparisons.NE, "comparator": ""}]],
@@ -80,20 +80,20 @@ class BaseSource(TablaBase):
 
 class Excel(BaseSource):
     kind: Literal[Files.EXCEL] = Field(Files.EXCEL, description="Source kind; must be 'excel'.")
-    sheet: Optional[str] = Field("Sheet1", description="Worksheet name to read from the workbook.")
+    sheet: str | None = Field("Sheet1", description="Worksheet name to read from the workbook.")
 
 
 class Text(BaseSource):
     kind: Literal[Files.TEXT] = Field(Files.TEXT, description="Source kind; must be 'text'.")
-    delimiter: Optional[str] = Field(",", description="Field delimiter for headerless text/CSV scanning.", examples=[",", "\t", "|"])
+    delimiter: str | None = Field(",", description="Field delimiter for headerless text/CSV scanning.", examples=[",", "\t", "|"])
 
 
 class Regex(TablaBase):
-    pattern: Union[int, float, str] = Field(..., description="Regex pattern passed to string replacement.", examples=["\\s+", "\\.$"])
+    pattern: int | float | str = Field(..., description="Regex pattern passed to string replacement.", examples=["\\s+", "\\.$"])
 
     @field_validator("pattern", mode="after")
     @classmethod
-    def polars_compatible_pattern(cls, pattern: Union[int, float, str]) -> Union[int, float, str]:
+    def polars_compatible_pattern(cls, pattern: int | float | str) -> int | float | str:
         try:
             pl.Series([""]).str.contains(str(pattern))
         except Exception as e:
@@ -101,11 +101,11 @@ class Regex(TablaBase):
 
         return pattern
 
-    replacement: Union[int, float, str] = Field(..., description="Replacement value used when the pattern matches.", examples=[" ", "", 0])
+    replacement: int | float | str = Field(..., description="Replacement value used when the pattern matches.", examples=[" ", "", 0])
 
     @field_validator("replacement", mode="after")
     @classmethod
-    def polars_compatible_replacement(cls, replacement: Union[int, float, str]) -> Union[int, float, str]:
+    def polars_compatible_replacement(cls, replacement: int | float | str) -> int | float | str:
         try:
             pl.Series([""]).str.contains(str(replacement))
         except Exception as e:
@@ -118,7 +118,7 @@ class Regex(TablaBase):
 
 class Math(TablaBase):
     function: Functions = Field(..., description="Math function applied during numeric transformation.")
-    arguments: list[Union[Literal[Tokens.VALUES], float, int]] = Field(
+    arguments: list[Literal[Tokens.VALUES] | float | int] = Field(
         ..., description="Function arguments; use 'values' to inject the current value.", examples=[[Tokens.VALUES, 2], [-1, Tokens.VALUES]]
     )
 
@@ -129,34 +129,32 @@ class Encoding(TablaBase):
         description="Interpret encoding as a literal value or as source column letters.",
         examples=[EncodingMethods.VALUE, EncodingMethods.COLUMN],
     )
-    encoding: Union[str, int, float] = Field(
-        ..., description="Literal value or source column letters, depending on method.", examples=["A", "BRCA1", 1.0]
-    )
+    encoding: str | int | float = Field(..., description="Literal value or source column letters, depending on method.", examples=["A", "BRCA1", 1.0])
 
     @model_validator(mode="after")
     def excel_style_columns(self: Self) -> Self:
         if eq(self.method, EncodingMethods.COLUMN):
-            x: Union[str, int, float] = self.encoding
+            x: str | int | float = self.encoding
             if not re.search(r"^[A-Z]{1,3}$", str(x)):
                 raise TablassertValidationError(f"`encoding` must be an Excel-style column name (A-ZZ), got {x!r}.", code="encoding-bad-excel-column")
 
         return self
 
-    regex: Optional[list[Regex]] = Field(
+    regex: list[Regex] | None = Field(
         None,
         description="Ordered regex replacements applied to encoded text.",
         examples=[[{"pattern": "\\s+", "replacement": " "}, {"pattern": "\\.$", "replacement": ""}]],
     )
-    fill: Optional[FillMethods] = Field(
+    fill: FillMethods | None = Field(
         None, description="Null fill strategy applied after value extraction.", examples=[FillMethods.FORWARD, FillMethods.ZERO]
     )
-    remove: Optional[list[Union[int, float, str]]] = Field(
+    remove: list[int | float | str] | None = Field(
         None, description="Regex patterns removed from text (replace with empty string).", examples=[["\\[\\d+\\]", "\\s+"]]
     )
 
     @field_validator("remove", mode="after")
     @classmethod
-    def polars_compatible_replacement(cls, remove: Optional[list[Union[int, float, str]]]) -> Optional[list[Union[int, float, str]]]:
+    def polars_compatible_replacement(cls, remove: list[int | float | str] | None) -> list[int | float | str] | None:
         if remove:
             for r in remove:
                 try:
@@ -168,10 +166,10 @@ class Encoding(TablaBase):
 
         return remove
 
-    prefix: Optional[str] = Field(None, description="String prepended to the encoded value.")
-    suffix: Optional[str] = Field(None, description="String appended to the encoded value.")
-    explode_by: Optional[str] = Field(None, description="Delimiter used to split a value into multiple rows.", examples=[";", "|"])
-    transformations: Optional[list[Math]] = Field(
+    prefix: str | None = Field(None, description="String prepended to the encoded value.")
+    suffix: str | None = Field(None, description="String appended to the encoded value.")
+    explode_by: str | None = Field(None, description="Delimiter used to split a value into multiple rows.", examples=[";", "|"])
+    transformations: list[Math] | None = Field(
         None,
         description="Ordered math operations applied to numeric values.",
         examples=[[{"function": Functions.POW, "arguments": [Tokens.VALUES, 2]}]],
@@ -179,11 +177,11 @@ class Encoding(TablaBase):
 
 
 class NodeEncoding(Encoding):
-    taxon: Optional[PositiveInt] = Field(None, description="NCBI taxon id used to constrain gene-oriented mapping.", examples=[9606, 10090])
-    prioritize: Optional[list[Categories]] = Field(
+    taxon: PositiveInt | None = Field(None, description="NCBI taxon id used to constrain gene-oriented mapping.", examples=[9606, 10090])
+    prioritize: list[Categories] | None = Field(
         None, description="Biolink categories ranked higher during entity resolution.", examples=[[Categories.GENE, Categories.PROTEIN]]
     )
-    avoid: Optional[list[Categories]] = Field(
+    avoid: list[Categories] | None = Field(
         None, description="Biolink categories excluded during entity resolution.", examples=[[Categories.DISEASE, Categories.PHENOTYPIC_FEATURE]]
     )
 
@@ -200,7 +198,7 @@ class Statement(TablaBase):
     subject: NodeEncoding = Field(..., description="Subject node encoding and mapping configuration.")
     object: NodeEncoding = Field(..., description="Object node encoding and mapping configuration.")
     predicate: Predicates = Field(Predicates.RELATED_TO, description="Predicate connecting subject and object nodes.")
-    qualifiers: Optional[list[Qualifier]] = Field(None, description="Optional qualifier nodes attached to the statement.")
+    qualifiers: list[Qualifier] | None = Field(None, description="Optional qualifier nodes attached to the statement.")
 
 
 class Provenance(TablaBase):
@@ -235,10 +233,10 @@ class Annotation(Encoding):
 class Section(TablaBase):
     """Pydantic section model and coercion target for a single table configuration."""
 
-    source: Union[Excel, Text] = Field(..., description="Input source definition for reading tabular rows.")
+    source: Excel | Text = Field(..., description="Input source definition for reading tabular rows.")
     statement: Statement = Field(..., description="Subject-object statement mapping for this section.")
     provenance: Provenance = Field(..., description="Provenance metadata applied to all produced edges.")
-    annotations: Optional[list[Annotation]] = Field(None, description="Optional extra encoded columns added to each row.")
+    annotations: list[Annotation] | None = Field(None, description="Optional extra encoded columns added to each row.")
 
 
 DEFAULT_RIG_CONTRIBUTIONS: list[str] = ["Tablassert: KGX and RIG generation"]

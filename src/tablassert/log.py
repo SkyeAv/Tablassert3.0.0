@@ -20,5 +20,5 @@ logger.remove()
 logger.add((LOGASSERT / "tablassert.log"), level="INFO", format=LOG_FORMAT, rotation="100 MB", encoding="utf-8", mode="w")
 
 
-def cat(name: str) -> "Logger":
+def cat(name: str) -> Logger:
     return logger.bind(category=name)

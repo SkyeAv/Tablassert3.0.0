@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import yaml
 from yaml import CLoader
 
 
-def fastmerge(a: Union[list[Any], dict[str, Any]], b: Union[list[Any], dict[str, Any]]) -> Any:
+def fastmerge(a: list[Any] | dict[str, Any], b: list[Any] | dict[str, Any]) -> Any:
     """Recursively merge ``b`` into ``a`` in place and return the result.
 
     Mirrors the legacy deepmerge config but with the slow generic walk stripped
@@ -36,11 +36,10 @@ def fastmerge(a: Union[list[Any], dict[str, Any]], b: Union[list[Any], dict[str,
                 a[k] = v
         return a
 
-    elif isinstance(a, list) and isinstance(b, list):
+    if isinstance(a, list) and isinstance(b, list):
         a.extend(b)
         return a
-    else:
-        return b
+    return b
 
 
 def from_yaml(p: Path) -> object:

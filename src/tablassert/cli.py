@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import re
+import time
 from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Annotated, TYPE_CHECKING, Any, BinaryIO, Optional
+from typing import TYPE_CHECKING, Annotated, Any, BinaryIO
 from urllib.error import URLError
 from urllib.request import Request, urlopen
-import re
-import time
 
 import cyclopts
 
@@ -44,7 +44,7 @@ BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
 
 
 def build_pipeline(
-    graph_configuration_file: Path, progress: "PipelineProgress", release: bool = False, qc: bool = False, log: bool = False, head: bool = False
+    graph_configuration_file: Path, progress: PipelineProgress, release: bool = False, qc: bool = False, log: bool = False, head: bool = False
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
@@ -83,7 +83,7 @@ def build_pipeline(
     # Stage 2/6: extract sections.
     progress.stage("Extracting Sections")
     with Pool() as pool:
-        temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables))  # pyright: ignore
+        temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables, strict=True))  # pyright: ignore
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
 
@@ -118,7 +118,7 @@ def build_pipeline(
     progress.stage("Building Subgraphs")
     start, advance, sub_step = progress.section_loop(n, "Subgraph")
     subgraphs: list[Path] = []
-    for x, op in zip(tcode, instructions):
+    for x, op in zip(tcode, instructions, strict=True):
         start(format_section_compact(x))
         # on_phase drives the per-op sub-step indicator (load → filter → resolve → write ...).
         subgraphs.append(op if isinstance(op, Path) else compile_subgraph(op, on_phase=sub_step))
@@ -135,7 +135,7 @@ def build_pipeline(
     logger.info("Built graph {name} v{version}: {n} sections", name=g.name, version=g.version, n=n)
 
 
-def validate_pipeline(table_configuration_file: Path, progress: "PipelineProgress") -> None:
+def validate_pipeline(table_configuration_file: Path, progress: PipelineProgress) -> None:
     """Validate section syntax from a YAML configuration file.
 
     Runs the three-stage validate pipeline: load tables → extract sections →
@@ -245,7 +245,7 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
         download_logger.info("Reusing cached BABEL file: {path}", path=final_path)
         return final_path
 
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         offset: int = part_path.stat().st_size if part_path.exists() else 0
         headers: dict[str, str] = {"User-Agent": "tablassert"}
@@ -300,10 +300,10 @@ def validate_table(table_configuration_file: Path) -> None:
 
 def build_fullmap_pipeline(
     output: Path,
-    progress: "PipelineProgress",
+    progress: PipelineProgress,
     cache: Path = Path("./fullmap/downloads/fullmap"),
     version: str = BABEL_VERSION,
-    threads: Optional[int] = None,
+    threads: int | None = None,
 ) -> None:
     """Build an embedded fullmap redb database from BABEL outputs.
 
@@ -370,7 +370,7 @@ def build_fullmap(
     output: Annotated[Path, cyclopts.Parameter(name=["--output", "-o"])] = Path("./fullmap/data/fullmap.redb"),
     cache: Annotated[Path, cyclopts.Parameter(name=["--cache", "-c"])] = Path("./fullmap/downloads/fullmap"),
     version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,
-    threads: Annotated[Optional[int], cyclopts.Parameter(name=["--threads", "-t"])] = None,
+    threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
 ) -> None:
     """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
     run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads)

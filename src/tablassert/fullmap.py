@@ -4,7 +4,7 @@ from collections import OrderedDict
 from enum import Enum
 from operator import add
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from tablassert import rs
 from tablassert._lazy import LazyModule
@@ -13,7 +13,7 @@ from tablassert.log import cat
 
 logger = cat("FULLMAP")
 
-_TERM_CACHE: OrderedDict[tuple[Path, float, str], Optional[list[tuple[int, int]]]] = OrderedDict()
+_TERM_CACHE: OrderedDict[tuple[Path, float, str], list[tuple[int, int]] | None] = OrderedDict()
 _TERM_CACHE_MAX: int = 100_000
 _SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], str]] = {}
 
@@ -67,7 +67,7 @@ def _db_cache_key(db: Path) -> tuple[Path, float]:
         return resolved, -1.0
 
 
-def _remember_term(key: tuple[Path, float, str], value: Optional[list[tuple[int, int]]]) -> None:
+def _remember_term(key: tuple[Path, float, str], value: list[tuple[int, int]] | None) -> None:
     """Store one term lookup in the bounded FIFO cache.
 
     Args:
@@ -89,7 +89,7 @@ def _dimension_maps(db: Path, cache_key: tuple[Path, float]) -> tuple[list[str],
     Returns:
         Prefix, category, source, and source-version maps.
     """
-    cached: Optional[tuple[list[str], list[str], list[str], str]] = _SOURCE_CACHE.get(cache_key)
+    cached: tuple[list[str], list[str], list[str], str] | None = _SOURCE_CACHE.get(cache_key)
     if cached is not None:
         return cached
     source_version: str = rs.fullmap_source_version()
@@ -104,7 +104,7 @@ def _dimension_maps(db: Path, cache_key: tuple[Path, float]) -> tuple[list[str],
     return value
 
 
-def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> list[dict[str, object]]:
+def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[dict[str, object]]:
     """Lookup terms using the v2 raw-pair path and hydrate rows once per batch.
 
     Args:
@@ -118,7 +118,7 @@ def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> li
     if not terms:
         return []
     cache_key: tuple[Path, float] = _db_cache_key(db)
-    pairs_by_term: dict[str, Optional[list[tuple[int, int]]]] = {}
+    pairs_by_term: dict[str, list[tuple[int, int]] | None] = {}
     misses: list[str] = []
     for term in terms:
         term_key: tuple[Path, float, str] = (cache_key[0], cache_key[1], term)
@@ -151,11 +151,11 @@ def lookup_rows(db: Path, terms: list[str], threads: Optional[int] = None) -> li
     if not curie_ids:
         return []
     hydrated: list[dict[str, Any]] = rs.hydrate_curies(db, curie_ids)
-    curie_map: dict[int, dict[str, Any]] = dict(zip(curie_ids, hydrated))
+    curie_map: dict[int, dict[str, Any]] = dict(zip(curie_ids, hydrated, strict=True))
     prefixes, categories, sources, source_version = _dimension_maps(db, cache_key)
     rows: list[dict[str, object]] = []
     for term in terms:
-        pairs: Optional[list[tuple[int, int]]] = pairs_by_term.get(term)
+        pairs: list[tuple[int, int]] | None = pairs_by_term.get(term)
         if not pairs:
             continue
         for curie_id, source_id in pairs:
@@ -202,8 +202,7 @@ def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFr
     terms: pl.LazyFrame = pl.concat([t1, t2]).unique(subset=[col], keep="first")
 
     bad: str = r"^\d+$|^(none|nan|na|null|unknown|not applicable|p_value|variable|result|exposure|expression|symbol)$|^$"
-    terms = terms.filter(~pl.col(col).str.contains(bad))
-    return terms
+    return terms.filter(~pl.col(col).str.contains(bad))
 
 
 def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFrame:
@@ -253,9 +252,9 @@ def _category_values(categories: list[Any]) -> list[str]:
 def filter_and_rank(
     raw: pl.DataFrame,
     terms: pl.DataFrame,
-    taxon: Optional[str],
-    prioritize: Optional[list[Categories]],
-    avoid: Optional[list[Categories]],
+    taxon: str | None,
+    prioritize: list[Categories] | None,
+    avoid: list[Categories] | None,
     column_context: bool,
 ) -> pl.DataFrame:
     """Join already-fetched redb rows against one column's own terms, then filter, rank, and dedup.
@@ -324,7 +323,7 @@ def fullmap_db_path(fullmap: Path) -> Path:
     return fullmap / "data" / "fullmap.redb"
 
 
-def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: Optional[str], config_file: Optional[str]) -> None:
+def log_unmatched(col: str, terms: pl.LazyFrame, matches: pl.DataFrame, section_hash: str | None, config_file: str | None) -> None:
     """Log level-one terms that did not resolve to any CURIE.
 
     Args:
@@ -414,9 +413,9 @@ class ResolveSpec(NamedTuple):
     """One node column's resolution settings for ``resolve_batch``."""
 
     col: str
-    taxon: Optional[str] = None
-    prioritize: Optional[list[Categories]] = None
-    avoid: Optional[list[Categories]] = None
+    taxon: str | None = None
+    prioritize: list[Categories] | None = None
+    avoid: list[Categories] | None = None
 
 
 def resolve_batch(
@@ -424,11 +423,11 @@ def resolve_batch(
     specs: list[ResolveSpec],
     db: Path,
     log: bool = True,
-    section_hash: Optional[str] = None,
-    config_file: Optional[str] = None,
+    section_hash: str | None = None,
+    config_file: str | None = None,
     column_context: bool = True,
     tag: str = "_two",
-    threads: Optional[int] = None,
+    threads: int | None = None,
 ) -> pl.LazyFrame:
     """Resolve multiple node columns against one shared redb fetch.
 
@@ -478,15 +477,15 @@ def resolve(
     lf: pl.LazyFrame,
     col: str,
     db: Path,
-    taxon: Optional[str] = None,
-    prioritize: Optional[list[Categories]] = None,
-    avoid: Optional[list[Categories]] = None,
+    taxon: str | None = None,
+    prioritize: list[Categories] | None = None,
+    avoid: list[Categories] | None = None,
     log: bool = True,
-    section_hash: Optional[str] = None,
-    config_file: Optional[str] = None,
+    section_hash: str | None = None,
+    config_file: str | None = None,
     column_context: bool = True,
     tag: str = "_two",
-    threads: Optional[int] = None,
+    threads: int | None = None,
 ) -> pl.LazyFrame:
     """Case-dependent, provenance-rich named-entity recognition (single-column wrapper).
 

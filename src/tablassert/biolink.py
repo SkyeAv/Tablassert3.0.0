@@ -50,7 +50,7 @@ import biolink_model.datamodel.pydanticmodel_v2 as _bm
 if TYPE_CHECKING:
     from linkml_runtime.utils.schemaview import SchemaView
 
-__all__ = ["BIOLINK_VERSION", "ALLOWED_EDGE_FIELDS", "AgentTypes", "Categories", "EdgeCategories", "KnowledgeLevels", "Predicates", "Qualifiers"]
+__all__ = ["ALLOWED_EDGE_FIELDS", "BIOLINK_VERSION", "AgentTypes", "Categories", "EdgeCategories", "KnowledgeLevels", "Predicates", "Qualifiers"]
 
 
 def _screaming_snake(camel: str) -> str:

@@ -3,11 +3,11 @@ from __future__ import annotations
 import math
 import operator
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from functools import cache
 from operator import add, eq, le
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Self, Union
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import Field, NonNegativeInt
 
@@ -54,7 +54,7 @@ CATEGORY_PARENT: dict[str, str] = {
 }
 
 
-def parse_edge_name(name: str) -> Optional[tuple[str, list[str]]]:
+def parse_edge_name(name: str) -> tuple[str, list[str]] | None:
     """Parse ``{Subject}To{Object}Association`` into ``(subject, [object roles])``.
 
     Args:
@@ -99,7 +99,7 @@ def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
     EDGE_MAP: dict[tuple[str, str], EdgeCategories] = {}
     for ec in EdgeCategories:
         if ec is not EdgeCategories.ASSOCIATION:
-            parsed: Optional[tuple[str, list[str]]] = parse_edge_name(ec.value)
+            parsed: tuple[str, list[str]] | None = parse_edge_name(ec.value)
             if parsed is not None:
                 subj: str = ""
                 objs: list[str] = []
@@ -197,7 +197,7 @@ def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
     return lf.with_columns(pl.col(x).alias(col))
 
 
-def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Union[Literal[Tokens.VALUES], float, int]]) -> pl.LazyFrame:
+def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Literal[Tokens.VALUES] | float | int]) -> pl.LazyFrame:
     """Transform values in a column using a ``math`` module function.
 
     Args:
@@ -283,7 +283,7 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     for c in cols:
         df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
         fmt: str = "{:.4e}" if "p_value" in c.lower() else "{:.4g}"
-        formatted: list[Optional[str]] = [None if v is None else fmt.format(v) for v in df[c].to_list()]
+        formatted: list[str | None] = [None if v is None else fmt.format(v) for v in df[c].to_list()]
         df = df.with_columns(pl.Series(c, formatted))
     return df.lazy()
 
@@ -354,7 +354,7 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
 
     names: list[str] = lf.collect_schema().names()
     candidates: list[str] = [c for c in names if col in c]
-    chosen: Optional[str] = max(candidates, key=lambda c: fuzz.ratio(c, col)) if candidates else None
+    chosen: str | None = max(candidates, key=lambda c: fuzz.ratio(c, col)) if candidates else None
     if chosen is None:
         # Biolink class rule: qualifier may only be set when p_value/adjusted_p_value is populated.
         return lf
@@ -463,7 +463,7 @@ SIGNIFICANCE_FLAG_PATTERN: re.Pattern[str] = re.compile(
 )
 
 
-def pvalue_target(name: str) -> Optional[str]:
+def pvalue_target(name: str) -> str | None:
     """Map a column name to its canonical Biolink-compliant target name.
 
     Args:
@@ -520,7 +520,7 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     names: list[str] = lf.collect_schema().names()
     buckets: dict[str, list[str]] = {}
     for n in names:
-        target: Optional[str] = pvalue_target(n)
+        target: str | None = pvalue_target(n)
         if target:
             buckets.setdefault(target, []).append(n)
 
@@ -622,7 +622,7 @@ STUDY_SIZE_SINGLETON_PATTERN: re.Pattern[str] = re.compile(
 )
 
 
-def study_size_target(name: str) -> Optional[str]:
+def study_size_target(name: str) -> str | None:
     """Map study-size-like column names to the canonical ``supporting_study_size`` slot.
 
     Bare ``"n"`` is allowed, but other matches need explicit sample/study-size
@@ -727,7 +727,7 @@ def excel(p: Path, sheet: str, engine: str = "calamine") -> pl.LazyFrame:
     return df.lazy()
 
 
-def crop(lf: pl.LazyFrame, row_slice: list[Union[NonNegativeInt, Literal[Tokens.AUTO]]]) -> pl.LazyFrame:
+def crop(lf: pl.LazyFrame, row_slice: list[NonNegativeInt | Literal[Tokens.AUTO]]) -> pl.LazyFrame:
     """Take a contiguous slice from a LazyFrame.
 
     Args:
@@ -744,8 +744,8 @@ def crop(lf: pl.LazyFrame, row_slice: list[Union[NonNegativeInt, Literal[Tokens.
     """
     df: pl.DataFrame = lf.collect()
     n: int = df.select(pl.len()).item()
-    start: Union[int, Literal[Tokens.AUTO]] = row_slice[0]
-    stop: Union[int, Literal[Tokens.AUTO]] = row_slice[1]
+    start: int | Literal[Tokens.AUTO] = row_slice[0]
+    stop: int | Literal[Tokens.AUTO] = row_slice[1]
     offset: int = 0 if eq(start, Tokens.AUTO) else start  # pyright: ignore
     length: int = n if eq(stop, Tokens.AUTO) else (stop - offset)  # pyright: ignore
     df = df.slice(offset=offset, length=length)
@@ -791,7 +791,7 @@ def head(lf: pl.LazyFrame, n: int = HEAD_ROWS) -> pl.LazyFrame:
     return lf.head(n)
 
 
-def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: Union[str, int, float], cast: bool = True) -> pl.LazyFrame:
+def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: str | int | float, cast: bool = True) -> pl.LazyFrame:
     """Reindex a LazyFrame by filtering rows on a column condition.
 
     Args:
@@ -891,7 +891,7 @@ class Tcode(Section):
     qc: bool = Field(False)
     release: bool = Field(False)
     head: bool = Field(False)
-    name: Optional[str] = Field(None)
+    name: str | None = Field(None)
 
     def encoding(self: Self, x: Encoding, col: str, table_literal: bool = False) -> list[Any]:
         """Collect helper for Encoding classes.
@@ -954,13 +954,13 @@ class Tcode(Section):
         for x in tcode:
             if not x:
                 continue
-            elif isinstance(x, list):
+            if isinstance(x, list):
                 result.extend(self.clean(x))
             else:
                 result.append(x)
         return result
 
-    def collect(self: Self, db: Path) -> Union[list[tuple[Callable, tuple[Any]]], Path]:
+    def collect(self: Self, db: Path) -> list[tuple[Callable, tuple[Any]]] | Path:
         """Build the ordered operation list that drives section transformation.
 
         Args:
@@ -975,56 +975,55 @@ class Tcode(Section):
             # Quick exit if subgraph already exists.
             return self.store
 
-        else:
-            # Subject/object/qualifiers share one resolve_batch call instead of one per column.
-            node_columns: list[tuple[NodeEncoding, str]] = [
-                (self.statement.subject, "subject"),
-                (self.statement.object, "object"),
-                *[(x, x.qualifier) for x in (self.statement.qualifiers or [])],
-            ]
-            specs: list[ResolveSpec] = [ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid) for x, col in node_columns]
+        # Subject/object/qualifiers share one resolve_batch call instead of one per column.
+        node_columns: list[tuple[NodeEncoding, str]] = [
+            (self.statement.subject, "subject"),
+            (self.statement.object, "object"),
+            *[(x, x.qualifier) for x in (self.statement.qualifiers or [])],
+        ]
+        specs: list[ResolveSpec] = [ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid) for x, col in node_columns]
 
-            # Returns a list of: (function, (arguments)).
-            tcode: Optional[list[Any]] = [
-                (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
-                (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
-                (idx, ()),
-                (crop, (self.source.row_slice,)) if self.source.row_slice else None,
-                (pick, (self.source.rows,)) if self.source.rows else None,
-                [
-                    (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator))
-                    if x.comparison not in ["ne", "eq"]
-                    else (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator, False))
-                    for x in self.source.reindex
-                ]
-                if self.source.reindex
-                else None,
-                # --head preview: cap rows to min(HEAD_ROWS, height) before any encoding/resolve.
-                (head, (HEAD_ROWS,)) if self.head else None,
-                [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
-                (coerce_pvalue_columns, ()),
-                (coerce_study_size_columns, ()),
-                (clean_numeric, ()),
-                # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
-                (sig, ()),
-                (drop_not_significant, ()) if self.release else None,
-                [self.node_prep(x, col) for x, col in node_columns],
-                (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
-                [(fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) for _, col in node_columns] if self.qc else None,
-                (value, ("predicate", add("biolink:", self.statement.predicate))),
-                (edge_category, ()),
-                (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
-                (value, ("knowledge_level", self.provenance.knowledge_level)),
-                (value, ("agent_type", self.provenance.agent_type)),
-                (value, ("resource_id", infores(self.name))) if self.name else None,
-                (publications, (publication_curie(self.provenance.repo, self.provenance.publication),)),
-                (source_record_urls, (str(self.source.url),)),
-                (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
-                (trim, ()),
-                (format_numeric, ()),
-                (to_store, (self.store, self.config.name)),
+        # Returns a list of: (function, (arguments)).
+        tcode: list[Any] | None = [
+            (csv, (self.source.local, self.source.delimiter)) if eq(self.source.kind, Files.TEXT) else None,  # pyright: ignore
+            (excel, (self.source.local, self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
+            (idx, ()),
+            (crop, (self.source.row_slice,)) if self.source.row_slice else None,
+            (pick, (self.source.rows,)) if self.source.rows else None,
+            [
+                (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator))
+                if x.comparison not in ["ne", "eq"]
+                else (reindex, (idxname(x.column), getattr(operator, x.comparison), x.comparator, False))
+                for x in self.source.reindex
             ]
-            return self.clean(tcode)
+            if self.source.reindex
+            else None,
+            # --head preview: cap rows to min(HEAD_ROWS, height) before any encoding/resolve.
+            (head, (HEAD_ROWS,)) if self.head else None,
+            [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
+            (coerce_pvalue_columns, ()),
+            (coerce_study_size_columns, ()),
+            (clean_numeric, ()),
+            # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
+            (sig, ()),
+            (drop_not_significant, ()) if self.release else None,
+            [self.node_prep(x, col) for x, col in node_columns],
+            (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
+            [(fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) for _, col in node_columns] if self.qc else None,
+            (value, ("predicate", add("biolink:", self.statement.predicate))),
+            (edge_category, ()),
+            (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
+            (value, ("knowledge_level", self.provenance.knowledge_level)),
+            (value, ("agent_type", self.provenance.agent_type)),
+            (value, ("resource_id", infores(self.name))) if self.name else None,
+            (publications, (publication_curie(self.provenance.repo, self.provenance.publication),)),
+            (source_record_urls, (str(self.source.url),)),
+            (value, ("sheet_name", self.source.sheet)) if eq(self.source.kind, Files.EXCEL) else None,  # pyright: ignore
+            (trim, ()),
+            (format_numeric, ()),
+            (to_store, (self.store, self.config.name)),
+        ]
+        return self.clean(tcode)
 
 
 PHASE_OF: dict[Callable, str] = {
@@ -1081,7 +1080,7 @@ def _phase_of(fn: Callable, args: tuple[Any, ...]) -> str:
     return PHASE_OF.get(fn, UNKNOWN_PHASE)
 
 
-def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Optional[Callable[[str], None]] = None) -> Path:
+def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Callable[[str], None] | None = None) -> Path:
     """Execute a Tcode operation list to build a subgraph parquet.
 
     Args:
@@ -1092,8 +1091,8 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Opti
     Returns:
         Path to the written subgraph parquet.
     """
-    last_phase: Optional[str] = None
-    acc: Union[pl.LazyFrame, Path, None] = None
+    last_phase: str | None = None
+    acc: pl.LazyFrame | Path | None = None
     for op in tcode:
         fn: Callable = op[0]
         args: tuple[Any, ...] = op[1]
@@ -1106,9 +1105,7 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Opti
     return acc  # pyright: ignore
 
 
-def normalize(
-    edges: pl.LazyFrame, col: str, names: list[str] = ["id", "name", "category", "taxon", "source", "source_version"]
-) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+def normalize(edges: pl.LazyFrame, col: str, names: list[str] | None = None) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Normalize disparate node columns into a unified format and remove them from edges.
 
     Args:
@@ -1121,8 +1118,10 @@ def normalize(
     Returns:
         Tuple of ``(partial_nodes, modified_edges)`` as LazyFrames.
     """
+    if names is None:
+        names = ["id", "name", "category", "taxon", "source", "source_version"]
     cols: list[str] = [col, add(col, "_name"), add(col, "_category"), add(col, "_taxon"), add(col, "_source"), add(col, "_source_version")]
-    nodes: pl.LazyFrame = edges.select(cols).unique().rename({k: v for k, v in zip(cols, names)})
+    nodes: pl.LazyFrame = edges.select(cols).unique().rename(dict(zip(cols, names, strict=True)))
     # Ensures category has biolink: prefix.
     nodes = nodes.with_columns(
         pl.when(pl.col("category").str.starts_with("biolink:"))
@@ -1180,7 +1179,7 @@ def upstream_resource_ids(repo: Repositories) -> list[str]:
     return [InformationResources.PUBMED.value]
 
 
-def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) -> dict:
+def strip_nulls(r: object, bad: set[str] | None = None) -> dict:
     """Remove null keys from an NDJSON-style record.
 
     Args:
@@ -1191,6 +1190,8 @@ def strip_nulls(r: object, bad: set[str] = {"na", "nan", "null", "none", ""}) ->
         Dict with falsy and ``bad``-valued keys removed; recurses into
         nested dicts and lists.
     """
+    if bad is None:
+        bad = {"na", "nan", "null", "none", ""}
     return {
         k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v
         for k, v in r.items()  # pyright: ignore
@@ -1215,7 +1216,7 @@ def as_list(v: object) -> list[object]:
     return [v]
 
 
-def normalize_biolink_category(v: object) -> Optional[str]:
+def normalize_biolink_category(v: object) -> str | None:
     """Normalize category strings for RIG target summaries.
 
     Args:
@@ -1232,7 +1233,7 @@ def normalize_biolink_category(v: object) -> Optional[str]:
     return add("biolink:", v)
 
 
-def curie_prefix(v: object) -> Optional[str]:
+def curie_prefix(v: object) -> str | None:
     """Extract compact identifier prefixes for RIG node type summaries.
 
     Args:
@@ -1268,7 +1269,7 @@ def clean_values(values: list[object]) -> list[str]:
     return sorted(set(out))
 
 
-def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: Optional[str]) -> list[dict[str, object]]:
+def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: str | None) -> list[dict[str, object]]:
     """Summarize raw edge columns into RIG edge type metadata before node normalization.
 
     Args:
@@ -1366,10 +1367,10 @@ def unique_dicts(rows: list[dict[str, object]]) -> list[dict[str, object]]:
 def compile_rig(
     name: str,
     version: str,
-    description: Optional[str],
-    contributions: Optional[list[str]],
-    ui_explanation: Optional[str],
-    tables: Optional[list[Path]],
+    description: str | None,
+    contributions: list[str] | None,
+    ui_explanation: str | None,
+    tables: list[Path] | None,
     nodes_path: Path,
     edges_path: Path,
     node_type_info: list[dict[str, object]],
@@ -1476,11 +1477,7 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     if "supporting_text" in schema_names:
         # Coerce scalar supporting_text to list[str] first, then append derived entries.
-        existing: pl.Expr
-        if isinstance(schema["supporting_text"], pl.List):
-            existing = pl.col("supporting_text")
-        else:
-            existing = pl.concat_list(pl.col("supporting_text"))
+        existing: pl.Expr = pl.col("supporting_text") if isinstance(schema["supporting_text"], pl.List) else pl.concat_list(pl.col("supporting_text"))
         combined: pl.Expr = existing.list.concat(derived).list.drop_nulls()
     else:
         combined = derived
@@ -1492,10 +1489,10 @@ def compile_graph(
     subgraphs: list[Path],
     name: str,
     version: str,
-    description: Optional[str] = None,
-    contributions: Optional[list[str]] = None,
-    ui_explanation: Optional[str] = None,
-    tables: Optional[list[Path]] = None,
+    description: str | None = None,
+    contributions: list[str] | None = None,
+    ui_explanation: str | None = None,
+    tables: list[Path] | None = None,
 ) -> None:
     """Aggregate subgraph parquets for NDJSON KGX export using a lazy scan.
 
@@ -1574,9 +1571,9 @@ def resolve_many(
     col: str,
     entities: Iterable[str],
     fullmap: Path,
-    taxon: Optional[str] = None,
-    prioritize: Optional[list[Categories]] = None,
-    avoid: Optional[list[Categories]] = None,
+    taxon: str | None = None,
+    prioritize: list[Categories] | None = None,
+    avoid: list[Categories] | None = None,
     qc: bool = False,
     column_context: bool = True,
 ) -> list[dict[str, Any]]:

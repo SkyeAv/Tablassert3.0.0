@@ -8,11 +8,11 @@ from typing import Any, Protocol
 import polars as pl
 import pytest
 
-from tablassert import rs
 import tablassert.cli as cli
-from tablassert.cli import build_fullmap
 import tablassert.lib as lib
+from tablassert import rs
 from tablassert.biolink import Categories
+from tablassert.cli import build_fullmap
 from tablassert.fullmap import _TERM_CACHE, ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, lookup_rows, resolve, resolve_batch
 from tablassert.lib import to_store
 
@@ -472,7 +472,7 @@ def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, body: bytes) -> None:
             self._body = body
 
-        def __enter__(self) -> "FakeResponse":
+        def __enter__(self) -> FakeResponse:
             return self
 
         def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
@@ -499,7 +499,7 @@ def test_babel_url_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
         ("smallmolecule.txt.gz", f"{base}/synonyms-conflated/smallmolecule.txt.gz"),
     ]
     names: list[str] = [name for name, _ in synonym_urls]
-    assert not any(name.startswith("publication") or name.startswith("geneproteinconflated") for name in names)
+    assert not any(name.startswith(("publication", "geneproteinconflated")) for name in names)
 
 
 def test_polars_hash_dependency_removed() -> None:

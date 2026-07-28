@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional, Self, cast
+from typing import Any, Self, cast
 
 import polars as pl
 
@@ -32,8 +32,8 @@ from tablassert.lib import (
     parse_edge_name,
     publications,
     pvalue_target,
-    study_size_target,
     strip_nulls,
+    study_size_target,
 )
 
 
@@ -54,7 +54,7 @@ def install_fake_fullmap(monkeypatch: Any, rows: dict[str, list[dict[str, object
     """Monkeypatch fullmap lookup and return captured term batches."""
     calls: list[list[str]] = []
 
-    def fake_lookup(db: Path, terms: list[str], threads: Optional[int] = None, return_format: str = "rows") -> list[dict[str, object]]:
+    def fake_lookup(db: Path, terms: list[str], threads: int | None = None, return_format: str = "rows") -> list[dict[str, object]]:
         del db, threads, return_format
         calls.append(terms)
         return [row for term in terms for row in rows.get(term, [])]
@@ -721,7 +721,7 @@ def test_drop_not_significant_noop_without_column() -> None:
 
 def test_drop_not_significant_keeps_all_other_bands() -> None:
     """drop_not_significant keeps every band except biolink:not_significant."""
-    bands: list[Optional[str]] = [
+    bands: list[str | None] = [
         "biolink:very_strongly_significant",
         "biolink:strongly_significant",
         "biolink:significant",
@@ -1496,7 +1496,7 @@ def test_fold_unknown_skips_null_and_blank() -> None:
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
-    rows: list[list[Optional[str]]] = out["supporting_text"].to_list()
+    rows: list[list[str | None]] = out["supporting_text"].to_list()
     assert rows[0] == ["miscellaneous_notes: present"]
     # null and whitespace only both yield an empty list
     assert rows[1] == []

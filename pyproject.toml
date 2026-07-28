@@ -108,12 +108,29 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = [
-    "E4", # pycodestyle E4xx (ruff default subset)
-    "E7", # pycodestyle E7xx (ruff default subset)
-    "E9", # pycodestyle E9xx (ruff default subset)
-    "F", # pyflakes: F401 unused-imports, F841 unused-vars, F811 redefinitions, ...
-    "RUF100", # flag stale/unused `# noqa` directives
+    "E4", # pycodestyle E4xx
+    "E7", # pycodestyle E7xx
+    "E9", # pycodestyle E9xx
+    "F", # pyflakes
+    "RUF100", # stale noqa
+    "B", # flake8-bugbear
+    "SIM", # flake8-simplify
+    "C4", # flake8-comprehensions
+    "PT", # flake8-pytest-style
+    "RUF", # ruff-specific
+    "TID", # flake8-tidy-imports
+    "I", # isort
+    "PIE", # flake8-pie
+    "RET", # flake8-return
+    "UP", # pyupgrade
 ]
+ignore = [
+    "UP042", # keep enum/str-conversion behavior as-is
+]
+
+[tool.ruff.lint.isort]
+# Align isort with `format.skip-magic-trailing-comma = true` (avoids the ruff incompatibility warning).
+split-on-trailing-comma = false
 
 [tool.ruff.format]
 quote-style = "double"
