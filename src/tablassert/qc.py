@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,25 +21,21 @@ logger = cat("QC")
 
 MODEL: Path = BASE / "biobert"
 
-# TODO: Explore Best Model For QC
-BIOBERT: dict[str, object] = {}
 
-
+@cache
 def get_biobert() -> object:
-    """Lazy-load the BioBERT sentence-transformer once, then cache it globally.
+    """Lazy-load and memoize the BioBERT sentence-transformer (``functools.cache``).
 
     Loads from the local cache at ``MODEL`` when present; otherwise downloads
     ``pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb`` and saves it for
     future runs.
 
     Returns:
-        The cached ``SentenceTransformer`` instance.
+        The memoized ``SentenceTransformer`` instance.
 
     Raises:
         QcRuntimeMissingError: If ``sentence_transformers`` is not installed.
     """
-    if "model" in BIOBERT:
-        return BIOBERT["model"]
     try:
         if MODEL.exists():
             model: object = sentence_transformers.SentenceTransformer(str(MODEL))  # pyright: ignore
@@ -50,7 +47,6 @@ def get_biobert() -> object:
             model.save(MODEL)  # pyright: ignore
     except ImportError as exc:
         raise QcRuntimeMissingError() from exc
-    BIOBERT["model"] = model
     return model
 
 

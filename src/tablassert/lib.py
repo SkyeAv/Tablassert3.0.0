@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import operator
 import re
@@ -949,15 +950,7 @@ class Tcode(Section):
             Flat list of ``(callable, tuple[Any, ...])`` pairs with falsy
             entries removed.
         """
-        result: list[tuple[Callable, tuple[Any]]] = []
-        for x in tcode:
-            if not x:
-                continue
-            if isinstance(x, list):
-                result.extend(self.clean(x))
-            else:
-                result.append(x)
-        return result
+        return [op for x in tcode if x for op in (self.clean(x) if isinstance(x, list) else [x])]
 
     def collect(self: Self, db: Path) -> list[tuple[Callable, tuple[Any]]] | Path:
         """Build the ordered operation list that drives section transformation.
@@ -1356,7 +1349,7 @@ def unique_dicts(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     seen: set[str] = set()
     out: list[dict[str, object]] = []
     for row in rows:
-        key: str = str(row)
+        key: str = json.dumps(row, sort_keys=True)
         if key not in seen:
             seen.add(key)
             out.append(row)
