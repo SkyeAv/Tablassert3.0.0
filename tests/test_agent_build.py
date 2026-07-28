@@ -203,3 +203,29 @@ def test_build_and_audit_tool(tmp_path: Path, redb: Path) -> None:
     assert "ok" in parsed
     assert "coverage_pct" in parsed
     assert parsed["ok"] is True
+
+
+def test_build_and_audit_measures_relative_source_with_correct_cwd(tmp_path: Path, redb: Path) -> None:
+    """Regression (review fix 2): coverage is measured INSIDE the build's chdir(workdir).
+
+    A config with a RELATIVE source ``local`` builds fine (the pipeline chdir's into workdir) but used to
+    be measured by map_coverage from the ORIGINAL cwd -> frame reproduction failed -> false/unmeasurable
+    coverage. build_and_audit now measures inside the same chdir(workdir), so a relative path resolves and
+    coverage is a real measurement (1.0 here), never an 'unmeasurable' note.
+    """
+    workdir: Path = tmp_path / "work"
+    workdir.mkdir(parents=True)
+    (workdir / "rel.tsv").write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+    cfg: dict[str, Any] = {
+        "source": {"kind": "text", "local": "rel.tsv", "url": "https://example.com/rel.tsv", "delimiter": "\t"},
+        "statement": {
+            "subject": {"method": "column", "encoding": "A"},
+            "predicate": "associated_with",
+            "object": {"method": "column", "encoding": "B"},
+        },
+        "provenance": {"repo": "PMC", "publication": "PMC1"},
+    }
+    report: dict[str, Any] = build_and_audit(_yaml(cfg), fullmap=redb, workdir=workdir)
+    assert report["ok"] is True
+    assert report["coverage_pct"] == 1.0  # brca1/mapk1 resolve -> a REAL measurement, not vacuous
+    assert not any("unmeasurable" in str(note) for note in report["errors"])

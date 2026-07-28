@@ -83,7 +83,7 @@ qc = [
 agent = [
     "smolagents==1.26.0",
     "dspy==3.2.1",
-    "litellm",
+    "litellm==1.93.0",
 ]
 
 [dependency-groups]

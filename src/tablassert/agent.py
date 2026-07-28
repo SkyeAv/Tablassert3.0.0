@@ -429,6 +429,8 @@ def _merge_first_section(cfg: dict[str, object]) -> dict[str, object]:
         from tablassert.ingests import to_sections
 
         sections: list[dict[str, object]] = to_sections(cfg, Path("inline.yaml"))  # pyright: ignore[reportAssignmentType]
+        if not sections:  # e.g. `template: {}` with an explicit empty `sections: []` -> nothing to merge
+            return {}
         section: dict[str, object] = dict(sections[0])
         section.pop("config", None)  # to_sections stamps a Tcode-only key the pure Section schema forbids
         return section
@@ -451,7 +453,7 @@ def validate_section(cfg: str, agent_memory: object = None, agent: object = None
         if not isinstance(data, dict):
             return False
         Section.model_validate(_merge_first_section(data))
-    except (pydantic.ValidationError, TablassertValidationError, yaml.YAMLError, ValueError, KeyError, AttributeError):
+    except (pydantic.ValidationError, TablassertValidationError, yaml.YAMLError, ValueError, KeyError, AttributeError, IndexError, TypeError):
         return False
     return True
 
@@ -563,14 +565,17 @@ def map_coverage(config_yaml: str | dict[str, object], *, fullmap: Path, workdir
         union of every column's unresolved level-one terms.
 
     Notes:
-        A config with no resolvable structure (odd/invalid section, unreadable source,
-        a reduction that cannot run) yields a vacuous ``{"overall": 1.0, "per_column":
-        {}, "unresolved": []}`` instead of raising. Genuine fullmap I/O errors are NOT
-        swallowed: a bad ``fullmap`` path raises (``RuntimeError``/``FileNotFoundError``)
+        A config whose frame CANNOT be reproduced (odd/invalid section, unreadable or
+        relative-to-another-cwd source, a reduction that cannot run) is UNMEASURABLE and
+        yields ``{"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []}``
+        — never a false perfect score, so a measurement failure can never silently MAPPED an
+        article. A successfully reproduced frame returns ``measured: True`` (including the
+        vacuous 1.0 when there are no COLUMN nodes to resolve). Genuine fullmap I/O errors are
+        NOT swallowed: a bad ``fullmap`` path raises (``RuntimeError``/``FileNotFoundError``)
         from the redb lookup.
     """
     cfg: object = yaml.safe_load(config_yaml) if isinstance(config_yaml, str) else config_yaml
-    empty: dict[str, object] = {"overall": 1.0, "per_column": {}, "unresolved": []}
+    empty: dict[str, object] = {"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []}
     if not isinstance(cfg, dict):
         return empty
 
@@ -624,7 +629,7 @@ def map_coverage(config_yaml: str | dict[str, object], *, fullmap: Path, workdir
         all_unresolved.update(unresolved)
 
     overall: float = (len(union_resolved) / len(union_total)) if union_total else 1.0
-    return {"overall": overall, "per_column": per_column, "unresolved": sorted(all_unresolved)}
+    return {"overall": overall, "measured": True, "per_column": per_column, "unresolved": sorted(all_unresolved)}
 
 
 def make_map_coverage_tool(get_fullmap: Callable[[], Path]) -> Tool:
@@ -815,9 +820,15 @@ def build_and_audit(
         coverage_pct: float = 0.0
         unresolved: list[str] = []
         try:
-            cov: dict[str, object] = map_coverage(table_cfg, fullmap=fullmap, workdir=root)
+            # Measure INSIDE the same chdir(root) the build used, so a RELATIVE source `local`
+            # resolves against root (the build's CWD) — measuring from the original CWD would fail
+            # the frame reproduction and report a false/unmeasurable coverage.
+            with contextlib.chdir(root):
+                cov: dict[str, object] = map_coverage(table_cfg, fullmap=fullmap, workdir=root)
             overall: object = cov.get("overall")
             coverage_pct = float(overall) if isinstance(overall, (int, float)) else 0.0
+            if cov.get("measured") is False:
+                notes.append("coverage unmeasurable: could not reproduce the source frame (treated as 0.0, not a perfect score)")
             raw_unresolved: object = cov.get("unresolved")
             unresolved = [str(term) for term in raw_unresolved] if isinstance(raw_unresolved, list) else []
         except Exception as exc:  # non-fatal: surface a note, keep the successful build
@@ -1773,6 +1784,11 @@ def run_supervisor(
                     rec.best_coverage = cov2
                 else:  # REJECT: keep the current best; record the non-improving attempt
                     rec.notes = f"rejected non-improving edit (cov {cov2:.3f} <= best {current_cov:.3f}): {rationale}"
+                    # propose_config_edit + build_and_audit are DETERMINISTIC: with current_config unchanged,
+                    # every further iteration would propose the IDENTICAL edit and reject again, burning real
+                    # builds with no possible progress. Stop spending the budget once an edit is rejected.
+                    iters += 1
+                    break
                 iters += 1
                 rec.attempts += 1
                 save_state(state_dir, state)
@@ -2048,18 +2064,24 @@ def _parse_judge_scores(text: str) -> dict[str, float]:
         name, _, value = line.partition(":")
         key: str = name.strip().lower()
         if key in scores:
-            with contextlib.suppress(ValueError):
+            # Suppress IndexError too: an empty-value line ("dim:") makes "".split()[0] raise; skip
+            # just that line so one malformed dimension cannot discard the whole judge output.
+            with contextlib.suppress(ValueError, IndexError):
                 scores[key] = max(0.0, min(3.0, float(value.strip().split()[0])))
     return scores
 
 
-def judge_config(config_yaml: str, report: dict[str, Any], metrics: dict[str, Any], *, judge_model: object | None = None) -> dict[str, Any]:
+def judge_config(
+    config_yaml: str, report: dict[str, Any], metrics: dict[str, Any], *, judge_model: object | None = None, baseline_len: int | None = None
+) -> dict[str, Any]:
     """Pointwise 0-3 judge over the SEMANTIC dimensions; deterministic heuristic when no model.
 
     Deterministic metrics GATE the loop elsewhere; this scores only what a metric cannot
     (predicate/category appropriateness, provenance completeness, etc.). With ``judge_model``
-    the score is debiased for position (both dimension orders, averaged) and verbosity; on any
-    failure it falls back to the offline heuristic so it never raises.
+    the score is debiased for position (both dimension orders, averaged) and verbosity. Verbosity
+    debiasing compares the config length against ``baseline_len`` (e.g. the seed/reference config
+    length); when ``baseline_len`` is None the config is compared against itself (ratio 1.0, no
+    penalty). On any failure it falls back to the offline heuristic so it never raises.
     """
     if judge_model is None:
         steps: object = metrics.get("steps", 0)
@@ -2081,7 +2103,8 @@ def judge_config(config_yaml: str, report: dict[str, Any], metrics: dict[str, An
         forward: dict[str, float] = _parse_judge_scores(_call_judge(judge_model, _build_judge_prompt(config_yaml, report, metrics, reverse=False)))
         reversed_: dict[str, float] = _parse_judge_scores(_call_judge(judge_model, _build_judge_prompt(config_yaml, report, metrics, reverse=True)))
         debiased: dict[str, float] = {d: _debias_position(forward.get(d, 0.0), reversed_.get(d, 0.0)) for d in JUDGE_DIMENSIONS}
-        norm: float = _debias_verbosity(sum(debiased.values()) / (3 * len(debiased)), len(config_yaml), len(config_yaml))
+        verbosity_baseline: int = baseline_len if baseline_len is not None else len(config_yaml)
+        norm: float = _debias_verbosity(sum(debiased.values()) / (3 * len(debiased)), len(config_yaml), verbosity_baseline)
         return {"scores": debiased, "normalized": norm, "rationale": "LLM judge (position + verbosity debiased)"}
     except Exception:
         return judge_config(config_yaml, report, metrics)  # fall back to the deterministic heuristic

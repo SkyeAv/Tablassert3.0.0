@@ -3921,7 +3921,7 @@ requires-dist = [
     { name = "biolink-model", specifier = ">=4.4.3" },
     { name = "cyclopts", specifier = ">=1.0.0" },
     { name = "dspy", marker = "extra == 'agent'", specifier = "==3.2.1" },
-    { name = "litellm", marker = "extra == 'agent'" },
+    { name = "litellm", marker = "extra == 'agent'", specifier = "==1.93.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "polars", specifier = ">=1.39.0" },
     { name = "polars", extras = ["rtcompat"], marker = "extra == 'rt'", specifier = ">=1.40.1" },

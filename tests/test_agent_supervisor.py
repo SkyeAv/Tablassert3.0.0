@@ -293,3 +293,62 @@ def test_state_roundtrip_atomic(tmp_path: Path) -> None:
     assert loaded.records["PMC2"].status == "SKIPPED"
     assert loaded.records["PMC2"].qc_pass_rate is None
     assert loaded.metrics["mapped"] == 1
+
+
+def test_supervisor_breaks_after_rejected_edit(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression (review fix 3): the improve loop BREAKS once a deterministic edit is rejected.
+
+    propose_config_edit + build_and_audit are DETERMINISTIC, so after a rejected edit (current_config
+    unchanged) every further iteration would propose the IDENTICAL edit and reject again, burning up to
+    max_improve_iters full real builds with no possible progress. The loop now breaks on rejection. With
+    max_improve_iters=5 and an always-rejected edit, build_and_audit runs exactly twice (the initial build
+    + ONE rejected improve), not 1 + 5 = 6.
+    """
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+    calls: dict[str, int] = {"build": 0}
+
+    def fake_build(
+        config_yaml: str, *, fullmap: Path, name: str = "agent", version: str = "0.0.1", qc: bool = False, workdir: Path | None = None
+    ) -> dict[str, Any]:  # pyright: ignore[reportUnusedParameter]
+        calls["build"] += 1
+        return {
+            "ok": True,
+            "coverage_pct": 0.5,
+            "qc_pass_rate": None,
+            "errors": [],
+            "error_codes": [],
+            "kgx_path": None,
+            "edges_path": None,
+            "node_count": 1,
+            "edge_count": 1,
+            "unresolved": ["x"],
+        }
+
+    monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
+    monkeypatch.setattr(
+        agent_mod,
+        "map_coverage",
+        lambda *a, **k: {
+            "overall": 0.5,
+            "measured": True,
+            "per_column": {"subject": {"coverage": 0.5, "total": 1, "resolved": 0, "unresolved": ["g__x"], "method": "column"}},
+            "unresolved": ["g__x"],
+        },
+    )
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "proposed edit"))
+
+    result: dict[str, Any] = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        max_improve_iters=5,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )
+    assert calls["build"] == 2  # initial build + ONE rejected improve, then break (not 1 + 5)
+    assert result["records"]["PMC1"].status == "SKIPPED"  # 0.5 < 0.8 and never improved

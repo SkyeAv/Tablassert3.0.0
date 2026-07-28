@@ -382,3 +382,25 @@ def test_reference_kgx_builds_and_self_f1(tmp_path: Path) -> None:
     self_f1 = node_edge_f1(ref_nodes, ref_edges, ref_nodes, ref_edges)
     assert self_f1["node_f1"] == 1.0
     assert self_f1["edge_f1"] == 1.0
+
+
+def test_judge_verbosity_debiasing_fires_with_baseline() -> None:
+    """Regression (review fix 4): verbosity debiasing actually fires when a real baseline length is given.
+
+    judge_config used to pass the config's OWN length as both config_len and baseline_len, so the ratio was
+    always 1.0 and the verbosity penalty never triggered (docs overstated 'verbosity bias mitigation'). Now
+    a caller can pass ``baseline_len`` (e.g. the reference config length); a config >2x the baseline incurs the
+    5% penalty. With no baseline the config is compared against itself (ratio 1.0, no penalty).
+    """
+
+    def fake_judge(prompt: str) -> str:  # pyright: ignore[reportUnusedParameter]
+        return "\n".join(f"{d}: 3" for d in JUDGE_DIMENSIONS)  # all dimensions score 3 -> raw normalized 1.0
+
+    long_cfg: str = "x" * 100
+    report: dict[str, Any] = {"coverage_pct": 1.0}
+    metrics: dict[str, Any] = {"steps": 1}
+    penalized: dict[str, Any] = judge_config(long_cfg, report, metrics, judge_model=fake_judge, baseline_len=10)
+    unpenalized: dict[str, Any] = judge_config(long_cfg, report, metrics, judge_model=fake_judge)  # baseline defaults to own length
+    assert penalized["normalized"] == pytest.approx(0.95)  # 1.0 * 0.95 verbosity penalty (ratio 100/10 > 2)
+    assert unpenalized["normalized"] == pytest.approx(1.0)  # ratio 1.0 -> identity
+    assert penalized["normalized"] < unpenalized["normalized"]

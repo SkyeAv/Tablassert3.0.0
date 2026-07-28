@@ -160,13 +160,19 @@ def test_coverage_accepts_template_config(tmp_path: Path, redb: Path) -> None:
     assert result["unresolved"] == []
 
 
-def test_coverage_odd_config_is_vacuous(tmp_path: Path, redb: Path) -> None:
-    """A config with no resolvable structure returns a vacuous perfect score, never raises."""
-    # Not a dict after parsing -> vacuous empty result.
-    assert map_coverage("just a string", fullmap=redb, workdir=tmp_path) == {"overall": 1.0, "per_column": {}, "unresolved": []}
-    # A structurally invalid section (missing source) -> vacuous empty result, no crash.
+def test_coverage_odd_config_is_unmeasurable(tmp_path: Path, redb: Path) -> None:
+    """A config with no resolvable structure is UNMEASURABLE (overall 0.0 + measured=False), never raises.
+
+    Review fix 2: this used to return a vacuous perfect 1.0 ('couldn't measure' == 'fully covered'), which
+    could silently MAPPED an article. An unmeasurable config now reports 0.0 + measured=False so a
+    measurement failure can never masquerade as full coverage.
+    """
+    # Not a dict after parsing -> unmeasurable empty result.
+    assert map_coverage("just a string", fullmap=redb, workdir=tmp_path) == {"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []}
+    # A structurally invalid section (missing source) -> unmeasurable empty result, no crash.
     assert map_coverage({"statement": {"predicate": "associated_with"}}, fullmap=redb, workdir=tmp_path) == {
-        "overall": 1.0,
+        "overall": 0.0,
+        "measured": False,
         "per_column": {},
         "unresolved": [],
     }
@@ -196,3 +202,17 @@ def test_map_coverage_tool_builds_and_forwards(tmp_path: Path, redb: Path) -> No
     parsed: dict[str, Any] = json.loads(tool.forward(cfg))
     assert "overall" in parsed
     assert parsed["overall"] == 1.0
+
+
+def test_coverage_unmeasurable_source_is_not_perfect(tmp_path: Path, redb: Path) -> None:
+    """Regression (review fix 2): an unreadable source is UNMEASURABLE -> overall 0.0 + measured=False.
+
+    Previously map_coverage returned a vacuous overall 1.0 whenever phase-1 could not reproduce the
+    frame ('couldn't measure' == 'fully covered'), and that value drove the MAPPED/SKIPPED gate -- so an
+    article could be marked MAPPED when coverage was never actually measured. Now an unmeasurable config
+    reports 0.0 + measured=False so a measurement failure can never silently MAPPED an article.
+    """
+    cfg: str = yaml.safe_dump(_section_config(Path("/nonexistent/definitely_missing.tsv")), sort_keys=False)
+    result: dict[str, Any] = map_coverage(cfg, fullmap=redb)
+    assert result["measured"] is False
+    assert result["overall"] == 0.0  # NOT a false perfect 1.0

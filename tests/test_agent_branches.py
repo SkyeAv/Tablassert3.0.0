@@ -310,3 +310,17 @@ def test_fetch_no_candidates_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setattr(agent_mod, "_http_get_bytes", lambda url, *, timeout=120: b"X")
     with pytest.raises(FileNotFoundError, match="No supplementary tables"):
         agent_mod.fetch_pmc_tables("PMC2", tmp_path)
+
+
+def test_parse_judge_scores_empty_value_line_skipped() -> None:
+    """Regression (review fix 5): an empty-value dimension line is skipped, not a fatal IndexError.
+
+    A line like 'schema_validity:' made '"".split()[0]' raise IndexError; only ValueError was suppressed, so
+    judge_config's outer try/except caught it and silently downgraded the ENTIRE LLM judge to the offline
+    heuristic on any single malformed line. Now IndexError is suppressed too, so one malformed dimension is
+    skipped (stays 0.0) and the remaining dimensions still parse.
+    """
+    scores = _parse_judge_scores("schema_validity:\ncoverage_appropriateness: 2\nqc_pass: 3")
+    assert scores["schema_validity"] == 0.0  # empty value -> skipped (default 0.0), no raise
+    assert scores["coverage_appropriateness"] == 2.0  # remaining dimensions still parsed
+    assert scores["qc_pass"] == 3.0

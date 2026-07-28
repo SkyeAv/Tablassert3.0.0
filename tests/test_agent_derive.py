@@ -146,3 +146,16 @@ def test_derive_config_tool_description_mentions_schema_gate() -> None:
     pytest.importorskip("smolagents")
     tool = make_derive_config_tool()
     assert "schema" in tool.description.lower()
+
+
+def test_validate_section_never_raises_on_empty_sections() -> None:
+    """A ``template: {}`` config with an explicit empty ``sections: []`` returns False, not a raise.
+
+    Regression (review fix 1): ``_merge_first_section`` used to do ``sections[0]`` on the empty
+    list -> IndexError, which was NOT in validate_section's except tuple. Because validate_section is
+    a smolagents final_answer_checks gate, a raise becomes a hard AgentError that TERMINATES the inner
+    run instead of a clean False the agent can recover from. The gate must NEVER raise.
+    """
+    assert validate_section("template: {}\nsections: []\n") is False
+    assert validate_section("template: {}\n") is False  # no sections key -> merges empty template -> invalid
+    assert validate_section("template: {}\nsections: []\n") is False  # never raises
