@@ -440,6 +440,8 @@ struct Progress {
 impl Progress {
     fn call(&self, phase: i32, completed: u64, total: u64, detail: &str) {
         Python::attach(|py| {
+            // Progress is best-effort: a failing Python callback must never kill
+            // the build, so the call result is deliberately discarded.
             let _ = self.cb.call1(py, (phase, completed, total, detail));
         });
     }

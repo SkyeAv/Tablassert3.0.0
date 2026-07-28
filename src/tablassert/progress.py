@@ -171,7 +171,9 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         (equivalents / synonyms / writing) whose totals differ and are not all
         known up front. A fresh bar is created on each phase change; a phase
         whose ``total`` is ``0`` renders as an indeterminate bar until a later
-        callback supplies the real total.
+        callback supplies the real total. The reverse (a phase that starts with
+        a real total then reports ``total=0``) re-creates the bar as
+        indeterminate so a later, larger count never overflows the earlier total.
 
         Args:
             label: Fallback label rendered on the progress bar.
@@ -188,16 +190,27 @@ class PipelineProgress(AbstractContextManager["PipelineProgress"]):
         # arrive out of order (e.g. 6, 3, 21, 8).  Feeding a regression to rich
         # makes the bar jump backwards and breaks the ETA (``--:--:--``).  Track
         # the high-water mark per phase and clamp to keep the bar monotonic.
-        state: dict[str, int] = {"phase": -1, "max_completed": 0}
+        state: dict[str, int] = {"phase": -1, "max_completed": 0, "determinate": 0}
 
         def update(phase: int, completed: int, total: int, detail: str) -> None:
             if phase != state["phase"]:
                 state["phase"] = phase
                 state["max_completed"] = 0
+                state["determinate"] = 1 if total > 0 else 0
                 self.end_section_task()
                 self.section_task = self.progress.add_task(
                     description="", total=total if total > 0 else None, label=phase_labels.get(phase, label.upper())
                 )
+            elif total == 0 and state["determinate"]:
+                # Same phase switched from a real total to indeterminate: phase 0
+                # scatters per-file counts (total = number of class files) and then
+                # the equiv-merge reports entry counts in the millions with total=0.
+                # Re-create the bar as indeterminate and restart the high-water mark
+                # so a huge entry count never overflows the small file-count total.
+                state["determinate"] = 0
+                state["max_completed"] = 0
+                self.end_section_task()
+                self.section_task = self.progress.add_task(description="", total=None, label=phase_labels.get(phase, label.upper()))
             if completed > state["max_completed"]:
                 state["max_completed"] = completed
             mono = state["max_completed"]
