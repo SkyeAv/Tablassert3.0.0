@@ -9,6 +9,7 @@ them at import time. Install the extra with ``pip install tablassert[agent]``.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import tempfile
 import xml.etree.ElementTree as ET
@@ -23,11 +24,12 @@ import yaml
 
 from tablassert._lazy import LazyModule
 from tablassert.enums import EncodingMethods
-from tablassert.errors import TablassertValidationError
+from tablassert.errors import GraphValidationError, QcRuntimeMissingError, SectionValidationError, TablassertValidationError
 from tablassert.fullmap import distinct, fullmap_db_path, lookup_rows
 from tablassert.lib import Tcode
 from tablassert.log import cat
 from tablassert.models import NodeEncoding, Section
+from tablassert.progress import flatten_pydantic_error
 
 if TYPE_CHECKING:
     import dspy  # pyright: ignore[reportMissingImports,reportUnusedImport]
@@ -648,3 +650,214 @@ def make_map_coverage_tool(get_fullmap: Callable[[], Path]) -> Tool:
             return json.dumps(map_coverage(config_yaml, fullmap=get_fullmap()))
 
     return MapCoverageTool()
+
+
+# --------------------------------------------------------------------------- #
+# US-005: build_and_audit — ONE deterministic mega-tool
+#
+# Collapses validate -> build -> (QC) -> coverage into a SINGLE deterministic call
+# (smolagents practice #1: minimize LLM tool calls). It runs the REAL production
+# ``validate_pipeline`` + ``build_pipeline`` (driven by a headless ``_NullProgress``
+# shim) inside an isolated ``workdir`` via ``contextlib.chdir``, so coverage/QC are
+# measured EXACTLY as in production and the KGX ``.ndjson`` artifacts land in the
+# workdir (``build_pipeline`` writes ``<name>_<version>.*.ndjson`` to the CWD and
+# resolves ``utils.STORE`` against it). Only base deps + the real Rust redb are used,
+# so the core needs no ``[agent]`` extra; the smolagents ``Tool`` wrapper is built
+# lazily in a factory. The function NEVER raises: coded validation errors surface
+# VERBATIM (``str(exc)`` appends the docs URL via ``_Coded.__str__``) and any
+# unexpected error returns an ``ok=False`` result (never swallowed into success).
+# --------------------------------------------------------------------------- #
+
+
+class _NullProgress:
+    """Headless no-op progress shim for the real validate/build pipelines.
+
+    ``validate_pipeline``/``build_pipeline`` call ONLY ``progress.stage(name)`` and
+    ``progress.section_loop(n, label) -> (start, advance, sub_step)`` (the three
+    callables drive ``compile_graph``'s ``on_phase``/``on_subgraph``); every callback
+    is a no-op so the pipelines run byte-identically to production but emit no rich
+    UI. No other ``PipelineProgress`` method is touched on these two code paths.
+    """
+
+    def stage(self, name: str) -> None: ...
+
+    def section_loop(self, n: int, label: str) -> tuple[Callable[[str], None], Callable[[], None], Callable[[str], None]]:
+        def _noop(*args: object, **kwargs: object) -> None:
+            return None
+
+        return _noop, _noop, _noop
+
+
+def _fail(errors: list[str], codes: list[str] | None = None) -> dict[str, object]:
+    """Build a uniform failure result (``ok=False``) with the full audit shape."""
+    return {
+        "ok": False,
+        "coverage_pct": 0.0,
+        "qc_pass_rate": None,
+        "errors": errors,
+        "error_codes": [] if codes is None else codes,
+        "kgx_path": None,
+        "edges_path": None,
+        "node_count": 0,
+        "edge_count": 0,
+        "unresolved": [],
+    }
+
+
+def _err(exc: BaseException) -> dict[str, object]:
+    """Turn an exception into a failure result, surfacing coded messages VERBATIM.
+
+    ``str(exc)`` already appends the docs URL for coded errors (``_Coded.__str__``);
+    a ``pydantic.ValidationError`` (no ``.code``) is flattened to a readable single
+    line via ``flatten_pydantic_error``. ``exc.code`` (when present) seeds
+    ``error_codes``.
+    """
+    code: str | None = getattr(exc, "code", None)
+    message: str = flatten_pydantic_error(exc) if isinstance(exc, pydantic.ValidationError) else str(exc)
+    return _fail([message], [code] if code is not None else None)
+
+
+def _count_ndjson_lines(path: Path) -> int:
+    """Count non-empty lines in an NDJSON artifact (0 when the file is absent)."""
+    if not path.is_file():
+        return 0
+    with path.open() as handle:
+        return sum(1 for line in handle if line.strip())
+
+
+def build_and_audit(
+    config_yaml: str, *, fullmap: Path, name: str = "agent", version: str = "0.0.1", qc: bool = False, workdir: Path | None = None
+) -> dict[str, object]:
+    """Validate, build, (QC), and score a config in ONE deterministic call.
+
+    Runs the REAL ``validate_pipeline`` + ``build_pipeline`` (headless ``_NullProgress``)
+    inside an isolated ``workdir`` (``contextlib.chdir``), then measures fullmap
+    coverage via :func:`map_coverage`. The build writes ``<name>_<version>.nodes.ndjson``
+    / ``.edges.ndjson`` to the CWD, so the pipelines run inside ``workdir`` (after
+    ``mkdir -p workdir/.tablassert/store``, mirroring the e2e recipe) and the artifacts
+    land there.
+
+    Args:
+        config_yaml: A Tablassert Section/table config YAML; a bare merged section is
+            auto-wrapped as ``{template: <section>}``.
+        fullmap: Fullmap redb file or base directory (see ``fullmap_db_path``).
+        name: Graph name (drives the output artifact prefix).
+        version: Graph version label (drives the output artifact prefix).
+        qc: When True, run the build's quality-control audit.
+        workdir: Directory the pipelines run inside and write artifacts to; defaults
+            to a fresh temp dir.
+
+    Returns:
+        ``{"ok": bool, "coverage_pct": float, "qc_pass_rate": float|None, "errors":
+        [str], "error_codes": [str], "kgx_path": str|None, "edges_path": str|None,
+        "node_count": int, "edge_count": int, "unresolved": [str]}``. Coded errors
+        appear VERBATIM in ``errors`` (with the docs URL). ``qc_pass_rate`` is 1.0 when
+        ``qc`` is set and the build succeeded (``fullmap_audit`` emits ONLY rows that
+        passed the cascade, so every emitted row passed by construction; the meaningful
+        QC signal is yield/coverage, reported separately), else ``None``.
+
+    Notes:
+        NEVER raises. A coverage failure after a successful build is NON-fatal: the KG
+        still built, so ``ok`` stays True with ``coverage_pct=0.0`` and a
+        ``"coverage unavailable: ..."`` note appended to ``errors``. Any unexpected
+        build error returns ``ok=False`` (never swallowed into success).
+    """
+    try:
+        root: Path = Path(workdir) if workdir is not None else Path(tempfile.mkdtemp(prefix="tablassert-agent-"))
+        root.mkdir(parents=True, exist_ok=True)
+
+        try:
+            data: object = yaml.safe_load(config_yaml)
+        except yaml.YAMLError as exc:
+            return _err(exc)
+        if not isinstance(data, dict):
+            return _fail(["config is not a YAML mapping"])
+        # A bare merged section has neither a template nor sections key -> wrap it so
+        # to_sections (used by the pipelines) sees the table-config shape it expects.
+        table_cfg: dict[str, object] = data if ("template" in data or "sections" in data) else {"template": data}
+
+        (root / "table.yaml").write_text(yaml.safe_dump(table_cfg, sort_keys=False))
+        graph_cfg: dict[str, object] = {
+            "name": name,
+            "version": version,
+            "description": f"Agent-built graph for {name}",
+            "tables": ["table.yaml"],  # relative to workdir (the pipelines chdir there)
+            "fullmap": str(fullmap),
+        }
+        (root / "graph.yaml").write_text(yaml.safe_dump(graph_cfg, sort_keys=False))
+
+        from tablassert.cli import build_pipeline, validate_pipeline  # deferred: keeps the cli APP off the module top
+
+        try:
+            with contextlib.chdir(root):
+                (root / ".tablassert" / "store").mkdir(parents=True, exist_ok=True)
+                validate_pipeline(Path("table.yaml"), _NullProgress())  # pyright: ignore[reportArgumentType]
+                build_pipeline(Path("graph.yaml"), _NullProgress(), qc=qc)  # pyright: ignore[reportArgumentType]
+        except (GraphValidationError, SectionValidationError, TablassertValidationError, QcRuntimeMissingError) as exc:
+            return _err(exc)
+        except pydantic.ValidationError as exc:
+            return _err(exc)
+
+        nodes: Path = root / f"{name}_{version}.nodes.ndjson"
+        edges: Path = root / f"{name}_{version}.edges.ndjson"
+
+        # Coverage is NON-fatal: the KG already built, so a bad fullmap (or any coverage
+        # failure) keeps ok=True with coverage_pct=0.0 and a note, never masking success.
+        notes: list[str] = []
+        coverage_pct: float = 0.0
+        unresolved: list[str] = []
+        try:
+            cov: dict[str, object] = map_coverage(table_cfg, fullmap=fullmap, workdir=root)
+            overall: object = cov.get("overall")
+            coverage_pct = float(overall) if isinstance(overall, (int, float)) else 0.0
+            raw_unresolved: object = cov.get("unresolved")
+            unresolved = [str(term) for term in raw_unresolved] if isinstance(raw_unresolved, list) else []
+        except Exception as exc:  # non-fatal: surface a note, keep the successful build
+            notes.append(f"coverage unavailable: {exc}")
+
+        return {
+            "ok": True,
+            "coverage_pct": coverage_pct,
+            "qc_pass_rate": 1.0 if qc else None,
+            "errors": notes,
+            "error_codes": [],
+            "kgx_path": str(nodes) if nodes.is_file() else None,
+            "edges_path": str(edges) if edges.is_file() else None,
+            "node_count": _count_ndjson_lines(nodes),
+            "edge_count": _count_ndjson_lines(edges),
+            "unresolved": unresolved,
+        }
+    except Exception as exc:  # backstop: unknown errors -> ok=False, never success, never raise
+        return _err(exc)
+
+
+def make_build_and_audit_tool(get_fullmap: Callable[[], Path], *, name: str = "agent", version: str = "0.0.1", qc: bool = False) -> Tool:
+    """Build the ``build_and_audit`` smolagents Tool lazily, binding the fullmap via closure.
+
+    ``get_fullmap`` is a zero-arg callable returning the fullmap redb path (the
+    supervisor supplies it when assembling tools); ``forward(config_yaml)`` returns the
+    JSON-encoded audit report so the agent validates, builds, (QC), and scores a config
+    in a single call. The subclass is defined INSIDE this factory so the module top
+    never forces the optional smolagents import.
+    """
+    _require("smolagents")
+    from smolagents import Tool  # local import keeps module import lazy
+
+    class BuildAndAuditTool(Tool):  # pyright: ignore[reportMissingImports]
+        name = "build_and_audit"
+        description = (
+            "Validate, build, QC, and score a Tablassert Section/table config (YAML) in ONE deterministic call. Runs "
+            "the real validate + build pipelines in an isolated workdir, then measures fullmap coverage. Returns a "
+            "JSON report: ok, coverage_pct, qc_pass_rate, errors (coded, verbatim, with docs URL), error_codes, "
+            "kgx_path, edges_path, node_count, edge_count, and unresolved terms. Use it to turn a candidate config "
+            "into a built KGX graph plus its coverage/quality signals in a single step; on failure read errors to self-correct."
+        )
+        inputs: ClassVar[dict[str, dict[str, str | type | bool]]] = {  # pyright: ignore[reportIncompatibleVariableOverride]
+            "config_yaml": {"type": "string", "description": "A Tablassert Section/table config YAML to validate, build, QC, and score."}
+        }
+        output_type = "string"
+
+        def forward(self, config_yaml: str) -> str:
+            return json.dumps(build_and_audit(config_yaml, fullmap=get_fullmap(), name=name, version=version, qc=qc), default=str)
+
+    return BuildAndAuditTool()
