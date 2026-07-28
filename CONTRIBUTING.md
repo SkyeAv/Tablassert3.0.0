@@ -1,289 +1,167 @@
 # Contributing to Tablassert
 
-Thank you for your interest in contributing to Tablassert! This guide covers everything you need to get started.
+Thank you for helping make Tablassert reliable. Reliability here includes the developer experience: a new contributor should be able to build, test, and understand the project without guesswork.
 
-For full documentation, visit [skyeav.github.io/Tablassert](https://skyeav.github.io/Tablassert/).
+## Prerequisites
 
-## Getting Started
+- Python 3.11 or newer.
+- A stable Rust toolchain with `cargo`, `rustfmt`, and `clippy`.
+- [uv](https://docs.astral.sh/uv/) for Python dependency and command management.
+- GNU Make for the local task runner. `just` is useful in many projects, but this repo uses a minimal `Makefile` so the default loop works on this tree without extra tooling.
 
-### Prerequisites
-
-- **Python 3.11** or higher
-- **[UV](https://docs.astral.sh/uv/)** package manager
-- **Git**
-
-### Setup
+## One-time setup
 
 ```bash
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
-uv sync
+uv sync --group dev --extra qc
+uv run maturin develop --manifest-path rust/Cargo.toml
+uv run tablassert --help
 ```
 
-### Optional Extras
+`uv sync --group dev --extra qc` installs the development tools plus the optional QC runtime. `maturin develop` builds the PyO3 extension from `rust/` and installs it into the uv-managed environment.
 
-The core install includes everything needed to build knowledge graphs from CSV/TSV sources. Two optional extras are available:
+Shortcut:
 
 ```bash
-uv sync --extra rt   # polars[rtcompat] — for CPUs without the required Polars instructions
-uv sync --extra qc   # torch, sentence-transformers, rapidfuzz, scikit-learn, numpy — QC runtime
+make setup
 ```
 
-Excel (`.xlsx`) input is read through Polars' `calamine` engine and additionally requires `python-calamine`.
+## Daily edit → check loop
 
-## Development Workflow
+```bash
+# after changing Rust code, or when the extension may be stale
+make dev
 
-### Quick Reference
+# fastest focused checks
+uv run pytest tests/test_lib.py::test_idxname_single_letter
+cargo test --manifest-path rust/Cargo.toml fullmap::tests::clean_strips_matching_and_duplicate_quotes
 
-| Task | Command |
+# before commit
+make check
+```
+
+Use `make build` when you need a release-mode extension for local performance checks. Normal development should use `make dev`; a release build can hide debug-only behavior and a later debug build replaces the editable extension in the same environment.
+
+## Task runner
+
+The `Makefile` is intentionally small and mirrors the underlying commands:
+
+| Target | Runs |
 |---|---|
-| Run CLI | `uv run tablassert --help` |
-| Lint | `uv run ruff check .` |
-| Lint (fix) | `uv run ruff check --fix .` |
-| Format | `uv run ruff format .` |
-| Format check | `uv run ruff format --check .` |
-| Type check | `uv run pyright` |
-| All checks | `uv run pre-commit run --all-files` |
-| Run all tests | `uv run pytest` |
-| Run single test | `uv run pytest tests/test_foo.py::test_name` |
-| Run by keyword | `uv run pytest -k "test_pattern"` |
-| Build | `uv build` |
+| `make setup` | `uv sync --group dev --extra qc` and debug `maturin develop` |
+| `make dev` | Debug editable extension build |
+| `make build` | Release editable extension build |
+| `make test` | Python tests with coverage |
+| `make test-rust` | Rust tests |
+| `make lint` | Ruff lint |
+| `make fmt` | Ruff format and `cargo fmt` |
+| `make fmt-check` | Ruff format check and `cargo fmt --check` |
+| `make typecheck` | Pyright |
+| `make check` | Lint, format check, typecheck, Python tests, Rust tests, and clippy with `-D warnings` |
+| `make clean` | Local build/test/doc artifacts |
 
-### Branching
+## Project layout
 
-1. Fork the repository
-2. Create a branch from `main`:
-   ```bash
-   git checkout -b my-feature
-   ```
-3. Make your changes
-4. Run all checks before committing:
-   ```bash
-   uv run ruff check --fix . && uv run ruff format . && uv run pyright && uv run pytest
-   ```
-5. Push and open a pull request
+```text
+src/tablassert/       Python package and CLI
+rust/src/             PyO3 Rust extension exposed as tablassert.rs
+tests/                Python tests and fixtures
+docs/                 MkDocs site
+mkdocs.yml            Documentation navigation and theme settings
+pyproject.toml        Python metadata, dependencies, pytest/ruff settings
+rust/Cargo.toml       Rust crate metadata and dependencies
+.pre-commit-config.yaml  Local pre-commit quality hooks
+```
 
-### Pre-commit Hooks
+The layout is deliberately flat. Prefer small, direct changes over new framework layers.
 
-Pre-commit is configured to run ruff, ruff-format, pyright, and pytest on all Python files. To install the hooks:
+## Quality gates
+
+Run the full local gate before opening a PR:
+
+```bash
+make check
+```
+
+The stable commands are:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest -q
+cargo fmt --check --manifest-path rust/Cargo.toml
+cargo test --manifest-path rust/Cargo.toml
+cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+```
+
+What the gates cover:
+
+- **Ruff linting and formatting.** The current tree enforces core pycodestyle/pyflakes safety checks plus stale-suppression detection. The lint gate is being expanded to cover common bug patterns, simplifications, Python-version upgrades, pytest style, import order, and comprehensions. Treat `uv run ruff check .` and `uv run ruff format --check .` as the stable interface rather than relying on individual rule codes.
+- **Pyright.** Type checking runs through `uv run pyright`; the project is tightening this as a strict-inference ratchet over time.
+- **Python tests.** The suite is offline and currently runs 294 tests in roughly 30-40 seconds on this development tree, reporting coverage around 88%.
+- **Rust tests.** `cargo test --manifest-path rust/Cargo.toml` currently runs 40 Rust unit tests for the extension.
+- **Rust style and lints.** `cargo fmt --check` enforces formatting; clippy runs all targets with warnings denied.
+
+## Pre-commit hooks
+
+Install hooks after setup if you want the same checks to run automatically:
 
 ```bash
 uv run pre-commit install
 ```
 
-## Pull Requests
+Configured hooks:
 
-- Describe the change and its motivation
-- Link any related issues
-- Ensure all checks pass (ruff, pyright, pytest)
-- Keep PRs focused — one concern per PR is ideal
-- If adding a new feature, include tests
+- `ruff`: fixes lint issues in `src/` and `tests/` when possible.
+- `ruff-format`: formats Python files in `src/` and `tests/`.
+- `pyright`: runs `uv run pyright` once per commit attempt.
+- `pytest`: rebuilds the extension with `uv run maturin develop --manifest-path rust/Cargo.toml`, then runs `uv run pytest`.
+- `cargo-fmt`: runs `cargo fmt --check --manifest-path rust/Cargo.toml`.
+- `cargo-clippy`: runs `cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings`.
+- `cargo-test`: runs `cargo test --manifest-path rust/Cargo.toml`.
 
-## Code Style
-
-### Formatting
-
-Formatting is enforced by **ruff** with these settings:
-
-- Line length: **150**
-- Quote style: **double quotes**
-- Indent: **4 spaces**
-- Target: **Python >=3.11**
-
-### Naming
-
-| Element | Convention | Example |
-|---|---|---|
-| Functions / variables | `snake_case` | `process_data`, `col_name` |
-| Classes | `PascalCase` | `Tcode`, `TablaBase` |
-| Module constants | `UPPER_CASE` | `STORE`, `TOKEN_SEP` |
-
-### Docstrings & Comments
-
-Write **Google-style docstrings** on all public functions, classes, and test functions. Lead with a one-line summary (sentence case, trailing period), then sections as applicable:
-
-| Section | When to include |
-|---|---|
-| `Args:` | Always, unless the function takes no parameters |
-| `Returns:` | Always, unless the function returns `None` |
-| `Raises:` | When the body explicitly raises (e.g. `RuntimeError`, `ValueError`, re-raised pydantic `ValidationError`) |
-| `Notes:` | Extended description, algorithm details, collection points |
-| `Warnings:` | Gotchas and important invariants the caller must respect |
-
-```python
-def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
-    """Create a new column set to a literal value.
-
-    Args:
-        lf: Source LazyFrame.
-        col: Name of the new column to add.
-        x: Literal string value to populate every row with.
-
-    Returns:
-        LazyFrame with the new literal column appended.
-    """
-    return lf.with_columns(pl.lit(x).alias(col))
-```
-
-For **inline comments** inside function bodies, use plain `#` comments:
-
-| Style | Use | Example |
-|---|---|---|
-| `# Stage N/M: <name>` | Pipeline stage divider | `# Stage 1/6: Load Tables` |
-| `# Collection point: <reason>` | Marks an eager-collect boundary in a lazy pipeline | `# Collection point: required for map_elements` |
-| `# <sentence>` | Line-specific clarification | `# strict=False tolerates residual non-numeric junk` |
-| `# TODO: <item>` | Todo item | `# TODO: add fuzzy matching support` |
-
-### Type Annotations
-
-**Every variable** must have a type annotation, including locals:
-
-```python
-col: str = "name"
-df: pl.DataFrame = pl.DataFrame()
-result: Optional[int] = None
-```
-
-- Use `Optional[T]` and `Union[...]` (not `T | None` or `X | Y`)
-- Use `Self` for class methods returning the class type
-- Use `Path` (not `str`) for filesystem paths
-- Use `# pyright: ignore` to suppress false positives from lazy-loaded modules
-
-### Imports
-
-Every file starts with:
-
-```python
-from __future__ import annotations
-```
-
-Heavy dependencies are **lazy-loaded** per module:
-
-```python
-from typing import TYPE_CHECKING
-import lazy_loader as Lazy
-
-if TYPE_CHECKING:
-    import polars as pl
-else:
-    pl = Lazy.load("polars")
-```
-
-Lazy-loaded packages: `polars`, `pydantic`, `yaml`, `xxhash`, `numpy`, `sentence_transformers`
-
-Import order: standard library → blank line → third-party → blank line → local
-
-### Pydantic Models
-
-All models inherit from `TablaBase(BaseModel)`:
-
-```python
-from tablassert.models import TablaBase
-
-class MyModel(TablaBase):
-    name: str = Field(...)
-    description: Optional[str] = Field(None)
-```
-
-- Required fields use `Field(...)` (ellipsis sentinel)
-- Optional fields use `Optional[T] = Field(None)`
-- `extra = "forbid"` — no unknown fields allowed
-- `validate_assignment = True` — re-validate on mutation
-
-### Enums
-
-All enums live in `enums.py` and extend `str, Enum`:
-
-```python
-class Tokens(str, Enum):
-    PIPE = "|"
-    COMMA = ","
-```
-
-### Error Handling
-
-- Use `RuntimeError` for exceptional cases
-- Use `logger.warning()` for non-fatal issues
-- Import logger: `from tablassert.log import logger`
-
-## Testing
-
-Tests live in the `tests/` directory at the repo root. Test fixtures are in `tests/fixtures/`.
+## Running subsets
 
 ```bash
-# Run all tests
-uv run pytest
+# one Python test
+uv run pytest tests/test_lib.py::test_idxname_single_letter
 
-# Run a specific test
-uv run pytest tests/test_lib.py::test_my_function
-
-# Run tests matching a pattern
+# Python tests by keyword
 uv run pytest -k "encoding"
 
-# Run with print output
-uv run pytest -s tests/test_lib.py
+# Rust-only tests
+cargo test --manifest-path rust/Cargo.toml
+
+# one Rust test by name
+cargo test --manifest-path rust/Cargo.toml fullmap::tests::clean_strips_matching_and_duplicate_quotes
 ```
 
-`conftest.py` provides a `fixtures_path` fixture returning `Path(__file__).parent / "fixtures"`.
+## Fullmap development notes
 
-### Adding Tests
+Fullmap builds are the heaviest local workflow. The build tunables are documented in [Fullmap: Build Tunables](docs/fullmap.md#build-tunables-environment); keep that page as the source of truth for `TABLASSERT_FULLMAP_SHARDS`, spill settings, producer counts, cache sizing, and related environment variables.
 
-- Place test files in `tests/` following the naming convention `test_<module>.py`
-- Use the `fixtures_path` fixture for loading test data
-- Add YAML fixture files to `tests/fixtures/` as needed
+If a full BABEL build fails with `EMFILE`, `Too many open files`, or another NOFILE-limit error, raise the shell limit before rerunning:
 
-## AI-Assisted Contributions
+```bash
+ulimit -n 65535
+```
 
-Tablassert supports AI-assisted development. The repository includes an `AGENTS.md` file in the root that provides detailed guidance for AI coding tools (GitHub Copilot, Cursor, Claude Code, OpenHands, etc.).
+If your OS hard limit is lower, raise the system/user NOFILE limit first, then open a new shell and rerun the build.
 
-If you use AI tools to contribute:
+## Pull requests
 
-- Review all generated code before submitting
-- Ensure it follows the conventions described above and in `AGENTS.md`
-- Run all checks (`ruff`, `pyright`, `pytest`) — AI-generated code often needs style adjustments
-- The conventions in this file and `AGENTS.md` help AI tools produce idiomatic Tablassert code
+- Use conventional commits (`docs:`, `fix:`, `feat:`, `test:`, `chore:`, etc.).
+- Keep PRs focused on one concern.
+- Include tests or explain why none are needed.
+- Run `make check` and include the result in the PR description.
+- PRs are squash-merged to `main`; write commits and PR titles so the squashed history stays clear.
 
-## Reporting Issues
+## Reporting issues
 
-- **Bug reports** and **feature requests**: open an issue at [github.com/SkyeAv/Tablassert/issues](https://github.com/SkyeAv/Tablassert/issues)
-- Please include reproduction steps for bugs and a clear description for feature requests
+Open bug reports and feature requests at [github.com/SkyeAv/Tablassert/issues](https://github.com/SkyeAv/Tablassert/issues). Include reproduction steps, the command you ran, and relevant environment details.
 
 ## License
 
 By contributing to Tablassert, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
-
-## Code of Conduct
-
-### Our Pledge
-
-We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
-
-We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
-
-### Our Standards
-
-Examples of behavior that contributes to a positive environment:
-
-- Demonstrating empathy and kindness toward other people
-- Being respectful of differing opinions, viewpoints, and experiences
-- Giving and gracefully accepting constructive feedback
-- Accepting responsibility and apologizing to those affected by mistakes
-- Focusing on what is best not just for us as individuals, but for the overall community
-
-Examples of unacceptable behavior:
-
-- The use of sexualized language or imagery, and sexual attention or advances
-- Trolling, insulting or derogatory comments, and personal or political attacks
-- Public or private harassment
-- Publishing others' private information without explicit permission
-- Other conduct which could reasonably be considered inappropriate
-
-### Enforcement
-
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainer at [sgoetz@isbscience.org](mailto:sgoetz@isbscience.org). All complaints will be reviewed and investigated fairly.
-
-Project maintainers who do not follow or enforce the Code of Conduct in good faith may face temporary or permanent repercussions.
-
-### Attribution
-
-This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org/), version 2.1.
