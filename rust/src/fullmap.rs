@@ -3718,4 +3718,316 @@ mod tests {
         let b = open_cached(output).unwrap();
         assert!(Arc::ptr_eq(&a, &b));
     }
+
+    /// `MergeHeap::next_group` must k-way merge several term-sorted runs: terms
+    /// emerge in globally sorted order, and for each term the pair lists from
+    /// every run that carries it are concatenated then sorted+deduped (the pairs
+    /// within a single run are deliberately unsorted/duplicated here to prove the
+    /// merge, not the writer, establishes the final ordering).  Returns None at a
+    /// clean EOF.
+    #[test]
+    fn merge_heap_merges_overlapping_runs_sorted_and_deduped() {
+        let dir = tempfile::tempdir().unwrap();
+        // Each run is term-sorted (the MergeHeap invariant); pairs inside a run
+        // are intentionally unsorted and duplicated.
+        let run0 = dir.path().join("r0.bin");
+        let run1 = dir.path().join("r1.bin");
+        let run2 = dir.path().join("r2.bin");
+
+        let mut w = RunWriter::new(&run0).unwrap();
+        w.write_term("apple", &[(3, 1), (1, 0), (2, 2)]).unwrap();
+        w.write_term("cherry", &[(5, 0)]).unwrap();
+        w.finish().unwrap();
+
+        let mut w = RunWriter::new(&run1).unwrap();
+        w.write_term("apple", &[(1, 0), (9, 3)]).unwrap();
+        w.write_term("banana", &[(7, 2), (7, 2)]).unwrap();
+        w.finish().unwrap();
+
+        let mut w = RunWriter::new(&run2).unwrap();
+        w.write_term("banana", &[(4, 1)]).unwrap();
+        w.write_term("cherry", &[(5, 0), (0, 0)]).unwrap();
+        w.finish().unwrap();
+
+        let paths = vec![run0, run1, run2];
+        let mut merge = MergeHeap::new(&paths).unwrap();
+
+        // "apple" appears in run0 + run1: merged, sorted, deduped.
+        let apple = merge.next_group().unwrap().expect("apple group");
+        assert_eq!(apple.0, "apple");
+        assert_eq!(apple.1, vec![(1, 0), (2, 2), (3, 1), (9, 3)]);
+
+        // "banana" appears in run1 (dup pair) + run2.
+        let banana = merge.next_group().unwrap().expect("banana group");
+        assert_eq!(banana.0, "banana");
+        assert_eq!(banana.1, vec![(4, 1), (7, 2)]);
+
+        // "cherry" appears in run0 + run2 (overlapping (5,0) pair).
+        let cherry = merge.next_group().unwrap().expect("cherry group");
+        assert_eq!(cherry.0, "cherry");
+        assert_eq!(cherry.1, vec![(0, 0), (5, 0)]);
+
+        // Terms emerged in sorted order (apple < banana < cherry) and the heap is
+        // now exhausted: a clean EOF yields None.
+        assert!(merge.next_group().unwrap().is_none(), "clean EOF expected");
+    }
+
+    /// `RunWriter`/`RunReader` must roundtrip term frames exactly: an empty pair
+    /// list, a 100k-pair term, a unicode term, and enough padding terms to grow
+    /// the file past the 1 MB BufReader capacity so frames span a buffer refill.
+    /// The reader returns frames in file order and reports a clean EOF (cur=None).
+    #[test]
+    fn term_run_writer_reader_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("terms.bin");
+
+        let big_pairs: Vec<(u32, u8)> = (0..100_000).map(|i| (i, (i % 256) as u8)).collect();
+        let unicode = "héllo–wörld·αβγ";
+
+        let mut w = RunWriter::new(&path).unwrap();
+        w.write_term("empty", &[]).unwrap();
+        w.write_term("big", &big_pairs).unwrap();
+        w.write_term(unicode, &[(1, 2)]).unwrap();
+        // Padding terms push the file well past the 1 MB BufReader capacity.
+        for i in 0..20_000u32 {
+            w.write_term(&format!("pad{i:08}"), &[(i, 0), (i, 1)])
+                .unwrap();
+        }
+        w.finish().unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() > (1 << 20));
+
+        let mut reader = RunReader::new(&path).unwrap();
+
+        let (term, pairs) = reader.cur.take().unwrap();
+        assert_eq!(term, "empty");
+        assert!(pairs.is_empty());
+        reader.advance().unwrap();
+
+        let (term, pairs) = reader.cur.take().unwrap();
+        assert_eq!(term, "big");
+        assert_eq!(pairs, big_pairs);
+        reader.advance().unwrap();
+
+        let (term, pairs) = reader.cur.take().unwrap();
+        assert_eq!(term, unicode);
+        assert_eq!(pairs, vec![(1, 2)]);
+        reader.advance().unwrap();
+
+        for i in 0..20_000u32 {
+            let (term, pairs) = reader.cur.take().unwrap();
+            assert_eq!(term, format!("pad{i:08}"));
+            assert_eq!(pairs, vec![(i, 0), (i, 1)]);
+            reader.advance().unwrap();
+        }
+        assert!(reader.cur.is_none(), "clean EOF expected");
+    }
+
+    /// `EquivIndex::build` must k-way merge MULTIPLE equiv spill runs (forced here
+    /// via a tiny `TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES`) so a curie that recurs
+    /// across several class files/runs resolves to the union of its equivalents,
+    /// sorted and deduped.  Two distinct curies must both resolve, and a miss must
+    /// return None.
+    #[test]
+    fn equiv_index_multi_run_merge_and_lookup() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        // A tiny spill threshold forces one run per row, so X:1 (present in all
+        // three files) is merged across several runs in Phase 1b.  A small
+        // threshold only changes HOW MANY runs are written, never the merged
+        // result, so concurrent builds in other tests stay correct.
+        std::env::set_var("TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES", "1");
+
+        let write_classes = |name: &str, rows: &[&str]| -> PathBuf {
+            let path = dir.path().join(name);
+            let mut file = File::create(&path).unwrap();
+            for row in rows {
+                writeln!(file, "{row}").unwrap();
+            }
+            path
+        };
+        let a = write_classes(
+            "a.ndjson",
+            &[
+                r#"{"id":"X:1","equivalent_identifiers":[{"identifier":"E:b"},{"identifier":"E:a"}]}"#,
+                r#"{"id":"Y:2","equivalent_identifiers":[{"identifier":"E:z"}]}"#,
+            ],
+        );
+        let b = write_classes(
+            "b.ndjson",
+            &[
+                r#"{"id":"X:1","equivalent_identifiers":[{"identifier":"E:c"},{"identifier":"E:a"}]}"#,
+            ],
+        );
+        let c = write_classes(
+            "c.ndjson",
+            &[
+                r#"{"id":"X:1","equivalent_identifiers":[{"identifier":"E:b"}]}"#,
+                r#"{"id":"Z:3","equivalent_identifiers":[{"identifier":"E:q"}]}"#,
+            ],
+        );
+
+        let spill_dir = dir.path().join("spill");
+        std::fs::create_dir_all(&spill_dir).unwrap();
+        let index = EquivIndex::build(&[a, b, c], &spill_dir, None).unwrap();
+        std::env::remove_var("TABLASSERT_FULLMAP_EQUIV_SPILL_ENTRIES");
+
+        // X:1 appears in all three files: equivs merged across runs, sorted+deduped
+        // (E:a duplicated across a+b, E:b duplicated across a+c).
+        let x: Vec<String> = index
+            .lookup("X:1")
+            .expect("X:1 present")
+            .map(String::from)
+            .collect();
+        assert_eq!(
+            x,
+            vec!["E:a".to_string(), "E:b".to_string(), "E:c".to_string()]
+        );
+
+        // Two distinct curies both resolve to their own equiv sets.
+        let y: Vec<String> = index
+            .lookup("Y:2")
+            .expect("Y:2 present")
+            .map(String::from)
+            .collect();
+        assert_eq!(y, vec!["E:z".to_string()]);
+        let z: Vec<String> = index
+            .lookup("Z:3")
+            .expect("Z:3 present")
+            .map(String::from)
+            .collect();
+        assert_eq!(z, vec!["E:q".to_string()]);
+
+        // A curie that was never indexed is a miss.
+        assert!(index.lookup("ABSENT:9").is_none());
+    }
+
+    /// `emit_term` inserts the level-one form and, when distinct, the level-two
+    /// form; skips level-two when it equals level-one; drops dead terms and
+    /// token_qc failures; and accumulates one pair per call under each key.
+    #[test]
+    fn emit_term_inserts_normalized_forms_and_accumulates() {
+        // l1 and l2 both inserted when they differ ("BRCA-1" -> "brca-1" + "brca1").
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("BRCA-1", (1, 0), &mut terms);
+        assert_eq!(
+            terms.get("brca-1").map(Vec::as_slice),
+            Some([(1, 0)].as_slice())
+        );
+        assert_eq!(
+            terms.get("brca1").map(Vec::as_slice),
+            Some([(1, 0)].as_slice())
+        );
+        assert_eq!(terms.len(), 2);
+
+        // l2 skipped when it equals l1 ("TP53" -> "tp53" is already alnum).
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("TP53", (2, 1), &mut terms);
+        assert_eq!(
+            terms.get("tp53").map(Vec::as_slice),
+            Some([(2, 1)].as_slice())
+        );
+        assert_eq!(terms.len(), 1, "l2 == l1 must not insert a second key");
+
+        // Dead terms (banned token + all-digit) are dropped at level one.
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("none", (3, 0), &mut terms);
+        emit_term("12345", (3, 0), &mut terms);
+        assert!(terms.is_empty(), "dead terms must not be indexed");
+
+        // A token_qc failure skips the term entirely.
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("hypothetical protein", (4, 0), &mut terms);
+        assert!(terms.is_empty(), "qc-failing term must not be indexed");
+
+        // Pair accumulation: the same term called twice keeps both pairs in order.
+        let mut terms: HashMap<String, Vec<(u32, u8)>> = HashMap::new();
+        emit_term("gene", (5, 0), &mut terms);
+        emit_term("gene", (6, 1), &mut terms);
+        assert_eq!(
+            terms.get("gene").map(Vec::as_slice),
+            Some([(5, 0), (6, 1)].as_slice())
+        );
+    }
+
+    /// `is_dead_term` is an exact-match filter: every named banned token, the
+    /// empty string, and all-digit strings are dead; ordinary terms (and terms
+    /// that merely CONTAIN a banned token as a substring) are alive.
+    #[test]
+    fn is_dead_term_classifies_banned_empty_and_numeric() {
+        for banned in [
+            "none",
+            "nan",
+            "na",
+            "null",
+            "unknown",
+            "not applicable",
+            "p_value",
+            "variable",
+            "result",
+            "exposure",
+            "expression",
+            "symbol",
+        ] {
+            assert!(is_dead_term(banned), "{banned} must be dead");
+        }
+        assert!(is_dead_term(""), "empty must be dead");
+        assert!(is_dead_term("0"), "all-digit must be dead");
+        assert!(is_dead_term("1234567890"), "all-digit must be dead");
+        assert!(!is_dead_term("brca1"), "normal term must be alive");
+        assert!(!is_dead_term("gene42"), "normal term must be alive");
+        // Exact match, not a substring test.
+        assert!(!is_dead_term("none-like"), "substring is not an exact ban");
+    }
+
+    /// `validate_schema` must reject a v2 primary as OUTDATED (rebuild hint,
+    /// mirroring the v1/v3 tests) and a missing or garbage schema as a generic
+    /// UNSUPPORTED schema, so migrating users get actionable guidance while a
+    /// corrupt/foreign DB fails loudly.
+    #[test]
+    fn lookup_rejects_v2_and_unsupported_schemas() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+
+        // v2 => outdated (rebuild hint).
+        let v2 = dir.path().join("v2.redb");
+        let database = Database::create(&v2).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", SCHEMA_VERSION_V2).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+        let err = lookup_terms(v2, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
+
+        // Missing schema key => unsupported.
+        let missing = dir.path().join("missing.redb");
+        let database = Database::create(&missing).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            // Create the META table but write no "schema" entry.
+            let meta = write.open_table(META).unwrap();
+            drop(meta);
+        }
+        write.commit().unwrap();
+        drop(database);
+        let err = lookup_terms(missing, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        assert!(err.to_string().contains("unsupported fullmap redb schema"));
+
+        // Garbage schema value => unsupported.
+        let garbage = dir.path().join("garbage.redb");
+        let database = Database::create(&garbage).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", "tablassert.fullmap.v999").unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+        let err = lookup_terms(garbage, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        assert!(err.to_string().contains("unsupported fullmap redb schema"));
+    }
 }
