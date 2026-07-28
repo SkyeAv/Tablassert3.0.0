@@ -13,16 +13,22 @@ import json
 import xml.etree.ElementTree as ET
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 from urllib.request import Request, urlopen
 
+import pydantic
+import yaml
+
 from tablassert._lazy import LazyModule
+from tablassert.errors import TablassertValidationError
 from tablassert.log import cat
+from tablassert.models import Section
 
 if TYPE_CHECKING:
     import dspy  # pyright: ignore[reportMissingImports,reportUnusedImport]
     import polars as pl  # pyright: ignore[reportUnusedImport]
     import smolagents  # pyright: ignore[reportMissingImports,reportUnusedImport]
+    from smolagents import Tool  # pyright: ignore[reportMissingImports,reportUnusedImport]
 else:
     dspy = LazyModule("dspy")
     pl = LazyModule("polars")
@@ -369,3 +375,99 @@ def read_table(source: str | Path, *, max_rows: int = 200, max_cols: int = 40) -
 
 
 # read_table_tool is assembled in build_agent (US-008).
+
+
+# --------------------------------------------------------------------------- #
+# US-004: derive_config tool + validate_section final-answer gate
+#
+# The constrained Section JSON schema (``Section.model_json_schema()``) is the
+# single source of truth for what a derived config may contain. It is surfaced
+# two ways: (1) injected into the ``derive_config`` tool description so the LLM
+# authors schema-shaped YAML, and (2) enforced AFTER the fact by
+# ``validate_section``, a smolagents ``final_answer_checks`` gate that rejects
+# any final answer that is not schema-valid Section YAML. Only base deps
+# (pydantic/pyyaml/tablassert.models) are used here, so none of this needs the
+# ``[agent]`` extra; the smolagents ``Tool`` subclass is built lazily in a
+# factory so the module top stays import-light.
+# --------------------------------------------------------------------------- #
+
+
+def section_json_schema() -> dict[str, object]:
+    """Return the constrained JSON schema for a Tablassert :class:`Section`.
+
+    Thin wrapper over ``Section.model_json_schema()`` (has ``$defs``,
+    ``properties``, ``required``); the schema the ``derive_config`` tool injects
+    and the ``validate_section`` gate enforces.
+    """
+    return Section.model_json_schema()
+
+
+def validate_section(cfg: str, agent_memory: object = None, agent: object = None) -> bool:
+    """Final-answer gate: return True iff ``cfg`` is schema-valid Section YAML.
+
+    Wired into smolagents ``CodeAgent(final_answer_checks=[validate_section])``
+    (signature ``(final_answer, agent_memory, agent=None) -> bool``), so an agent
+    can only terminate with a config that parses as YAML into a dict AND validates
+    against the constrained :class:`Section` schema. Accepts either a bare merged
+    section dict or a ``{template: {...}}`` table config (the template branch
+    fast-merges via ``to_sections`` and validates the first merged section, dropping
+    the Tcode-only ``config`` stamp that ``extra="forbid"`` would reject). NEVER
+    raises: any parse/validation failure returns False.
+    """
+    try:
+        data: object = yaml.safe_load(cfg)
+        if not isinstance(data, dict):
+            return False
+        if "template" in data:
+            from tablassert.ingests import to_sections
+
+            sections: list[dict[str, object]] = to_sections(data, Path("inline.yaml"))  # pyright: ignore[reportAssignmentType]
+            section: dict[str, object] = dict(sections[0])
+            section.pop("config", None)  # to_sections stamps a Tcode-only key the pure Section schema forbids
+            Section.model_validate(section)
+        else:
+            Section.model_validate(data)
+    except (pydantic.ValidationError, TablassertValidationError, yaml.YAMLError, ValueError, KeyError, AttributeError):
+        return False
+    return True
+
+
+def make_derive_config_tool() -> Tool:
+    """Build the ``derive_config`` smolagents Tool lazily (imports smolagents on first call).
+
+    The subclass is defined INSIDE this factory so the module top never forces the
+    optional ``smolagents`` import. The tool's deterministic value is not LLM logic:
+    ``output_schema = Section.model_json_schema()`` is auto-injected into the tool
+    description (shaping what the agent authors) and ``validate_section`` gates the
+    final answer, so ``forward`` is a deliberate pass-through that returns the
+    candidate YAML the agent submits for the schema gate to check.
+    """
+    _require("smolagents")
+    from smolagents import Tool  # local import keeps module import lazy
+
+    class DeriveConfigTool(Tool):  # pyright: ignore[reportMissingImports]
+        name = "derive_config"
+        description = (
+            "Synthesize a single Tablassert Section configuration (as YAML) that maps a PMC table's columns to a "
+            "biolink subject-predicate-object statement. Author the YAML yourself from the inspected data-fenced "
+            "table: choose subject/object encodings (column letters for entity columns, literal CURIEs for fixed "
+            "chemicals), a biolink predicate, provenance (repo PMC + the PMC id), and any statistical annotations. "
+            "Call this tool with your candidate YAML; it is returned unchanged for the schema gate to validate. "
+            "Output MUST satisfy the Tablassert Section JSON schema (injected below). Return ONLY the YAML string."
+        )
+        inputs: ClassVar[dict[str, dict[str, str | type | bool]]] = {  # pyright: ignore[reportIncompatibleVariableOverride]
+            "config_yaml": {
+                "type": "string",
+                "description": "A candidate Tablassert Section config YAML you authored; it is returned for the schema gate to validate.",
+            },
+            "pmc_id": {"type": "string", "description": "The PMC id (for provenance).", "nullable": True},
+        }
+        output_type = "string"
+        output_schema = Section.model_json_schema()
+
+        def forward(self, config_yaml: str, pmc_id: str | None = None) -> str:  # pyright: ignore[reportUnusedParameter]
+            # Pass-through BY DESIGN: the LLM authors the YAML in its code action and submits it here; the real
+            # constraints are the injected output_schema above and the validate_section final-answer gate.
+            return config_yaml
+
+    return DeriveConfigTool()
