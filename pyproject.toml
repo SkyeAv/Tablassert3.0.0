@@ -136,3 +136,14 @@ split-on-trailing-comma = false
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = true
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+strictListInference = true
+strictDictionaryInference = true
+strictSetInference = true
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedVariable = true
+reportDuplicateImport = true
