@@ -59,6 +59,7 @@ nav:
   - CLI Reference: cli.md
   - Tutorial: tutorial.md
   - Use Case Gallery: examples.md
+  - Agent: agent.md
   - Configuration:
     - Graph Config: configuration/graph.md
     - Table Config: configuration/table.md
