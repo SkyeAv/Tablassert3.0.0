@@ -751,6 +751,9 @@ PHASE_OF: dict[Callable, str] = {
     to_store: "write",
 }
 
+# Ops that accept an ``on_phase`` callback so ``compile_subgraph`` can forward fine-grained sub-phases.
+PHASE_AWARE: frozenset[Callable] = frozenset({resolve_batch, fullmap_audit})
+
 UNKNOWN_PHASE: str = "transform"
 
 _VALUE_PROVENANCE_COLS: frozenset[str] = frozenset({"upstream_resource_ids", "knowledge_level", "agent_type", "resource_id", "sheet_name"})
@@ -782,8 +785,9 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Call
 
     Args:
         tcode: Cleaned list of ``(callable, args)`` tuples from ``Tcode.collect``.
-        on_phase: Optional callback fired when the phase label changes,
-            used to drive progress UX.
+        on_phase: Optional callback fired when the phase label changes, and
+            forwarded into phase-aware ops (``resolve_batch``/``fullmap_audit``)
+            so they can emit fine-grained sub-phases; used to drive progress UX.
 
     Returns:
         Path to the written subgraph parquet.
@@ -798,7 +802,10 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Call
             if phase != last_phase:
                 last_phase = phase
                 on_phase(phase)
-        acc = fn(acc, *args) if acc is not None else fn(*args)  # pyright: ignore
+        if fn in PHASE_AWARE and on_phase is not None:
+            acc = fn(acc, *args, on_phase=on_phase) if acc is not None else fn(*args, on_phase=on_phase)  # pyright: ignore
+        else:
+            acc = fn(acc, *args) if acc is not None else fn(*args)  # pyright: ignore
     return acc  # pyright: ignore
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -65,7 +66,15 @@ def get_biobert() -> object:
     return model
 
 
-def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: str, out: str = "passed", log: bool = True) -> pl.LazyFrame:
+def fullmap_audit(
+    lf: pl.LazyFrame,
+    col: str,
+    section_hash: str,
+    config_file: str,
+    out: str = "passed",
+    log: bool = True,
+    on_phase: Callable[[str], None] | None = None,
+) -> pl.LazyFrame:
     """Audit that fullmap correctly processed source strings into CURIEs.
 
     Runs a three-stage cascade that progressively filters out correct
@@ -89,6 +98,10 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
         config_file: Originating config file (for log context).
         out: Name of the boolean pass/fail column produced internally.
         log: When ``True``, log rejected CURIEs at INFO level.
+        on_phase: Optional callback fired with ``"qc:exact"``, ``"qc:fuzzy"``
+            and ``"qc:bert"`` at the start of each cascade stage (``qc:bert``
+            only fires when Stage 3 actually runs), used to drive fine-grained
+            progress UX.
 
     Returns:
         LazyFrame containing only rows whose ``col`` value passed QC.
@@ -107,6 +120,8 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     cols: list[str] = [col, original, preferred]
 
     # Stage 1: exact string matching or is CURIE (can stay lazy until filter).
+    if on_phase is not None:
+        on_phase("qc:exact")
     # Collection point: pending pairs require eager.
     df: pl.DataFrame = lf.collect()
     pairs: pl.DataFrame = df.select(cols).unique()
@@ -128,6 +143,8 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
     passed, pending = _cascade(passed, is_exception, out)
 
     # Stage 2: fuzzy matching via RapidFuzz (batched).
+    if on_phase is not None:
+        on_phase("qc:fuzzy")
     originals: list[str] = pending.get_column(cols[1]).to_list()
     preferreds: list[str] = pending.get_column(cols[2]).to_list()
 
@@ -148,6 +165,8 @@ def fullmap_audit(lf: pl.LazyFrame, col: str, section_hash: str, config_file: st
         return df.join(passed.select(col), on=col, how="semi").lazy()
 
     # Stage 3: BioBERT embeddings (batched).
+    if on_phase is not None:
+        on_phase("qc:bert")
     originals = pending.get_column(cols[1]).to_list()
     preferreds = pending.get_column(cols[2]).to_list()
 

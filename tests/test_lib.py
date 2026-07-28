@@ -1962,3 +1962,43 @@ def test_build_pipeline_head_mode_isolates_store_and_caps_rows(monkeypatch: Any,
     assert len(edge_rows) == 5
     assert store_files, "expected a cached subgraph parquet"
     assert all(f.name.endswith(".head.parquet") for f in store_files)
+
+
+def test_compile_subgraph_threads_fine_phases_into_resolve_and_qc(monkeypatch: Any, tmp_path: Path) -> None:
+    """compile_subgraph forwards on_phase into resolve_batch/fullmap_audit so fine sub-phases fire in order."""
+    rows: dict[str, list[dict[str, object]]] = {
+        "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
+        "tp53": [fake_fullmap_row("tp53", "HGNC:11998", "TP53", "Gene", 9606)],
+    }
+    install_fake_fullmap(monkeypatch, rows)
+
+    # Safety net: this data passes QC at the exact stage, so BioBERT must never run (keeps the test offline).
+    class DummyBioBERT:
+        def encode(self, values: list[str]) -> object:
+            raise AssertionError("Stage 3 (BioBERT) must not run for exact-match QC data")
+
+    monkeypatch.setattr("tablassert.qc.get_biobert", lambda: DummyBioBERT())
+
+    table_path, _ = write_text_section(
+        tmp_path,
+        "fine_phases",
+        {
+            "statement": {"subject": {"method": "value", "encoding": "BRCA1"}, "object": {"method": "value", "encoding": "TP53"}},
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["ignored"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "fine_phases.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "qc": True})  # pyright: ignore
+
+    phases: list[str] = []
+    result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"), on_phase=phases.append)  # pyright: ignore
+
+    assert result_path == store
+    # Per-column resolve sub-phases fire in spec order, before any QC sub-phase.
+    assert phases.index("resolve:subject") < phases.index("resolve:object")
+    assert phases.index("resolve:object") < phases.index("qc:exact")
+    # QC sub-phases fire for the audits: exact then fuzzy; bert never (exact-match quick exit).
+    assert phases.index("qc:exact") < phases.index("qc:fuzzy")
+    assert "qc:bert" not in phases

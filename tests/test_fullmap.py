@@ -509,3 +509,17 @@ def test_polars_hash_dependency_removed() -> None:
     """polars-hash dependency is not needed for fullmap resolution."""
     pyproject: str = Path("pyproject.toml").read_text()
     assert "polars-hash" not in pyproject
+
+
+def test_resolve_batch_on_phase_fires_per_column_in_order(fullmap_db: Path) -> None:
+    """resolve_batch fires resolve:<col> per spec column in order; output is unchanged vs no callback."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"], "object": ["mapk1"], "object_two": ["mapk1"]}).lazy()
+
+    phases: list[str] = []
+    with_cb: pl.DataFrame = resolve_batch(
+        lf, [ResolveSpec("subject"), ResolveSpec("object")], fullmap_db, log=False, on_phase=phases.append
+    ).collect()
+    without_cb: pl.DataFrame = resolve_batch(lf, [ResolveSpec("subject"), ResolveSpec("object")], fullmap_db, log=False).collect()
+
+    assert phases == ["resolve:subject", "resolve:object"]
+    assert with_cb.to_dicts() == without_cb.to_dicts()

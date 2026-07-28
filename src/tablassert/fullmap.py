@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
@@ -441,6 +442,7 @@ def resolve_batch(
     column_context: bool = True,
     tag: str = "_two",
     threads: int | None = None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> pl.LazyFrame:
     """Resolve multiple node columns against one shared redb fetch.
 
@@ -458,6 +460,8 @@ def resolve_batch(
         column_context: Whether to compute/use category frequency as a tiebreaker.
         tag: Suffix used to derive level-two column names.
         threads: Optional thread count forwarded to the Rust lookup.
+        on_phase: Optional callback fired with ``"resolve:<col>"`` before each
+            column is processed, used to drive fine-grained progress UX.
 
     Returns:
         LazyFrame with resolved columns added.
@@ -477,6 +481,8 @@ def resolve_batch(
 
     result: pl.LazyFrame = lf
     for spec in specs:
+        if on_phase is not None:
+            on_phase(f"resolve:{spec.col}")
         terms_df: pl.DataFrame = collected_terms[spec.col]
         matches: pl.DataFrame = filter_and_rank(raw, terms_df, spec.taxon, spec.prioritize, spec.avoid, column_context)
         if log:
