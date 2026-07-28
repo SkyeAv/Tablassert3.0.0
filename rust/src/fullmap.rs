@@ -11,7 +11,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
@@ -939,6 +939,12 @@ impl EquivIndex {
             }
         }
 
+        // Throttled Phase-0 progress: the merge is single-threaded and can group
+        // hundreds of millions of entries, so report every 1M groups (not per
+        // group) to bound the GIL re-acquire count.  total is 0 (indeterminate):
+        // the merged-group count is unknown until the merge completes, and a
+        // pre-pass over the (potentially huge) equiv runs would double their I/O.
+        let mut entries_merged: u64 = 0;
         while let Some((Reverse(hash), Reverse(key), idx, mut equivs)) = heap.pop() {
             let mut to_advance = vec![idx];
             while let Some((Reverse(h), Reverse(k), _, _)) = heap.peek() {
@@ -970,6 +976,13 @@ impl EquivIndex {
             hashes.push(hash);
             offsets.push(offset);
             offset += entry_len as u64;
+
+            entries_merged += 1;
+            if entries_merged.is_multiple_of(1_000_000) {
+                if let Some(p) = progress {
+                    p.call(0, entries_merged, 0, "merging equivalents");
+                }
+            }
 
             for i in to_advance {
                 if let Some((h, k, e)) = read_equiv_entry(&mut readers[i]).map_err(py_err)? {
@@ -1228,6 +1241,13 @@ fn produce_file(
             tx.send((source_id, std::mem::take(&mut chunk)))
                 .map_err(py_err)?;
             chunk_len = 0;
+            // Per-chunk Phase-1 progress (the big granularity win): report the
+            // rows read so far in this file instead of waiting for EOF.  total is
+            // 0 (file length unknown); the Python side clamps to a high-water
+            // mark, so per-file counts resetting across producer threads is fine.
+            if let Some(p) = progress {
+                p.call(1, row_count, 0, &format!("{src_name} · {row_count} rows"));
+            }
         }
     }
     if !chunk.is_empty() {
@@ -1556,16 +1576,44 @@ fn write_final_database(
     // Owned per-thread progress handle (cheap Arc clone); `Progress::call`
     // re-acquires the GIL via Python::attach, which is safe from many threads.
     let progress: Option<Arc<Progress>> = progress.map(Arc::clone);
+    // Estimate a Phase-2 progress total ONLY when a progress callback is present
+    // (tests / no-bar builds skip this read pass entirely): the number of
+    // term-frames across every shard's spill runs.  This is an UPPER BOUND on the
+    // records written (a term recurs across runs and is merged), so the bar
+    // climbs toward ~100% during the merge and the final emission below snaps
+    // completed to the exact written count.
+    let total_estimate: u64 = if progress.is_some() {
+        run_paths
+            .iter()
+            .flatten()
+            .map(|path| count_run_frames(path).unwrap_or(0))
+            .sum()
+    } else {
+        0
+    };
+    // Global record counter shared across shard writer threads so the callback
+    // reports one monotonic count (each thread adds its flushed batch).
+    let global_written = AtomicU64::new(0);
     let scope_result: PyResult<u64> = std::thread::scope(|s| {
         let mut handles: Vec<std::thread::ScopedJoinHandle<'_, PyResult<u64>>> = Vec::new();
         for i in 0..shard_count {
             // Each thread owns its shard DB handle, its shard's run list, and a
-            // progress handle outright — no shared receiver or borrow.
+            // progress handle outright — no shared receiver or borrow — but shares
+            // the global record counter so progress reports a single count.
             let db = &shard_databases[i];
             let shard_runs: Vec<PathBuf> = run_paths[i].clone();
             let progress = progress.clone();
+            let global = &global_written;
             handles.push(s.spawn(move || {
-                write_shard_records(db, &shard_runs, insert_batch, progress.as_ref())
+                write_shard_records(
+                    db,
+                    &shard_runs,
+                    insert_batch,
+                    i,
+                    global,
+                    total_estimate,
+                    progress.as_ref(),
+                )
             }));
         }
 
@@ -1615,6 +1663,9 @@ fn write_shard_records(
     database: &Database,
     run_paths: &[PathBuf],
     insert_batch: usize,
+    shard_index: usize,
+    global_written: &AtomicU64,
+    total: u64,
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<u64> {
     let mut write = database.begin_write().map_err(py_err)?;
@@ -1631,13 +1682,14 @@ fn write_shard_records(
         let encoded = bincode::serialize(&(term.as_str(), &pairs)).map_err(py_err)?;
         batch.push((hash, encoded));
         if insert_batch > 0 && batch.len() >= insert_batch {
-            written += flush_shard_batch(&mut table, &mut batch)?;
-            if let Some(p) = progress {
-                p.call(2, written, 0, &format!("writing {written} records"));
-            }
+            let flushed = flush_shard_batch(&mut table, &mut batch)?;
+            written += flushed;
+            report_shard_progress(progress, global_written, total, shard_index, flushed);
         }
     }
-    written += flush_shard_batch(&mut table, &mut batch)?;
+    let flushed = flush_shard_batch(&mut table, &mut batch)?;
+    written += flushed;
+    report_shard_progress(progress, global_written, total, shard_index, flushed);
     drop(table);
     write.commit().map_err(py_err)?;
     // Final durable commit to persist all pages.
@@ -1663,6 +1715,64 @@ fn flush_shard_batch(
     let flushed = batch.len() as u64;
     batch.clear();
     Ok(flushed)
+}
+
+/// Count the term-frames in one spill-run file WITHOUT allocating the pairs:
+/// parse the `[u32 term_len][term][u32 pair_count][5*pair_count]` frame headers
+/// and skip the payloads.  Used ONLY to estimate a Phase-2 progress total (and
+/// only when a progress callback is present).  The count is an UPPER BOUND on the
+/// records actually written: a term recurs across runs and is merged/deduped, so
+/// the bar climbs toward ~100% during the merge and the final emission snaps
+/// completed to the exact written count.  Mirrors `RunReader::read_frame`'s
+/// 1-byte EOF detection so a clean trailing read returns the exact count.
+fn count_run_frames(path: &Path) -> std::io::Result<u64> {
+    let mut r = BufReader::with_capacity(1 << 20, File::open(path)?);
+    let mut count: u64 = 0;
+    loop {
+        let mut first = [0u8; 1];
+        if r.read(&mut first)? == 0 {
+            return Ok(count);
+        }
+        let mut rest = [0u8; 3];
+        r.read_exact(&mut rest)?;
+        let term_len = u32::from_le_bytes([first[0], rest[0], rest[1], rest[2]]) as u64;
+        {
+            let mut skip = (&mut r).take(term_len);
+            std::io::copy(&mut skip, &mut std::io::sink())?;
+        }
+        let mut cb = [0u8; 4];
+        r.read_exact(&mut cb)?;
+        let pair_count = u32::from_le_bytes(cb) as u64;
+        {
+            let mut skip = (&mut r).take(pair_count * 5);
+            std::io::copy(&mut skip, &mut std::io::sink())?;
+        }
+        count += 1;
+    }
+}
+
+/// Report Phase-2 progress for a flushed batch: add `flushed` to the shared
+/// global counter and emit `(2, global, total, "shard {i}: writing {global}")`.
+/// A no-op for an empty flush or when there is no progress callback.
+fn report_shard_progress(
+    progress: Option<&Arc<Progress>>,
+    global_written: &AtomicU64,
+    total: u64,
+    shard_index: usize,
+    flushed: u64,
+) {
+    if flushed == 0 {
+        return;
+    }
+    if let Some(p) = progress {
+        let global = global_written.fetch_add(flushed, Ordering::Relaxed) + flushed;
+        p.call(
+            2,
+            global,
+            total,
+            &format!("shard {shard_index}: writing {global} records"),
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
