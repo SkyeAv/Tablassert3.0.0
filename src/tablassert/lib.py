@@ -13,7 +13,8 @@ from pydantic import Field, NonNegativeInt
 
 from tablassert import rs
 from tablassert._lazy import LazyModule
-from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories, EncodingMethods, Files, InformationResources, Repositories, Tokens
+from tablassert.biolink import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories
+from tablassert.enums import EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
 from tablassert.models import DEFAULT_RIG_UI_EXPLANATION, Encoding, NodeEncoding, Section, default_rig_contributions
@@ -35,7 +36,13 @@ TERMS_OF_USE_WARNING: str = (
 )
 
 CATEGORY_PARENT: dict[str, str] = {
-    # Biolink is_a chain -- leaf to parent role for association name matching.
+    # Curated leaf -> parent *role* map used to roll concrete categories up to the
+    # role names that appear in Biolink association class names (e.g. Protein -> Gene
+    # so a Protein subject matches GeneToDiseaseAssociation). This is a semantic
+    # roll-up, NOT a literal Biolink is_a step -- in the model `protein` is not is_a
+    # `gene`, `haplotype` is not is_a `genotype`, and `Variant` is an association-role
+    # name rather than a class -- so it cannot be auto-derived from the model and is
+    # maintained here. All keys/values are nonetheless valid Biolink categories.
     "SmallMolecule": "MolecularEntity",
     "MolecularEntity": "ChemicalEntity",
     "Drug": "MolecularMixture",
@@ -101,7 +108,7 @@ def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
                     EDGE_MAP[(subj, obj)] = ec
 
     # Non-standard names -- explicit overrides.
-    EDGE_MAP[("ChemicalEntity", "Gene")] = EdgeCategories.CHEMICAL_GENE_INTERACTION
+    EDGE_MAP[("ChemicalEntity", "Gene")] = EdgeCategories.CHEMICAL_GENE_INTERACTION_ASSOCIATION
 
     # Flattened "subj_role|obj_role" -> biolink CURIE (for polars replace_strict).
     EDGE_LOOKUP: dict[str, str] = {f"{s}|{o}": add("biolink:", ec.value) for (s, o), ec in EDGE_MAP.items()}

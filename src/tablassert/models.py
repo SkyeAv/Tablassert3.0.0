@@ -9,20 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_v
 
 from tablassert._lazy import LazyModule
 from tablassert.errors import TablassertValidationError
-from tablassert.enums import (
-    AgentTypes,
-    Categories,
-    Comparisons,
-    EncodingMethods,
-    Files,
-    FillMethods,
-    Functions,
-    KnowledgeLevels,
-    Predicates,
-    Qualifiers,
-    Repositories,
-    Tokens,
-)
+from tablassert.biolink import AgentTypes, Categories, KnowledgeLevels, Predicates, Qualifiers
+from tablassert.enums import Comparisons, EncodingMethods, Files, FillMethods, Functions, Repositories, Tokens
 
 if TYPE_CHECKING:
     import polars as pl

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from enum import Enum
 from operator import add
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Optional, cast
 
 from tablassert import rs
 from tablassert._lazy import LazyModule
-from tablassert.enums import Categories
+from tablassert.biolink import Categories
 from tablassert.log import cat
 
 logger = cat("FULLMAP")
@@ -233,6 +234,22 @@ def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFra
     return result.unique(subset=["term"], keep="first")
 
 
+def _category_values(categories: list[Any]) -> list[str]:
+    """Normalize a ``prioritize``/``avoid`` list to plain category-name strings.
+
+    The build pipeline supplies plain strings (Pydantic ``use_enum_values=True``
+    unwraps the ``Categories`` members on ``NodeEncoding``), while direct callers
+    may pass ``Categories`` members; accept both.
+
+    Args:
+        categories: Category names as ``Categories`` members or plain strings.
+
+    Returns:
+        Plain category-name strings.
+    """
+    return [c.value if isinstance(c, Enum) else c for c in categories]
+
+
 def filter_and_rank(
     raw: pl.DataFrame,
     terms: pl.DataFrame,
@@ -262,7 +279,7 @@ def filter_and_rank(
 
     result: pl.DataFrame = raw.join(terms, on="term", how="inner").rename({"nlp_level": "NLP_LEVEL"})
     if avoid:
-        avoid_values: list[str] = [x.value for x in avoid]
+        avoid_values: list[str] = _category_values(avoid)
         result = result.filter(~pl.col("CATEGORY_NAME").is_in(avoid_values))
     if taxon:
         taxon_id: int = int(taxon)
@@ -271,7 +288,7 @@ def filter_and_rank(
         return empty_matches(column_context)
 
     if prioritize:
-        priority_values: list[str] = [x.value for x in prioritize]
+        priority_values: list[str] = _category_values(prioritize)
         priority: pl.Expr = pl.when(pl.col("CATEGORY_NAME").is_in(priority_values)).then(pl.lit(1)).otherwise(pl.lit(50))
     else:
         priority = pl.lit(50)

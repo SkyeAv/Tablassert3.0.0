@@ -9,7 +9,8 @@ import polars as pl
 import tablassert.cli as cli
 import tablassert.lib as lib
 from tablassert import rs
-from tablassert.enums import ALLOWED_EDGE_FIELDS, Categories, Repositories
+from tablassert.biolink import ALLOWED_EDGE_FIELDS, Categories
+from tablassert.enums import Repositories
 from tablassert.fullmap import ResolveSpec
 from tablassert.ingests import from_yaml
 from tablassert.lib import (

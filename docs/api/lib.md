@@ -121,7 +121,7 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 from pathlib import Path
 from typing import Any
 from tablassert.lib import resolve_many
-from tablassert.enums import Categories
+from tablassert.biolink import Categories
 
 fullmap: Path = Path("/path/to/fullmap")
 
@@ -143,7 +143,7 @@ result: list[dict[str, Any]] = resolve_many(
 from pathlib import Path
 from typing import Any
 from tablassert.lib import resolve_many
-from tablassert.enums import Categories
+from tablassert.biolink import Categories
 
 fullmap: Path = Path("/path/to/fullmap")
 

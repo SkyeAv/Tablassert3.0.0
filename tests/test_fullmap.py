@@ -12,7 +12,7 @@ from tablassert import rs
 import tablassert.cli as cli
 from tablassert.cli import build_fullmap
 import tablassert.lib as lib
-from tablassert.enums import Categories
+from tablassert.biolink import Categories
 from tablassert.fullmap import _TERM_CACHE, ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, lookup_rows, resolve, resolve_batch
 from tablassert.lib import to_store
 
@@ -126,6 +126,26 @@ def test_resolve_honors_prioritize_category(fullmap_db: Path) -> None:
     source: pl.DataFrame = pl.DataFrame({"subject": ["mapk1"], "subject_two": ["mapk1"]})
 
     result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, prioritize=[Categories.PROTEIN], log=False).collect().to_dicts()[0]
+
+    assert result["subject"] == "UniProtKB:P28482"
+    assert result["subject_category"] == "biolink:Protein"
+
+
+def test_resolve_honors_avoid_category_given_strings(fullmap_db: Path) -> None:
+    """avoid accepts plain strings (the build pipeline unwraps Categories via use_enum_values)."""
+    source: pl.DataFrame = pl.DataFrame({"subject": ["ambiguous"], "subject_two": ["ambiguous"]})
+
+    result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, avoid=["Disease"], log=False).collect().to_dicts()[0]  # pyright: ignore
+
+    assert result["subject"] == "HGNC:2"
+    assert result["subject_category"] == "biolink:Gene"
+
+
+def test_resolve_honors_prioritize_category_given_strings(fullmap_db: Path) -> None:
+    """prioritize accepts plain strings (the build pipeline unwraps Categories via use_enum_values)."""
+    source: pl.DataFrame = pl.DataFrame({"subject": ["mapk1"], "subject_two": ["mapk1"]})
+
+    result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, prioritize=["Protein"], log=False).collect().to_dicts()[0]  # pyright: ignore
 
     assert result["subject"] == "UniProtKB:P28482"
     assert result["subject_category"] == "biolink:Protein"

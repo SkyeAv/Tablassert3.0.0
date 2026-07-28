@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from tablassert.enums import Categories
+from tablassert.biolink import Categories
 from tablassert.ingests import from_yaml
 from tablassert.models import (
     DEFAULT_RIG_UI_EXPLANATION,

@@ -127,7 +127,7 @@ The function:
 ```python
 from pathlib import Path
 from tablassert.fullmap import resolve
-from tablassert.enums import Categories
+from tablassert.biolink import Categories
 import polars as pl
 
 # Path to the fullmap redb file
@@ -166,7 +166,7 @@ from pathlib import Path
 import polars as pl
 from tablassert.fullmap import resolve
 from tablassert.nlp import level_one, level_two
-from tablassert.enums import Categories
+from tablassert.biolink import Categories
 
 # Path to the fullmap redb file
 db = Path("/path/to/fullmap/data/fullmap.redb")
