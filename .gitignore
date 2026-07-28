@@ -33,3 +33,5 @@
 *.ralph/
 *bmalph/
 *.opencode/
+# mkdocs build output
+site/

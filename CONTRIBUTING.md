@@ -98,10 +98,10 @@ cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
 
 What the gates cover:
 
-- **Ruff linting and formatting.** The current tree enforces core pycodestyle/pyflakes safety checks plus stale-suppression detection. The lint gate is being expanded to cover common bug patterns, simplifications, Python-version upgrades, pytest style, import order, and comprehensions. Treat `uv run ruff check .` and `uv run ruff format --check .` as the stable interface rather than relying on individual rule codes.
+- **Ruff linting and formatting.** The current tree enforces core pycodestyle/pyflakes safety checks plus stale-suppression detection. It also enforces an expanded rule set covering common bug patterns (bugbear), simplifications, Python-version upgrades, pytest style, import order, and comprehensions. Treat `uv run ruff check .` and `uv run ruff format --check .` as the stable interface rather than relying on individual rule codes.
 - **Pyright.** Type checking runs through `uv run pyright`; the project is tightening this as a strict-inference ratchet over time.
-- **Python tests.** The suite is offline and currently runs 294 tests in roughly 30-40 seconds on this development tree, reporting coverage around 88%.
-- **Rust tests.** `cargo test --manifest-path rust/Cargo.toml` currently runs 40 Rust unit tests for the extension.
+- **Python tests.** The suite is offline and currently runs 324 tests in roughly 40-45 seconds, reporting coverage around 94%.
+- **Rust tests.** `cargo test --manifest-path rust/Cargo.toml` currently runs 46 Rust unit tests for the extension.
 - **Rust style and lints.** `cargo fmt --check` enforces formatting; clippy runs all targets with warnings denied.
 
 ## Pre-commit hooks
