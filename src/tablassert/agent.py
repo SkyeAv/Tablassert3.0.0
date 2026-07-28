@@ -10,10 +10,11 @@ them at import time. Install the extra with ``pip install tablassert[agent]``.
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import tempfile
 import xml.etree.ElementTree as ET
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -23,6 +24,7 @@ import pydantic
 import yaml
 
 from tablassert._lazy import LazyModule
+from tablassert.biolink import Categories
 from tablassert.enums import EncodingMethods
 from tablassert.errors import GraphValidationError, QcRuntimeMissingError, SectionValidationError, TablassertValidationError
 from tablassert.fullmap import distinct, fullmap_db_path, lookup_rows
@@ -861,3 +863,292 @@ def make_build_and_audit_tool(get_fullmap: Callable[[], Path], *, name: str = "a
             return json.dumps(build_and_audit(config_yaml, fullmap=get_fullmap(), name=name, version=version, qc=qc), default=str)
 
     return BuildAndAuditTool()
+
+
+# --------------------------------------------------------------------------- #
+# US-007: propose_config_edit — deterministic, constrained NodeEncoding editor
+#
+# A PURE, deterministic, offline rule-based proposer (also wrappable as a tool):
+# given a config + a coverage_report (from map_coverage), propose TARGETED edits to
+# NodeEncoding knobs to raise coverage. This is the supervisor's improvement operator
+# (a Reflexion-style simple optimizer) — it must be reliable, schema-valid, and
+# idempotent. It edits ONLY NodeEncoding fields (prioritize/avoid/regex/remove/
+# exclude_prefixes/exclude_regex), never source/provenance/predicate/annotations, and
+# RE-VALIDATES before returning so the output is always schema-valid (else the original
+# config is returned unchanged). It NEVER raises: any failure yields the original config
+# plus an explanatory rationale. Only base deps are used (biolink is already a base
+# import via tablassert.models), so the core needs no ``[agent]`` extra; the smolagents
+# ``Tool`` wrapper is built lazily in a factory.
+# --------------------------------------------------------------------------- #
+
+_LINEAGE_SEPARATORS: tuple[str, ...] = (";", "g__", "p__", "d__", "s__", "k__", "c__", "o__", "f__")
+_COMMON_GENUS_LOOKALIKES: frozenset[str] = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "not",
+        "with",
+        "from",
+        "this",
+        "that",
+        "subject",
+        "object",
+        "value",
+        "sample",
+        "control",
+        "patient",
+        "group",
+        "total",
+        "name",
+        "type",
+        "level",
+        "gene",
+        "protein",
+    }
+)
+_CHEMICAL_MARKERS: tuple[str, ...] = ("chebi:", "-ol", "-one", "-ine", "-ate", "-ide", "acid", "phosphate", "sulfate", "chloride")
+
+# ``Categories`` is built dynamically at runtime; biolink's TYPE_CHECKING stub declares only a few
+# members, so these by-name accesses each need a one-line pyright waiver. Resolving the exact
+# ``.value`` strings once here keeps the heuristics below clean and validation-compatible.
+_ORGANISM_TAXON: str = Categories.ORGANISM_TAXON.value  # pyright: ignore[reportAttributeAccessIssue]
+_GENE: str = Categories.GENE.value
+_CHEMICAL_ENTITY: str = Categories.CHEMICAL_ENTITY.value  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def _looks_taxonomic(term: str) -> bool:
+    """Heuristic: does an unresolved term look taxonomic?
+
+    True when a term carries a lineage separator (``;``/``g__``/``p__``/...), an ``sp``/
+    ``sp.`` species marker, or is a single Capitalized genus-like alphabetic token longer
+    than two letters that is not a common English/domain word.
+    """
+    if any(separator in term for separator in _LINEAGE_SEPARATORS):
+        return True
+    if " sp" in term or "sp." in term:
+        return True
+    stripped: str = term.strip()
+    return len(stripped) > 2 and stripped[:1].isupper() and stripped.isalpha() and stripped.lower() not in _COMMON_GENUS_LOOKALIKES
+
+
+def _has_lineage_glue(terms: list[str]) -> bool:
+    """True iff any term carries ALAMV6-style lineage glue (``g__`` / ``;s__``)."""
+    return any("g__" in term or ";s__" in term for term in terms)
+
+
+def _looks_chemical(term: str) -> bool:
+    """Conservative heuristic: does a term look like a chemical entity (CURIE or name marker)?"""
+    lowered: str = term.lower()
+    return any(marker in lowered for marker in _CHEMICAL_MARKERS)
+
+
+def _noise_remove_patterns(terms: list[str]) -> list[str]:
+    """Return the ``remove`` regex patterns relevant to the noise actually present in ``terms``."""
+    patterns: list[str] = []
+    if any(term.strip() in {"NA", "N/A"} or term.strip().startswith("NA ") for term in terms):
+        patterns.append("^NA ")
+    if any("[" in term and "]" in term for term in terms):
+        patterns.append("\\[.*?\\]")
+    return patterns
+
+
+def _extend_unique(target: list[object], additions: Sequence[object]) -> list[object]:
+    """Append each item of ``additions`` not already in ``target``; return the items added.
+
+    The idempotency primitive: membership (``in``) guards every knob so re-proposing on an
+    already-edited node never duplicates an entry (works for scalars AND regex dicts).
+    """
+    added: list[object] = [item for item in additions if item not in target]
+    target.extend(added)
+    return added
+
+
+def _ensure_list(node: dict[str, object], key: str) -> list[object]:
+    """Return ``node[key]`` as a list, creating/normalizing it when absent or not a list."""
+    existing: object = node.get(key)
+    if isinstance(existing, list):
+        return existing
+    created: list[object] = []
+    node[key] = created
+    return created
+
+
+def _string_hints(value: object) -> list[str]:
+    """Coerce an optional report hint list into a list of strings (empty when absent/odd)."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _column_unresolved(entry: object) -> list[str]:
+    """Return a column's unresolved terms iff it is a measured COLUMN node with unresolved terms."""
+    if not isinstance(entry, dict):
+        return []
+    if not _is_column_method(entry.get("method")):
+        return []
+    unresolved: object = entry.get("unresolved")
+    if not isinstance(unresolved, list):
+        return []
+    return [term for term in unresolved if isinstance(term, str)]
+
+
+def _statement_nodes(statement: dict[str, object]) -> list[tuple[str, dict[str, object]]]:
+    """Pair each statement node with its coverage column name (subject/object/qualifier)."""
+    nodes: list[tuple[str, dict[str, object]]] = []
+    subject: object = statement.get("subject")
+    obj: object = statement.get("object")
+    if isinstance(subject, dict):
+        nodes.append(("subject", subject))
+    if isinstance(obj, dict):
+        nodes.append(("object", obj))
+    qualifiers: object = statement.get("qualifiers")
+    if isinstance(qualifiers, list):
+        for qualifier in qualifiers:
+            if isinstance(qualifier, dict):
+                name: object = qualifier.get("qualifier")
+                if isinstance(name, str):
+                    nodes.append((name, qualifier))
+    return nodes
+
+
+def _edit_node(col: str, node: dict[str, object], unresolved: list[str], hint_prefixes: list[str], hint_regex: list[str]) -> str | None:
+    """Apply the constrained heuristics to ONE node; return a rationale line or None if nothing changed.
+
+    Heuristics (each ADD/EXTENDS a NodeEncoding knob idempotently): (1) taxonomic terms ->
+    prioritize OrganismTaxon + avoid Gene, plus ``g__``/``;s__`` regex stripping when lineage
+    glue is present; (2) obvious noise -> ``remove`` patterns; (3) report-level exclusion
+    hints -> per-node ``exclude_prefixes``/``exclude_regex``; (4) FALLBACK only when nothing
+    else fired and the column is the object with chemical-looking terms -> prioritize
+    ChemicalEntity (prefer doing NOTHING over a wrong guess; the subject fallback is a no-op).
+    """
+    knobs: list[str] = []
+    fired: bool = False
+
+    taxonomic: list[str] = [term for term in unresolved if _looks_taxonomic(term)]
+    if taxonomic:
+        fired = True
+        if _extend_unique(_ensure_list(node, "prioritize"), [_ORGANISM_TAXON]):
+            knobs.append(f"prioritized {_ORGANISM_TAXON}")
+        if _extend_unique(_ensure_list(node, "avoid"), [_GENE]):
+            knobs.append(f"avoided {_GENE}")
+        if _has_lineage_glue(taxonomic):
+            glue: list[object] = [{"pattern": ".*g__", "replacement": ""}, {"pattern": ";s__", "replacement": " "}]
+            if _extend_unique(_ensure_list(node, "regex"), glue):
+                knobs.append("added regex strip for 'g__'/'s__' lineage glue")
+
+    noise: list[str] = _noise_remove_patterns(unresolved)
+    if noise and _extend_unique(_ensure_list(node, "remove"), noise):
+        fired = True
+        knobs.append(f"added remove patterns {noise}")
+
+    if hint_prefixes and _extend_unique(_ensure_list(node, "exclude_prefixes"), hint_prefixes):
+        fired = True
+        knobs.append(f"excluded prefixes {hint_prefixes}")
+    if hint_regex and _extend_unique(_ensure_list(node, "exclude_regex"), hint_regex):
+        fired = True
+        knobs.append(f"excluded regex {hint_regex}")
+
+    chemical_fallback: bool = not fired and col == "object" and any(_looks_chemical(term) for term in unresolved)
+    if chemical_fallback and _extend_unique(_ensure_list(node, "prioritize"), [_CHEMICAL_ENTITY]):
+        knobs.append(f"prioritized {_CHEMICAL_ENTITY} (chemical fallback)")
+
+    if not knobs:
+        return None
+    return f"{col}: {', '.join(knobs)} (unresolved: {unresolved})"
+
+
+def propose_config_edit(config_yaml: str | dict[str, object], coverage_report: dict[str, object]) -> tuple[str, str]:
+    """Propose targeted, schema-valid NodeEncoding edits to raise coverage (NEVER raises).
+
+    A PURE, deterministic, offline rule-based proposer: given a config (YAML str or parsed
+    dict; a bare merged section or a ``{template: {...}}`` table config) and a coverage report
+    (from :func:`map_coverage`), inspect each ``method: column`` node that has unresolved terms
+    and ADD/EXTEND only NodeEncoding knobs (``prioritize``/``avoid``/``regex``/``remove``/
+    ``exclude_prefixes``/``exclude_regex``) to raise resolution coverage (see :func:`_edit_node`
+    for the heuristics). Edits are IDEMPOTENT (never duplicate an existing entry) and MINIMAL
+    (source/provenance/predicate/annotations/encodings are never touched). The edited section is
+    RE-VALIDATED via :func:`validate_section` before return; if validation fails or nothing safely
+    changed, the ORIGINAL config is returned unchanged.
+
+    Returns:
+        ``(edited_config_yaml, rationale)`` where ``rationale`` is a short multi-line
+        human/LLM-readable summary of the knobs added per node and the unresolved terms
+        addressed. On any error the original config is returned with an explanatory note.
+    """
+    original_yaml: str = config_yaml if isinstance(config_yaml, str) else yaml.safe_dump(config_yaml, sort_keys=False)
+    try:
+        parsed: object = yaml.safe_load(config_yaml) if isinstance(config_yaml, str) else config_yaml
+        if not isinstance(parsed, dict):
+            return (original_yaml, "no safe edit found for the unresolved terms: config did not parse to a mapping.")
+        section: dict[str, object] = copy.deepcopy(_merge_first_section(parsed))
+        statement: object = section.get("statement")
+        if not isinstance(statement, dict):
+            return (original_yaml, "no safe edit found for the unresolved terms: section has no statement.")
+
+        per_column: object = coverage_report.get("per_column") if isinstance(coverage_report, dict) else None
+        columns: dict[str, object] = per_column if isinstance(per_column, dict) else {}
+        report: dict[str, object] = coverage_report if isinstance(coverage_report, dict) else {}
+        hint_prefixes: list[str] = _string_hints(report.get("exclude_prefixes"))
+        hint_regex: list[str] = _string_hints(report.get("exclude_regex"))
+
+        rationale_lines: list[str] = []
+        all_unresolved: list[str] = []
+        changed: bool = False
+        for col, node in _statement_nodes(statement):
+            unresolved: list[str] = _column_unresolved(columns.get(col))
+            if not unresolved:
+                continue
+            all_unresolved.extend(unresolved)
+            line: str | None = _edit_node(col, node, unresolved, hint_prefixes, hint_regex)
+            if line is not None:
+                changed = True
+                rationale_lines.append(line)
+
+        if not changed:
+            terms: str = ", ".join(sorted(set(all_unresolved))) if all_unresolved else "(none)"
+            return (original_yaml, f"no safe edit found for the unresolved terms: {terms}.")
+
+        edited_yaml: str = yaml.safe_dump(section, sort_keys=False)
+        if not validate_section(edited_yaml):
+            return (original_yaml, "proposed edit failed schema validation; returning original config unchanged.")
+        return (edited_yaml, "\n".join(rationale_lines))
+    except Exception as exc:  # the proposer must never raise; return the original config with a note
+        return (original_yaml, f"propose_config_edit error (returning original): {exc}")
+
+
+def make_propose_config_edit_tool() -> Tool:
+    """Build the ``propose_config_edit`` smolagents Tool lazily (imports smolagents on first call).
+
+    ``forward(config_yaml, coverage_report)`` parses the JSON coverage report, calls
+    :func:`propose_config_edit`, and returns a JSON object ``{"config_yaml", "rationale"}`` so the
+    agent can read the proposed schema-valid config edit and why. The proposer is offline, so no
+    fullmap binding is needed (unlike the coverage/build tool factories). The subclass is defined
+    INSIDE this factory so the module top never forces the optional smolagents import.
+    """
+    _require("smolagents")
+    from smolagents import Tool  # local import keeps module import lazy
+
+    class ProposeConfigEditTool(Tool):  # pyright: ignore[reportMissingImports]
+        name = "propose_config_edit"
+        description = (
+            "Propose a targeted, schema-valid edit to a Tablassert Section config (YAML) that raises fullmap "
+            "term-resolution coverage. Pass the current config YAML and the JSON coverage report from map_coverage; "
+            "a deterministic rule-based proposer adds/extends ONLY NodeEncoding knobs (prioritize/avoid/regex/remove/"
+            "exclude_prefixes/exclude_regex) — never source/provenance/predicate. Returns JSON {config_yaml, rationale}: "
+            "the edited config (schema-valid, or the original unchanged when no safe edit applies) plus a human-readable "
+            "rationale. Idempotent: re-proposing never duplicates entries."
+        )
+        inputs: ClassVar[dict[str, dict[str, str | type | bool]]] = {  # pyright: ignore[reportIncompatibleVariableOverride]
+            "config_yaml": {"type": "string", "description": "The current Tablassert Section config YAML to improve."},
+            "coverage_report": {"type": "string", "description": "JSON coverage report from map_coverage (per_column + unresolved)."},
+        }
+        output_type = "string"
+
+        def forward(self, config_yaml: str, coverage_report: str) -> str:
+            report: object = json.loads(coverage_report) if isinstance(coverage_report, str) else coverage_report
+            parsed_report: dict[str, object] = report if isinstance(report, dict) else {}
+            edited, rationale = propose_config_edit(config_yaml, parsed_report)
+            return json.dumps({"config_yaml": edited, "rationale": rationale})
+
+    return ProposeConfigEditTool()
