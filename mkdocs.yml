@@ -54,6 +54,7 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Installation: installation.md
+  - Development: development.md
   - Fullmap: fullmap.md
   - CLI Reference: cli.md
   - Tutorial: tutorial.md
