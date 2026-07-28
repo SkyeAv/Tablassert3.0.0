@@ -159,15 +159,21 @@ fn clean(value: &str) -> String {
     }
 }
 
+/// QC a NORMALIZED (level-one / lowercase) term.  Callers must pass an
+/// already-lowercased form (emit_term feeds it the level-one value), so the
+/// banned-token checks compare lowercase needles directly and skip a per-term
+/// `to_lowercase` heap allocation on the hot path.  Behavior is unchanged:
+/// lowercasing is case-only and never affects the empty/tab/newline guards, so
+/// QC-ing the lowercase form is exactly equivalent to QC-ing the original value
+/// and lowercasing internally.
 fn token_qc(value: &str) -> bool {
-    let lower = value.to_lowercase();
     !value.is_empty()
         && !value.contains('\t')
         && !value.contains('\n')
         && !value.contains('\r')
-        && !lower.contains("inchikey")
-        && !lower.contains("uncharacterized")
-        && !lower.contains("hypothetical")
+        && !value.contains("inchikey")
+        && !value.contains("uncharacterized")
+        && !value.contains("hypothetical")
 }
 
 fn level_one(value: &str) -> String {
@@ -240,37 +246,28 @@ fn string_field(value: &Value, keys: &[&str]) -> Option<String> {
     None
 }
 
-fn string_array(value: &Value, key: &str) -> Vec<String> {
+/// Borrow the first string element of `value`'s array at `key` (skipping
+/// non-string elements), or None.  Zero-copy: returns a `&str` into the live
+/// `Value` instead of allocating an owned `Vec<String>` just to take its head.
+fn first_str<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value
         .get(key)
         .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(String::from)
-                .collect()
-        })
-        .unwrap_or_default()
+        .and_then(|items| items.iter().find_map(Value::as_str))
 }
 
 fn first_category(value: &Value) -> String {
-    string_array(value, "types")
-        .into_iter()
-        .next()
-        .or_else(|| string_array(value, "categories").into_iter().next())
-        .unwrap_or_else(|| "NamedThing".to_string())
+    first_str(value, "types")
+        .or_else(|| first_str(value, "categories"))
+        .unwrap_or("NamedThing")
         .trim_start_matches("biolink:")
         .to_string()
 }
 
 fn first_taxon(value: &Value) -> i32 {
-    let taxon = string_array(value, "taxa")
-        .into_iter()
-        .next()
-        .or_else(|| string_array(value, "taxon").into_iter().next())
-        .unwrap_or_default();
-    taxon
+    first_str(value, "taxa")
+        .or_else(|| first_str(value, "taxon"))
+        .unwrap_or_default()
         .trim_start_matches("NCBITaxon:")
         .parse::<i32>()
         .unwrap_or(0)
@@ -1016,20 +1013,23 @@ impl EquivIndex {
     }
 }
 
-/// Process a single term through clean → token_qc → level_one → level_two
-/// and insert the resulting normalized forms into `local_terms`.
+/// Process a single term through clean → level_one → token_qc → level_two and
+/// insert the resulting normalized forms into `local_terms`.  token_qc runs on
+/// the level-one (lowercase) form — exactly equivalent to QC-ing the cleaned
+/// value, since lowercasing is case-only — but avoids a redundant per-term
+/// `to_lowercase`.  The level-one key is moved straight into the entry (no
+/// per-hit clone); level-two is derived first so it survives the move.
 fn emit_term(term: &str, pair: (u32, u8), local_terms: &mut HashMap<String, Vec<(u32, u8)>>) {
     let cleaned = clean(term);
-    if !token_qc(&cleaned) {
+    let l1 = level_one(&cleaned);
+    if !token_qc(&l1) || is_dead_term(&l1) {
         return;
     }
-    let l1 = level_one(&cleaned);
-    if token_qc(&l1) && !is_dead_term(&l1) {
-        local_terms.entry(l1.clone()).or_default().push(pair);
-        let l2 = level_two(&l1);
-        if l2 != l1 && token_qc(&l2) && !is_dead_term(&l2) {
-            local_terms.entry(l2).or_default().push(pair);
-        }
+    let l2 = level_two(&l1);
+    let emit_l2 = l2 != l1 && token_qc(&l2) && !is_dead_term(&l2);
+    local_terms.entry(l1).or_default().push(pair);
+    if emit_l2 {
+        local_terms.entry(l2).or_default().push(pair);
     }
 }
 
@@ -1135,8 +1135,12 @@ fn process_row(
     }
 
     let pair = (curie_id, source_id);
-    for name in string_array(row, "names") {
-        emit_term(&name, pair, &mut buf.terms);
+    // Borrow each name as a &str straight from the live Value instead of
+    // building an owned Vec<String>; emit_term only needs a &str.
+    if let Some(names) = row.get("names").and_then(Value::as_array) {
+        for name in names.iter().filter_map(Value::as_str) {
+            emit_term(name, pair, &mut buf.terms);
+        }
     }
     emit_term(&curie, pair, &mut buf.terms);
     if let Some(iter) = sh.equivalents.lookup(&curie) {
