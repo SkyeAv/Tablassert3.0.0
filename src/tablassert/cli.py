@@ -43,6 +43,46 @@ BABEL_CLASS_RE: re.Pattern[str] = re.compile(r'<a href="([^"]*_nodes[^"]*\.gz)"'
 BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
 
 
+def _load_table_indexed(args: tuple[int, Path]) -> tuple[int, object]:
+    """Load one table, tagged with its input index (multiprocessing worker).
+
+    Runs in a pool subprocess, so it re-imports ``from_yaml`` locally (the
+    deferred import mirrors ``build_pipeline``). The carried index lets the
+    caller reassemble results in input order even though ``imap_unordered``
+    yields them in completion order.
+
+    Args:
+        args: ``(index, table_path)`` pair for one table.
+
+    Returns:
+        ``(index, parsed_yaml)`` so the caller can position the result by index.
+    """
+    from tablassert.ingests import from_yaml
+
+    idx, table = args
+    return idx, from_yaml(table)
+
+
+def _extract_sections_indexed(args: tuple[int, object, Path]) -> tuple[int, list[dict[str, Any]]]:
+    """Extract sections from one loaded table, tagged with its input index (multiprocessing worker).
+
+    Runs in a pool subprocess, so it re-imports ``to_sections`` locally (the
+    deferred import mirrors ``build_pipeline``). The carried index lets the
+    caller reassemble per-table section lists in input order so the flattened
+    ``sections`` order is byte-identical to the old ``starmap`` result.
+
+    Args:
+        args: ``(index, parsed_yaml, table_path)`` triple for one table.
+
+    Returns:
+        ``(index, section_list)`` so the caller can position the result by index.
+    """
+    from tablassert.ingests import to_sections
+
+    idx, raw, table = args
+    return idx, to_sections(raw, table)  # pyright: ignore
+
+
 def build_pipeline(
     graph_configuration_file: Path, progress: PipelineProgress, release: bool = False, qc: bool = False, log: bool = False, head: bool = False
 ) -> None:
@@ -64,7 +104,7 @@ def build_pipeline(
         SectionValidationError: If any section fails Pydantic validation.
     """
     from tablassert.fullmap import fullmap_db_path
-    from tablassert.ingests import from_yaml, to_sections
+    from tablassert.ingests import from_yaml
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
     from tablassert.models import Graph
     from tablassert.progress import flatten_pydantic_error, format_section_compact
@@ -77,13 +117,27 @@ def build_pipeline(
         g: Graph = Graph.model_validate(r)
     except pydantic.ValidationError as e:
         raise GraphValidationError(graph_configuration_file, flatten_pydantic_error(e)) from e
+    # imap_unordered yields in completion order, so each worker carries its input
+    # index and we reassemble by index to keep raw[i] aligned with g.tables[i].
+    start, advance, _ = progress.section_loop(len(g.tables), "Load")
+    raw: list[object] = [None for _ in g.tables]
     with Pool() as pool:
-        raw: list[object] = pool.map(from_yaml, g.tables)
+        for idx, parsed in pool.imap_unordered(_load_table_indexed, enumerate(g.tables)):
+            raw[idx] = parsed
+            start(str(g.tables[idx]))
+            advance()
 
     # Stage 2/6: extract sections.
     progress.stage("Extracting Sections")
+    # Same index-carrying reassembly keeps temp[i] aligned with g.tables[i], so the
+    # flattened sections order is byte-identical to the old starmap result.
+    start, advance, _ = progress.section_loop(len(g.tables), "Extract")
+    temp: list[list[dict[str, Any]]] = [[] for _ in g.tables]
     with Pool() as pool:
-        temp: list[list[dict[str, Any]]] = pool.starmap(to_sections, zip(raw, g.tables, strict=True))  # pyright: ignore
+        for idx, section_list in pool.imap_unordered(_extract_sections_indexed, zip(range(len(g.tables)), raw, g.tables, strict=True)):
+            temp[idx] = section_list
+            start(str(g.tables[idx]))
+            advance()
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
 
