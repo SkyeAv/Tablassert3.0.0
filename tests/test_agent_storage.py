@@ -16,7 +16,9 @@ therefore import the helpers directly and do NOT ``importorskip("smolagents")``.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -125,3 +127,89 @@ def test_layout_helpers_do_no_io(tmp_path: Path) -> None:
     assert not (root / "configs").exists(), "the resolver must not mkdir configs/"
     assert not (root / "downloads").exists(), "the resolver must not mkdir downloads/"
     assert not (root / "builds").exists(), "the resolver must not mkdir builds/"
+
+
+# --------------------------------------------------------------------------- #
+# US-502: downloads land in a STABLE ``<art_root>/downloads/<pmc>/`` dir
+# --------------------------------------------------------------------------- #
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    return path
+
+
+@pytest.fixture
+def fullmap_db(tmp_path: Path) -> Path:
+    """A tiny REAL fullmap redb: ``brca1`` -> HGNC:1100, ``mapk1`` -> HGNC:6871."""
+    from tablassert import rs
+
+    root: Path = tmp_path / "fullmap"
+    root.mkdir(parents=True, exist_ok=True)
+    classes: Path = _write_jsonl(root / "classes.ndjson", [{"id": "HGNC:1100", "equivalent_identifiers": [{"identifier": "NCBIGene:672"}]}])
+    synonyms: Path = _write_jsonl(
+        root / "synonyms.ndjson",
+        [
+            {"curie": "HGNC:1100", "preferred_name": "BRCA1", "names": ["BRCA1", "brca1"], "types": ["Gene"], "taxa": ["NCBITaxon:9606"]},
+            {"curie": "HGNC:6871", "preferred_name": "MAPK1", "names": ["MAPK1", "mapk1"], "types": ["Gene"], "taxa": ["NCBITaxon:9606"]},
+        ],
+    )
+    output: Path = root / "data" / "fullmap.redb"
+    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    return output
+
+
+def test_supervisor_downloads_to_stable_dir(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With ``workdir=None``, ``run_supervisor`` fetches into ``state_dir/downloads/<pmc>`` (REQ-LAYOUT-3/7).
+
+    Why: downloads must be STABLE + pipeline-reusable, NOT a throwaway ``tempfile.mkdtemp``
+    dir that vanishes with the process. The unified CLI layout (``workdir=None``) co-locates
+    artifacts under ``state_dir``, so the fetch outdir must be exactly
+    ``pmc_download_dir(state_dir, pmc)`` and must PERSIST after the run so downstream
+    stages (derive/build/reuse) can find the payload without re-fetching.
+    """
+    pytest.importorskip("smolagents")
+    import yaml
+
+    from tablassert.agent import make_fake_model, run_supervisor
+
+    state_dir: Path = tmp_path / "state"
+    expected_outdir: Path = pmc_download_dir(state_dir, "PMC1")  # == state_dir/downloads/PMC1
+
+    recorded: list[Path] = []
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        recorded.append(outdir)
+        outdir.mkdir(parents=True, exist_ok=True)
+        table: Path = outdir / "good.tsv"
+        table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+        return [table]
+
+    monkeypatch.setattr("tablassert.agent.fetch_pmc_article", fake_fetch)
+
+    good_yaml: str = yaml.safe_dump(
+        {
+            "source": {"kind": "text", "local": str(expected_outdir / "good.tsv"), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "predicate": "associated_with",
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC1"},
+        },
+        sort_keys=False,
+    )
+
+    run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        # workdir omitted => None => the unified CLI layout (art_root == state_dir)
+    )
+
+    assert recorded == [expected_outdir], "fetch outdir must be the stable pmc_download_dir, not a temp dir"
+    assert expected_outdir == state_dir / "downloads" / "PMC1"
+    assert expected_outdir.is_dir(), "the stable downloads dir must persist after the run"
+    assert (expected_outdir / "good.tsv").is_file(), "the fetched payload must persist under the stable dir"

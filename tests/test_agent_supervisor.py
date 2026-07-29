@@ -272,7 +272,7 @@ def test_supervisor_no_fetch_uses_snapshot(tmp_path: Path, fullmap_db: Path, mon
     import tablassert.agent as agent_mod
 
     workdir: Path = tmp_path / "w"
-    snapshot: Path = workdir / "PMC1"
+    snapshot: Path = workdir / "downloads" / "PMC1"
     snapshot.mkdir(parents=True)
     table: Path = snapshot / "good.tsv"
     table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
@@ -303,7 +303,7 @@ def test_supervisor_no_fetch_empty_snapshot_skipped(tmp_path: Path, fullmap_db: 
     import tablassert.agent as agent_mod
 
     workdir: Path = tmp_path / "w"
-    (workdir / "PMC1").mkdir(parents=True)  # empty snapshot
+    (workdir / "downloads" / "PMC1").mkdir(parents=True)  # empty snapshot
 
     def boom(*args: object, **kwargs: object) -> list[Path]:
         raise AssertionError("must not fetch")
