@@ -724,7 +724,7 @@ class Tcode(Section):
             (value, ("upstream_resource_ids", upstream_ids)),
             (value, ("knowledge_level", knowledge_level)),
             (value, ("agent_type", agent_type)),
-            (value, ("primary_knowledge_source", primary_knowledge_source)) if primary_knowledge_source else None,
+            (value, ("primary_knowledge_source", [primary_knowledge_source])) if primary_knowledge_source else None,
             (publications, (publication_values,)) if publication_values else None,
             (source_record_urls, (str(self.source.url),)),
             (value, ("sheet_name", self.source.sheet)) if self.source.kind == Files.EXCEL else None,  # pyright: ignore

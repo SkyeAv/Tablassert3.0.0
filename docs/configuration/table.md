@@ -466,7 +466,7 @@ Override fields:
 | `knowledge_level` | String | No | Override-specific KL value. Defaults to `statistical_association`. |
 | `agent_type` | String | No | Override-specific AT value. Defaults to `data_analysis_pipeline`. |
 
-Tablassert emits the graph or section infores as the Biolink-compatible `primary_knowledge_source` edge slot. Older `resource_id` output has been replaced so generated KGX is compatible with the Biolink edge allow-list.
+Tablassert emits the graph or section infores as the Biolink-compatible `primary_knowledge_source` edge slot — a single-element list such as `["infores:multiomics-kg"]`, matching the form of `upstream_resource_ids`. Older `resource_id` output has been replaced so generated KGX is compatible with the Biolink edge allow-list.
 
 ### Annotations
 
