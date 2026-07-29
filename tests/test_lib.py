@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from itertools import chain
 from pathlib import Path
 from typing import Any, Self, cast
 
@@ -366,6 +367,20 @@ def test_head_caps_at_n_rows() -> None:
 
     assert small.height == 3
     assert big.height == 5
+
+
+def test_head_samples_subset_of_source() -> None:
+    """head returns a random subset of the source rows, never inventing or exceeding them."""
+    source: list[int] = list(range(10))
+    sampled: pl.DataFrame = head(pl.LazyFrame({"a": source}), n=HEAD_ROWS).collect()
+
+    assert sampled.height == HEAD_ROWS
+    assert set(sampled["a"].to_list()) <= set(source)
+
+    # A frame shorter than n is returned whole (never sampled beyond its height).
+    short: pl.DataFrame = head(pl.LazyFrame({"a": [7, 8, 9]}), n=HEAD_ROWS).collect()
+    assert short.height == 3
+    assert set(short["a"].to_list()) == {7, 8, 9}
 
 
 def test_tcode_collect_omits_head_by_default(fixtures_path: Path) -> None:
@@ -1891,7 +1906,7 @@ def test_compile_subgraph_e2e_release_drops_rows_before_fullmap_lookup(monkeypat
 
 
 def test_compile_subgraph_e2e_head_caps_rows_to_five(monkeypatch: Any, tmp_path: Path) -> None:
-    """--head limits a >5-row section to 5 rows before fullmap resolution."""
+    """--head randomly samples 5 of 8 rows before fullmap resolution (never more than available)."""
     rows: dict[str, list[dict[str, object]]] = {
         **{f"gene{i}": [fake_fullmap_row(f"gene{i}", f"HGNC:{i}", f"GENE{i}", "Gene", 9606)] for i in range(1, 9)},
         **{f"disease{i}": [fake_fullmap_row(f"disease{i}", f"MONDO:{i}", f"Disease{i}", "Disease", 0)] for i in range(1, 9)},
@@ -1912,12 +1927,15 @@ def test_compile_subgraph_e2e_head_caps_rows_to_five(monkeypatch: Any, tmp_path:
 
     result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
     result: pl.DataFrame = pl.read_parquet(result_path)
-    looked_up: set[str] = set(calls[0])
+    looked_up: set[str] = set(chain.from_iterable(calls))
+    genes: set[str] = {t for t in looked_up if t.startswith("gene")}
+    diseases: set[str] = {t for t in looked_up if t.startswith("disease")}
 
     assert result.height == 5
-    assert "gene5" in looked_up
-    assert "gene6" not in looked_up
-    assert "disease8" not in looked_up
+    assert len(genes) == 5
+    assert len(diseases) == 5
+    assert genes <= {f"gene{i}" for i in range(1, 9)}
+    assert diseases <= {f"disease{i}" for i in range(1, 9)}
 
 
 def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypatch: Any, tmp_path: Path) -> None:

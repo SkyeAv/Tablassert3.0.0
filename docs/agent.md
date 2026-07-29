@@ -74,10 +74,10 @@ loudly** if any required value is unset.
 
 | Flag | Env var | Purpose |
 | --- | --- | --- |
-| `--model-id` | `TABLASSERT_AGENT_MODEL_ID` | model identifier |
-| `--api-base` | `TABLASSERT_AGENT_API_BASE` | OpenAI-compatible base URL |
-| `--api-key` | `TABLASSERT_AGENT_API_KEY` | API key (secret) |
-| `--backend` | — | `openai` (default) or `litellm` |
+| `--model-id`, `-m` | `TABLASSERT_AGENT_MODEL_ID` | model identifier |
+| `--api-base`, `-ab` | `TABLASSERT_AGENT_API_BASE` | OpenAI-compatible base URL |
+| `--api-key`, `-ak` | `TABLASSERT_AGENT_API_KEY` | API key (secret) |
+| `--backend`, `-b` | — | `openai` (default) or `litellm` |
 
 ```bash
 export TABLASSERT_AGENT_MODEL_ID="qwen3-max"
@@ -103,8 +103,8 @@ tablassert agent PMC11708054 PMC12345678 \
   --executor local
 ```
 
-Flags: `--max-steps`, `--map-threshold`, `--qc-threshold`, `--max-improve-iters`, `--state-dir`,
-`--executor {local,docker}`, `--backend {openai,litellm}`, `--no-fetch`.
+Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`, `--qc-threshold`/`-qt`, `--max-improve-iters`/`-mi`,
+`--state-dir`/`-sd`, `--executor {local,docker}`/`-e`, `--backend {openai,litellm}`/`-b`, `--no-fetch`/`-nf`.
 
 ### What the supervisor does
 

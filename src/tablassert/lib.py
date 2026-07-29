@@ -465,20 +465,23 @@ HEAD_ROWS: int = 5
 
 
 def head(lf: pl.LazyFrame, n: int = HEAD_ROWS) -> pl.LazyFrame:
-    """Limit a LazyFrame to its first ``min(n, height)`` rows for a fast ``--head`` preview.
+    """Randomly sample up to ``min(n, height)`` rows for a fast ``--head`` preview.
 
     Args:
         lf: Source LazyFrame.
         n: Maximum number of rows to keep.
 
     Returns:
-        LazyFrame with at most ``n`` rows (fewer when the source has fewer than ``n``).
+        LazyFrame with at most ``n`` randomly chosen rows (fewer when the source
+        has fewer than ``n``).
 
     Notes:
-        Stays fully lazy; ``LazyFrame.head`` pushes the limit down to the scan,
-        so only ``n`` rows are ever materialized downstream.
+        ``LazyFrame`` has no ``.sample`` and ``DataFrame.sample`` raises when ``n``
+        exceeds the height, so the frame is collected and sampled with
+        ``min(n, height)`` (mirroring ``pick``), then re-lazied.
     """
-    return lf.head(n)
+    df: pl.DataFrame = lf.collect()
+    return df.sample(n=min(n, df.height), shuffle=True).lazy()
 
 
 def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: str | int | float, cast: bool = True) -> pl.LazyFrame:
@@ -664,7 +667,7 @@ class Tcode(Section):
             ]
             if self.source.reindex
             else None,
-            # --head preview: cap rows to min(HEAD_ROWS, height) before any encoding/resolve.
+            # --head preview: randomly sample min(HEAD_ROWS, height) rows before any encoding/resolve.
             (head, (HEAD_ROWS,)) if self.head else None,
             [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
             (coerce_pvalue_columns, ()),

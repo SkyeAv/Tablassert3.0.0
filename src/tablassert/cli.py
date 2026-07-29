@@ -85,17 +85,17 @@ def _extract_sections_indexed(args: tuple[int, object, Path]) -> tuple[int, list
     return idx, to_sections(raw, table)  # pyright: ignore
 
 
-def _load_graph(graph_configuration_file: Path, table_config: bool, fullmap: Path) -> Graph:
+def _load_graph(configuration_file: Path, table_config: bool, fullmap: Path) -> Graph:
     """Load and validate the Graph config that drives a build.
 
-    By default ``graph_configuration_file`` is a Graph YAML loaded directly. With
+    By default ``configuration_file`` is a Graph YAML loaded directly. With
     ``table_config=True`` it is instead a table (Section) YAML wrapped in a
     throwaway ``TEMP_KG`` graph so a single table config can be built or tested
     without authoring a full graph config; ``contributions`` and ``ui_explanation``
     then fall back to the Graph model defaults.
 
     Args:
-        graph_configuration_file: Graph YAML path, or a table YAML path when ``table_config``.
+        configuration_file: Graph YAML path, or a table YAML path when ``table_config``.
         table_config: When ``True``, wrap the table YAML in a throwaway ``TEMP_KG`` graph.
         fullmap: Fullmap path for the wrapped graph when ``table_config`` is ``True``.
 
@@ -115,19 +115,19 @@ def _load_graph(graph_configuration_file: Path, table_config: bool, fullmap: Pat
             "name": "TEMP_KG",
             "version": "0.0.0",
             "description": "Temporary knowledge graph generated to test a table configuration",
-            "tables": [graph_configuration_file],
+            "tables": [configuration_file],
             "fullmap": fullmap,
         }
     else:
-        raw = from_yaml(graph_configuration_file)
+        raw = from_yaml(configuration_file)
     try:
         return Graph.model_validate(raw)
     except pydantic.ValidationError as e:
-        raise GraphValidationError(graph_configuration_file, flatten_pydantic_error(e)) from e
+        raise GraphValidationError(configuration_file, flatten_pydantic_error(e)) from e
 
 
 def build_pipeline(
-    graph_configuration_file: Path,
+    configuration_file: Path,
     progress: PipelineProgress,
     release: bool = False,
     qc: bool = False,
@@ -142,14 +142,14 @@ def build_pipeline(
     Tcodes → collect instructions → build subgraphs → compile graph.
 
     Args:
-        graph_configuration_file: Path to the graph YAML file (or a table YAML
+        configuration_file: Path to the graph YAML file (or a table YAML
             file when ``table_config`` is ``True``).
         progress: Pipeline progress reporter.
         release: When ``True``, emit release-mode artifacts.
         qc: When ``True``, run quality-control audits on each section.
         log: When ``True``, enable per-section verbose logging.
-        head: When ``True``, preview only the first 5 rows per section (fast schema/shape check).
-        table_config: When ``True``, treat ``graph_configuration_file`` as a table
+        head: When ``True``, preview a random sample of up to 5 rows per section (fast schema/shape check).
+        table_config: When ``True``, treat ``configuration_file`` as a table
             (Section) YAML and wrap it in a throwaway ``TEMP_KG`` graph.
         fullmap: Fullmap path used to wrap a table config when ``table_config`` is ``True``.
 
@@ -164,7 +164,7 @@ def build_pipeline(
 
     # Stage 1/6: load tables.
     progress.stage("Loading Tables")
-    g: Graph = _load_graph(graph_configuration_file, table_config, fullmap)
+    g: Graph = _load_graph(configuration_file, table_config, fullmap)
     # imap_unordered yields in completion order, so each worker carries its input
     # index and we reassemble by index to keep raw[i] aligned with g.tables[i].
     start, advance, _ = progress.section_loop(len(g.tables), "Load")
@@ -205,7 +205,7 @@ def build_pipeline(
                 )
             )
         except pydantic.ValidationError as e:
-            raise SectionValidationError(graph_configuration_file, h, flatten_pydantic_error(e)) from e
+            raise SectionValidationError(configuration_file, h, flatten_pydantic_error(e)) from e
         advance()
 
     db: Path = fullmap_db_path(g.fullmap)
@@ -285,7 +285,7 @@ def validate_pipeline(table_configuration_file: Path, progress: PipelineProgress
     logger.info("Validated {n} sections from {config}", n=n, config=table_configuration_file.name)
 
 
-def validate_graph_pipeline(graph_configuration_file: Path, progress: PipelineProgress) -> None:
+def validate_graph_pipeline(configuration_file: Path, progress: PipelineProgress) -> None:
     """Validate a graph config and every table it references (no execution).
 
     Runs a two-stage validate pipeline: validate the Graph model, then validate
@@ -293,7 +293,7 @@ def validate_graph_pipeline(graph_configuration_file: Path, progress: PipelinePr
     ``validate_pipeline`` uses.
 
     Args:
-        graph_configuration_file: Path to the graph YAML file.
+        configuration_file: Path to the graph YAML file.
         progress: Pipeline progress reporter.
 
     Raises:
@@ -308,11 +308,11 @@ def validate_graph_pipeline(graph_configuration_file: Path, progress: PipelinePr
 
     # Stage 1/2: validate the graph config.
     progress.stage("Validating Graph")
-    r: object = from_yaml(graph_configuration_file)
+    r: object = from_yaml(configuration_file)
     try:
         g: Graph = Graph.model_validate(r)
     except pydantic.ValidationError as e:
-        raise GraphValidationError(graph_configuration_file, flatten_pydantic_error(e)) from e
+        raise GraphValidationError(configuration_file, flatten_pydantic_error(e)) from e
 
     # Stage 2/2: validate every referenced table's sections.
     progress.stage("Validating Tables")
@@ -483,11 +483,11 @@ def _download_detail(downloaded: int, total: int) -> str:
 
 @APP.command(name="build-kg")
 def build_kg(
-    graph_configuration_file: Path,
+    configuration_file: Path,
     release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False,
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
-    head: Annotated[bool, cyclopts.Parameter(name=["--head"], negative="")] = False,
+    head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
     table_config: Annotated[bool, cyclopts.Parameter(name=["--table-config", "-tc"], negative="")] = False,
     fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])] = Path("./fullmap"),
 ) -> None:
@@ -498,11 +498,11 @@ def build_kg(
     the fullmap path) so a single table config can be built or tested without
     authoring a full graph config.
     """
-    run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head, table_config=table_config, fullmap=fullmap)
+    run(6, build_pipeline, configuration_file, release=release, qc=qc, log=log, head=head, table_config=table_config, fullmap=fullmap)
 
 
 @APP.command(name="validate")
-def validate(configuration_file: Path) -> None:
+def validate(configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])]) -> None:
     """Validate a graph or table YAML configuration file.
 
     Detects the config kind from the YAML: a mapping with a top-level ``tables`` key
@@ -523,17 +523,17 @@ def agent(
     pmc_ids: Annotated[list[str], cyclopts.Parameter(allow_leading_hyphen=False)],
     *,
     fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])],
-    model_id: Annotated[str | None, cyclopts.Parameter(name=["--model-id"])] = None,
-    api_base: Annotated[str | None, cyclopts.Parameter(name=["--api-base"])] = None,
-    api_key: Annotated[str | None, cyclopts.Parameter(name=["--api-key"])] = None,
-    max_steps: Annotated[int, cyclopts.Parameter(name=["--max-steps"])] = 20,
-    map_threshold: Annotated[float, cyclopts.Parameter(name=["--map-threshold"])] = 0.8,
-    qc_threshold: Annotated[float, cyclopts.Parameter(name=["--qc-threshold"])] = 0.9,
-    max_improve_iters: Annotated[int, cyclopts.Parameter(name=["--max-improve-iters"])] = 3,
-    state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir"])] = Path(".tablassert-agent"),
-    executor: Annotated[Literal["local", "docker"], cyclopts.Parameter(name=["--executor"])] = "local",
-    backend: Annotated[Literal["openai", "litellm"], cyclopts.Parameter(name=["--backend"])] = "openai",
-    no_fetch: Annotated[bool, cyclopts.Parameter(name=["--no-fetch"], negative="")] = False,
+    model_id: Annotated[str | None, cyclopts.Parameter(name=["--model-id", "-m"])] = None,
+    api_base: Annotated[str | None, cyclopts.Parameter(name=["--api-base", "-ab"])] = None,
+    api_key: Annotated[str | None, cyclopts.Parameter(name=["--api-key", "-ak"])] = None,
+    max_steps: Annotated[int, cyclopts.Parameter(name=["--max-steps", "-ms"])] = 20,
+    map_threshold: Annotated[float, cyclopts.Parameter(name=["--map-threshold", "-mt"])] = 0.8,
+    qc_threshold: Annotated[float, cyclopts.Parameter(name=["--qc-threshold", "-qt"])] = 0.9,
+    max_improve_iters: Annotated[int, cyclopts.Parameter(name=["--max-improve-iters", "-mi"])] = 3,
+    state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir", "-sd"])] = Path(".tablassert-agent"),
+    executor: Annotated[Literal["local", "docker"], cyclopts.Parameter(name=["--executor", "-e"])] = "local",
+    backend: Annotated[Literal["openai", "litellm"], cyclopts.Parameter(name=["--backend", "-b"])] = "openai",
+    no_fetch: Annotated[bool, cyclopts.Parameter(name=["--no-fetch", "-nf"], negative="")] = False,
 ) -> None:
     """Autonomously derive, build, audit, and improve KG configs from PMC articles.
 

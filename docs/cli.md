@@ -31,18 +31,18 @@ Build a knowledge graph from a YAML configuration file.
 ### Synopsis
 
 ```bash
-tablassert build-kg <graph_configuration_file> [--release] [--qc] [--log] [--head] [--table-config] [--fullmap <path>]
+tablassert build-kg <configuration_file> [--release] [--qc] [--log] [--head] [--table-config] [--fullmap <path>]
 ```
 
 ### Options
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `graph_configuration_file` | Path | Yes | Knowledge Graph Configuration -- See Docs |
+| `configuration_file` | Path | Yes | Knowledge Graph Configuration -- See Docs |
 | `--release`, `-r` | Flag | No | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
 | `--qc`, `-q` | Flag | No | Run the QC audit stage (exact → fuzzy → BioBERT) on resolved node columns |
 | `--log`, `-l` | Flag | No | Enable verbose per-section logging |
-| `--head` | Flag | No | Preview only the first 5 rows per section for a fast output shape/schema check (cached separately, never clobbers a full build) |
+| `--head`, `-hd` | Flag | No | Preview a random sample of up to 5 rows per section for a fast output shape/schema check (cached separately, never clobbers a full build) |
 | `--table-config`, `-tc` | Flag | No | Treat the positional config as a TABLE (Section) YAML wrapped in a throwaway `TEMP_KG` graph, instead of a Graph YAML |
 | `--fullmap`, `-f` | Path | No | Fullmap path for the throwaway `TEMP_KG` graph when `--table-config` is passed (default `./fullmap`) |
 
@@ -122,7 +122,7 @@ tablassert validate <configuration_file>
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `configuration_file` | Path | Yes | Graph OR Table Configuration -- See Docs |
+| `configuration_file` (or `--configuration-file`, `-f`) | Path | Yes | Graph OR Table Configuration -- See Docs |
 
 ### Example
 
