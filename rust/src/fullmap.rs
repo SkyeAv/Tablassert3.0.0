@@ -146,7 +146,11 @@ fn py_err<E: std::fmt::Display>(err: E) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
 }
 
-fn clean(value: &str) -> String {
+/// Narrow `value` to its cleaned fixed point — repeated trim + matching /
+/// duplicate quote stripping — returning a sub-slice of `value` (zero
+/// allocation).  Cleaning only ever narrows to a sub-slice, so the result always
+/// borrows from the input.
+fn clean_slice(value: &str) -> &str {
     let mut s = value;
     loop {
         let trimmed = s.trim();
@@ -166,10 +170,24 @@ fn clean(value: &str) -> String {
         };
 
         if next == s {
-            return next.to_string();
+            return next;
         }
         s = next;
     }
+}
+
+/// Clean a value (trim + strip matching/duplicate quotes).  Returns a `Cow` that
+/// borrows a sub-slice of the input — zero allocation in every case.
+fn clean(value: &str) -> Cow<'_, str> {
+    Cow::Borrowed(clean_slice(value))
+}
+
+/// Clean AND lowercase in one step (the emit_term hot path): clean to a borrowed
+/// sub-slice, then ASCII-fast-path lowercase via `level_one`.  The `Cow` is
+/// borrowed in the common case (already-clean, already-lowercase ASCII) and only
+/// allocates when the term actually needs lowercasing.
+fn clean_and_lower(value: &str) -> Cow<'_, str> {
+    level_one(clean_slice(value))
 }
 
 /// QC a NORMALIZED (level-one / lowercase) term.  Callers must pass an
@@ -193,15 +211,40 @@ fn token_qc(value: &str) -> bool {
         && !value.contains("hypothetical")
 }
 
-fn level_one(value: &str) -> String {
-    value.to_lowercase()
+fn level_one(value: &str) -> Cow<'_, str> {
+    if value.is_ascii() {
+        // ASCII fast path: lowercasing is a byte operation.  Borrow unchanged if
+        // already lowercase; otherwise lowercase into a fresh String.
+        if value.bytes().all(|b| !b.is_ascii_uppercase()) {
+            Cow::Borrowed(value)
+        } else {
+            let mut lowered = value.to_string();
+            lowered.make_ascii_lowercase();
+            Cow::Owned(lowered)
+        }
+    } else {
+        Cow::Owned(value.to_lowercase())
+    }
 }
 
-fn level_two(value: &str) -> String {
-    value
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
-        .collect()
+fn level_two(value: &str) -> Cow<'_, str> {
+    // Fast path: level-two keeps [A-Za-z0-9_]; for an already-lowercase ASCII
+    // input that is exactly [a-z0-9_], so when every byte qualifies the filter is
+    // a no-op and we borrow unchanged (the common case post-level_one).  Any
+    // uppercase or non-ASCII byte falls through to the filtering slow path.
+    if value
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+    {
+        Cow::Borrowed(value)
+    } else {
+        Cow::Owned(
+            value
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect(),
+        )
+    }
 }
 
 /// Terms the lookup path can never query: the fullmap `distinct()` bad-regex
@@ -1101,26 +1144,35 @@ impl EquivIndex {
     }
 }
 
-/// Process a single term through clean → level_one → token_qc → level_two and
+/// Process a single term through clean_and_lower → token_qc → level_two and
 /// insert the resulting normalized forms into `local_terms`.  token_qc runs on
 /// the level-one (lowercase) form — exactly equivalent to QC-ing the cleaned
 /// value, since lowercasing is case-only — but avoids a redundant per-term
-/// `to_lowercase`.  The level-one key is moved straight into the entry (no
-/// per-hit clone); level-two is derived first so it survives the move.
+/// `to_lowercase`.  The whole chain is `Cow`: clean/level_one/level_two borrow in
+/// the common case (clean, lowercase, `[a-z0-9_]` ASCII), so the ONLY allocation
+/// is the `into_owned()` when a form is actually inserted as a map key.
 fn emit_term<S: BuildHasher>(
     term: &str,
     pair: (u32, u8),
     local_terms: &mut HashMap<String, Vec<(u32, u8)>, S>,
 ) {
-    let cleaned = clean(term);
-    let l1 = level_one(&cleaned);
+    let l1 = clean_and_lower(term);
     if !token_qc(&l1) || is_dead_term(&l1) {
         return;
     }
-    let l2 = level_two(&l1);
-    let emit_l2 = l2 != l1 && token_qc(&l2) && !is_dead_term(&l2);
-    local_terms.entry(l1).or_default().push(pair);
-    if emit_l2 {
+    // Derive the (optional) level-two key while `l1` is still borrowable; the
+    // block yields an owned String (allocating only when level-two differs and
+    // survives QC) so `l1` can be moved into its own entry afterwards.
+    let l2_key: Option<String> = {
+        let l2 = level_two(&l1);
+        if l2 != l1.as_ref() && token_qc(&l2) && !is_dead_term(&l2) {
+            Some(l2.into_owned())
+        } else {
+            None
+        }
+    };
+    local_terms.entry(l1.into_owned()).or_default().push(pair);
+    if let Some(l2) = l2_key {
         local_terms.entry(l2).or_default().push(pair);
     }
 }
@@ -1218,7 +1270,7 @@ fn process_row(
             CurieRow {
                 prefix_id,
                 local_id: local_id.to_string(),
-                preferred_name: clean(preferred_name),
+                preferred_name: clean(preferred_name).into_owned(),
                 category_id,
                 taxon_id,
             },
