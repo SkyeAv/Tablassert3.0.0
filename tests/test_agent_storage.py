@@ -285,3 +285,141 @@ def test_supervisor_writes_configs_to_configs_folder(tmp_path: Path, fullmap_db:
     # The old FLAT location is gone.
     assert not (state_dir / "PMC1.yaml").exists(), "no stray flat BEST config at the old state_dir/<pmc>.yaml"
     assert not (state_dir / "PMC1.derived.yaml").exists(), "no stray flat derived config at the old location"
+
+
+# --------------------------------------------------------------------------- #
+# US-504: STABLE builds dir + pipeline-reuse contract
+# --------------------------------------------------------------------------- #
+
+
+def test_supervisor_builds_to_stable_builds_dir(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With ``workdir=None``, a MAPPED run persists the KGX artifacts under ``state_dir/builds/<pmc>/`` (REQ-LAYOUT-5/8).
+
+    Why: build outputs must be STABLE + discoverable, NOT a throwaway ``tempfile.mkdtemp`` dir that
+    vanishes with the process. The unified CLI layout (``workdir=None``) co-locates builds under
+    ``state_dir``, so ``build_and_audit``'s workdir must be exactly ``pmc_build_dir(state_dir, pmc)``
+    and the KGX ``<name>_<version>.{nodes,edges}.ndjson`` (name/version default to ``agent``/``0.0.1``)
+    must PERSIST there after the run so downstream stages can find the graph without rebuilding.
+    """
+    pytest.importorskip("smolagents")
+    import yaml
+
+    from tablassert.agent import ConfigRecord, make_fake_model, run_supervisor
+
+    state_dir: Path = tmp_path / "state"
+    download_dir: Path = pmc_download_dir(state_dir, "PMC1")  # == state_dir/downloads/PMC1
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        outdir.mkdir(parents=True, exist_ok=True)
+        table: Path = outdir / "good.tsv"
+        table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+        return [table]
+
+    monkeypatch.setattr("tablassert.agent.fetch_pmc_article", fake_fetch)
+
+    good_yaml: str = yaml.safe_dump(
+        {
+            "source": {"kind": "text", "local": str(download_dir / "good.tsv"), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "predicate": "associated_with",
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC1"},
+        },
+        sort_keys=False,
+    )
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        # workdir omitted => None => builds follow state_dir (art_root == state_dir)
+    )
+
+    records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
+    rec: ConfigRecord = records["PMC1"]
+    assert rec.status == "MAPPED", f"fake config covers both genes; expected MAPPED, got {rec.status}: {rec.notes}"
+
+    build_dir: Path = pmc_build_dir(state_dir, "PMC1")  # == state_dir/builds/PMC1
+    assert build_dir == state_dir / "builds" / "PMC1"
+    nodes: Path = build_dir / "agent_0.0.1.nodes.ndjson"
+    edges: Path = build_dir / "agent_0.0.1.edges.ndjson"
+    assert nodes.is_file(), "the KGX nodes artifact must persist under builds/<pmc>/"
+    assert edges.is_file(), "the KGX edges artifact must persist under builds/<pmc>/"
+    assert nodes.stat().st_size > 0, "the nodes artifact must be non-empty"
+    assert edges.stat().st_size > 0, "the edges artifact must be non-empty"
+    # The old FLAT build location (art_root/<pmc>) is gone.
+    assert not (state_dir / "PMC1" / "agent_0.0.1.nodes.ndjson").exists(), "no stray flat build at the old state_dir/<pmc>/"
+
+
+def test_supervisor_best_config_pipeline_reuse(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The BEST config references the STABLE download and rebuilds from a FRESH cwd (REQ-LAYOUT-5/8).
+
+    Why: the pipeline-reuse contract. ``tablassert build-kg <cfg> --table-config --fullmap <fm>`` must
+    be able to reuse the supervisor's accepted config WITHOUT re-fetching: its ``source.local`` must be
+    the REAL, persisted download under ``state_dir/downloads/<pmc>/`` (not a temp path), and because that
+    path is ABSOLUTE the config must build from ANY cwd. This proves the download is real + referenced
+    and that the best config is self-sufficient for downstream reuse.
+    """
+    pytest.importorskip("smolagents")
+    import yaml
+
+    from tablassert.agent import ConfigRecord, build_and_audit, make_fake_model, run_supervisor
+
+    state_dir: Path = tmp_path / "state"
+    download_dir: Path = pmc_download_dir(state_dir, "PMC1")  # == state_dir/downloads/PMC1
+    stable_table: Path = download_dir / "good.tsv"  # the deterministic download path
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        # Mimic the REAL fetch: write the payload INTO the outdir we are given, so the download
+        # lands at the deterministic state_dir/downloads/PMC1/good.tsv (not a throwaway temp dir).
+        outdir.mkdir(parents=True, exist_ok=True)
+        table: Path = outdir / "good.tsv"
+        table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+        return [table]
+
+    monkeypatch.setattr("tablassert.agent.fetch_pmc_article", fake_fetch)
+
+    good_yaml: str = yaml.safe_dump(
+        {
+            "source": {"kind": "text", "local": str(stable_table), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "predicate": "associated_with",
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC1"},
+        },
+        sort_keys=False,
+    )
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        # workdir omitted => None => the unified CLI layout (art_root == state_dir)
+    )
+
+    records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
+    rec: ConfigRecord = records["PMC1"]
+    assert rec.status == "MAPPED", f"fake config covers both genes; expected MAPPED, got {rec.status}: {rec.notes}"
+
+    # (1) The BEST config parses and its source.local is the REAL, persisted download under downloads/.
+    best: Path = best_config_path(state_dir, "PMC1")  # == state_dir/configs/PMC1.yaml
+    assert best.is_file(), "the BEST config must be written to configs/<pmc>.yaml"
+    best_cfg: dict[str, Any] = yaml.safe_load(best.read_text())
+    section: dict[str, Any] = best_cfg.get("template", best_cfg)  # supervisor writes the bare merged section
+    local_path: Path = Path(section["source"]["local"])
+    assert local_path.is_file(), "the best config's source.local must exist as a real file (download is real)"
+    assert downloads_dir(state_dir) in local_path.parents, "source.local must live under the stable downloads/ dir"
+    assert local_path == stable_table, "source.local must be the deterministic download path (download is referenced)"
+
+    # (2) That best config BUILDS from a FRESH cwd via the absolute source.local (pipeline reuse).
+    fresh: Path = tmp_path / "fresh-reuse-cwd"
+    report: dict[str, object] = build_and_audit(best.read_text(), fullmap=fullmap_db, workdir=fresh)
+    assert report["ok"] is True, f"the best config must rebuild from a fresh cwd: {report.get('errors')}"

@@ -2086,7 +2086,7 @@ def run_supervisor(
             derived_path.write_text(config)
             rec.config_path = str(derived_path)
 
-            report: dict[str, object] = build_and_audit(config, fullmap=fullmap, name=name, version=version, workdir=art_root / pmc_id)
+            report: dict[str, object] = build_and_audit(config, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id))
             raw_cov: object = report.get("coverage_pct")
             coverage: float = float(raw_cov) if isinstance(raw_cov, (int, float)) else 0.0
             rec.coverage_history.append(coverage)
@@ -2100,11 +2100,13 @@ def run_supervisor(
             current_cov: float = coverage
             while current_cov < map_threshold and iters < max_improve_iters:
                 try:
-                    cov_report: dict[str, object] = map_coverage(current_config, fullmap=fullmap, workdir=art_root / pmc_id)
+                    cov_report: dict[str, object] = map_coverage(current_config, fullmap=fullmap, workdir=pmc_build_dir(art_root, pmc_id))
                 except Exception:  # a coverage failure must not abort the improve attempt
                     cov_report = {"per_column": {}, "unresolved": []}
                 edited, rationale = propose_config_edit(current_config, cov_report)
-                report2: dict[str, object] = build_and_audit(edited, fullmap=fullmap, name=name, version=version, workdir=art_root / pmc_id)
+                report2: dict[str, object] = build_and_audit(
+                    edited, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id)
+                )
                 raw_cov2: object = report2.get("coverage_pct")
                 cov2: float = float(raw_cov2) if isinstance(raw_cov2, (int, float)) else 0.0
                 if cov2 > current_cov:  # ACCEPT iff strictly better
