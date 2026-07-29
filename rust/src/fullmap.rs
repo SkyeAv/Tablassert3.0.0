@@ -4,11 +4,13 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList};
 use rayon::prelude::*;
 use redb::{Database, Durability, ReadableTable, TableDefinition};
+use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fs::File;
+use std::hash::{BuildHasher, BuildHasherDefault};
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -45,6 +47,12 @@ type MergeItem = (Reverse<String>, usize, Vec<(u32, u8)>);
 /// plus a clone of that shard's handle, so a worker thread owns both outright
 /// (no shared receiver or borrow).
 type ShardJob = (Vec<(usize, String)>, Arc<Database>);
+/// Fast non-cryptographic hash map for the build-hot paths (per-worker term
+/// aggregation, dimension/CURIE interning).  `FxHasher` (rustc's own hasher) is
+/// a single multiply-XOR pass — ~3-5x faster than std's SipHash for these short
+/// string/integer keys.  Collision behavior is irrelevant to build correctness:
+/// these maps are internal, and the on-disk RECORDS key is xxh64 (not FxHash).
+type FxHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
 
 /// Database cache keyed by canonical path only.
 ///
@@ -349,14 +357,14 @@ fn shard_index(key: &str) -> usize {
 /// A sharded concurrent HashMap that routes keys by xxhash to reduce lock
 /// contention.  Each shard is independently locked.
 struct ShardedMap<V> {
-    shards: Vec<RwLock<HashMap<String, V>>>,
+    shards: Vec<RwLock<FxHashMap<String, V>>>,
 }
 
 impl<V> ShardedMap<V> {
     fn new() -> Self {
         let mut shards = Vec::with_capacity(SHARD_COUNT);
         for _ in 0..SHARD_COUNT {
-            shards.push(RwLock::new(HashMap::new()));
+            shards.push(RwLock::new(FxHashMap::default()));
         }
         Self { shards }
     }
@@ -394,14 +402,14 @@ impl<V> ShardedMap<V> {
 /// preserving one stable `curie_id` per unique CURIE.  Mirrors datassert's
 /// hash-keyed `curieCounter`, widened from 64 to 128 bits for safety.
 struct CurieIdMap {
-    shards: Vec<RwLock<HashMap<u128, u32>>>,
+    shards: Vec<RwLock<FxHashMap<u128, u32>>>,
 }
 
 impl CurieIdMap {
     fn new() -> Self {
         let mut shards = Vec::with_capacity(SHARD_COUNT);
         for _ in 0..SHARD_COUNT {
-            shards.push(RwLock::new(HashMap::new()));
+            shards.push(RwLock::new(FxHashMap::default()));
         }
         Self { shards }
     }
@@ -541,7 +549,7 @@ impl RunReader {
 /// its shard's list.  The frame format is unchanged (see `RunWriter`); each
 /// per-shard file is term-sorted exactly as the old single run file was.
 fn spill_run(
-    local: &mut HashMap<String, Vec<(u32, u8)>>,
+    local: &mut FxHashMap<String, Vec<(u32, u8)>>,
     spill_dir: &Path,
     run_id: usize,
     shard_count: usize,
@@ -1046,7 +1054,11 @@ impl EquivIndex {
 /// value, since lowercasing is case-only — but avoids a redundant per-term
 /// `to_lowercase`.  The level-one key is moved straight into the entry (no
 /// per-hit clone); level-two is derived first so it survives the move.
-fn emit_term(term: &str, pair: (u32, u8), local_terms: &mut HashMap<String, Vec<(u32, u8)>>) {
+fn emit_term<S: BuildHasher>(
+    term: &str,
+    pair: (u32, u8),
+    local_terms: &mut HashMap<String, Vec<(u32, u8)>, S>,
+) {
     let cleaned = clean(term);
     let l1 = level_one(&cleaned);
     if !token_qc(&l1) || is_dead_term(&l1) {
@@ -1105,7 +1117,7 @@ struct SynonymShared<'a> {
 /// A worker's private, non-shared accumulation buffers.
 #[derive(Default)]
 struct WorkerBuf {
-    terms: HashMap<String, Vec<(u32, u8)>>,
+    terms: FxHashMap<String, Vec<(u32, u8)>>,
     curie_rows: Vec<(u32, CurieRow)>,
 }
 
@@ -1219,7 +1231,7 @@ fn flush_buf(sh: &SynonymShared<'_>, buf: &mut WorkerBuf) -> PyResult<()> {
 fn produce_file(
     path: &Path,
     tx: &SyncSender<(u8, Vec<String>)>,
-    source_ids: &HashMap<String, u8>,
+    source_ids: &FxHashMap<String, u8>,
     chunk_bytes: usize,
     progress: Option<&Arc<Progress>>,
     files_done: &AtomicUsize,
@@ -1320,11 +1332,11 @@ fn worker_loop(rx: &Mutex<Receiver<(u8, Vec<String>)>>, sh: &SynonymShared<'_>) 
 /// Result of the parallel synonym-processing pass.
 struct SynonymBuildResult {
     /// prefix string -> u16 id
-    prefix_ids: HashMap<String, u16>,
+    prefix_ids: FxHashMap<String, u16>,
     /// category string -> u16 id
-    category_ids: HashMap<String, u16>,
+    category_ids: FxHashMap<String, u16>,
     /// source string -> u8 id
-    source_ids: HashMap<String, u8>,
+    source_ids: FxHashMap<String, u8>,
     /// curie-row spill-run files holding (curie_id, encoded CurieRow)
     curie_run_paths: Vec<PathBuf>,
     /// per-shard sorted spill-run files holding term -> pairs; `run_paths[shard]`
@@ -1348,7 +1360,7 @@ fn process_synonyms(
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<SynonymBuildResult> {
     // Pre-compute source IDs from filenames (small, deterministic).
-    let mut source_ids: HashMap<String, u8> = HashMap::new();
+    let mut source_ids: FxHashMap<String, u8> = FxHashMap::default();
     for path in synonyms {
         let name = source_name(path);
         let next_id = u8::try_from(source_ids.len())
@@ -1480,11 +1492,11 @@ fn process_synonyms(
     scope_result?;
 
     // Build final prefix_ids / category_ids maps from the sharded counters.
-    let mut prefix_ids: HashMap<String, u16> = HashMap::new();
+    let mut prefix_ids: FxHashMap<String, u16> = FxHashMap::default();
     for shard in &prefix_map.shards {
         prefix_ids.extend(shard.read().unwrap().iter().map(|(k, v)| (k.clone(), *v)));
     }
-    let mut category_ids: HashMap<String, u16> = HashMap::new();
+    let mut category_ids: FxHashMap<String, u16> = FxHashMap::default();
     for shard in &category_map.shards {
         category_ids.extend(shard.read().unwrap().iter().map(|(k, v)| (k.clone(), *v)));
     }
@@ -1508,9 +1520,9 @@ fn process_synonyms(
 #[allow(clippy::too_many_arguments)]
 fn write_final_database(
     output: &Path,
-    prefix_ids: &HashMap<String, u16>,
-    category_ids: &HashMap<String, u16>,
-    source_ids: &HashMap<String, u8>,
+    prefix_ids: &FxHashMap<String, u16>,
+    category_ids: &FxHashMap<String, u16>,
+    source_ids: &FxHashMap<String, u8>,
     curie_run_paths: &[PathBuf],
     run_paths: &[Vec<PathBuf>],
     cache_bytes: usize,
