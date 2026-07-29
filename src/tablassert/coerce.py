@@ -328,7 +328,7 @@ def study_size_target(name: str) -> str | None:
     if STUDY_SIZE_PREFIX_PATTERN.search(name):
         return "supporting_study_size"
     if STUDY_SIZE_SUFFIX_PATTERN.search(name):
-        return "supporting_study_size"
+        return "supporting_study_size"  # pragma: no cover -- documented subset of COUNT (unit<_SEP>n); kept explicit, never reached
     if STUDY_SIZE_SINGLETON_PATTERN.search(name):
         return "supporting_study_size"
     return None
