@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use redb::{Database, Durability, ReadableTable, TableDefinition};
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fs::File;
@@ -242,48 +242,96 @@ fn open_reader(path: &Path) -> PyResult<Box<dyn Read>> {
     Ok(Box::new(file))
 }
 
-fn for_json_lines(path: &Path, mut visit: impl FnMut(Value) -> PyResult<()>) -> PyResult<()> {
-    let reader = BufReader::new(open_reader(path)?);
-    for line in reader.lines() {
-        let raw = line.map_err(py_err)?;
-        if raw.trim().is_empty() {
+/// A synonym NDJSON row, deserialized with borrowed fields so the hot synonym
+/// path never builds a `serde_json::Value` DOM (~7 field allocations per row).
+/// `Cow` handles JSON strings that need unescaping (`\uXXXX`) while still
+/// borrowing the common plain-ASCII case straight from the line buffer.  Field
+/// aliases mirror the legacy key fallbacks (curie|id, types|categories,
+/// taxa|taxon, preferred_name|name).
+#[derive(Deserialize)]
+struct SynonymRow<'a> {
+    #[serde(rename = "curie", alias = "id", default, borrow)]
+    curie: Option<Cow<'a, str>>,
+    #[serde(default, borrow)]
+    names: Vec<Cow<'a, str>>,
+    #[serde(rename = "types", alias = "categories", default, borrow)]
+    types: Vec<Cow<'a, str>>,
+    #[serde(rename = "taxa", alias = "taxon", default, borrow)]
+    taxa: Vec<Cow<'a, str>>,
+    #[serde(rename = "preferred_name", alias = "name", default, borrow)]
+    preferred_name: Option<Cow<'a, str>>,
+}
+
+/// A class NDJSON row (the equivalent-identifiers source), deserialized with a
+/// borrowed `id`.  `equivalent_identifiers` elements are heterogeneously either
+/// a bare CURIE string or an object carrying one under identifier|id|curie, so
+/// they decode via the untagged `EquivId` (owned — untagged decoding buffers its
+/// content, so borrowing buys nothing there and the equiv lists are materialized
+/// as owned strings anyway).
+#[derive(Deserialize)]
+struct ClassRow<'a> {
+    #[serde(rename = "id", alias = "curie", default, borrow)]
+    id: Option<Cow<'a, str>>,
+    #[serde(default)]
+    equivalent_identifiers: Vec<EquivId>,
+}
+
+/// One `equivalent_identifiers` element: a bare CURIE string or an object with
+/// the CURIE under `identifier`/`id`/`curie` (untagged to accept both shapes).
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum EquivId {
+    String(String),
+    Object(EquivIdObject),
+}
+
+#[derive(Deserialize)]
+struct EquivIdObject {
+    #[serde(rename = "identifier", alias = "id", alias = "curie", default)]
+    identifier: Option<String>,
+}
+
+/// Stream a class NDJSON file (gz or plain) line-by-line into a reusable byte
+/// buffer, decoding each non-empty line into a borrowed `ClassRow` and handing it
+/// to `visit`.  Zero per-line `String` allocation (the row borrows from the line
+/// buffer); replaces the old `Value`-DOM `for_json_lines`.
+fn for_class_lines(
+    path: &Path,
+    mut visit: impl FnMut(&ClassRow<'_>) -> PyResult<()>,
+) -> PyResult<()> {
+    let mut reader = BufReader::new(open_reader(path)?);
+    let mut line: Vec<u8> = Vec::with_capacity(8192);
+    loop {
+        line.clear();
+        let n = reader.read_until(b'\n', &mut line).map_err(py_err)?;
+        if n == 0 {
+            break; // clean EOF
+        }
+        while line.last() == Some(&b'\n') || line.last() == Some(&b'\r') {
+            line.pop();
+        }
+        if line.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
-        visit(serde_json::from_str(&raw).map_err(py_err)?)?;
+        let row: ClassRow = serde_json::from_slice(&line).map_err(py_err)?;
+        visit(&row)?;
     }
     Ok(())
 }
 
-fn string_field(value: &Value, keys: &[&str]) -> Option<String> {
-    for key in keys {
-        if let Some(s) = value.get(*key).and_then(Value::as_str) {
-            return Some(s.to_string());
-        }
-    }
-    None
-}
-
-/// Borrow the first string element of `value`'s array at `key` (skipping
-/// non-string elements), or None.  Zero-copy: returns a `&str` into the live
-/// `Value` instead of allocating an owned `Vec<String>` just to take its head.
-fn first_str<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
-    value
-        .get(key)
-        .and_then(Value::as_array)
-        .and_then(|items| items.iter().find_map(Value::as_str))
-}
-
-fn first_category(value: &Value) -> String {
-    first_str(value, "types")
-        .or_else(|| first_str(value, "categories"))
+fn first_category(row: &SynonymRow<'_>) -> String {
+    row.types
+        .first()
+        .map(Cow::as_ref)
         .unwrap_or("NamedThing")
         .trim_start_matches("biolink:")
         .to_string()
 }
 
-fn first_taxon(value: &Value) -> i32 {
-    first_str(value, "taxa")
-        .or_else(|| first_str(value, "taxon"))
+fn first_taxon(row: &SynonymRow<'_>) -> i32 {
+    row.taxa
+        .first()
+        .map(Cow::as_ref)
         .unwrap_or_default()
         .trim_start_matches("NCBITaxon:")
         .parse::<i32>()
@@ -296,29 +344,29 @@ fn split_curie(curie: &str) -> Option<(&str, &str)> {
         .filter(|(prefix, local)| !prefix.is_empty() && !local.is_empty())
 }
 
-fn equivalent_id(value: &Value) -> Option<String> {
-    if let Some(s) = value.as_str() {
-        return Some(s.to_string());
+/// The CURIE string carried by one `equivalent_identifiers` element, if any.
+fn equivalent_id_value(equiv: &EquivId) -> Option<String> {
+    match equiv {
+        EquivId::String(s) => Some(s.clone()),
+        EquivId::Object(o) => o.identifier.clone(),
     }
-    string_field(value, &["identifier", "id", "curie"])
 }
 
-fn class_id_and_equivalents(row: &Value) -> Option<(String, Vec<String>)> {
-    let equivalents = row.get("equivalent_identifiers").and_then(Value::as_array);
-    let mut ids = Vec::new();
-    let id = string_field(row, &["id", "curie"]).or_else(|| {
-        equivalents
-            .and_then(|items| items.first())
-            .and_then(equivalent_id)
-    })?;
+fn class_id_and_equivalents(row: &ClassRow<'_>) -> Option<(String, Vec<String>)> {
+    let mut ids: Vec<String> = Vec::new();
+    let id = match row.id.as_deref() {
+        Some(id) => id.to_owned(),
+        None => row
+            .equivalent_identifiers
+            .first()
+            .and_then(equivalent_id_value)?,
+    };
     // Primary id is NOT included in the value Vec — process_synonyms already
     // adds the curie itself as a term, saving ~38 GB of redundant storage.
-    if let Some(equivalents) = equivalents {
-        for equivalent in equivalents {
-            if let Some(eid) = equivalent_id(equivalent) {
-                if !ids.contains(&eid) {
-                    ids.push(eid);
-                }
+    for equivalent in &row.equivalent_identifiers {
+        if let Some(eid) = equivalent_id_value(equivalent) {
+            if !ids.contains(&eid) {
+                ids.push(eid);
             }
         }
     }
@@ -903,8 +951,8 @@ impl EquivIndex {
             .par_iter()
             .map(|path| {
                 let mut local: HashMap<String, Vec<String>> = HashMap::new();
-                for_json_lines(path, |row| {
-                    if let Some((id, equivs)) = class_id_and_equivalents(&row) {
+                for_class_lines(path, |row| {
+                    if let Some((id, equivs)) = class_id_and_equivalents(row) {
                         local.entry(id).or_default().extend(equivs);
                         // Bound per-thread memory: spill a sorted run once the
                         // buffer exceeds the threshold instead of holding an
@@ -1131,13 +1179,13 @@ struct WorkerBuf {
 fn process_row(
     sh: &SynonymShared<'_>,
     source_id: u8,
-    row: &Value,
+    row: &SynonymRow<'_>,
     buf: &mut WorkerBuf,
 ) -> PyResult<()> {
-    let Some(curie) = string_field(row, &["curie", "id"]) else {
+    let Some(curie) = row.curie.as_deref() else {
         return Ok(());
     };
-    let Some((prefix, local_id)) = split_curie(&curie) else {
+    let Some((prefix, local_id)) = split_curie(curie) else {
         return Ok(());
     };
     // Skip CURIEs whose prefix the caller excludes (opt-in via
@@ -1155,8 +1203,7 @@ fn process_row(
         u16::try_from(sh.category_counter.fetch_add(1, Ordering::Relaxed))
             .expect("too many fullmap categories")
     });
-    let preferred_name =
-        string_field(row, &["preferred_name", "name"]).unwrap_or_else(|| curie.clone());
+    let preferred_name = row.preferred_name.as_deref().unwrap_or(curie);
     let taxon_id = first_taxon(row);
 
     let mut is_new = false;
@@ -1171,7 +1218,7 @@ fn process_row(
             CurieRow {
                 prefix_id,
                 local_id: local_id.to_string(),
-                preferred_name: clean(&preferred_name),
+                preferred_name: clean(preferred_name),
                 category_id,
                 taxon_id,
             },
@@ -1179,15 +1226,13 @@ fn process_row(
     }
 
     let pair = (curie_id, source_id);
-    // Borrow each name as a &str straight from the live Value instead of
-    // building an owned Vec<String>; emit_term only needs a &str.
-    if let Some(names) = row.get("names").and_then(Value::as_array) {
-        for name in names.iter().filter_map(Value::as_str) {
-            emit_term(name, pair, &mut buf.terms);
-        }
+    // Borrow each name as a &str straight from the decoded row; emit_term only
+    // needs a &str (the Cow derefs).
+    for name in &row.names {
+        emit_term(name, pair, &mut buf.terms);
     }
-    emit_term(&curie, pair, &mut buf.terms);
-    if let Some(iter) = sh.equivalents.lookup(&curie) {
+    emit_term(curie, pair, &mut buf.terms);
+    if let Some(iter) = sh.equivalents.lookup(curie) {
         for equiv in iter {
             emit_term(equiv, pair, &mut buf.terms);
         }
@@ -1330,7 +1375,7 @@ fn worker_loop(rx: &Mutex<Receiver<LineChunk>>, sh: &SynonymShared<'_>) -> PyRes
         match job {
             Ok((source_id, lines)) => {
                 for line in lines {
-                    let row: Value = serde_json::from_slice(&line).map_err(py_err)?;
+                    let row: SynonymRow = serde_json::from_slice(&line).map_err(py_err)?;
                     process_row(sh, source_id, &row, &mut buf)?;
                 }
             }
