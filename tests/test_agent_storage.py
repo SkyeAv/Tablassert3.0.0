@@ -213,3 +213,75 @@ def test_supervisor_downloads_to_stable_dir(tmp_path: Path, fullmap_db: Path, mo
     assert expected_outdir == state_dir / "downloads" / "PMC1"
     assert expected_outdir.is_dir(), "the stable downloads dir must persist after the run"
     assert (expected_outdir / "good.tsv").is_file(), "the fetched payload must persist under the stable dir"
+
+
+# --------------------------------------------------------------------------- #
+# US-503: ALL configs land in ONE dedicated ``<state_dir>/configs/`` folder
+# --------------------------------------------------------------------------- #
+
+
+def test_supervisor_writes_configs_to_configs_folder(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With ``workdir=None``, ``run_supervisor`` writes BOTH configs into ``state_dir/configs/`` (REQ-LAYOUT-4/6).
+
+    Why: every config artifact (the agent-derived ``<pmc>.derived.yaml`` AND the accepted BEST
+    ``<pmc>.yaml``) must live in ONE dedicated ``configs/`` folder so reuse/cleanup can find them
+    without scanning the state dir, while ``state.json`` stays at the state-dir ROOT (NEVER inside
+    ``configs/``). This pins the US-503 contract and guards against regressing to the old FLAT
+    ``state_dir/<pmc>.yaml`` location.
+    """
+    pytest.importorskip("smolagents")
+    import yaml
+
+    from tablassert.agent import ConfigRecord, make_fake_model, run_supervisor
+
+    state_dir: Path = tmp_path / "state"
+    download_dir: Path = pmc_download_dir(state_dir, "PMC1")  # == state_dir/downloads/PMC1
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        outdir.mkdir(parents=True, exist_ok=True)
+        table: Path = outdir / "good.tsv"
+        table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+        return [table]
+
+    monkeypatch.setattr("tablassert.agent.fetch_pmc_article", fake_fetch)
+
+    good_yaml: str = yaml.safe_dump(
+        {
+            "source": {"kind": "text", "local": str(download_dir / "good.tsv"), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "predicate": "associated_with",
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC1"},
+        },
+        sort_keys=False,
+    )
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        # workdir omitted => None => configs follow state_dir (cfg_root == state_dir)
+    )
+
+    records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
+    rec: ConfigRecord = records["PMC1"]
+    assert rec.status == "MAPPED", f"fake config covers both genes; expected MAPPED, got {rec.status}: {rec.notes}"
+
+    configs: Path = state_dir / "configs"
+    best: Path = configs / "PMC1.yaml"
+    derived: Path = configs / "PMC1.derived.yaml"
+    # BOTH configs live in the ONE dedicated configs/ folder, and the record points there.
+    assert best.is_file(), "the BEST config must be written to configs/<pmc>.yaml"
+    assert derived.is_file(), "the derived config must be written to configs/<pmc>.derived.yaml"
+    assert rec.best_config_path == str(best), "best_config_path must point into configs/"
+    assert rec.config_path == str(best), "config_path must point at the BEST config in configs/"
+    # state.json stays at the state-dir ROOT, never inside configs/.
+    assert (state_dir / "state.json").is_file(), "state.json must persist at the state-dir root"
+    assert not (configs / "state.json").exists(), "state.json must NEVER live inside configs/"
+    # The old FLAT location is gone.
+    assert not (state_dir / "PMC1.yaml").exists(), "no stray flat BEST config at the old state_dir/<pmc>.yaml"
+    assert not (state_dir / "PMC1.derived.yaml").exists(), "no stray flat derived config at the old location"

@@ -1997,7 +1997,7 @@ def run_supervisor(
       3. ``build_and_audit`` it for coverage, then run the deterministic IMPROVE loop
          (``propose_config_edit`` -> ``build_and_audit``, accepting an edit IFF STRICTLY better so
          ``coverage_history`` is monotonic);
-      4. write the best config to ``state_dir/<pmc_id>.yaml`` and mark MAPPED (coverage ≥
+      4. write the best config to ``state_dir/configs/<pmc_id>.yaml`` and mark MAPPED (coverage ≥
          ``map_threshold``) or SKIPPED (budget exhausted).
 
     The whole per-pmc body is wrapped in try/except: ANY failure marks that record SKIPPED with the
@@ -2081,8 +2081,8 @@ def run_supervisor(
                 save_state(state_dir, state)
                 continue
 
-            state_dir.mkdir(parents=True, exist_ok=True)
-            derived_path: Path = state_dir / f"{pmc_id}.derived.yaml"
+            configs_dir(state_dir).mkdir(parents=True, exist_ok=True)
+            derived_path: Path = derived_config_path(state_dir, pmc_id)
             derived_path.write_text(config)
             rec.config_path = str(derived_path)
 
@@ -2123,7 +2123,7 @@ def run_supervisor(
                 rec.attempts += 1
                 save_state(state_dir, state)
 
-            best_path: Path = state_dir / f"{pmc_id}.yaml"
+            best_path: Path = best_config_path(state_dir, pmc_id)
             best_path.write_text(current_config)
             rec.best_config_path = str(best_path)
             rec.config_path = str(best_path)
