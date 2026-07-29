@@ -123,13 +123,46 @@ control flow over agentic decisions. For each PMC id it:
 A config that won't map after `--max-improve-iters` is marked `SKIPPED: <reason>` and the supervisor
 advances — one difficult article never aborts the batch.
 
-### Checkpoint / resume
+### Workspace layout & checkpoint / resume
 
-State lives in `.tablassert-agent/state.json` (git-ignored), written **atomically** after each config and
-each improve iteration. Each record holds `{pmc_id, status, config_path, coverage_history[], qc_pass_rate,
-attempts, last_edits, best_coverage, best_config_path}`. Re-running the same command **resumes**: configs
-already `MAPPED`/`SKIPPED` are skipped, and the best config for each article is written to
-`.tablassert-agent/<pmc_id>.yaml`.
+`tablassert agent` uses a **single stable workspace root** — `state_dir` (default `.tablassert-agent`,
+override with `--state-dir`). The CLI never sets a separate artifact root, so the checkpoint, the configs,
+the fetched downloads, and the build outputs **all co-locate** under it:
+
+```
+.tablassert-agent/                       # = state_dir (the workspace root)
+  state.json                             # supervisor checkpoint (atomic; unchanged location)
+  configs/<pmc_id>.yaml                  # best / accepted config (ALL configs in ONE folder)
+  configs/<pmc_id>.derived.yaml          # initial agent-derived config
+  downloads/<pmc_id>/<prefix>/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
+  builds/<pmc_id>/                       # KGX agent_0.0.1.{nodes,edges}.ndjson + table.yaml + graph.yaml + .tablassert/store — stable
+```
+
+| Path | Contents | Lifecycle |
+| --- | --- | --- |
+| `state.json` | supervisor checkpoint: `{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path}` per record | written **atomically** (tmp write + `os.replace`) after each config and each improve iteration; git-ignored |
+| `configs/<pmc_id>.yaml` | the best / accepted config for the article | the reuse entry point (below) |
+| `configs/<pmc_id>.derived.yaml` | the agent's initial derived config | kept for provenance |
+| `downloads/<pmc_id>/<prefix>/` | fetched PMC payload (main text + metadata + tables) | **stable** — persists across runs; `--no-fetch` replays this snapshot instead of re-downloading |
+| `builds/<pmc_id>/` | KGX artifacts: `agent_0.0.1.{nodes,edges}.ndjson`, `table.yaml`, `graph.yaml`, `.tablassert/store` | **stable** — the built graph for the article |
+
+Re-running the same command **resumes** from the checkpoint: records already `MAPPED`/`SKIPPED` are
+skipped. Because `downloads/` persists, a resumed or `--no-fetch` run reuses the already-fetched payload
+with no re-download.
+
+### Reusing agent outputs with the full pipeline
+
+The best config's `source.local` points at the downloaded table under `downloads/<pmc_id>/`, so the full
+(non-agent) pipeline can reuse the agent's output **without re-fetching**:
+
+```bash
+tablassert build-kg .tablassert-agent/configs/PMC11708054.yaml --table-config --fullmap ./fullmap
+```
+
+!!! warning "Not relocatable"
+    `source.local` in the best config is an **absolute** path into `downloads/<pmc_id>/`. The workspace is
+    therefore **not relocatable** — moving or renaming the `.tablassert-agent` folder breaks that reference
+    (re-run the agent, or fix `source.local`, after any move).
 
 ## The tools
 
