@@ -1822,6 +1822,66 @@ def make_tools(
     ]
 
 
+# --------------------------------------------------------------------------- #
+# US-501: PURE workspace-layout path resolver (foundation)
+#
+# One canonical, import-light resolver for the on-disk workspace layout so every
+# producer/consumer (fetch, derive, build, reuse) agrees on where artifacts live:
+#   <root>/{state.json, configs/, downloads/<pmc>/, builds/<pmc>/}
+# ``artifact_root`` picks the bulky-artifact root (``workdir`` override, else the
+# state dir); the rest derive deterministic sub-paths beneath it. Every helper is
+# PURE pathlib — NO mkdir / NO I/O and NO re-validation (``pmc_id`` is already
+# normalized upstream by ``normalize_pmc_id``); callers create directories at
+# write time. These are stdlib-only so the module top stays lazy (no smolagents /
+# dspy / polars import is forced).
+# --------------------------------------------------------------------------- #
+
+
+def artifact_root(state_dir: Path, workdir: Path | None = None) -> Path:
+    """Resolve the bulky-artifact root: ``workdir`` overrides, else ``state_dir``.
+
+    Pure path selection (no I/O): a supplied ``workdir`` wins so large downloads /
+    builds can live off the (possibly small / shared) state dir; ``None`` falls back
+    to ``state_dir`` so state + artifacts co-locate.
+    """
+    return workdir if workdir is not None else state_dir
+
+
+def downloads_dir(root: Path) -> Path:
+    """Return ``<root>/downloads`` (the shared downloads parent); pure, no mkdir."""
+    return root / "downloads"
+
+
+def pmc_download_dir(root: Path, pmc_id: str) -> Path:
+    """Return ``<root>/downloads/<pmc_id>`` (one download dir per article); pure, no mkdir."""
+    return root / "downloads" / pmc_id
+
+
+def configs_dir(root: Path) -> Path:
+    """Return ``<root>/configs`` (the shared configs parent); pure, no mkdir."""
+    return root / "configs"
+
+
+def best_config_path(root: Path, pmc_id: str) -> Path:
+    """Return ``<root>/configs/<pmc_id>.yaml`` (the best / accepted config); pure, no mkdir."""
+    return root / "configs" / f"{pmc_id}.yaml"
+
+
+def derived_config_path(root: Path, pmc_id: str) -> Path:
+    """Return ``<root>/configs/<pmc_id>.derived.yaml`` (the agent-derived config); pure, no mkdir."""
+    return root / "configs" / f"{pmc_id}.derived.yaml"
+
+
+def builds_dir(root: Path) -> Path:
+    """Return ``<root>/builds`` (the shared builds parent); pure, no mkdir."""
+    return root / "builds"
+
+
+def pmc_build_dir(root: Path, pmc_id: str) -> Path:
+    """Return ``<root>/builds/<pmc_id>`` (one build output dir per article); pure, no mkdir."""
+    return root / "builds" / pmc_id
+
+
 @dataclass
 class ConfigRecord:
     """Per-PMC supervisor record: status, derived/best config paths, and coverage history.
