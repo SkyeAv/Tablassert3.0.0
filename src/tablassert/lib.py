@@ -453,11 +453,11 @@ def pick(lf: pl.LazyFrame, rows: list[int]) -> pl.LazyFrame:
         LazyFrame containing only the requested rows, in the given order.
 
     Notes:
-        Collection point: ``take()`` requires an eager frame, so the result
+        Collection point: ``gather()`` requires an eager frame, so the result
         is re-lazied afterwards.
     """
     df: pl.DataFrame = lf.collect()
-    df = df.select(pl.all().take(indices=rows))  # pyright: ignore
+    df = df.select(pl.all().gather(indices=rows))
     return df.lazy()
 
 
