@@ -78,7 +78,7 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development loop, qualit
 
 ## Contributors
 
-[Skye Lane Goetz](mailto:sgoetz@isbscience.org) — Institute for Systems Biology, CalPoly SLO
+[Skye Lane Goetz](mailto:sgoetz@isbscience.org) — Institute for Systems Biology
 
 [Gwênlyn Glusman](mailto:gglusman@isbscience.org) — Institute for Systems Biology
 
