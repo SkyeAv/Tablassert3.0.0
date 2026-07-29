@@ -492,8 +492,8 @@ def test_derive_species_context_coalesces_taxon() -> None:
     assert result == ["NCBITaxon:9606", "NCBITaxon:9606", None]
 
 
-def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None:
-    """tcode collect emits resource_id op when graph name is provided."""
+def test_tcode_collect_emits_primary_knowledge_source_when_named(fixtures_path: Path) -> None:
+    """tcode collect emits primary_knowledge_source op when graph name is provided."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -501,14 +501,16 @@ def test_tcode_collect_emits_resource_id_when_named(fixtures_path: Path) -> None
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
+    pks_ops: list[tuple[Any, tuple[Any]]] = [
+        op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "primary_knowledge_source"
+    ]
 
-    assert len(rid_ops) == 1
-    assert rid_ops[0][1] == ("resource_id", "infores:multiomics-kg")
+    assert len(pks_ops) == 1
+    assert pks_ops[0][1] == ("primary_knowledge_source", "infores:multiomics-kg")
 
 
-def test_tcode_collect_omits_resource_id_when_unnamed(fixtures_path: Path) -> None:
-    """tcode collect omits resource_id op when graph name is absent (validate path)."""
+def test_tcode_collect_omits_primary_knowledge_source_when_unnamed(fixtures_path: Path) -> None:
+    """tcode collect omits primary_knowledge_source op when graph name is absent (validate path)."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -516,9 +518,53 @@ def test_tcode_collect_omits_resource_id_when_unnamed(fixtures_path: Path) -> No
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    rid_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "resource_id"]
+    pks_ops: list[tuple[Any, tuple[Any]]] = [
+        op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "primary_knowledge_source"
+    ]
 
-    assert rid_ops == []
+    assert pks_ops == []
+
+
+def test_tcode_collect_manual_provenance_overrides_auto_sources(fixtures_path: Path) -> None:
+    """manual provenance overrides upstream/publication/KL/AT and section PKS."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    data["provenance"] = {
+        "override": {
+            "infores": "infores:section-source",
+            "upstream_resource_ids": ["infores:upstream-source"],
+            "publications": ["PMCID:PMC9999999"],
+            "knowledge_level": "knowledge_assertion",
+            "agent_type": "manual_agent",
+        }
+    }
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG", "infores": "infores:graph-source"}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    values: dict[str, object] = {str(op[1][0]): op[1][1] for op in collected if op[0].__name__ == "value" and len(op[1]) >= 2}
+    pub_ops = [op for op in collected if op[0] is publications]
+
+    assert values["primary_knowledge_source"] == "infores:section-source"
+    assert values["upstream_resource_ids"] == ["infores:upstream-source"]
+    assert values["knowledge_level"] == "knowledge_assertion"
+    assert values["agent_type"] == "manual_agent"
+    assert pub_ops[0][1] == (["PMCID:PMC9999999"],)
+
+
+def test_tcode_collect_uses_graph_infores_when_no_section_override(fixtures_path: Path) -> None:
+    """graph infores overrides the derived infores(name) primary knowledge source."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG", "infores": "infores:custom-graph"}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    pks_ops = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "primary_knowledge_source"]
+
+    assert pks_ops[0][1] == ("primary_knowledge_source", "infores:custom-graph")
 
 
 def test_tcode_collect_emits_source_record_urls_list(fixtures_path: Path) -> None:
@@ -896,7 +942,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
             "upstream_resource_ids": [["infores:pubmed-central"], ["infores:pubmed-central"]],
             "knowledge_level": ["knowledge_assertion", "knowledge_assertion"],
             "agent_type": ["manual_agent", "manual_agent"],
-            "resource_id": ["infores:smoke", "infores:smoke"],
+            "primary_knowledge_source": ["infores:smoke", "infores:smoke"],
             "p_value": ["1.0000e-08", "5.0000e-02"],
         }
     ).write_parquet(sub)
@@ -1764,7 +1810,7 @@ def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Pa
     assert result["object_name"] == "TP53"
     assert result["predicate"] == "biolink:related_to"
     assert result["publications"] == ["PMCID:PMC0000000"]
-    assert result["resource_id"] == "infores:test-kg"
+    assert result["primary_knowledge_source"] == "infores:test-kg"
 
 
 def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch: Any, tmp_path: Path) -> None:

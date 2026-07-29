@@ -16,6 +16,7 @@ from tablassert.models import (
     Encoding,
     Excel,
     Graph,
+    ManualProvenance,
     NodeEncoding,
     Provenance,
     Regex,
@@ -66,7 +67,7 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
 
 
 def test_graph_rejects_qc_and_log_keys() -> None:
-    """graph rejects QC and log keys (moved to `build-graph` CLI flags)."""
+    """graph rejects QC and log keys (moved to `build-kg` CLI flags)."""
     data: dict[str, Any] = {
         "name": "TEST",
         "version": "1.0.0",
@@ -284,6 +285,66 @@ def test_provenance_custom_knowledge_level_and_agent_type() -> None:
     )
     assert p.knowledge_level == "prediction"
     assert p.agent_type == "computational_model"
+
+
+def test_manual_provenance_validates_prefixes() -> None:
+    """manual provenance accepts explicit infores/PMCID values for non-PMC sources."""
+    override = ManualProvenance(  # pyright: ignore
+        infores="infores:external-kg",
+        upstream_resource_ids=["infores:external-source"],
+        publications=["PMCID:PMC1234567"],
+        knowledge_level="knowledge_assertion",  # pyright: ignore[reportArgumentType]
+        agent_type="manual_agent",  # pyright: ignore[reportArgumentType]
+    )
+    assert override.infores == "infores:external-kg"
+    assert override.upstream_resource_ids == ["infores:external-source"]
+    assert override.publications == ["PMCID:PMC1234567"]
+
+
+def test_manual_provenance_rejects_unprefixed_values() -> None:
+    """manual provenance rejects non-infores sources and non-PMCID publications."""
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(infores="external-kg")  # pyright: ignore
+    assert "override-bad-infores" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(upstream_resource_ids=["external-source"])  # pyright: ignore
+    assert "override-bad-upstream-infores" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(publications=["PMC1234567"])  # pyright: ignore
+    assert "override-bad-publication" in str(exc_info.value)
+
+
+def test_provenance_override_replaces_publication_requirement() -> None:
+    """publication is required unless manual provenance override is set."""
+    p = Provenance(override={"infores": "infores:external-kg", "publications": ["PMCID:PMC1234567"]})  # pyright: ignore
+    assert p.publication is None
+    assert p.override is not None
+
+    with pytest.raises(ValidationError) as exc_info:
+        Provenance()  # pyright: ignore
+    assert "provenance-missing-publication" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        Provenance(publication="PMC1234567", override={"infores": "infores:external-kg"})  # pyright: ignore
+    assert "provenance-publication-and-override" in str(exc_info.value)
+
+
+def test_graph_infores_validates_infores_prefix() -> None:
+    """graph-level infores must be an infores CURIE when provided."""
+    graph = Graph(  # pyright: ignore
+        name="TEST",
+        version="1.0.0",
+        description="Test graph",
+        infores="infores:external-kg",
+        tables=[Path("./table.yaml")],
+        fullmap=Path("./fullmap"),
+    )
+    assert graph.infores == "infores:external-kg"
+    with pytest.raises(ValidationError) as exc_info:
+        Graph(name="TEST", version="1.0.0", description="Test graph", infores="external-kg", tables=[Path("./table.yaml")], fullmap=Path("./fullmap"))  # pyright: ignore
+    assert "graph-bad-infores" in str(exc_info.value)
 
 
 def test_annotation_valid() -> None:

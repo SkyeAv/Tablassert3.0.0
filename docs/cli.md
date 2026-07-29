@@ -24,14 +24,14 @@ Prints the installed Tablassert version to stdout and exits. This is a flag on t
 
 ---
 
-## build-graph
+## build-kg
 
 Build a knowledge graph from a YAML configuration file.
 
 ### Synopsis
 
 ```bash
-tablassert build-graph <graph_configuration_file> [--release] [--qc] [--log] [--head]
+tablassert build-kg <graph_configuration_file> [--release] [--qc] [--log] [--head] [--table-config] [--fullmap <path>]
 ```
 
 ### Options
@@ -43,16 +43,26 @@ tablassert build-graph <graph_configuration_file> [--release] [--qc] [--log] [--
 | `--qc`, `-q` | Flag | No | Run the QC audit stage (exact → fuzzy → BioBERT) on resolved node columns |
 | `--log`, `-l` | Flag | No | Enable verbose per-section logging |
 | `--head` | Flag | No | Preview only the first 5 rows per section for a fast output shape/schema check (cached separately, never clobbers a full build) |
+| `--table-config`, `-tc` | Flag | No | Treat the positional config as a TABLE (Section) YAML wrapped in a throwaway `TEMP_KG` graph, instead of a Graph YAML |
+| `--fullmap`, `-f` | Path | No | Fullmap path for the throwaway `TEMP_KG` graph when `--table-config` is passed (default `./fullmap`) |
 
 ### Example
 
 ```bash
-tablassert build-graph /path/to/MOKGV6.yaml --qc --log
+tablassert build-kg /path/to/MOKGV6.yaml --qc --log
+```
+
+Build or test a single table configuration without authoring a full graph config:
+
+```bash
+tablassert build-kg /path/to/table-config.yaml --table-config --fullmap /path/to/fullmap
 ```
 
 ### Description
 
 This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, reads each table's source file from disk, applies transformations, resolves entities through fullmap, optionally validates mappings with the QC pipeline (exact → fuzzy → BioBERT) when `--qc` is passed, and compiles subgraphs into KGX-compliant NDJSON files plus a Resource Ingest Guide (RIG).
+
+By default the positional config is a Graph YAML. With `--table-config`/`-tc` it is instead a table (Section) YAML that Tablassert wraps in a throwaway graph (`name: TEMP_KG`, `version: 0.0.0`) so a single table config can be built or tested without authoring a full graph config; `--fullmap`/`-f` sets the fullmap path for that throwaway graph (default `./fullmap`), and the RIG `contributions`/`ui_explanation` fall back to the Graph model defaults.
 
 The process executes in parallel stages with a three-row live progress block (logs print above the live block):
 
@@ -98,49 +108,50 @@ See [Graph Configuration](configuration/graph.md) for details on the YAML schema
 
 ---
 
-## validate-table
+## validate
 
-Validate section syntax from a YAML configuration file.
+Validate a graph or table YAML configuration file.
 
 ### Synopsis
 
 ```bash
-tablassert validate-table <table_configuration_file>
+tablassert validate <configuration_file>
 ```
 
 ### Options
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `table_configuration_file` | Path | Yes | Table Configuration -- See Docs |
+| `configuration_file` | Path | Yes | Graph OR Table Configuration -- See Docs |
 
 ### Example
 
 ```bash
-tablassert validate-table /path/to/table-config.yaml
+tablassert validate /path/to/table-config.yaml
+tablassert validate /path/to/graph.yaml
 ```
 
 ### Description
 
-This command validates a TC4 YAML configuration file without running the full extraction pipeline. It loads the file, extracts sections, and validates each section against the schema using Pydantic models. The command exits with a non-zero status if schema errors are detected, making it useful for CI/CD pipelines and pre-commit hooks.
+This command validates a YAML configuration file without running the full extraction pipeline. It detects the config kind from the YAML: a mapping with a top-level `tables` key is treated as a **graph** config (the `Graph` model is validated, then every table file it references is validated), and anything else is treated as a **table** config (sections are extracted and validated against the schema using Pydantic models). The command exits with a non-zero status if schema errors are detected, making it useful for CI/CD pipelines and pre-commit hooks.
 
 Use this for:
 - Quick syntax validation during development
 - Pre-flight checks in CI/CD pipelines
 - Verifying configuration changes before running expensive graph builds
 
-See [Table Configuration](configuration/table.md) for details on the YAML schema.
+See [Table Configuration](configuration/table.md) and [Graph Configuration](configuration/graph.md) for details on the YAML schemas.
 
 ---
 
-## build-fullmap
+## gen-fullmap
 
 Build an embedded fullmap redb database from BABEL export files.
 
 ### Synopsis
 
 ```bash
-tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>] [--threads <n>]
+tablassert gen-fullmap [--output <path>] [--cache <path>] [--version <version>] [--threads <n>]
 ```
 
 ### Options
@@ -157,41 +168,12 @@ tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>
 ### Example
 
 ```bash
-tablassert build-fullmap --output /data/fullmap/fullmap.redb
+tablassert gen-fullmap --output /data/fullmap/fullmap.redb
 ```
 
 ### Description
 
-This command downloads BABEL class and synonym files from RENCI and builds a single embedded `fullmap.redb` file (via an in-memory parallel build) used for entity resolution during `build-graph`. See [Fullmap](fullmap.md) for the full data pipeline, output schema, and graph-config usage.
-
----
-
-## schema
-
-Emit the JSON Schema for a Tablassert config model, for editor autocomplete and config authoring.
-
-### Synopsis
-
-```bash
-tablassert schema [--model graph|section] [--output <path>]
-```
-
-### Options
-
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `--model`, `-m` | `graph` \| `section` | No | `section` | Which config model's JSON Schema to emit |
-| `--output`, `-o` | Path | No | stdout | Write the schema to a file instead of printing to stdout |
-
-### Example
-
-```bash
-tablassert schema --model section --output section-schema.json
-```
-
-### Description
-
-This command prints the [JSON Schema](https://json-schema.org/) for the `Graph` or `Section` pydantic model (the runtime-only `Tcode` fields are excluded). Point your editor at the emitted schema for autocomplete and validation while authoring table/graph configs. See [Table Configuration](configuration/table.md) and [Graph Configuration](configuration/graph.md) for the config format.
+This command downloads BABEL class and synonym files from RENCI and builds a single embedded `fullmap.redb` file (via an in-memory parallel build) used for entity resolution during `build-kg`. See [Fullmap](fullmap.md) for the full data pipeline, output schema, and graph-config usage.
 
 ---
 
@@ -206,33 +188,27 @@ tablassert --version
 ### Build Knowledge Graph
 
 ```bash
-tablassert build-graph my-graph.yaml
+tablassert build-kg my-graph.yaml
 ```
 
-### Validate Table Configuration
+### Validate Configuration
 
 ```bash
-tablassert validate-table table-config.yaml
+tablassert validate table-config.yaml
 ```
 
-### Build Fullmap Database
+### Generate Fullmap Database
 
 ```bash
-tablassert build-fullmap
-```
-
-### Export Config Schema
-
-```bash
-tablassert schema --model section --output section-schema.json
+tablassert gen-fullmap
 ```
 
 ## Workflow
 
 1. **Create table configuration** - Define data sources and transformations
 2. **Create graph configuration** - Define output name, table configs, databases
-3. **Validate table config** - `tablassert validate-table table.yaml`
-4. **Build knowledge graph** - `tablassert build-graph graph.yaml`
+3. **Validate config** - `tablassert validate table.yaml` (or `tablassert validate graph.yaml`)
+4. **Build knowledge graph** - `tablassert build-kg graph.yaml`
 5. **Process executes:**
    - Reads each table's source file from disk
    - Applies transformations to each table

@@ -57,7 +57,7 @@ uv sync --group dev --extra qc
 uv run maturin develop --manifest-path rust/Cargo.toml
 
 # Run with your configuration
-uv run tablassert build-graph <config>
+uv run tablassert build-kg <config>
 ```
 
 ## Documentation Sections

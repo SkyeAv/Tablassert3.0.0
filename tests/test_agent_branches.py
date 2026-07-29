@@ -269,47 +269,48 @@ def test_propose_chemical_fallback_prioritizes_chemical_entity() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_fetch_unreadable_xml_is_skipped_not_fatal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A version whose JATS XML is unreadable is skipped; other versions still yield tables."""
+def test_fetch_metadata_unreadable_is_not_fatal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An unreadable ``.json`` metadata is NON-fatal: license is treated as unknown and files still download."""
     import tablassert.agent as agent_mod
 
-    listing = '<?xml version="1.0"?><ListBucketResult><CommonPrefixes><Prefix>PMC1.1/</Prefix></CommonPrefixes><CommonPrefixes><Prefix>PMC1.2/</Prefix></CommonPrefixes></ListBucketResult>'
-    jats = '<article><supplementary-material><media xlink:href="s.xlsx" xmlns:xlink="http://www.w3.org/1999/xlink"><label>Table S1</label></media></supplementary-material></article>'
+    version_listing = '<?xml version="1.0"?><ListBucketResult><CommonPrefixes><Prefix>PMC1.1/</Prefix></CommonPrefixes></ListBucketResult>'
+    object_listing = '<?xml version="1.0"?><ListBucketResult><Contents><Key>PMC1.1/PMC1.1.xml</Key></Contents><Contents><Key>PMC1.1/t.xlsx</Key></Contents></ListBucketResult>'
 
     def get_text(url: str, *, timeout: int = 120) -> str:
+        if "list-type=2" in url and "delimiter=" in url:
+            return version_listing
         if "list-type=2" in url:
-            return listing
+            return object_listing
         if url.endswith(".json"):
-            return '{"is_pmc_openaccess": true, "license_code": "CC-BY"}'
-        if "PMC1.1" in url and url.endswith(".xml"):
-            raise OSError("simulated XML read failure")  # first version unreadable
-        return jats  # second version succeeds
+            raise OSError("simulated metadata read failure")  # license becomes unknown, not fatal
+        raise AssertionError(f"unexpected text url: {url}")
 
     monkeypatch.setattr(agent_mod, "_http_get_text", get_text)
-    monkeypatch.setattr(agent_mod, "_http_get_bytes", lambda url, *, timeout=120: b"FAKEXLSX")
-    paths = agent_mod.fetch_pmc_tables("PMC1", tmp_path)
-    assert len(paths) == 1  # only the readable version produced a table
-    assert paths[0].is_file()
+    monkeypatch.setattr(agent_mod, "_http_get_bytes", lambda url, *, timeout=120: b"X")
+    paths = agent_mod.fetch_pmc_article("PMC1", tmp_path)
+    assert sorted(p.name for p in paths) == ["PMC1.1.xml", "t.xlsx"]
 
 
-def test_fetch_no_candidates_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """OA article with a readable but table-less JATS XML raises FileNotFoundError (no candidates)."""
+def test_fetch_no_tables_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """OA article whose latest version has main text but NO table raises FileNotFoundError (extension gate)."""
     import tablassert.agent as agent_mod
 
-    listing = '<?xml version="1.0"?><ListBucketResult><CommonPrefixes><Prefix>PMC2.1/</Prefix></CommonPrefixes></ListBucketResult>'
-    no_tables = "<article><body><p>no supplementary material here</p></body></article>"
+    version_listing = '<?xml version="1.0"?><ListBucketResult><CommonPrefixes><Prefix>PMC2.1/</Prefix></CommonPrefixes></ListBucketResult>'
+    object_listing = '<?xml version="1.0"?><ListBucketResult><Contents><Key>PMC2.1/PMC2.1.xml</Key></Contents><Contents><Key>PMC2.1/fig.jpg</Key></Contents></ListBucketResult>'
 
     def get_text(url: str, *, timeout: int = 120) -> str:
+        if "list-type=2" in url and "delimiter=" in url:
+            return version_listing
         if "list-type=2" in url:
-            return listing
+            return object_listing
         if url.endswith(".json"):
             return '{"is_pmc_openaccess": true, "license_code": "CC-BY"}'
-        return no_tables
+        raise AssertionError(f"unexpected text url: {url}")
 
     monkeypatch.setattr(agent_mod, "_http_get_text", get_text)
     monkeypatch.setattr(agent_mod, "_http_get_bytes", lambda url, *, timeout=120: b"X")
     with pytest.raises(FileNotFoundError, match="No supplementary tables"):
-        agent_mod.fetch_pmc_tables("PMC2", tmp_path)
+        agent_mod.fetch_pmc_article("PMC2", tmp_path)
 
 
 def test_parse_judge_scores_empty_value_line_skipped() -> None:

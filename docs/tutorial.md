@@ -107,13 +107,13 @@ fullmap: /path/to/fullmap
 ## Step 4: Run Tablassert
 
 ```bash
-tablassert build-graph tutorial-graph.yaml
+tablassert build-kg tutorial-graph.yaml
 ```
 
 To also run the quality-control audit stage, add `--qc` (and `--log` for verbose per-section logging):
 
 ```bash
-tablassert build-graph tutorial-graph.yaml --qc --log
+tablassert build-kg tutorial-graph.yaml --qc --log
 ```
 
 **What happens:**

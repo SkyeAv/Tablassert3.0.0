@@ -68,7 +68,7 @@ def test_example_yaml_validates(path: Path) -> None:
         return
 
     # Table configuration: expand template/sections and validate each section the
-    # same way `tablassert validate-table` does (via Tcode).
+    # same way `tablassert validate` does (via Tcode).
     sections: list[dict[str, Any]] = to_sections(raw, path)  # pyright: ignore
     assert sections, f"{path.name} produced no sections"
     store: Path = ROOT / ".tablassert" / "store" / "docs-example.parquet"

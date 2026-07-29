@@ -9,7 +9,7 @@ Extract knowledge assertions from tabular data into NCATS Translator-compliant K
 
 ```bash
 pip install tablassert
-tablassert build-graph config.yaml
+tablassert build-kg config.yaml
 ```
 
 **[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
@@ -29,7 +29,7 @@ pip install "tablassert[qc]"  # Enable QC (torch + sentence-transformers BioBERT
 
 Excel (`.xlsx`) inputs are read through Polars' `calamine` engine and additionally require `python-calamine` (`pip install python-calamine`).
 
-QC is opt-in: pass `--qc` to `build-graph` to run the three-stage audit (exact → fuzzy → BioBERT). See the [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for the full flag reference.
+QC is opt-in: pass `--qc` to `build-kg` to run the three-stage audit (exact → fuzzy → BioBERT). See the [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for the full flag reference.
 
 ## Quick Demo
 
@@ -52,7 +52,7 @@ for row in results:
 # EGFR → HGNC:3236 (EGFR)
 ```
 
-Point `resolve_many()` at a fullmap database and resolve any iterable of entity strings to CURIEs — no LazyFrame setup or NLP preprocessing required. For full pipeline builds with YAML configuration, use `tablassert build-graph config.yaml`.
+Point `resolve_many()` at a fullmap database and resolve any iterable of entity strings to CURIEs — no LazyFrame setup or NLP preprocessing required. For full pipeline builds with YAML configuration, use `tablassert build-kg config.yaml`.
 
 ## Key Features
 

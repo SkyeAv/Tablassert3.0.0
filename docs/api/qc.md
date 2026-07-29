@@ -194,7 +194,7 @@ When `log=True`, each rejected CURIE is logged at INFO level with its context an
 
 ### Integration with Pipeline
 
-QC is applied after entity resolution when QC is enabled (the `build-graph --qc` flag, or `resolve_many(..., qc=True)`):
+QC is applied after entity resolution when QC is enabled (the `build-kg --qc` flag, or `resolve_many(..., qc=True)`):
 
 1. **Entity resolution** (`resolve()`) - Maps text to CURIEs
 2. **Quality control** (`fullmap_audit()`) - Validates mappings

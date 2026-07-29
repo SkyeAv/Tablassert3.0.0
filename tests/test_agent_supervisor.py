@@ -4,7 +4,7 @@ The supervisor is PLAIN PYTHON over agentic decisions: the inner ``CodeAgent`` (
 ``FakeModel``) only produces the initial config, and the improve loop is deterministic
 (``propose_config_edit`` -> ``build_and_audit`` -> accept IFF strictly better). Every test is offline
 + fast: a tiny REAL ``rs.build_fullmap_db`` redb (``brca1`` -> HGNC:1100, ``mapk1`` -> HGNC:6871), a
-small text table, ``fetch_pmc_tables`` monkeypatched to return the fixture table (no network), and an
+small text table, ``fetch_pmc_article`` monkeypatched to return the fixture table (no network), and an
 autouse fixture disabling HuggingFace telemetry so ``agent.run`` never blocks on the network. The whole
 module skips cleanly when the ``[agent]`` extra is absent (``importorskip("smolagents")``).
 """
@@ -91,14 +91,14 @@ def _column_cfg(table: Path) -> dict[str, Any]:
 
 
 def _patch_fetch(monkeypatch: pytest.MonkeyPatch, table: Path) -> list[str]:
-    """Monkeypatch ``fetch_pmc_tables`` to return ``[table]`` and record the pmc ids requested."""
+    """Monkeypatch ``fetch_pmc_article`` to return ``[table]`` and record the pmc ids requested."""
     calls: list[str] = []
 
     def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
         calls.append(pmc_id)
         return [table]
 
-    monkeypatch.setattr("tablassert.agent.fetch_pmc_tables", fake_fetch)
+    monkeypatch.setattr("tablassert.agent.fetch_pmc_article", fake_fetch)
     return calls
 
 
@@ -221,7 +221,7 @@ def test_supervisor_batch_isolation(tmp_path: Path, fullmap_db: Path, monkeypatc
             raise FileNotFoundError("no supplementary tables for PMCBAD")
         return [table]
 
-    monkeypatch.setattr("tablassert.agent.fetch_pmc_tables", fake_fetch)
+    monkeypatch.setattr("tablassert.agent.fetch_pmc_article", fake_fetch)
 
     result = run_supervisor(
         ["PMCGOOD", "PMCBAD"],
@@ -265,6 +265,128 @@ def test_supervisor_resume_skips_done(tmp_path: Path, fullmap_db: Path, monkeypa
     assert records["PMCB"].status == "MAPPED"
     assert calls.count("PMCA") == 1, "fetch must not be called again for the already-MAPPED PMCA"
     assert calls.count("PMCB") == 1
+
+
+def test_supervisor_no_fetch_uses_snapshot(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """fetch=False resolves tables from a pre-fetched snapshot and NEVER calls fetch_pmc_article."""
+    import tablassert.agent as agent_mod
+
+    workdir: Path = tmp_path / "w"
+    snapshot: Path = workdir / "PMC1"
+    snapshot.mkdir(parents=True)
+    table: Path = snapshot / "good.tsv"
+    table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+    good_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
+
+    calls: list[str] = []
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        calls.append(pmc_id)
+        return [table]
+
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", fake_fetch)
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=workdir,
+        fetch=False,
+    )
+    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+    assert calls == []  # fetch_pmc_article must NOT run when fetch=False
+
+
+def test_supervisor_no_fetch_empty_snapshot_skipped(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """fetch=False with an EMPTY snapshot dir -> SKIPPED (no tables to map)."""
+    import tablassert.agent as agent_mod
+
+    workdir: Path = tmp_path / "w"
+    (workdir / "PMC1").mkdir(parents=True)  # empty snapshot
+
+    def boom(*args: object, **kwargs: object) -> list[Path]:
+        raise AssertionError("must not fetch")
+
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", boom)
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=workdir,
+        fetch=False,
+    )
+    assert result["records"]["PMC1"].status == "SKIPPED"  # pyright: ignore[reportIndexIssue]
+    assert result["records"]["PMC1"].notes.startswith("SKIPPED")  # pyright: ignore[reportIndexIssue]
+
+
+def test_supervisor_fetch_no_table_skipped(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fetch that fails fast with 'No supplementary tables' marks the record SKIPPED (batch advances)."""
+    import tablassert.agent as agent_mod
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        raise FileNotFoundError("No supplementary tables found for PMC1.")
+
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", fake_fetch)
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "SKIPPED"
+    assert "No supplementary tables" in rec.notes
+
+
+def test_supervisor_task_lists_all_tables_and_main_text(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The agent task lists EVERY candidate table, wires the main-text path, and mentions source.sheet."""
+    import tablassert.agent as agent_mod
+
+    t1: Path = _write_table(tmp_path, "s1.tsv", "brca1\tmapk1\n")
+    t2: Path = _write_table(tmp_path, "s2.tsv", "brca1\tmapk1\n")
+    xml: Path = tmp_path / "PMC1.1.xml"
+    xml.write_text("<article/>")
+    good_yaml: str = yaml.safe_dump(_column_cfg(t1), sort_keys=False)
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        return [xml, t1, t2]
+
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", fake_fetch)
+
+    captured: dict[str, str] = {}
+    real_build_agent = agent_mod.build_agent
+
+    def spy_build_agent(*args: object, **kwargs: object) -> object:
+        agent = real_build_agent(*args, **kwargs)
+
+        class _Spy:
+            def run(self, task: str) -> object:
+                captured["task"] = task
+                return agent.run(task)  # pyright: ignore[reportAttributeAccessIssue]
+
+        return _Spy()
+
+    monkeypatch.setattr(agent_mod, "build_agent", spy_build_agent)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )
+    task: str = captured["task"]
+    assert "pmc_article_context" in task  # main text wired in
+    assert str(t1) in task  # ALL candidate tables listed
+    assert str(t2) in task
+    assert "source.sheet" in task  # sheet guidance present
+    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
 
 
 def test_state_roundtrip_atomic(tmp_path: Path) -> None:

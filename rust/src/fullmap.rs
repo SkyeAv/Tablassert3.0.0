@@ -41,8 +41,12 @@ const SHARD_COUNT_SHARDS: usize = 16;
 /// A normalized term grouped with its deduplicated `(curie_id, source_id)` pairs.
 type TermPairs = (String, Vec<(u32, u8)>);
 type PairRecords = Vec<TermPairs>;
-/// One k-way-merge heap entry: `(term, run index, pairs)`, min-ordered by term.
-type MergeItem = (Reverse<String>, usize, Vec<(u32, u8)>);
+/// One k-way-merge heap entry: `(xxh64(term), term, run index, pairs)`,
+/// min-ordered by `(hash, term)`.  Ordering by the hash first makes the common
+/// heap comparison a single `u64` cmp; the term string is compared only on the
+/// rare hash collision.  Spill runs are written sorted by the same `(hash, term)`
+/// key (see `spill_run`), so the k-way merge still groups equal terms correctly.
+type MergeItem = (Reverse<u64>, Reverse<String>, usize, Vec<(u32, u8)>);
 /// A read-path fan-out job: the `(input_index, term)` bucket routed to one shard
 /// plus a clone of that shard's handle, so a worker thread owns both outright
 /// (no shared receiver or borrow).
@@ -569,7 +573,7 @@ struct RunWriter {
 impl RunWriter {
     fn new(path: &Path) -> std::io::Result<Self> {
         Ok(Self {
-            w: BufWriter::with_capacity(1 << 20, File::create(path)?),
+            w: BufWriter::with_capacity(8 * 1024 * 1024, File::create(path)?),
         })
     }
 
@@ -643,7 +647,8 @@ impl RunReader {
 /// A file `run_s{shard}_{id}.bin` is written only for a shard that has at least
 /// one term.  Returns `(shard, path)` pairs so the caller files each run under
 /// its shard's list.  The frame format is unchanged (see `RunWriter`); each
-/// per-shard file is term-sorted exactly as the old single run file was.
+/// per-shard file is sorted by `(xxh64(term), term)`, the hash-prefixed ordering
+/// `MergeHeap` merges by (hash-first comparisons are a cheap `u64` cmp).
 fn spill_run(
     local: &mut FxHashMap<String, Vec<(u32, u8)>>,
     spill_dir: &Path,
@@ -660,7 +665,16 @@ fn spill_run(
         if entries.is_empty() {
             continue; // only non-empty shards write a file
         }
-        entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        // Sort by (xxh64(term), term) so the run stream matches MergeHeap's
+        // hash-prefixed heap ordering — required for correct grouping, and makes
+        // merge comparisons a cheap u64 cmp (term string compared only on hash
+        // collision).  The hash is recomputed per comparison (xxh64 is ~3 ns for
+        // short terms) rather than stored, keeping the frame format unchanged.
+        entries.sort_unstable_by(|a, b| {
+            xxh64(a.0.as_bytes(), 0)
+                .cmp(&xxh64(b.0.as_bytes(), 0))
+                .then_with(|| a.0.cmp(&b.0))
+        });
         let path = spill_dir.join(format!("run_s{shard}_{run_id:08}.bin"));
         let mut w = RunWriter::new(&path).map_err(py_err)?;
         for (term, mut pairs) in entries {
@@ -693,7 +707,7 @@ struct CurieRunWriter {
 impl CurieRunWriter {
     fn new(path: &Path) -> std::io::Result<Self> {
         Ok(Self {
-            w: BufWriter::with_capacity(1 << 20, File::create(path)?),
+            w: BufWriter::with_capacity(8 * 1024 * 1024, File::create(path)?),
         })
     }
 
@@ -773,7 +787,8 @@ impl MergeHeap {
         for (idx, path) in paths.iter().enumerate() {
             let mut rr = RunReader::new(path)?;
             if let Some((term, pairs)) = rr.cur.take() {
-                heap.push((Reverse(term), idx, pairs));
+                let hash = xxh64(term.as_bytes(), 0);
+                heap.push((Reverse(hash), Reverse(term), idx, pairs));
             }
             readers.push(rr);
         }
@@ -782,16 +797,19 @@ impl MergeHeap {
 
     /// Return the next term with its merged, sorted, de-duplicated pairs.
     fn next_group(&mut self) -> std::io::Result<Option<TermPairs>> {
-        let Some((Reverse(term), idx, pairs)) = self.heap.pop() else {
+        let Some((Reverse(hash), Reverse(term), idx, pairs)) = self.heap.pop() else {
             return Ok(None);
         };
         let mut merged = pairs;
         let mut to_advance = vec![idx];
-        while let Some((Reverse(t), _, _)) = self.heap.peek() {
-            if *t != term {
+        // Group every run entry with the same (hash, term).  Hash equality is a
+        // necessary precondition for term equality, so comparing the hash first
+        // short-circuits the (rare) string comparison on distinct terms.
+        while let Some((Reverse(h), Reverse(t), _, _)) = self.heap.peek() {
+            if *h != hash || *t != term {
                 break;
             }
-            let (_, i, p) = self.heap.pop().unwrap();
+            let (_, _, i, p) = self.heap.pop().unwrap();
             merged.extend(p);
             to_advance.push(i);
         }
@@ -800,7 +818,8 @@ impl MergeHeap {
         for i in to_advance {
             self.readers[i].advance()?;
             if let Some((t2, p2)) = self.readers[i].cur.take() {
-                self.heap.push((Reverse(t2), i, p2));
+                let h2 = xxh64(t2.as_bytes(), 0);
+                self.heap.push((Reverse(h2), Reverse(t2), i, p2));
             }
         }
         Ok(Some((term, merged)))
@@ -818,9 +837,6 @@ impl MergeHeap {
 
 /// An entry from an equivalents run file: (hash, key, equivs).
 type EquivEntry = (u64, String, Vec<String>);
-/// One k-way-merge heap entry for equivalents: (hash, key, run_idx, equivs).
-type EquivMergeItem = (Reverse<u64>, Reverse<String>, usize, Vec<String>);
-
 /// Write an equiv entry to a buffered writer (run-file format with hash).
 #[allow(clippy::cast_possible_truncation)] // equiv run format stores key/equiv counts and byte lengths as u32
 fn write_equiv_entry(
@@ -903,7 +919,7 @@ fn spill_equiv_local(
     entries.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     let run_id = run_counter.fetch_add(1, Ordering::Relaxed);
     let rp = equiv_dir.join(format!("run_{run_id:08}.bin"));
-    let mut w = BufWriter::with_capacity(1 << 20, File::create(&rp).map_err(py_err)?);
+    let mut w = BufWriter::with_capacity(8 * 1024 * 1024, File::create(&rp).map_err(py_err)?);
     for (h, k, e) in &entries {
         write_equiv_entry(&mut w, *h, k, e).map_err(py_err)?;
     }
@@ -1028,42 +1044,37 @@ impl EquivIndex {
         }
         let run_paths = run_paths.into_inner().unwrap();
 
-        // Phase 1b: k-way merge runs → write data file + build index.
+        // Phase 1b: read runs → parallel sort → linear group → write data file + build index.
         let data_path = spill_dir.join("equiv_data.bin");
-        let mut dw = BufWriter::with_capacity(1 << 20, File::create(&data_path).map_err(py_err)?);
+        let mut dw =
+            BufWriter::with_capacity(8 * 1024 * 1024, File::create(&data_path).map_err(py_err)?);
         let mut hashes: Vec<u64> = Vec::new();
         let mut offsets: Vec<u64> = Vec::new();
         let mut offset: u64 = 0;
 
-        let mut readers: Vec<BufReader<File>> = run_paths
-            .iter()
-            .map(|p| File::open(p).map(BufReader::new))
-            .collect::<std::io::Result<Vec<_>>>()
-            .map_err(py_err)?;
-
-        // Min-heap by (hash, key).
-        let mut heap: BinaryHeap<EquivMergeItem> = BinaryHeap::new();
-        for (idx, reader) in readers.iter_mut().enumerate() {
-            if let Some((h, k, e)) = read_equiv_entry(reader).map_err(py_err)? {
-                heap.push((Reverse(h), Reverse(k), idx, e));
+        // The full-build target has enough RAM for the equivalent entries, and a
+        // parallel sort avoids the former single-threaded heap merge bottleneck.
+        let mut entries: Vec<EquivEntry> = Vec::new();
+        for path in &run_paths {
+            let file = File::open(path).map_err(py_err)?;
+            let mut reader = BufReader::with_capacity(8 * 1024 * 1024, file);
+            while let Some(entry) = read_equiv_entry(&mut reader).map_err(py_err)? {
+                entries.push(entry);
             }
         }
+        entries.par_sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
-        // Throttled Phase-0 progress: the merge is single-threaded and can group
-        // hundreds of millions of entries, so report every 1M groups (not per
-        // group) to bound the GIL re-acquire count.  total is 0 (indeterminate):
-        // the merged-group count is unknown until the merge completes, and a
-        // pre-pass over the (potentially huge) equiv runs would double their I/O.
+        // Throttled Phase-0 progress: report every 1M merged groups (not per
+        // group) to bound the GIL re-acquire count. total is 0 (indeterminate).
         let mut entries_merged: u64 = 0;
-        while let Some((Reverse(hash), Reverse(key), idx, mut equivs)) = heap.pop() {
-            let mut to_advance = vec![idx];
-            while let Some((Reverse(h), Reverse(k), _, _)) = heap.peek() {
+        let mut iter = entries.into_iter().peekable();
+        while let Some((hash, key, mut equivs)) = iter.next() {
+            while let Some((h, k, _)) = iter.peek() {
                 if *h != hash || *k != key {
                     break;
                 }
-                let (_, _, i, e) = heap.pop().unwrap();
+                let (_, _, e) = iter.next().expect("peeked equivalent entry disappeared");
                 equivs.extend(e);
-                to_advance.push(i);
             }
             equivs.sort();
             equivs.dedup();
@@ -1091,12 +1102,6 @@ impl EquivIndex {
             if entries_merged.is_multiple_of(1_000_000) {
                 if let Some(p) = progress {
                     p.call(0, entries_merged, 0, "merging equivalents");
-                }
-            }
-
-            for i in to_advance {
-                if let Some((h, k, e)) = read_equiv_entry(&mut readers[i]).map_err(py_err)? {
-                    heap.push((Reverse(h), Reverse(k), i, e));
                 }
             }
         }
@@ -4104,57 +4109,75 @@ mod tests {
         assert!(Arc::ptr_eq(&a, &b));
     }
 
-    /// `MergeHeap::next_group` must k-way merge several term-sorted runs: terms
-    /// emerge in globally sorted order, and for each term the pair lists from
-    /// every run that carries it are concatenated then sorted+deduped (the pairs
-    /// within a single run are deliberately unsorted/duplicated here to prove the
-    /// merge, not the writer, establishes the final ordering).  Returns None at a
-    /// clean EOF.
+    /// `MergeHeap::next_group` must k-way merge several runs sorted by
+    /// `(xxh64(term), term)` (the Tier-3a hash-prefixed ordering): for each term
+    /// the pair lists from every run that carries it are concatenated then
+    /// sorted+deduped (the pairs within a single run are deliberately
+    /// unsorted/duplicated here to prove the merge, not the writer, establishes
+    /// the final ordering).  Groups emerge in HASH order (not lexicographic), so
+    /// the merged (term -> pairs) map is verified order-independently.  Returns
+    /// None at a clean EOF.
     #[test]
     fn merge_heap_merges_overlapping_runs_sorted_and_deduped() {
         let dir = tempfile::tempdir().unwrap();
-        // Each run is term-sorted (the MergeHeap invariant); pairs inside a run
-        // are intentionally unsorted and duplicated.
         let run0 = dir.path().join("r0.bin");
         let run1 = dir.path().join("r1.bin");
         let run2 = dir.path().join("r2.bin");
 
-        let mut w = RunWriter::new(&run0).unwrap();
-        w.write_term("apple", &[(3, 1), (1, 0), (2, 2)]).unwrap();
-        w.write_term("cherry", &[(5, 0)]).unwrap();
-        w.finish().unwrap();
+        // Write each run sorted by (xxh64(term), term) — the MergeHeap invariant.
+        fn write_run(path: &Path, mut terms: Vec<(&str, Vec<(u32, u8)>)>) {
+            terms.sort_by(|a, b| {
+                xxh64(a.0.as_bytes(), 0)
+                    .cmp(&xxh64(b.0.as_bytes(), 0))
+                    .then_with(|| a.0.cmp(b.0))
+            });
+            let mut w = RunWriter::new(path).unwrap();
+            for (term, pairs) in terms {
+                w.write_term(term, &pairs).unwrap();
+            }
+            w.finish().unwrap();
+        }
 
-        let mut w = RunWriter::new(&run1).unwrap();
-        w.write_term("apple", &[(1, 0), (9, 3)]).unwrap();
-        w.write_term("banana", &[(7, 2), (7, 2)]).unwrap();
-        w.finish().unwrap();
-
-        let mut w = RunWriter::new(&run2).unwrap();
-        w.write_term("banana", &[(4, 1)]).unwrap();
-        w.write_term("cherry", &[(5, 0), (0, 0)]).unwrap();
-        w.finish().unwrap();
+        write_run(
+            &run0,
+            vec![
+                ("apple", vec![(3, 1), (1, 0), (2, 2)]),
+                ("cherry", vec![(5, 0)]),
+            ],
+        );
+        write_run(
+            &run1,
+            vec![
+                ("apple", vec![(1, 0), (9, 3)]),
+                ("banana", vec![(7, 2), (7, 2)]),
+            ],
+        );
+        write_run(
+            &run2,
+            vec![("banana", vec![(4, 1)]), ("cherry", vec![(5, 0), (0, 0)])],
+        );
 
         let paths = vec![run0, run1, run2];
         let mut merge = MergeHeap::new(&paths).unwrap();
 
+        // Drain every group into a term -> pairs map (emergence order is hash
+        // order, so compare order-independently).  Draining until None also proves
+        // the clean-EOF behavior.
+        let mut got: std::collections::BTreeMap<String, Vec<(u32, u8)>> =
+            std::collections::BTreeMap::new();
+        while let Some((term, pairs)) = merge.next_group().unwrap() {
+            got.insert(term, pairs);
+        }
+
+        let mut expected: std::collections::BTreeMap<String, Vec<(u32, u8)>> =
+            std::collections::BTreeMap::new();
         // "apple" appears in run0 + run1: merged, sorted, deduped.
-        let apple = merge.next_group().unwrap().expect("apple group");
-        assert_eq!(apple.0, "apple");
-        assert_eq!(apple.1, vec![(1, 0), (2, 2), (3, 1), (9, 3)]);
-
+        expected.insert("apple".to_string(), vec![(1, 0), (2, 2), (3, 1), (9, 3)]);
         // "banana" appears in run1 (dup pair) + run2.
-        let banana = merge.next_group().unwrap().expect("banana group");
-        assert_eq!(banana.0, "banana");
-        assert_eq!(banana.1, vec![(4, 1), (7, 2)]);
-
+        expected.insert("banana".to_string(), vec![(4, 1), (7, 2)]);
         // "cherry" appears in run0 + run2 (overlapping (5,0) pair).
-        let cherry = merge.next_group().unwrap().expect("cherry group");
-        assert_eq!(cherry.0, "cherry");
-        assert_eq!(cherry.1, vec![(0, 0), (5, 0)]);
-
-        // Terms emerged in sorted order (apple < banana < cherry) and the heap is
-        // now exhausted: a clean EOF yields None.
-        assert!(merge.next_group().unwrap().is_none(), "clean EOF expected");
+        expected.insert("cherry".to_string(), vec![(0, 0), (5, 0)]);
+        assert_eq!(got, expected);
     }
 
     /// `RunWriter`/`RunReader` must roundtrip term frames exactly: an empty pair

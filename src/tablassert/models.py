@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_v
 from tablassert._lazy import LazyModule
 from tablassert.biolink import AgentTypes, Categories, KnowledgeLevels, Predicates, Qualifiers
 from tablassert.enums import Comparisons, EncodingMethods, Files, FillMethods, Functions, Repositories, Tokens
-from tablassert.errors import TablassertValidationError
+from tablassert.errors import TablassertErrorCodes, TablassertValidationError
 
 if TYPE_CHECKING:
     import polars as pl
@@ -276,22 +276,96 @@ class Statement(TablaBase):
     qualifiers: list[Qualifier] | None = Field(None, description="Optional qualifier nodes attached to the statement.")
 
 
-class Provenance(TablaBase):
-    repo: Repositories = Field(Repositories.PUBMED_CENTRAL, description="Publication identifier namespace prefix.")
-    publication: str = Field(..., description="Repository-local publication id appended as repo:publication.", examples=["12345678", "PMC1234567"])
+def validate_infores_curie(value: str, code: TablassertErrorCodes) -> str:
+    """Validate an ``infores:`` CURIE used for Biolink knowledge-source fields."""
+    if not value.startswith("infores:"):
+        raise TablassertValidationError(f"InfoRes values must start with `infores:`, got {value!r}.", code=code)
+    return value
+
+
+class ManualProvenance(TablaBase):
+    """Manually-specified provenance for non-PMID/PMC source graphs.
+
+    When present under :class:`Provenance`, these values replace the legacy
+    repo/publication-derived provenance while keeping the same KL/AT defaults.
+    """
+
+    infores: str | None = Field(
+        None,
+        description="Optional per-section primary knowledge source infores CURIE; defaults to the graph infores when omitted.",
+        examples=["infores:my-kg"],
+    )
+    upstream_resource_ids: list[str] = Field(
+        default_factory=list,
+        description="Upstream source infores CURIEs emitted instead of the repo-derived source map.",
+        examples=[["infores:my-upstream"]],
+    )
+    publications: list[str] | None = Field(
+        None,
+        description="Publication CURIEs emitted verbatim; currently PMCID CURIEs are required for manual provenance.",
+        examples=[["PMCID:PMC1234567"]],
+    )
     knowledge_level: KnowledgeLevels = Field(
         KnowledgeLevels.STATISTICAL_ASSOCIATION, description="Biolink KL/AT knowledge level applied to produced edges."
     )
     agent_type: AgentTypes = Field(AgentTypes.DATA_ANALYSIS_PIPELINE, description="Biolink KL/AT agent type responsible for produced edges.")
 
+    @field_validator("infores", mode="after")
+    @classmethod
+    def infores_curie(cls, infores: str | None) -> str | None:
+        if infores is None:
+            return None
+        return validate_infores_curie(infores, "override-bad-infores")
+
+    @field_validator("upstream_resource_ids", mode="after")
+    @classmethod
+    def upstream_infores_curies(cls, values: list[str]) -> list[str]:
+        for value in values:
+            validate_infores_curie(value, "override-bad-upstream-infores")
+        return values
+
+    @field_validator("publications", mode="after")
+    @classmethod
+    def pmcid_publications(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        for value in values:
+            if not value.startswith("PMCID:"):
+                raise TablassertValidationError(
+                    f"Manual provenance publications must start with `PMCID:`, got {value!r}.", code="override-bad-publication"
+                )
+        return values
+
+
+class Provenance(TablaBase):
+    repo: Repositories = Field(Repositories.PUBMED_CENTRAL, description="Publication identifier namespace prefix.")
+    publication: str | None = Field(
+        None,
+        description="Repository-local publication id appended as repo:publication; required unless manual provenance override is set.",
+        examples=["12345678", "PMC1234567"],
+    )
+    knowledge_level: KnowledgeLevels = Field(
+        KnowledgeLevels.STATISTICAL_ASSOCIATION, description="Biolink KL/AT knowledge level applied to produced edges."
+    )
+    agent_type: AgentTypes = Field(AgentTypes.DATA_ANALYSIS_PIPELINE, description="Biolink KL/AT agent type responsible for produced edges.")
+    override: ManualProvenance | None = Field(
+        None, description="Manual provenance values for non-PMID/PMC sources; when set, replace repo/publication-derived provenance."
+    )
+
     @model_validator(mode="after")
     def is_valid_pmc_id(self: Self) -> Self:
-        if self.repo == Repositories.PUBMED_CENTRAL:
-            publication: str = self.publication
-            if not re.search(r"^PMC\d+", publication):
+        if self.override is not None:
+            if self.publication is not None:
                 raise TablassertValidationError(
-                    f"PubMed Central publications must start with `PMC`, got {publication!r}.", code="provenance-bad-pmc-id"
+                    "Specify either `publication` or `override`, not both, in provenance.", code="provenance-publication-and-override"
                 )
+            return self
+        if self.publication is None:
+            raise TablassertValidationError("`publication` is required unless provenance.override is set.", code="provenance-missing-publication")
+        if self.repo == Repositories.PUBMED_CENTRAL and not re.search(r"^PMC\d+", self.publication):
+            raise TablassertValidationError(
+                f"PubMed Central publications must start with `PMC`, got {self.publication!r}.", code="provenance-bad-pmc-id"
+            )
 
         return self
 
@@ -337,5 +411,17 @@ class Graph(TablaBase):
         default_factory=default_rig_contributions, description="Resource Ingest Guide contribution statements for graph provenance."
     )
     ui_explanation: str = Field(DEFAULT_RIG_UI_EXPLANATION, description="Resource Ingest Guide explanation applied to generated edge type metadata.")
+    infores: str | None = Field(
+        None,
+        description="Graph-level primary knowledge source infores CURIE; defaults to infores:<kebab-name> when omitted.",
+        examples=["infores:my-kg"],
+    )
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
     fullmap: Path = Field(..., description="Base fullmap directory or fullmap redb file for entity resolution.", examples=[".fullmap"])
+
+    @field_validator("infores", mode="after")
+    @classmethod
+    def infores_curie(cls, infores: str | None) -> str | None:
+        if infores is None:
+            return None
+        return validate_infores_curie(infores, "graph-bad-infores")

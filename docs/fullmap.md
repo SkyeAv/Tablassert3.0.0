@@ -8,7 +8,7 @@ Unlike the DuckDB-shard architecture used in earlier versions (built by a separa
 
 ```bash
 # Build a fullmap database (downloads BABEL data automatically)
-tablassert build-fullmap
+tablassert gen-fullmap
 ```
 
 ### Flags
@@ -55,13 +55,13 @@ Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a
 
 ```bash
 # Full build (download, process, and generate the database)
-tablassert build-fullmap
+tablassert gen-fullmap
 
 # Custom output location and BABEL version
-tablassert build-fullmap --output /data/fullmap/fullmap.redb --version 2026jul22
+tablassert gen-fullmap --output /data/fullmap/fullmap.redb --version 2026jul22
 
 # Tune concurrency for large builds
-tablassert build-fullmap --threads 8
+tablassert gen-fullmap --threads 8
 ```
 
 ## Output Artifact
@@ -79,7 +79,7 @@ A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling REC
 
 The shard files must remain alongside the primary file — lookups discover them as siblings of the resolved primary path.
 
-Lookups (`lookup_fullmap_terms`) check the primary's `meta` schema tag before reading `records`, read the `shards` count to open exactly that many shard files, and fan the query terms out across the shards in parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or missing tag raises rather than silently reading incompatible data. Databases built under the older `v1`/`v2`/`v3` schemas are rejected — there is no automatic schema migration, so a schema bump (including the v3→v4 move to sharded files) requires rebuilding via `tablassert build-fullmap`.
+Lookups (`lookup_fullmap_terms`) check the primary's `meta` schema tag before reading `records`, read the `shards` count to open exactly that many shard files, and fan the query terms out across the shards in parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or missing tag raises rather than silently reading incompatible data. Databases built under the older `v1`/`v2`/`v3` schemas are rejected — there is no automatic schema migration, so a schema bump (including the v3→v4 move to sharded files) requires rebuilding via `tablassert gen-fullmap`.
 
 ## Usage in Graph Config
 
@@ -87,7 +87,7 @@ The `fullmap:` field in a graph configuration points at either the redb file dir
 
 - If the path is a file or already ends in `.redb`, it's used as-is.
 - Else if `<path>/fullmap.redb` exists, that's used.
-- Else it falls back to `<path>/data/fullmap.redb` (the `build-fullmap` default layout).
+- Else it falls back to `<path>/data/fullmap.redb` (the `gen-fullmap` default layout).
 
 ```yaml
 # graph-config.yaml

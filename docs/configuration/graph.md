@@ -10,7 +10,7 @@ A graph configuration file specifies:
 - Database location for entity resolution
 - Resource Ingest Guide (RIG) metadata (contributions and UI explanation)
 
-QC auditing and verbose logging are controlled at build time via the `build-graph --qc` and `build-graph --log` flags — they are **not** graph-config fields.
+QC auditing and verbose logging are controlled at build time via the `build-kg --qc` and `build-kg --log` flags — they are **not** graph-config fields.
 
 ## Schema
 
@@ -30,6 +30,7 @@ QC auditing and verbose logging are controlled at build time via the `build-grap
 |-------|------|-------------|
 | `contributions` | List[String] | RIG contribution statements for graph provenance. Defaults to `["Tablassert: KGX and RIG generation"]` |
 | `ui_explanation` | String | RIG explanation applied to generated edge-type metadata. Defaults to a built-in description of how Tablassert transforms source records into Biolink associations |
+| `infores` | String | Graph-level `infores:` CURIE emitted as the default Biolink `primary_knowledge_source` and RIG `source_info.infores_id`. Defaults to `infores:<kebab-name>` derived from `name` |
 
 ### Field Details
 
@@ -56,6 +57,12 @@ Contribution statements recorded in the RIG `provenance_info`. Defaults to `["Ta
 **`ui_explanation: string`**
 
 Human-readable explanation applied to each generated edge type's metadata in the RIG. Defaults to a built-in description when omitted.
+
+**`infores: string`**
+
+Optional graph-level information-resource CURIE. When omitted, Tablassert derives `infores:<kebab-name>` from `name` (for example, `MULTIOMICS_KG` → `infores:multiomics-kg`). When set, it must start with `infores:` and becomes the default edge `primary_knowledge_source` plus the RIG `source_info.infores_id`.
+
+Use this when the graph's Translator information resource differs from the output name or when a non-PMC/PMID source KG needs a stable manually-curated infores.
 
 **`tables: list[path]`**
 
@@ -91,6 +98,7 @@ Paths can be:
 name: MY_GRAPH
 version: 1.0.0
 description: Knowledge graph built from configured tabular source data.
+infores: infores:my-graph
 tables:
   - ./my-table.yaml
 fullmap: /data/fullmap
@@ -111,7 +119,7 @@ fullmap: /databases/fullmap
 
 ## Processing Flow
 
-When you run `tablassert build-graph graph.yaml`:
+When you run `tablassert build-kg graph.yaml`:
 
 1. **Load graph configuration** - Parse YAML, validate schema
 2. **Load table configurations** - Parse each YAML in `tables`
@@ -119,7 +127,7 @@ When you run `tablassert build-graph graph.yaml`:
 4. **Collect instructions (per section):**
    - Read the source file from disk (`source.local`)
    - Apply transformations and resolve entities using `fullmap`
-   - Validate with the QC audit when `build-graph --qc` is passed
+   - Validate with the QC audit when `build-kg --qc` is passed
 5. **Build subgraphs** - Compile each section's resolved data into a parquet file
 6. **Compile graph** - Aggregate all subgraph parquets and export `{name}_{version}.nodes.ndjson` / `.edges.ndjson` / `.RIG.yaml`
 

@@ -206,7 +206,7 @@ pip install "tablassert[rt]"
 
 ### QC Runtime Issues
 
-If you run `build-graph --qc` without the QC runtime installed, install it:
+If you run `build-kg --qc` without the QC runtime installed, install it:
 
 ```bash
 pip install "tablassert[qc]"

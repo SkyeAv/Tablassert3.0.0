@@ -1,11 +1,11 @@
-"""Offline unit tests for US-002 ``fetch_pmc_tables`` (PMC ``s3://pmc-oa-opendata``).
+"""Offline unit tests for US-002 ``fetch_pmc_article`` (PMC ``s3://pmc-oa-opendata``).
 
 Everything here runs with NO network and NO ``[agent]`` extra: the PURE parsers are
-exercised directly, and ``fetch_pmc_tables`` runs against the two mocked I/O seams
-(``_http_get_text`` / ``_http_get_bytes``) routed by URL. Canned fixtures mirror the
-live-verified bucket layout: a list-objects-v2 listing (XML *and* JSON), a JATS
-``<supplementary-material>`` with one ``.xlsx`` table + one ``.jpg`` (drop-wins), and
-CC-BY vs non-OA ``.json`` metadata.
+exercised directly, and ``fetch_pmc_article`` runs against the two mocked I/O seams
+(``_http_get_text`` / ``_http_get_bytes``) routed by URL. The fetch flow is a fail-fast
+ladder: list version prefixes -> pick the LATEST -> check OA metadata -> enumerate the
+version's objects -> confirm a table exists -> download ONLY the useful files (main text
+``.xml/.nxml/.txt/.pdf``, ``.json`` metadata, and data tables; never images/``.docx``).
 """
 
 from __future__ import annotations
@@ -15,17 +15,22 @@ from pathlib import Path
 import pytest
 
 from tablassert.agent import (
+    candidate_tables,
+    fetch_pmc_article,
     fetch_pmc_tables,
     is_open_access,
     is_table_file,
+    is_useful_file,
+    latest_version_prefix,
     normalize_pmc_id,
+    object_keys_from_listing,
     public_url,
-    table_files_from_jats,
     version_prefixes_from_listing,
 )
 
-# A realistic list-objects-v2 XML body. The echoed request ``<Prefix>PMC11708054.``
-# (no trailing slash) must be filtered out; only the ``CommonPrefixes`` entry survives.
+# A realistic list-objects-v2 XML body for VERSION prefixes. The echoed request
+# ``<Prefix>PMC11708054.`` (no trailing slash) must be filtered out; only the
+# ``CommonPrefixes`` entry survives.
 LISTING_XML: str = (
     '<?xml version="1.0" encoding="UTF-8"?>'
     '<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
@@ -37,62 +42,85 @@ LISTING_XML: str = (
 )
 LISTING_JSON: str = '{"CommonPrefixes": [{"Prefix": "PMC11708054.1/"}]}'
 
-# One supplementary-material carrying a real table (.xlsx, "Table S1") AND an image
-# (.jpg) that shares the label: the image must be dropped (extension drop wins).
-JATS_XML: str = (
-    '<?xml version="1.0" encoding="UTF-8"?>'
-    '<article xmlns:xlink="http://www.w3.org/1999/xlink" article-type="research-article">'
-    "<body><sec>"
-    '<supplementary-material id="sm1">'
-    "<label>Table S1</label>"
-    "<caption><title>Supplementary table for the article.</title></caption>"
-    '<media xlink:href="mbio.01679-24-s0006.xlsx"/>'
-    '<media xlink:href="fig1.jpg"/>'
-    "</supplementary-material>"
-    "</sec></body>"
-    "</article>"
-)
-JATS_NO_SM: str = '<?xml version="1.0"?><article><body><p>No supplementary material here.</p></body></article>'
-
 METADATA_OA: str = '{"is_pmc_openaccess": true, "license_code": "CC-BY"}'
 METADATA_NON_OA: str = '{"is_pmc_openaccess": false}'
 
-XLSX_BYTES: bytes = b"FAKEXLSX"
+# The full object inventory of PMC11708054.1/ (mirrors the live bucket): main text
+# (.json/.pdf/.txt/.xml), two data tables (.xlsx), one binary .docx and one .jpg figure.
+OBJECT_KEYS: list[str] = [
+    "PMC11708054.1/PMC11708054.1.json",
+    "PMC11708054.1/PMC11708054.1.pdf",
+    "PMC11708054.1/PMC11708054.1.txt",
+    "PMC11708054.1/PMC11708054.1.xml",
+    "PMC11708054.1/mbio.01679-24-s0001.docx",
+    "PMC11708054.1/mbio.01679-24-s0002.xlsx",
+    "PMC11708054.1/mbio.01679-24-s0003.xlsx",
+    "PMC11708054.1/mbio.01679-24.f001.jpg",
+]
+# Only the useful files are downloaded (main text + metadata + tables; NOT .docx/.jpg).
+USEFUL_NAMES: list[str] = [
+    "PMC11708054.1.json",
+    "PMC11708054.1.pdf",
+    "PMC11708054.1.txt",
+    "PMC11708054.1.xml",
+    "mbio.01679-24-s0002.xlsx",
+    "mbio.01679-24-s0003.xlsx",
+]
 
 
-def _patch_http(monkeypatch: pytest.MonkeyPatch, *, listing: str = LISTING_XML, metadata: str = METADATA_OA, jats: str = JATS_XML) -> None:
-    """Route the two mocked HTTP seams by URL so ``fetch_pmc_tables`` runs offline.
+def _object_listing(keys: list[str]) -> str:
+    """Build a list-objects-v2 XML body whose ``<Contents><Key>`` entries are ``keys``."""
+    contents: str = "".join(f"<Contents><Key>{key}</Key><Size>1</Size></Contents>" for key in keys)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+        "<Name>pmc-oa-opendata</Name>"
+        f"{contents}"
+        "</ListBucketResult>"
+    )
 
-    WHY: ``_http_get_text``/``_http_get_bytes`` are the SINGLE I/O seam. Routing by URL
-    substring lets one fake serve the listing, the ``.json`` metadata and the ``.xml``
-    JATS for any version prefix without hard-coding the full S3 URL, so each test only
-    overrides the one fixture it cares about (empty listing / non-OA / no tables).
+
+def _patch_http(
+    monkeypatch: pytest.MonkeyPatch, *, version_listing: str = LISTING_XML, object_listing: str | None = None, metadata: str = METADATA_OA
+) -> tuple[list[str], list[str]]:
+    """Route the two mocked HTTP seams by URL; return (requested_text_urls, downloaded_urls).
+
+    WHY: ``_http_get_text``/``_http_get_bytes`` are the SINGLE I/O seam. The version listing
+    is the ``list-type=2`` call WITH ``delimiter=``; the object listing is ``list-type=2``
+    WITHOUT a delimiter; ``.json`` is the metadata. Recording the URLs lets tests assert the
+    fail-fast ORDER (e.g. a non-OA id never reaches the object listing nor downloads bytes).
     """
+    requested: list[str] = []
+    downloaded: list[str] = []
+    objects: str = object_listing if object_listing is not None else _object_listing(OBJECT_KEYS)
 
     def get_text(url: str, *, timeout: int = 120) -> str:
+        requested.append(url)
+        if "list-type=2" in url and "delimiter=" in url:
+            return version_listing
         if "list-type=2" in url:
-            return listing
+            return objects
         if url.endswith(".json"):
             return metadata
-        if url.endswith(".xml"):
-            return jats
         raise AssertionError(f"unexpected text url: {url}")
 
     def get_bytes(url: str, *, timeout: int = 120) -> bytes:
-        assert url.endswith(".xlsx")
-        return XLSX_BYTES
+        downloaded.append(url)
+        return b"FAKEBYTES"
 
     monkeypatch.setattr("tablassert.agent._http_get_text", get_text)
     monkeypatch.setattr("tablassert.agent._http_get_bytes", get_bytes)
+    return requested, downloaded
+
+
+# --------------------------------------------------------------------------- #
+# normalize_pmc_id / version_prefixes_from_listing / is_table_file (unchanged)
+# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("raw", ["PMC11708054", "11708054", "pmc11708054", " PMC11708054 "])
 def test_normalize_pmc_id_accepts_common_forms(raw: str) -> None:
-    """A bare number, either case prefix, and surrounding whitespace all normalize.
-
-    WHY: callers paste PMC ids in inconsistent shapes; the S3 prefix needs exactly
-    ``PMC<n>`` so every common form must collapse to the canonical id.
-    """
+    """A bare number, either case prefix, and surrounding whitespace all normalize."""
     assert normalize_pmc_id(raw) == "PMC11708054"
 
 
@@ -136,21 +164,6 @@ def test_is_table_file(filename: str, label: str | None, expected: bool) -> None
     assert is_table_file(filename, label) is expected
 
 
-def test_table_files_from_jats_realistic() -> None:
-    """Only the ``.xlsx`` survives; the label-sharing ``.jpg`` is dropped."""
-    assert table_files_from_jats(JATS_XML) == [{"href": "mbio.01679-24-s0006.xlsx", "label": "Table S1", "is_table": True}]
-
-
-def test_table_files_from_jats_no_supplementary() -> None:
-    """No ``<supplementary-material>`` -> ``[]``."""
-    assert table_files_from_jats(JATS_NO_SM) == []
-
-
-def test_table_files_from_jats_malformed() -> None:
-    """Malformed XML returns ``[]`` rather than raising into the caller."""
-    assert table_files_from_jats("<not xml") == []
-
-
 def test_is_open_access_cc_by_json() -> None:
     """CC-BY metadata string is open access."""
     assert is_open_access(METADATA_OA) is True
@@ -176,45 +189,167 @@ def test_public_url() -> None:
     assert public_url("PMC11708054.1/", "f.xlsx") == "https://pmc-oa-opendata.s3.amazonaws.com/PMC11708054.1/f.xlsx"
 
 
-def test_fetch_pmc_tables_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """OA article with one table -> the file is really written under ``outdir/<prefix>``.
+# --------------------------------------------------------------------------- #
+# New pure helpers: latest_version_prefix / object_keys_from_listing /
+# is_useful_file / candidate_tables
+# --------------------------------------------------------------------------- #
 
-    WHY: this is the end-to-end contract (list -> metadata -> JATS -> download) with
-    the network mocked. Asserting the bytes on disk proves the download path wired the
-    routed ``_http_get_bytes`` output to the correct local destination.
-    """
+
+def test_latest_version_prefix_numeric() -> None:
+    """Numeric compare: ``.10`` beats ``.2`` (a string sort would get this wrong)."""
+    assert latest_version_prefix(["PMC1.1/", "PMC1.10/", "PMC1.2/"]) == "PMC1.10/"
+
+
+def test_latest_version_prefix_single() -> None:
+    """A single prefix is returned unchanged."""
+    assert latest_version_prefix(["PMC11708054.1/"]) == "PMC11708054.1/"
+
+
+def test_object_keys_from_listing_xml() -> None:
+    """XML ``<Contents><Key>`` -> sorted unique keys."""
+    keys: list[str] = object_keys_from_listing(_object_listing(["p/b.xlsx", "p/a.xml"]))
+    assert keys == ["p/a.xml", "p/b.xlsx"]
+
+
+def test_object_keys_from_listing_json() -> None:
+    """The JSON variant parses to the same key list."""
+    assert object_keys_from_listing('{"Contents": [{"Key": "p/a.xml"}, {"Key": "p/b.xlsx"}]}') == ["p/a.xml", "p/b.xlsx"]
+
+
+def test_object_keys_from_listing_drops_folder_markers() -> None:
+    """Keys ending in ``/`` (folder markers) and empty keys are dropped."""
+    body: str = '{"Contents": [{"Key": "p/"}, {"Key": ""}, {"Key": "p/a.xml"}]}'
+    assert object_keys_from_listing(body) == ["p/a.xml"]
+
+
+@pytest.mark.parametrize("listing", ["<<garbage>>", "", "{not valid json"])
+def test_object_keys_from_listing_bad(listing: str) -> None:
+    """Garbage / empty / malformed bodies yield ``[]`` (never a raise)."""
+    assert object_keys_from_listing(listing) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("PMC1.1.xml", True),
+        ("PMC1.1.nxml", True),
+        ("PMC1.1.txt", True),
+        ("PMC1.1.pdf", True),  # kept as MAIN TEXT (not a table)
+        ("PMC1.1.json", True),
+        ("s.xlsx", True),
+        ("s.csv", True),
+        ("s.tsv", True),
+        ("fig.jpg", False),
+        ("fig.png", False),
+        ("suppl.docx", False),
+        ("blob.bin", False),
+    ],
+)
+def test_is_useful_file(filename: str, expected: bool) -> None:
+    """Main text + metadata + data tables are useful; binary media is not."""
+    assert is_useful_file(filename) is expected
+
+
+def test_candidate_tables_returns_all_tables(tmp_path: Path) -> None:
+    """Every table-extension path is returned (not just the first), in order."""
+    files: list[Path] = [tmp_path / "a.xlsx", tmp_path / "b.jpg", tmp_path / "c.csv"]
+    assert candidate_tables(files) == [tmp_path / "a.xlsx", tmp_path / "c.csv"]
+
+
+def test_candidate_tables_none_raises(tmp_path: Path) -> None:
+    """No table among the files -> ``FileNotFoundError`` (the --no-fetch guard)."""
+    with pytest.raises(FileNotFoundError, match="No supplementary table"):
+        candidate_tables([tmp_path / "a.xml", tmp_path / "b.jpg"])
+
+
+# --------------------------------------------------------------------------- #
+# fetch_pmc_article (mocked HTTP) — happy path + fail-fast ladder
+# --------------------------------------------------------------------------- #
+
+
+def test_fetch_pmc_article_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """OA article -> only the useful files land on disk under ``outdir/<key>`` (no .docx/.jpg)."""
+    _, downloaded = _patch_http(monkeypatch)
+    outdir: Path = tmp_path / "out"
+    result: list[Path] = fetch_pmc_article("PMC11708054", outdir)
+
+    assert sorted(p.name for p in result) == sorted(USEFUL_NAMES)
+    # every returned path really exists under the version subdir
+    for path in result:
+        assert path.is_file()
+        assert path.parent.name == "PMC11708054.1"
+    # binary media were never downloaded
+    assert not any(url.endswith((".jpg", ".docx")) for url in downloaded)
+    # the useful files were
+    assert sum(1 for url in downloaded if url.endswith((".xml", ".txt", ".pdf", ".json", ".xlsx"))) == len(USEFUL_NAMES)
+
+
+def test_fetch_pmc_tables_wrapper_returns_only_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The backward-compat wrapper filters the full payload down to data tables."""
     _patch_http(monkeypatch)
-    outdir: Path = tmp_path / "tables"
-    result: list[Path] = fetch_pmc_tables("PMC11708054", outdir)
-    expected: Path = outdir / "PMC11708054.1" / "mbio.01679-24-s0006.xlsx"
-    assert result == [expected]
-    assert expected.is_file()
-    assert expected.read_bytes() == XLSX_BYTES
+    result: list[Path] = fetch_pmc_tables("PMC11708054", tmp_path / "out")
+    assert sorted(p.name for p in result) == ["mbio.01679-24-s0002.xlsx", "mbio.01679-24-s0003.xlsx"]
 
 
-def test_fetch_pmc_tables_empty_listing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_pmc_article_latest_version_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With two versions, ONLY the latest (``PMC1.2``) is listed/downloaded; ``PMC1.1`` is ignored."""
+    version_listing: str = (
+        '<?xml version="1.0"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+        "<CommonPrefixes><Prefix>PMC1.1/</Prefix></CommonPrefixes>"
+        "<CommonPrefixes><Prefix>PMC1.2/</Prefix></CommonPrefixes>"
+        "</ListBucketResult>"
+    )
+    objects: str = _object_listing(["PMC1.2/PMC1.2.xml", "PMC1.2/t.xlsx"])
+    requested, downloaded = _patch_http(monkeypatch, version_listing=version_listing, object_listing=objects)
+
+    result: list[Path] = fetch_pmc_article("PMC1", tmp_path / "out")
+    assert sorted(p.name for p in result) == ["PMC1.2.xml", "t.xlsx"]
+    # the object listing + metadata targeted PMC1.2, and nothing ever touched PMC1.1
+    assert any("prefix=PMC1.2/" in url for url in requested)
+    assert not any("PMC1.1" in url for url in requested)
+    assert all("PMC1.2/" in url for url in downloaded)
+
+
+def test_fetch_pmc_article_non_oa_fails_fast(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-OA metadata -> ``PermissionError`` BEFORE the object listing and BEFORE any byte download."""
+    requested, downloaded = _patch_http(monkeypatch, metadata=METADATA_NON_OA)
+    with pytest.raises(PermissionError, match="not open access"):
+        fetch_pmc_article("PMC11708054", tmp_path / "out")
+    # fail-fast order: no object listing (list-type=2 without delimiter) and no bytes
+    assert not any("list-type=2" in url and "delimiter" not in url for url in requested)
+    assert downloaded == []
+
+
+def test_fetch_pmc_article_empty_object_listing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A version with no objects -> ``FileNotFoundError`` (no files)."""
+    _patch_http(monkeypatch, object_listing=_object_listing([]))
+    with pytest.raises(FileNotFoundError, match="No files found"):
+        fetch_pmc_article("PMC11708054", tmp_path / "out")
+
+
+def test_fetch_pmc_article_no_tables_fails_fast(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """OA article with main text + a figure but NO table -> ``FileNotFoundError`` before any download."""
+    keys: list[str] = [
+        "PMC11708054.1/PMC11708054.1.xml",
+        "PMC11708054.1/PMC11708054.1.txt",
+        "PMC11708054.1/PMC11708054.1.json",
+        "PMC11708054.1/fig.jpg",
+    ]
+    _, downloaded = _patch_http(monkeypatch, object_listing=_object_listing(keys))
+    with pytest.raises(FileNotFoundError, match="No supplementary tables"):
+        fetch_pmc_article("PMC11708054", tmp_path / "out")
+    assert downloaded == []  # the table gate precedes every byte download
+
+
+def test_fetch_pmc_article_empty_version_listing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """No version prefixes -> ``FileNotFoundError`` (not OA or wrong id)."""
     empty: str = '<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Prefix>PMC999.</Prefix></ListBucketResult>'
-    _patch_http(monkeypatch, listing=empty)
+    _patch_http(monkeypatch, version_listing=empty)
     with pytest.raises(FileNotFoundError, match="No PMC open-access versions"):
-        fetch_pmc_tables("PMC999", tmp_path)
+        fetch_pmc_article("PMC999", tmp_path / "out")
 
 
-def test_fetch_pmc_tables_non_oa(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Readable metadata with no CC license -> ``PermissionError`` even if a table exists."""
-    _patch_http(monkeypatch, metadata=METADATA_NON_OA)
-    with pytest.raises(PermissionError, match="not open access"):
-        fetch_pmc_tables("PMC11708054", tmp_path)
-
-
-def test_fetch_pmc_tables_no_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """OA article whose JATS has no supplementary tables -> ``FileNotFoundError``."""
-    _patch_http(monkeypatch, jats=JATS_NO_SM)
-    with pytest.raises(FileNotFoundError, match="No supplementary tables"):
-        fetch_pmc_tables("PMC11708054", tmp_path)
-
-
-def test_fetch_pmc_tables_bad_id(tmp_path: Path) -> None:
+def test_fetch_pmc_article_bad_id(tmp_path: Path) -> None:
     """A bad id raises ``ValueError`` before any HTTP is attempted (no mock needed)."""
     with pytest.raises(ValueError, match="Invalid PMC id"):
-        fetch_pmc_tables("not-an-id", tmp_path)
+        fetch_pmc_article("not-an-id", tmp_path)

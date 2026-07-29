@@ -19,7 +19,7 @@ from tablassert.cli import APP, agent
 def test_agent_command_registered() -> None:
     """The ``agent`` subcommand is registered on the shared CLI ``APP``.
 
-    Why: ``tablassert agent`` must be a discoverable peer of ``build-graph``/``schema``. Asserting
+    Why: ``tablassert agent`` must be a discoverable peer of ``build-kg``/``validate``. Asserting
     against cyclopts' resolved-command mapping proves the ``@APP.command(name="agent")`` decorator
     actually attached it (a direct registration check, not a fragile ``--help`` scrape).
     """

@@ -238,7 +238,7 @@ Both levels are queried during resolution. Level one (exact case-insensitive mat
 
 ## Integration
 
-`resolve_many()` is a self-contained entry point. It does not require any prior setup beyond having a fullmap database available. For full pipeline builds, use the CLI (`tablassert build-graph`) which orchestrates resolution through the `Tcode` class.
+`resolve_many()` is a self-contained entry point. It does not require any prior setup beyond having a fullmap database available. For full pipeline builds, use the CLI (`tablassert build-kg`) which orchestrates resolution through the `Tcode` class.
 
 ## Next Steps
 

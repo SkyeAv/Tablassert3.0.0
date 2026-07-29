@@ -13,7 +13,7 @@ import tablassert.cli as cli
 import tablassert.lib as lib
 from tablassert import rs
 from tablassert.biolink import Categories
-from tablassert.cli import build_fullmap
+from tablassert.cli import gen_fullmap
 from tablassert.fullmap import _TERM_CACHE, ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, lookup_rows, resolve, resolve_batch
 from tablassert.lib import to_store
 
@@ -663,7 +663,7 @@ def test_term_cache_invalidates_across_rebuild(tmp_path: Path) -> None:
     assert second[0]["CURIE"] == "HGNC:2222"  # fresh, not the stale HGNC:1100
 
 
-def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gen_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """CLI command builds fullmap redb from downloaded BABEL fixtures."""
     classes: Path = write_jsonl(tmp_path / "classes.ndjson", [class_row("HGNC:1100", ["NCBIGene:672"])])
     synonyms: Path = write_jsonl(tmp_path / "HGNC.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["BRCA1"], "Gene")])
@@ -689,7 +689,7 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(cli, "download_babel_file", fake_download_babel_file)
     monkeypatch.chdir(tmp_path)
 
-    build_fullmap(output=output, version="test-version", threads=1)
+    gen_fullmap(output=output, version="test-version", threads=1)
 
     assert downloaded_paths == [Path("fullmap/downloads/classes/classes.ndjson"), Path("fullmap/downloads/synonyms/HGNC.ndjson")]
     rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"], threads=1)

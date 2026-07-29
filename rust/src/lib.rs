@@ -25,6 +25,15 @@ fn xxh32(data: &str) -> String {
     format!("{:08x}", xxh32_digest(data.as_bytes(), 0))
 }
 
+// Public re-exports of the fullmap `#[pyfunction]`s so Rust integration tests
+// (`rust/tests/`) and other non-Python embedders can drive the exact production
+// build/read path.  The `fullmap` module itself stays private; only these
+// intended entry points are surfaced at the crate root.
+pub use fullmap::{
+    build_fullmap_db, fullmap_source_version, hydrate_categories, hydrate_curies, hydrate_prefixes,
+    hydrate_sources, lookup_fullmap_terms,
+};
+
 #[pymodule]
 fn rs(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fullmap::build_fullmap_db, module)?)?;

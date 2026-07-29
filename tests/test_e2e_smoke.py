@@ -1,12 +1,12 @@
 """Fast offline end-to-end smokes wiring the REAL Rust redb to the REAL Python pipeline.
 
 These two smokes catch Rust<->Python contract drift in the quick suite instead of a
-multi-hour ``build-graph`` run:
+multi-hour ``build-kg`` run:
 
 * ``test_build_pipeline_against_real_redb`` drives the full six-stage ``build_pipeline``
   against a tiny REAL ``rs.build_fullmap_db`` redb (no monkeypatched lookup) and asserts
   the KGX NDJSON output contains CURIEs that only the real redb could resolve.
-* ``test_validate_table_command_happy_path`` exercises the ``validate_table`` cyclopts
+* ``test_validate_command_happy_path`` exercises the ``validate`` cyclopts
   command wrapper (``cli.py``) plus ``validate_pipeline`` on a valid table config.
 
 Both are additive, offline, and fast (<~5s each); all artifacts land in ``tmp_path``.
@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 
 from tablassert import rs
-from tablassert.cli import build_pipeline, validate_pipeline, validate_table
+from tablassert.cli import build_pipeline, validate, validate_pipeline
 from tablassert.ingests import to_yaml
 from tablassert.progress import PipelineProgress
 
@@ -112,8 +112,8 @@ def test_build_pipeline_against_real_redb(tmp_path: Path, monkeypatch: pytest.Mo
     assert "HGNC:6871" in edge_text
 
 
-def test_validate_table_command_happy_path(tmp_path: Path) -> None:
-    """SMOKE (ii): ``validate_table`` (cli.py wrapper) + ``validate_pipeline`` accept a valid table.
+def test_validate_command_happy_path(tmp_path: Path) -> None:
+    """SMOKE (ii): ``validate`` (cli.py wrapper) + ``validate_pipeline`` accept a valid table.
 
     Mirrors ``tests/fixtures/minimal_section.yaml`` (value-encoded BRCA1/TP53, PMC
     provenance) wrapped in the ``template`` shape ``to_sections`` requires. Validation never
@@ -131,5 +131,5 @@ def test_validate_table_command_happy_path(tmp_path: Path) -> None:
 
     # The three-stage validate pipeline alone does not raise on a valid section.
     assert validate_pipeline(config, PipelineProgress(total_stages=3)) is None
-    # The cyclopts command wrapper (cli.py validate_table -> run(3, validate_pipeline, ...)).
-    assert validate_table(config) is None
+    # The cyclopts command wrapper (cli.py validate -> run(3, validate_pipeline, ...)).
+    assert validate(config) is None

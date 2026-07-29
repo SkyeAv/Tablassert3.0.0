@@ -37,14 +37,25 @@ Tables are fetched from the **new** PMC open-access S3 bucket — the sanctioned
 | **Download** | public HTTPS `https://pmc-oa-opendata.s3.amazonaws.com/<prefix>/<file>` |
 | **Layout** | one prefix per article-version, e.g. `PMC11708054.1/`, containing `PMC<n>.<v>.xml` (JATS), `.pdf`, `.txt`, `.json` (metadata) and the media/supplementary files |
 
-`fetch_pmc_tables(pmc_id, outdir)`:
+`fetch_pmc_article(pmc_id, outdir)` downloads the **useful** payload for the **latest** article version,
+failing fast (cheap checks before any large download and before any model call):
 
-1. Enumerates version prefixes via S3 `list-objects-v2` (`?list-type=2&prefix=PMC<n>.&delimiter=/`).
-2. Checks the article `.json` metadata for open access (`is_pmc_openaccess` / a `CC*` `license_code`).
-3. Parses the JATS `<supplementary-material>` → `<media xlink:href="…">`, keeping files whose `<label>`
-   contains **"Table"** and/or whose extension is one of `.xlsx .xls .csv .tsv` (images/`.pdf`/`.docx`
-   are dropped).
-4. Downloads each table over public HTTPS and returns the local paths.
+1. Enumerates version prefixes via S3 `list-objects-v2` (`?list-type=2&prefix=PMC<n>.&delimiter=/`) and
+   selects the **latest** version (numeric, so `PMC<n>.10` beats `PMC<n>.2`); older versions are ignored.
+2. Checks the latest version's `.json` metadata for open access (`is_pmc_openaccess` / a `CC*`
+   `license_code`) — **before** any large download (not open access ⇒ `PermissionError` immediately).
+3. Enumerates the version's objects (`?list-type=2&prefix=PMC<n>.<v>/`) and confirms a data table is
+   present (a file with extension `.xlsx .xls .csv .tsv`) — **before** any large download (none ⇒
+   `FileNotFoundError`).
+4. Downloads only the **useful** files to `outdir/<prefix>/<file>` and returns their paths: the main text
+   (`.xml`/`.nxml`/`.txt`/`.pdf`), the `.json` metadata, and every data table. Binary media (images,
+   `.docx`) are skipped. `fetch_pmc_tables` remains as a thin wrapper returning only the table files.
+
+The main text is wired into the agent via the `pmc_article_context` tool, which parses the JATS `.xml`
+into a compact, data-fenced summary (title, abstract, section outline, and a supplementary-table manifest
+with labels/captions). For Excel tables, `read_table` lists **all worksheets** and reads a chosen one via
+`sheet=` (set `source.sheet` in the config), so the agent can check every table and every sheet before
+authoring a config.
 
 !!! failure "The old paths are dead"
     The legacy `s3://pmc-open-access` bucket, the FTP `oa_file_list.csv`, and the per-article `tar.gz`
@@ -100,9 +111,10 @@ Flags: `--max-steps`, `--map-threshold`, `--qc-threshold`, `--max-improve-iters`
 The **outer supervisor is deterministic Python** (not an LLM) — smolagents' #1 practice is deterministic
 control flow over agentic decisions. For each PMC id it:
 
-1. **Fetches** the supplementary tables (`fetch_pmc_tables`).
-2. Runs the **inner `CodeAgent`** to *derive* an initial Section config (`read_table` → `derive_config`,
-   gated by the Section JSON schema).
+1. **Fetches** the latest-version article payload (`fetch_pmc_article`: main text + metadata + all tables;
+   fails fast on not-open-access / no-table) and presents **all** candidate tables to the agent.
+2. Runs the **inner `CodeAgent`** to *derive* an initial Section config (`pmc_article_context` → `read_table`
+   → `derive_config`, gated by the Section JSON schema). The agent picks the table + worksheet to map.
 3. **Builds + audits** in one deterministic mega-tool (`build_and_audit`: validate → build → QC → coverage).
 4. **Improves** while coverage `< map_threshold` and budget remains: `propose_config_edit` → rebuild →
    **accept iff strictly better** (monotonic — regressions are rejected).
@@ -123,8 +135,9 @@ already `MAPPED`/`SKIPPED` are skipped, and the best config for each article is 
 
 | Tool | Kind | Purpose |
 | --- | --- | --- |
-| `fetch_pmc_tables` | function | PMC-AWS download + table identification |
-| `read_table` | tool | render a table as **data-fenced, spotlighted** text |
+| `fetch_pmc_article` | function | PMC-AWS download of the useful latest-version payload (main text + metadata + tables), fail-fast |
+| `pmc_article_context` | tool | parse the JATS main text into a **data-fenced** summary (title/abstract/sections/supplementary manifest) |
+| `read_table` | tool | render a table as **data-fenced, spotlighted** text; lists **all worksheets** of an Excel file (`sheet=`) |
 | `derive_config` | tool | author a Section config; `output_schema = Section.model_json_schema()` |
 | `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage mega-tool |
 | `map_coverage` | tool | fullmap term-resolution coverage (per-column + overall) |

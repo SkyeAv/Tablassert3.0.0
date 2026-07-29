@@ -167,13 +167,13 @@ def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
     )
 
 
-def value(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
-    """Add a new column populated with a literal string value.
+def value(lf: pl.LazyFrame, col: str, x: object) -> pl.LazyFrame:
+    """Add a new column populated with a literal value.
 
     Args:
         lf: Source LazyFrame.
         col: Name of the new column.
-        x: Literal string value to populate every row with.
+        x: Literal value to populate every row with.
 
     Returns:
         LazyFrame with the new literal column appended.
@@ -210,17 +210,18 @@ def source_record_urls(lf: pl.LazyFrame, url: str) -> pl.LazyFrame:
     return lf.with_columns(pl.concat_list(pl.lit(url)).alias("source_record_urls"))
 
 
-def publications(lf: pl.LazyFrame, curie: str) -> pl.LazyFrame:
-    """Add a publication CURIE as a Biolink-compliant ``list[str]`` column.
+def publications(lf: pl.LazyFrame, curies: str | list[str]) -> pl.LazyFrame:
+    """Add publication CURIEs as a Biolink-compliant ``list[str]`` column.
 
     Args:
         lf: Source LazyFrame.
-        curie: Publication CURIE (e.g. ``PMCID:PMC1234567``).
+        curies: One publication CURIE or a list of publication CURIEs.
 
     Returns:
         LazyFrame with the new ``publications`` list column appended.
     """
-    return lf.with_columns(pl.concat_list(pl.lit(curie)).alias("publications"))
+    values: list[str] = [curies] if isinstance(curies, str) else curies
+    return lf.with_columns(pl.concat_list([pl.lit(curie) for curie in values]).alias("publications"))
 
 
 def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
@@ -581,6 +582,7 @@ class Tcode(Section):
     release: bool = Field(False)
     head: bool = Field(False)
     name: str | None = Field(None)
+    infores: str | None = Field(None)
 
     def encoding(self: Self, x: Encoding, col: str, table_literal: bool = False) -> list[Any]:
         """Collect helper for Encoding classes.
@@ -706,15 +708,21 @@ class Tcode(Section):
             Raw op list: predicate and edge category, provenance metadata,
             then the trim/format/write finalize ops.
         """
+        override = self.provenance.override
+        primary_knowledge_source = (override.infores if override else None) or self.infores or (infores(self.name) if self.name else None)
+        upstream_ids = override.upstream_resource_ids if override else upstream_resource_ids(self.provenance.repo)
+        knowledge_level = override.knowledge_level if override else self.provenance.knowledge_level
+        agent_type = override.agent_type if override else self.provenance.agent_type
+        publication_values = override.publications if override else [publication_curie(self.provenance.repo, self.provenance.publication or "")]
         return [
             (derive_species_context, ()),
             (value, ("predicate", "biolink:" + self.statement.predicate)),
             (edge_category, ()),
-            (value, ("upstream_resource_ids", upstream_resource_ids(self.provenance.repo))),
-            (value, ("knowledge_level", self.provenance.knowledge_level)),
-            (value, ("agent_type", self.provenance.agent_type)),
-            (value, ("resource_id", infores(self.name))) if self.name else None,
-            (publications, (publication_curie(self.provenance.repo, self.provenance.publication),)),
+            (value, ("upstream_resource_ids", upstream_ids)),
+            (value, ("knowledge_level", knowledge_level)),
+            (value, ("agent_type", agent_type)),
+            (value, ("primary_knowledge_source", primary_knowledge_source)) if primary_knowledge_source else None,
+            (publications, (publication_values,)) if publication_values else None,
             (source_record_urls, (str(self.source.url),)),
             (value, ("sheet_name", self.source.sheet)) if self.source.kind == Files.EXCEL else None,  # pyright: ignore
             (trim, ()),
@@ -776,7 +784,9 @@ PHASE_AWARE: frozenset[Callable] = frozenset({resolve_batch, fullmap_audit})
 
 UNKNOWN_PHASE: str = "transform"
 
-_VALUE_PROVENANCE_COLS: frozenset[str] = frozenset({"upstream_resource_ids", "knowledge_level", "agent_type", "resource_id", "sheet_name"})
+_VALUE_PROVENANCE_COLS: frozenset[str] = frozenset(
+    {"upstream_resource_ids", "knowledge_level", "agent_type", "primary_knowledge_source", "sheet_name"}
+)
 
 
 def _phase_of(fn: Callable, args: tuple[Any, ...]) -> str:
@@ -1023,6 +1033,7 @@ def _write_ndjson(
     contributions: list[str] | None,
     ui_explanation: str | None,
     tables: list[Path] | None,
+    infores_id: str | None,
     on_phase: Callable[[str], None] | None = None,
 ) -> None:
     """Write, dedup, and RIG the KGX NDJSON outputs.
@@ -1043,6 +1054,7 @@ def _write_ndjson(
         contributions: Optional RIG contributor list.
         ui_explanation: Optional RIG UI explanation.
         tables: Optional RIG source table list.
+        infores_id: Optional graph-level infores CURIE for the RIG.
         on_phase: Optional callback fired with ``"write-nodes"``,
             ``"write-edges"``, ``"dedup"`` and ``"rig"`` at each phase
             boundary, used to drive progress UX.
@@ -1085,6 +1097,7 @@ def _write_ndjson(
         edges_tmp.with_suffix(""),
         rig_node_type_info(node_rows),
         unique_dicts(edge_type_info),
+        infores_id,
     )
 
 
@@ -1096,6 +1109,7 @@ def compile_graph(
     contributions: list[str] | None = None,
     ui_explanation: str | None = None,
     tables: list[Path] | None = None,
+    infores_id: str | None = None,
     on_phase: Callable[[str], None] | None = None,
     on_subgraph: Callable[[], None] | None = None,
 ) -> None:
@@ -1109,6 +1123,7 @@ def compile_graph(
         contributions: Optional contributor list for the RIG.
         ui_explanation: Optional UI explanation for the RIG.
         tables: Optional source table list for the RIG.
+        infores_id: Optional graph-level infores CURIE for the RIG.
         on_phase: Optional callback fired with the current phase label
             (``scan`` / ``normalize`` per subgraph, then ``write-nodes`` /
             ``write-edges`` / ``dedup`` / ``rig``), used to drive progress UX.
@@ -1134,7 +1149,7 @@ def compile_graph(
     subedges: list[pl.LazyFrame]
     edge_type_info: list[dict[str, object]]
     subnodes, subedges, edge_type_info = _collect_subframes(subgraphs, e, ui_explanation, on_phase, on_subgraph)
-    _write_ndjson(subnodes, subedges, edge_type_info, n, e, name, version, description, contributions, ui_explanation, tables, on_phase)
+    _write_ndjson(subnodes, subedges, edge_type_info, n, e, name, version, description, contributions, ui_explanation, tables, infores_id, on_phase)
 
 
 def resolve_many(
