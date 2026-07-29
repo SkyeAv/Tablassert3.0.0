@@ -1827,15 +1827,25 @@ fn write_shard_records(
     write.set_durability(Durability::None);
     let mut table = write.open_table(RECORDS).map_err(py_err)?;
     let mut merge = MergeHeap::new(run_paths).map_err(py_err)?;
-    let mut batch: Vec<(u64, Vec<u8>)> = Vec::new();
+    // Pre-size the batch to the flush threshold so it never regrows (each
+    // doubling copied up to ~80 MB of accumulated records at the default 2M
+    // batch).  insert_batch == 0 (unbounded) yields a zero-capacity Vec.
+    let mut batch: Vec<(u64, Vec<u8>)> = Vec::with_capacity(insert_batch);
+    // Reusable bincode scratch buffer: serialize_into reuses one right-sized
+    // allocation across the ~1-2B merged groups instead of bincode::serialize
+    // growing a fresh Vec per record.  The encoded bytes are cloned into the
+    // batch (they must outlive the next clear), but the clone is a memcpy from a
+    // pre-sized buffer, not a from-scratch allocation + growth.
+    let mut enc_buf: Vec<u8> = Vec::with_capacity(256);
     let mut written: u64 = 0;
     loop {
         let Some((term, pairs)) = merge.next_group().map_err(py_err)? else {
             break;
         };
         let hash = xxh64(term.as_bytes(), 0);
-        let encoded = bincode::serialize(&(term.as_str(), &pairs)).map_err(py_err)?;
-        batch.push((hash, encoded));
+        enc_buf.clear();
+        bincode::serialize_into(&mut enc_buf, &(term.as_str(), &pairs)).map_err(py_err)?;
+        batch.push((hash, enc_buf.clone()));
         if insert_batch > 0 && batch.len() >= insert_batch {
             let flushed = flush_shard_batch(&mut table, &mut batch)?;
             written += flushed;
