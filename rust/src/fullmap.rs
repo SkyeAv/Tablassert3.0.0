@@ -53,6 +53,11 @@ type ShardJob = (Vec<(usize, String)>, Arc<Database>);
 /// string/integer keys.  Collision behavior is irrelevant to build correctness:
 /// these maps are internal, and the on-disk RECORDS key is xxh64 (not FxHash).
 type FxHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
+/// A producer->worker channel payload: the source id tagging a chunk of raw
+/// NDJSON line bytes (one `Vec<u8>` per non-empty line).  Workers parse each line
+/// straight from the bytes (`serde_json::from_slice`), so no per-line `String` is
+/// ever allocated on the read path.
+type LineChunk = (u8, Vec<Vec<u8>>);
 
 /// Database cache keyed by canonical path only.
 ///
@@ -1224,13 +1229,14 @@ fn flush_buf(sh: &SynonymShared<'_>, buf: &mut WorkerBuf) -> PyResult<()> {
 
 /// Producer: read one synonym file (gz or plain), group non-empty lines into
 /// byte-bounded chunks (~`chunk_bytes` bytes each), and send each chunk (tagged
-/// with its source id) into the channel.  Decompression happens here; JSON
-/// parsing/processing happens in the workers.  The bounded channel provides
-/// backpressure so a fast decompressor cannot buffer a whole giant file in RAM.
+/// with its source id) into the channel as raw line bytes.  Decompression happens
+/// here; JSON parsing/processing happens in the workers.  The bounded channel
+/// provides backpressure so a fast decompressor cannot buffer a whole giant file
+/// in RAM.
 #[allow(clippy::too_many_arguments)]
 fn produce_file(
     path: &Path,
-    tx: &SyncSender<(u8, Vec<String>)>,
+    tx: &SyncSender<LineChunk>,
     source_ids: &FxHashMap<String, u8>,
     chunk_bytes: usize,
     progress: Option<&Arc<Progress>>,
@@ -1243,20 +1249,34 @@ fn produce_file(
         .get(&src_name)
         .ok_or_else(|| PyRuntimeError::new_err(format!("uninterned source {src_name}")))?;
 
-    let reader = BufReader::new(open_reader(path)?);
-    let mut chunk: Vec<String> = Vec::new();
+    // Read into a reusable byte buffer via `read_until` instead of
+    // `BufReader::lines()`: the latter allocates a fresh `String` per line AND
+    // runs a UTF-8 validation pass, ~1.4B times over a full build.  Here the
+    // buffer is allocated once and reused across lines; each non-empty line is
+    // pushed into the chunk as an owned `Vec<u8>` that workers parse straight
+    // from the bytes (`serde_json::from_slice`), so no per-line `String` exists.
+    let mut reader = BufReader::new(open_reader(path)?);
+    let mut line: Vec<u8> = Vec::with_capacity(8192);
+    let mut chunk: Vec<Vec<u8>> = Vec::new();
     let mut chunk_len: usize = 0;
     // Rows accumulated in the current (not-yet-flushed) chunk; folded into the
     // shared cumulative counter at each flush and at EOF.
     let mut chunk_rows: u64 = 0;
-    for line in reader.lines() {
-        let raw = line.map_err(py_err)?;
-        if raw.trim().is_empty() {
+    loop {
+        line.clear();
+        let n = reader.read_until(b'\n', &mut line).map_err(py_err)?;
+        if n == 0 {
+            break; // clean EOF
+        }
+        while line.last() == Some(&b'\n') || line.last() == Some(&b'\r') {
+            line.pop();
+        }
+        if line.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
         chunk_rows += 1;
-        chunk_len += raw.len();
-        chunk.push(raw);
+        chunk_len += line.len();
+        chunk.push(line.clone());
         // Flush once the chunk reaches the byte budget (bounds per-chunk memory
         // regardless of how long individual lines are).
         if chunk_len >= chunk_bytes {
@@ -1302,7 +1322,7 @@ fn produce_file(
 /// into a persistent private buffer, spilling as needed; flush on channel
 /// close.  The receiver lock is held only for the `recv` call, never during
 /// processing, so workers run in parallel.
-fn worker_loop(rx: &Mutex<Receiver<(u8, Vec<String>)>>, sh: &SynonymShared<'_>) -> PyResult<()> {
+fn worker_loop(rx: &Mutex<Receiver<LineChunk>>, sh: &SynonymShared<'_>) -> PyResult<()> {
     let mut buf = WorkerBuf::default();
     loop {
         // Lock is dropped at the end of this statement (before processing).
@@ -1310,7 +1330,7 @@ fn worker_loop(rx: &Mutex<Receiver<(u8, Vec<String>)>>, sh: &SynonymShared<'_>) 
         match job {
             Ok((source_id, lines)) => {
                 for line in lines {
-                    let row: Value = serde_json::from_str(&line).map_err(py_err)?;
+                    let row: Value = serde_json::from_slice(&line).map_err(py_err)?;
                     process_row(sh, source_id, &row, &mut buf)?;
                 }
             }
@@ -1419,7 +1439,7 @@ fn process_synonyms(
     // A modest bound keeps workers fed while bounding the in-flight line-buffer
     // memory (bound x chunk_bytes); decompression outpaces processing, so a
     // shallow queue never starves the workers.
-    let (tx, rx) = sync_channel::<(u8, Vec<String>)>(workers);
+    let (tx, rx) = sync_channel::<LineChunk>(workers);
     let rx = Arc::new(Mutex::new(rx));
 
     // A handful of producers cover all files (decompression is far faster than
