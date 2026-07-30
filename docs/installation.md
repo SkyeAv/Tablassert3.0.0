@@ -123,17 +123,7 @@ make setup
 make check
 ```
 
-The underlying stable gate commands are:
-
-```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
-uv run pytest
-cargo fmt --check --manifest-path rust/Cargo.toml
-cargo test --manifest-path rust/Cargo.toml
-cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
-```
+The underlying stable gates are `ruff check` / `ruff format --check`, `pyright`, `pytest`, and `cargo fmt --check` / `cargo test` / `cargo clippy --all-targets -- -D warnings` (see [Development](development.md)).
 
 Install pre-commit hooks if you want the gates to run automatically before commits:
 
@@ -164,23 +154,6 @@ release:
 ```bash
 uv python install 3.11
 uv python pin 3.11
-```
-
-### Dependency installation
-
-Reinstall dependencies and rebuild the editable extension:
-
-```bash
-uv sync --group dev --extra qc --reinstall
-uv run maturin develop --manifest-path rust/Cargo.toml
-```
-
-### Polars CPU instructions
-
-If your CPU lacks the instructions required by default Polars builds, install the `rt` extra:
-
-```bash
-uv tool install "tablassert[rt]"   # or: pip install "tablassert[rt]"
 ```
 
 ### QC runtime

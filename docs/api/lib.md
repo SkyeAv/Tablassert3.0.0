@@ -1,8 +1,6 @@
 # Batch Resolution (lib)
 
-The `lib` module exposes `resolve_many()`, a high-level convenience function that batch-resolves an iterable of entity strings to CURIEs — use it in scripts and notebooks when you want results without building LazyFrames or running NLP preprocessing yourself.
-
-It wraps the lower-level [`resolve()`](fullmap.md) pipeline — preserving the original input text, applying `level_one` and `level_two` normalization, querying the embedded fullmap redb database, executing entity resolution, optionally running the QC audit (when `qc=True`), and returning results as a plain Python list of row dictionaries.
+The `lib` module exposes `resolve_many()`, a high-level convenience function that batch-resolves an iterable of entity strings to CURIEs — use it in scripts and notebooks when you want results without building LazyFrames or running NLP preprocessing yourself. It wraps the lower-level [`resolve()`](fullmap.md) pipeline (normalization, fullmap lookup, resolution, optional QC audit when `qc=True`) and returns a plain Python list of row dictionaries.
 
 ## resolve_many()
 
@@ -40,13 +38,6 @@ Examples: `["TP53", "BRCA1", "EGFR"]`, `("aspirin", "ibuprofen")`, or a generato
 **`fullmap: Path`**
 
 Filesystem path to the fullmap redb file, or a base directory containing it (resolved via `fullmap_db_path()` — see [Fullmap](../fullmap.md)).
-
-The database contains:
-- Synonym mappings (text → CURIE)
-- Preferred entity names
-- Biolink categories
-- NCBI Taxon IDs
-- Source databases and versions
 
 **`taxon: Optional[str]` (default: `None`)**
 
@@ -97,21 +88,7 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 ### Pipeline Internals
 
-`resolve_many()` executes the following steps internally:
-
-1. **Series construction** — Wraps the input iterable in a `pl.Series` with the given column name, then converts to a single-column `pl.LazyFrame`.
-
-2. **Original column capture** — Copies the raw input column into `original_{col}` (pristine source value) via `column(lf, add("original_", col), col)`, and into `{col}_pre_resolution` (the value fed to resolution) via `column(lf, add(col, "_pre_resolution"), col)`. The `original_{col}` column is returned; `{col}_pre_resolution` is used internally for QC and dropped from the result to mirror edge output.
-
-3. **NLP normalization** — Applies `level_one()` (whitespace stripping + lowercasing) and `level_two()` (non-word character removal via `\W+`) to produce the two normalized columns required by `resolve()`.
-
-4. **Path resolution** — Resolves the `fullmap` argument to the actual redb file via `fullmap_db_path()`.
-
-5. **Entity resolution** — Delegates to `fullmap.resolve()` which queries the embedded redb database, ranks matches by category priority, preferred-name exactness, NLP level, and category frequency, then deduplicates to one CURIE per input string.
-
-6. **QC audit (optional)** — When `qc=True`, runs `fullmap_audit()` on the resolved LazyFrame. Rows that fail all three audit stages are dropped from the result.
-
-7. **Collection and conversion** — Collects the lazy result into an eager `pl.DataFrame` and converts to a list of row dictionaries via `to_dicts()`.
+Internally: wrap the iterable in a single-column LazyFrame; snapshot the raw input to `original_{col}` (returned) and `{col}_pre_resolution` (internal, dropped — mirrors edge output); apply `level_one`/`level_two`; resolve the fullmap path via `fullmap_db_path()`; delegate to `fullmap.resolve()`; optionally run `fullmap_audit()` when `qc=True`; collect and `to_dicts()`.
 
 ### Example Usage
 
@@ -135,44 +112,6 @@ result: list[dict[str, Any]] = resolve_many(
 
 # result[0] → {"original_gene": "TP53", "gene": "HGNC:11998", "gene_name": "TP53", ...}
 # result[1] → {"original_gene": "BRCA1", "gene": "HGNC:1100", "gene_name": "BRCA1", ...}
-```
-
-#### Disease Resolution With Category Avoidance
-
-```python
-from pathlib import Path
-from typing import Any
-from tablassert.lib import resolve_many
-from tablassert.biolink import Categories
-
-fullmap: Path = Path("/path/to/fullmap")
-
-result: list[dict[str, Any]] = resolve_many(
-    col="disease",
-    entities=["diabetes mellitus", "breast cancer", "alzheimer disease"],
-    fullmap=fullmap,
-    avoid=[Categories.GENE, Categories.PROTEIN],
-)
-
-# result[0] → {"original_disease": "diabetes mellitus", "disease": "MONDO:0005015", ...}
-# result[1] → {"original_disease": "breast cancer", "disease_name": "breast cancer", ...}
-```
-
-#### Chemical Resolution Without Column Context
-
-```python
-from pathlib import Path
-from typing import Any
-from tablassert.lib import resolve_many
-
-fullmap: Path = Path("/path/to/fullmap")
-
-result: list[dict[str, Any]] = resolve_many(
-    col="chemical",
-    entities=["aspirin", "metformin", "ibuprofen"],
-    fullmap=fullmap,
-    column_context=False,
-)
 ```
 
 #### Consuming Results
@@ -217,18 +156,7 @@ for row in result:
 
 ### NLP Processing
 
-`resolve_many()` applies both NLP normalization levels before resolution:
-
-**Level one** — `level_one(lf, col)`:
-- Strips leading/trailing whitespace
-- Converts to lowercase
-- Output column: `{col}` (overwrites the original)
-
-**Level two** — `level_two(lf, col)`:
-- Removes all non-word characters (`\W+` → `""`) from the level-one result
-- Output column: `{col}_two`
-
-Both levels are queried during resolution. Level one (exact case-insensitive match) is preferred; level two is used as a fallback for terms with punctuation or special characters.
+`resolve_many()` applies `level_one` (strip + lowercase → column `{col}`) and `level_two` (remove `\W+` → column `{col}_two`) before resolution. Level one (case-insensitive exact) is preferred; level two is the fallback for terms with punctuation or special characters.
 
 ### Error Handling
 

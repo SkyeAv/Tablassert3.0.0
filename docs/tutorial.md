@@ -32,17 +32,7 @@ KRAS,pancreatic cancer,0.002,320
 
 ## Step 1: Create the Data File
 
-If you're following along outside the repository, save the CSV above as `tutorial-data.csv`:
-
-```bash
-cat > tutorial-data.csv <<'EOF'
-gene_symbol,disease_name,p_value,sample_size
-TP53,lung cancer,0.001,450
-BRCA1,breast cancer,0.0001,1200
-EGFR,colorectal cancer,0.005,680
-KRAS,pancreatic cancer,0.002,320
-EOF
-```
+If you're following along outside the repository, save the CSV from [The Data](#the-data) above as `tutorial-data.csv`.
 
 ## Step 2: Create Table Configuration
 
@@ -178,30 +168,7 @@ The Resource Ingest Guide records the graph's source scope (`description`), prov
 
 ## Understanding the Transformation
 
-**Input:** Text strings ("TP53", "lung cancer")
-
-**Entity Resolution:**
-- "TP53" → `HGNC:11998` (Gene)
-- "lung cancer" → `MONDO:0008903` (Disease)
-
-**Quality Control:**
-- Stage 1: Exact match check
-- Stage 2: Fuzzy matching (if needed)
-- Stage 3: BERT semantic similarity (if needed)
-
-**Output:** KGX-compliant nodes and edges with:
-- Standardized identifiers (CURIEs)
-- Biolink categories and predicates
-- Provenance metadata
-- Edge annotations
-
-## What You Learned
-
-- **Table configuration** defines data sources and transformations
-- **Graph configuration** orchestrates multiple tables
-- **Entity resolution** maps text to standardized identifiers
-- **QC pipeline** validates mappings across three stages
-- **Output** is KGX-compliant NDJSON ready for NCATS Translator
+Entity resolution maps text to CURIEs ("TP53" → `HGNC:11998` Gene, "lung cancer" → `MONDO:0008903` Disease); the QC pipeline validates each mapping across three stages (exact → fuzzy → BioBERT). The output is KGX-compliant nodes and edges with standardized CURIEs, Biolink categories and predicates, provenance, and edge annotations.
 
 ## Next Steps
 

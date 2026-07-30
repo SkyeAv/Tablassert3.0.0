@@ -39,13 +39,6 @@ Column name containing text strings to resolve.
 
 Path to the fullmap redb file (already resolved — see `fullmap_db_path()` and [Fullmap](../fullmap.md)).
 
-The database contains:
-- Synonym mappings (text → CURIE)
-- Preferred entity names
-- Biolink categories
-- NCBI Taxon IDs
-- Source databases and versions
-
 **`taxon: Optional[str]`**
 
 Optional NCBI Taxon ID for filtering results.
@@ -159,35 +152,22 @@ result = resolve(
 
 ### Mapping a Python List
 
-A common entry point for programmatic use is resolving a plain Python list of terms:
+Resolve a plain Python list by building a LazyFrame and applying the NLP levels before `resolve()`:
 
 ```python
-from pathlib import Path
 import polars as pl
+from pathlib import Path
 from tablassert.fullmap import resolve
 from tablassert.nlp import level_one, level_two
 from tablassert.biolink import Categories
 
-# Path to the fullmap redb file
 db = Path("/path/to/fullmap/data/fullmap.redb")
-
-# Map a list of gene symbols to CURIEs
-genes = ["TP53", "BRCA1", "EGFR", "KRAS"]
-lf = pl.LazyFrame({"gene": genes})
-
-# Apply NLP normalization (required before resolve)
+lf = pl.LazyFrame({"gene": ["TP53", "BRCA1", "EGFR", "KRAS"]})
 lf = level_one(lf, "gene")   # lowercase + strip
 lf = level_two(lf, "gene")   # remove non-word chars → "gene_two" column
 
-result = resolve(
-    lf=lf,
-    col="gene",
-    db=db,
-    taxon="9606",               # Human only
-    prioritize=[Categories.GENE],
-    log=False,
-).collect()
-
+result = resolve(lf=lf, col="gene", db=db, taxon="9606",
+                 prioritize=[Categories.GENE], log=False).collect()
 print(result.select(["gene", "gene_name", "gene_category"]))
 ```
 
@@ -206,22 +186,9 @@ print(result.select(["gene", "gene_name", "gene_category"]))
 
 Rows without a valid CURIE are filtered from the returned frame.
 
-### Case-Dependent Behavior
-
-`"TP53"` vs `"tp53"`:
-- After `level_one`: both become `"tp53"` — matches any case variant
-- `level_two` further strips punctuation, helping with hyphenated or slash-delimited names
-
-This preserves specificity for case-sensitive identifiers while allowing looser matching for general terms.
-
 ### Provenance Tracking
 
-Every resolved entity includes:
-- **Source database** (HGNC, MONDO, ChEBI, etc.)
-- **Source version** (database snapshot date)
-- **Matched synonym** (which text triggered the match)
-
-This enables auditing and quality control.
+Every resolved entity carries its source database, source version (snapshot date), and the matched synonym that triggered the match — enabling auditing and quality control. Case is handled by the NLP levels above: `level_one` matches any case variant, `level_two` further strips punctuation for hyphenated or slash-delimited names.
 
 ## Integration with QC
 
