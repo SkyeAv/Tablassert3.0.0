@@ -541,11 +541,10 @@ def test_tcode_collect_omits_primary_knowledge_source_when_unnamed(fixtures_path
 
 
 def test_tcode_collect_manual_provenance_overrides_auto_sources(fixtures_path: Path) -> None:
-    """manual provenance overrides upstream/publication/KL/AT and section PKS."""
+    """manual provenance overrides upstream/publication/KL/AT; PKS still derives from graph infores."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     data["provenance"] = {
         "override": {
-            "infores": "infores:section-source",
             "upstream_resource_ids": ["infores:upstream-source"],
             "publications": ["PMCID:PMC9999999"],
             "knowledge_level": "knowledge_assertion",
@@ -561,7 +560,7 @@ def test_tcode_collect_manual_provenance_overrides_auto_sources(fixtures_path: P
     values: dict[str, object] = {str(op[1][0]): op[1][1] for op in collected if op[0].__name__ == "value" and len(op[1]) >= 2}
     pub_ops = [op for op in collected if op[0] is publications]
 
-    assert values["primary_knowledge_source"] == ["infores:section-source"]
+    assert values["primary_knowledge_source"] == ["infores:graph-source"]
     assert values["upstream_resource_ids"] == ["infores:upstream-source"]
     assert values["knowledge_level"] == "knowledge_assertion"
     assert values["agent_type"] == "manual_agent"

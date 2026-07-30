@@ -712,7 +712,7 @@ class Tcode(Section):
             then the trim/format/write finalize ops.
         """
         override = self.provenance.override
-        primary_knowledge_source = (override.infores if override else None) or self.infores or (infores(self.name) if self.name else None)
+        primary_knowledge_source = self.infores or (infores(self.name) if self.name else None)
         upstream_ids = override.upstream_resource_ids if override else upstream_resource_ids(self.provenance.repo)
         knowledge_level = override.knowledge_level if override else self.provenance.knowledge_level
         agent_type = override.agent_type if override else self.provenance.agent_type

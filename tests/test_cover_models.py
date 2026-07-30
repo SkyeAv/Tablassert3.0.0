@@ -1,7 +1,7 @@
 """Coverage tests for uncovered validator/helper branches in ``models`` and ``biolink``.
 
 Each test targets a specific source line that the existing suite never executes:
-the ``None`` short-circuit branches of the infores/publication field validators in
+the ``None`` short-circuit branch of the publication field validator in
 :mod:`tablassert.models`, and the duplicate-member guard plus class-name fallback in
 :mod:`tablassert.biolink`. The ``None`` branches are only reachable by passing the
 field explicitly (``TablaBase`` does not set ``validate_default``, so omitted fields
@@ -19,18 +19,6 @@ from tablassert.biolink import _build_str_enum, _category_name
 from tablassert.models import Graph, ManualProvenance
 
 
-def test_manual_provenance_explicit_none_infores_short_circuits() -> None:
-    """``models.py:317`` — ``ManualProvenance.infores_curie`` returns ``None`` for an explicit ``None``.
-
-    The validator's ``if infores is None: return None`` branch only runs when ``infores``
-    is supplied explicitly; omitting it skips validation entirely (no ``validate_default``),
-    so the existing suite never reaches this line. Passing ``infores=None`` executes it and
-    must leave the field ``None`` without touching ``validate_infores_curie``.
-    """
-    override: ManualProvenance = ManualProvenance(infores=None)  # pyright: ignore
-    assert override.infores is None
-
-
 def test_manual_provenance_explicit_none_publications_short_circuits() -> None:
     """``models.py:331`` — ``ManualProvenance.pmcid_publications`` returns ``None`` for an explicit ``None``.
 
@@ -45,9 +33,8 @@ def test_manual_provenance_explicit_none_publications_short_circuits() -> None:
 def test_graph_explicit_none_infores_short_circuits() -> None:
     """``models.py:426`` — ``Graph.infores_curie`` returns ``None`` for an explicit ``None``.
 
-    Mirror of the ``ManualProvenance`` infores guard at graph scope: passing ``infores=None``
-    explicitly runs the after-validator's ``None`` branch (line 426), which the default-omission
-    path in ``test_graph_rig_defaults`` never exercises.
+    Passing ``infores=None`` explicitly runs the after-validator's ``None`` branch (line 426),
+    which the default-omission path in ``test_graph_rig_defaults`` never exercises.
     """
     graph: Graph = Graph(  # pyright: ignore
         name="TEST", version="1.0.0", description="Test graph", infores=None, tables=[Path("./table.yaml")], fullmap=Path("./fullmap")
