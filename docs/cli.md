@@ -38,13 +38,13 @@ tablassert build-kg <configuration_file> [--release] [--qc] [--log] [--head] [--
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `configuration_file` | Path | Yes | Knowledge Graph Configuration -- See Docs |
+| `configuration_file` (or `--configuration-file`, `-f`) | Path | Yes | Knowledge Graph Configuration -- See Docs |
 | `--release`, `-r` | Flag | No | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
 | `--qc`, `-q` | Flag | No | Run the QC audit stage (exact → fuzzy → BioBERT) on resolved node columns |
 | `--log`, `-l` | Flag | No | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | Preview a random sample of up to 5 rows per section for a fast output shape/schema check (cached separately, never clobbers a full build) |
 | `--table-config`, `-tc` | Flag | No | Treat the positional config as a TABLE (Section) YAML wrapped in a throwaway `TEMP_KG` graph, instead of a Graph YAML |
-| `--fullmap`, `-f` | Path | No | Fullmap path for the throwaway `TEMP_KG` graph when `--table-config` is passed (default `./fullmap`) |
+| `--fullmap`, `-fm` | Path | No | Fullmap path for the throwaway `TEMP_KG` graph when `--table-config` is passed (default `./fullmap`) |
 
 ### Example
 
@@ -62,7 +62,7 @@ tablassert build-kg /path/to/table-config.yaml --table-config --fullmap /path/to
 
 This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, reads each table's source file from disk, applies transformations, resolves entities through fullmap, optionally validates mappings with the QC pipeline (exact → fuzzy → BioBERT) when `--qc` is passed, and compiles subgraphs into KGX-compliant NDJSON files plus a Resource Ingest Guide (RIG).
 
-By default the positional config is a Graph YAML. With `--table-config`/`-tc` it is instead a table (Section) YAML that Tablassert wraps in a throwaway graph (`name: TEMP_KG`, `version: 0.0.0`) so a single table config can be built or tested without authoring a full graph config; `--fullmap`/`-f` sets the fullmap path for that throwaway graph (default `./fullmap`), and the RIG `contributions`/`ui_explanation` fall back to the Graph model defaults.
+By default the positional config is a Graph YAML. With `--table-config`/`-tc` it is instead a table (Section) YAML that Tablassert wraps in a throwaway graph (`name: TEMP_KG`, `version: 0.0.0`) so a single table config can be built or tested without authoring a full graph config; `--fullmap`/`-fm` sets the fullmap path for that throwaway graph (default `./fullmap`), and the RIG `contributions`/`ui_explanation` fall back to the Graph model defaults.
 
 The process executes in parallel stages with a three-row live progress block (logs print above the live block):
 

@@ -492,13 +492,13 @@ def _download_detail(downloaded: int, total: int) -> str:
 
 @APP.command(name="build-kg")
 def build_kg(
-    configuration_file: Path,
+    configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])],
     release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False,
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
     head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
     table_config: Annotated[bool, cyclopts.Parameter(name=["--table-config", "-tc"], negative="")] = False,
-    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])] = Path("./fullmap"),
+    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-fm"])] = Path("./fullmap"),
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
