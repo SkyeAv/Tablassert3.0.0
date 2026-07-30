@@ -1,6 +1,6 @@
 # Entity Resolution (fullmap)
 
-The `fullmap` module provides entity resolution functionality, mapping text strings to standardized biological entities (CURIEs).
+The `fullmap` module resolves free-text strings to standardized biological CURIEs against the embedded redb database — call `resolve()` for low-level, LazyFrame-based entity resolution inside a pipeline.
 
 ## resolve()
 

@@ -54,11 +54,10 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Installation: installation.md
-  - Development: development.md
-  - Fullmap: fullmap.md
-  - CLI Reference: cli.md
   - Tutorial: tutorial.md
   - Use Case Gallery: examples.md
+  - CLI Reference: cli.md
+  - Fullmap: fullmap.md
   - Agent: agent.md
   - Configuration:
     - Graph Config: configuration/graph.md
@@ -69,4 +68,5 @@ nav:
     - Batch Resolution: api/lib.md
     - Quality Control: api/qc.md
     - Utilities: api/utils.md
+  - Development: development.md
   - Changelog: changelog.md

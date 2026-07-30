@@ -1,6 +1,6 @@
 # Quality Control (qc)
 
-The `qc` module validates entity resolution mappings through a multi-stage pipeline: exact matching, fuzzy matching, and BioBERT semantic similarity.
+The `qc` module validates entity-resolution mappings through a three-stage pipeline (exact, fuzzy, BioBERT semantic similarity) — it runs behind `build-kg --qc` and `resolve_many(qc=True)` to keep only high-confidence assertions.
 
 QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `scikit-learn` and `sentence-transformers` (`torch` and `numpy` arrive transitively); `rapidfuzz` is a core dependency and is always available. If the audit stage runs without `sentence-transformers` installed, `fullmap_audit()` raises `QcRuntimeMissingError`.
 

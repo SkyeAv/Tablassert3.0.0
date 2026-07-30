@@ -1,6 +1,6 @@
 # Advanced Example: Real-World Configuration
 
-This page presents a real-world table configuration (ALAMV6.yaml) with annotations explaining each section.
+A fully-annotated real-world table configuration (ALAMV6.yaml) — study it to see complex regex, taxonomic filtering, and statistical annotations working together before writing your own.
 
 ## Overview
 

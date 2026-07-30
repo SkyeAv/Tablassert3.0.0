@@ -1,6 +1,6 @@
 # Table Configuration Reference
 
-Table configurations define how Tablassert transforms tabular data (Excel, CSV, TSV) into knowledge graph assertions.
+Table configurations define how Tablassert transforms tabular data (Excel, CSV, TSV) into knowledge-graph assertions — author one per source table to declare its source, triple mappings, entity-resolution rules, and provenance.
 
 ## Purpose
 
