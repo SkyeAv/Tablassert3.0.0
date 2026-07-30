@@ -228,3 +228,49 @@ def test_agent_model_environment_variables_are_documented() -> None:
     pages = COMMAND_FLAG_DOCS["agent"]
     for env_var in env_vars:
         assert _pages_with_token(pages, env_var), f"docs missing agent environment variable {env_var} in {pages}"
+
+
+def _positional_in_cli_md(parameter: CliParameter) -> bool:
+    """Return whether a positional argument is documented in ``docs/cli.md`` specifically (SSOT check).
+
+    Mirrors ``_positional_documented`` but scoped to ``cli.md`` alone, so the single-source-of-truth
+    guarantee does not lean on ``agent.md`` or ``fullmap.md`` for the positional spelling.
+    """
+    tokens = {
+        parameter.python_name,
+        parameter.python_name.replace("_", "-"),
+        parameter.python_name.replace("_", " "),
+        parameter.python_name.replace("_", "-").upper(),
+    }
+    if parameter.python_name.endswith("_ids"):
+        tokens.add(parameter.python_name[:-1].replace("_", " "))
+    text = _doc_text("cli.md").lower()
+    return any(token.lower() in text for token in tokens)
+
+
+def test_cli_md_is_self_complete_for_every_command() -> None:
+    """US-003: ``docs/cli.md`` is the single source of truth for the complete CLI flag tables.
+
+    The per-command coverage mapping above lets agent flags live in ``agent.md`` and build-fullmap flags
+    live in ``fullmap.md``. This stricter guard requires ``cli.md`` ITSELF to document every live command
+    name, the app ``--version`` flag, and every flag/alias/positional/default — so a reader never has to
+    leave the page for the full option surface. Removing any flag mention from ``cli.md`` trips this even
+    when ``agent.md``/``fullmap.md`` still carry it.
+    """
+    cli_text = _doc_text("cli.md")
+    # Every live command name and the app-level --version flag.
+    for command in _live_command_callbacks():
+        assert _contains_token(cli_text, command), f"docs/cli.md missing live command {command!r}"
+    for flag in APP.version_flags:
+        assert _contains_token(cli_text, flag), f"docs/cli.md missing app version flag {flag}"
+    # Every flag/alias, positional, and user-visible default — all on cli.md itself.
+    for parameter in _live_cli_parameters():
+        if not parameter.flags:
+            assert _positional_in_cli_md(parameter), f"docs/cli.md missing positional {parameter.command} {parameter.python_name!r}"
+            continue
+        for flag in parameter.flags:
+            assert _contains_token(cli_text, flag), f"docs/cli.md missing live flag/alias {parameter.command} {flag}"
+        default_token = _documented_default_token(parameter.default)
+        if default_token is not None:
+            locations = _flag_default_locations(("cli.md",), parameter.flags, default_token)
+            assert locations, f"docs/cli.md missing default {default_token!r} beside {parameter.command} {parameter.flags}"
