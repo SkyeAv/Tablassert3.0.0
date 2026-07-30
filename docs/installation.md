@@ -1,6 +1,7 @@
 # Installation
 
-This guide covers installing Tablassert on your system.
+Get a working `tablassert` install, then pick the `rt` / `qc` / `agent` extras that match how you will
+use it (building graphs, auditing mappings, or running the autonomous agent).
 
 ## Prerequisites
 

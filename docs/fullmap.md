@@ -141,14 +141,6 @@ tables:
 
 ## Programmatic Usage
 
-Pass the fullmap path (file or base directory) as the `fullmap` argument to `resolve_many()`:
-
-```python
-from pathlib import Path
-from tablassert.lib import resolve_many
-
-results = resolve_many(col="gene", entities=["TP53", "BRCA1"], fullmap=Path("/path/to/fullmap"), taxon="9606")
-```
-
-See [Batch Resolution](api/lib.md) for the full `resolve_many()` reference and
+Pass the fullmap path (file or base directory) as the `fullmap` argument to `resolve_many()` — see
+[Batch Resolution](api/lib.md) for the full reference and example, and
 [Entity Resolution](api/fullmap.md) for the lower-level `resolve()` API.

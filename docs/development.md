@@ -1,6 +1,7 @@
 # Development
 
-This page is the docs-site entry point for contributor setup. The canonical contributor guide is [`CONTRIBUTING.md`](https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md).
+Set up a Tablassert dev environment and learn the contributor workflow — build the Rust extension,
+run the test and docs gates locally, and lint/format. The canonical contributor guide is [`CONTRIBUTING.md`](https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md).
 
 ## Setup from source
 

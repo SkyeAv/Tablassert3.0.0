@@ -96,7 +96,7 @@ With network access and a configured endpoint:
 
 ```bash
 tablassert agent PMC11708054 PMC12345678 \
-  --fullmap .fullmap \
+  --fullmap ./fullmap \
   --map-threshold 0.25 \
   --max-improve-iters 3 \
   --max-steps 20 \
