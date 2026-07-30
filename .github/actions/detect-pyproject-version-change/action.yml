@@ -1,0 +1,72 @@
+name: Detect pyproject version change
+description: Read pyproject.toml and report whether project.version changed from the previous push SHA. Requires checkout fetch-depth 0 and Python 3.11+.
+
+inputs:
+  before-sha:
+    description: Previous commit SHA from the push event.
+    required: false
+    default: ""
+  event-name:
+    description: GitHub event name for deciding workflow_dispatch behavior.
+    required: true
+
+outputs:
+  changed:
+    description: Whether project.version changed, or true for workflow_dispatch.
+    value: ${{ steps.version.outputs.changed }}
+  should_publish:
+    description: Whether publish jobs should run.
+    value: ${{ steps.version.outputs.should_publish }}
+  tag:
+    description: v-prefixed project.version tag.
+    value: ${{ steps.version.outputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect project.version change
+      id: version
+      shell: bash
+      env:
+        BEFORE_SHA: ${{ inputs.before-sha }}
+        GITHUB_EVENT_NAME: ${{ inputs.event-name }}
+      run: |
+        python - <<'PY'
+        import os
+        import re
+        import subprocess
+        import tomllib
+        from pathlib import Path
+
+        VERSION_PATTERN = re.compile(r"^(?!v)(?!.*\.\.)[0-9][A-Za-z0-9_.+!-]*$")
+
+        def read_version(contents: bytes) -> str:
+            try:
+                version = tomllib.loads(contents.decode("utf-8"))["project"]["version"]
+            except KeyError as error:
+                raise ValueError("pyproject.toml must contain project.version") from error
+            if not isinstance(version, str) or not VERSION_PATTERN.fullmatch(version):
+                raise ValueError("project.version must be non-empty, must not start with 'v', and may only contain tag-safe PEP 440 characters")
+            return version
+
+        def read_previous_pyproject() -> bytes:
+            before_sha = os.environ.get("BEFORE_SHA", "")
+            if not before_sha or set(before_sha) == {"0"}:
+                raise RuntimeError("github.event.before is unavailable; cannot determine whether project.version changed")
+            try:
+                return subprocess.check_output(["git", "show", f"{before_sha}:pyproject.toml"], stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError as error:
+                stderr = error.stderr.decode("utf-8", "replace").strip()
+                raise RuntimeError(f"Unable to read pyproject.toml from {before_sha}; cannot determine whether project.version changed. {stderr}") from error
+
+        current_version = read_version(Path("pyproject.toml").read_bytes())
+        if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+            changed = True
+        else:
+            previous_version = read_version(read_previous_pyproject())
+            changed = previous_version != current_version
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            print(f"changed={str(changed).lower()}", file=output)
+            print(f"should_publish={str(changed).lower()}", file=output)
+            print(f"tag=v{current_version}", file=output)
+        PY

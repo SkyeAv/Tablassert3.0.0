@@ -21,54 +21,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - name: Check pyproject version change
         id: version
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          import subprocess
-          import tomllib
-          from pathlib import Path
-
-          VERSION_PATTERN = re.compile(r"^(?!v)(?!.*\.\.)[0-9][A-Za-z0-9_.+!-]*$")
-
-          def read_version(contents: bytes) -> str:
-              try:
-                  version = tomllib.loads(contents.decode("utf-8"))["project"]["version"]
-              except KeyError as error:
-                  raise ValueError("pyproject.toml must contain project.version") from error
-              if not isinstance(version, str) or not VERSION_PATTERN.fullmatch(version):
-                  raise ValueError("project.version must be non-empty, must not start with 'v', and may only contain tag-safe PEP 440 characters")
-              return version
-
-          def read_previous_pyproject() -> bytes:
-              before_sha = os.environ.get("BEFORE_SHA", "")
-              if not before_sha or set(before_sha) == {"0"}:
-                  raise RuntimeError("github.event.before is unavailable; cannot determine whether project.version changed")
-              try:
-                  return subprocess.check_output(["git", "show", f"{before_sha}:pyproject.toml"], stderr=subprocess.PIPE)
-              except subprocess.CalledProcessError as error:
-                  stderr = error.stderr.decode("utf-8", "replace").strip()
-                  raise RuntimeError(f"Unable to read pyproject.toml from {before_sha}; cannot determine whether project.version changed. {stderr}") from error
-
-          current_version = read_version(Path("pyproject.toml").read_bytes())
-          if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
-              should_publish = True
-          else:
-              previous_version = read_version(read_previous_pyproject())
-              should_publish = previous_version != current_version
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              print(f"should_publish={str(should_publish).lower()}", file=output)
-          PY
+        uses: ./.github/actions/detect-pyproject-version-change
+        with:
+          before-sha: ${{ github.event.before }}
+          event-name: ${{ github.event_name }}
 
   sdist:
     needs: detect-version-change
@@ -77,6 +40,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@v4
       - name: Build sdist
@@ -98,6 +63,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Set up Python interpreters
         uses: actions/setup-python@v5
         with:
