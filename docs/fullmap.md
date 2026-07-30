@@ -1,8 +1,19 @@
 # Fullmap
 
-Fullmap is Tablassert's embedded entity-resolution database: a small set of [redb](https://github.com/cberner/redb) files — a primary file holding the dimensions, CURIEs, and schema metadata, plus hash-sharded RECORDS files (`fullmap.s0.redb` … `fullmap.s15.redb` by default) holding the term→postings index — containing biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS Translator BABEL export files. It powers `resolve()` / `resolve_many()`, mapping free-text strings to standardized identifiers.
+Build a fullmap once and every `resolve()` / `resolve_many()` call maps free text to the right
+biological CURIE — the completeness and freshness of this database directly sets how many of your
+entities resolve correctly and how trustworthy the resulting graph is.
 
-Unlike the DuckDB-shard architecture used in earlier versions (built by a separate external `datassert` Go CLI), Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step is required. The sharding described here is a distinct, in-process redb shard scheme — a few sibling redb files written and read by the extension itself — not the old external DuckDB shards.
+Fullmap is Tablassert's embedded entity-resolution database: a small set of [redb](https://github.com/cberner/redb)
+files — a primary file holding the dimensions, CURIEs, and schema metadata, plus hash-sharded RECORDS
+files (`fullmap.s0.redb` … `fullmap.s15.redb` by default) holding the term→postings index — containing
+biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS
+Translator BABEL export files.
+
+Unlike the DuckDB-shard architecture used in earlier versions (built by a separate external `datassert`
+Go CLI), Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or
+install step is required. The sharding described here is a distinct, in-process redb shard scheme, not
+the old external DuckDB shards.
 
 ## Build Command
 
@@ -11,32 +22,68 @@ Unlike the DuckDB-shard architecture used in earlier versions (built by a separa
 tablassert build-fullmap
 ```
 
-### Flags
+See the [CLI Reference → build-fullmap](cli.md#build-fullmap) for the complete flag table (output path,
+cache directory, BABEL snapshot version, worker threads), their defaults, and more examples. Two facts
+matter most when planning a build:
 
-| Flag | Required | Default | Description |
-|------|----------|---------|-------------|
-| `--output`, `-o` | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
-| `--cache`, `-c` | No | `./fullmap/downloads` | Directory for downloaded BABEL files (with `classes/` and `synonyms/` subdirectories) |
-| `--version`, `-v` | No | `BABEL_VERSION` literal (currently `2026jul22`) | BABEL release snapshot date to fetch |
-| `--threads`, `-t` | No | `None` (auto: memory-capped on Linux, else ~90% of CPUs) | Worker threads for the parallel build |
-
-> **Sensible defaults:**
->
-> - **`--version`** defaults to the `BABEL_VERSION` literal in `cli.py` (currently `2026jul22`) — a date stamp naming the RENCI BABEL export snapshot to download, *not* Tablassert's own package version. Bumping it fetches a different BABEL snapshot and requires rebuilding the database; the value used is recorded in the primary's `meta` table (`source_version`).
-> - **`--threads`** unset means the Rust build chooses the worker count itself: on Linux it reads `MemAvailable:` from `/proc/meminfo` and caps workers at `min(available_CPUs, MemAvailable_GB / 2)` (each worker budgets ~2 GB of local buffers) to avoid swapping; where `/proc/meminfo` is absent (non-Linux) it falls back to ~90% of available CPUs. Pass `--threads N` to override the cap entirely.
+- The BABEL **version** flag selects a RENCI BABEL snapshot date (default `2026jul22`) — *not*
+  Tablassert's package version. Bumping it fetches a different snapshot and requires rebuilding; the
+  value used is recorded in the primary's `meta` table (`source_version`).
+- With **threads** left unset, the Rust build caps workers at `min(available_CPUs, MemAvailable_GB / 2)`
+  on Linux (reading `MemAvailable:` from `/proc/meminfo`, each worker budgeting ~2 GB of local buffers)
+  and falls back to ~90% of CPUs elsewhere, so a large build stays within a fixed memory budget.
 
 ### Data Pipeline
 
-The build is a parallel, **memory-bounded** pipeline executed by the Rust extension. Heavy intermediate state is spilled to a temporary directory (`<output>.spill.d`, removed on success) instead of being held in RAM, so a full BABEL build (hundreds of millions of CURIEs) completes within a fixed memory budget. The synonym phase uses **intra-file parallelism** (a producer–consumer pool, below) so the few very large BABEL files are processed by every worker rather than one thread each, and the crate uses the [mimalloc](https://github.com/microsoft/mimalloc) allocator so heavy multi-threaded allocation does not bloat resident memory:
+The build is a parallel, **memory-bounded** pipeline executed by the Rust extension:
 
-1. **Download** — BABEL class and synonym files are downloaded from RENCI (`https://stars.renci.org/var/babel_outputs`) into `--cache` (resumable, range-request downloads; cached files are reused).
-2. **Equivalents index** — Class files are parsed in parallel into sorted on-disk runs, then k-way merged into a single memory-mapped index mapping each primary CURIE to its equivalent identifiers. Only a compact `(hash, offset)` index lives in RAM; the string data is mmap'd.
-3. **Synonym pass** — A small pool of producer threads decompresses/reads the synonym files and pushes byte-bounded line-chunks through a bounded channel; the worker threads pull chunks and process the rows in parallel. Because every worker draws from one shared queue, the large files (protein/smallmolecule/gene/drugchemicalconflated) are processed by **all** workers, not one thread each. For each row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources), assigns compact integer CURIE IDs via a hash-keyed dedup map (`xxh3_128(curie) → id`), and accumulates normalized-term → (CURIE, source) postings. Each worker's per-CURIE rows and term postings are drained to bounded on-disk spill runs once its buffer fills — the term postings partitioned per-shard at spill time (each `run_s{shard}_{id}.bin` holds only terms hashing to that shard, `xxh64(term) & (shards-1)`) so the write phase can merge each shard independently — so peak RAM stays flat regardless of input size. Terms matching the lookup path's dead-term filter (purely numeric, or generic labels like `none`/`nan`/`null`) are skipped, since they can never be queried.
-4. **Write** — A single redb write transaction in the primary file emits the dimension tables (`prefixes`, `categories`, `sources`), the `curies` table (streamed from its spill runs), and the `meta` schema tag (which also records the shard count). The `records` table is then written **in parallel across the shard files**: because the term spill runs were partitioned per-shard at spill time (each `run_s{shard}_{id}.bin` holds only terms hashing to that shard), the write phase runs `shard_count` **independent** k-way merges in parallel — one thread per shard, each merging only its own shard's runs and inserting the merged term groups inline into that shard's redb file (one database per shard, since redb allows a single writer per file) in hash-sorted batches for near-sequential B-tree appends. There is no shared producer and no per-shard channel — every term's postings already live in its own shard's runs, so the merge groups each term completely with no cross-shard coordination, and both the k-way merge and the B-tree insert are parallelized across shards. Because the merge+insert is the bottleneck, `shard_count` independent shard writers deliver ~N× the write throughput of a single-threaded write.
+1. **Download** — fetch BABEL class and synonym files from RENCI into the cache (resumable, reused).
+2. **Equivalents index** — parse class files into sorted on-disk runs, then k-way merge them into a
+   memory-mapped index mapping each primary CURIE to its equivalents.
+3. **Synonym pass** — a producer/consumer pool streams byte-bounded line-chunks; workers dedup CURIEs,
+   accumulate normalized-term → (CURIE, source) postings, and spill per-shard runs to disk so peak RAM
+   stays flat regardless of input size.
+4. **Write** — one redb transaction writes the primary tables, then `shard_count` independent k-way
+   merges write the shard `records` files in parallel (one thread per shard).
+
+??? note "Pipeline details"
+    Heavy intermediate state spills to a temporary directory (`<output>.spill.d`, removed on success)
+    rather than RAM, so a full BABEL build (hundreds of millions of CURIEs) completes within a fixed
+    memory budget; the [mimalloc](https://github.com/microsoft/mimalloc) allocator keeps heavy
+    multi-threaded allocation from bloating resident memory.
+
+    - **Download** — files come from `https://stars.renci.org/var/babel_outputs` via resumable,
+      range-request downloads; cached files are reused.
+    - **Equivalents index** — class files parse in parallel into sorted on-disk runs, k-way merged into a
+      single memory-mapped CURIE→equivalents index; only a compact `(hash, offset)` index lives in RAM,
+      the string data is mmap'd.
+    - **Synonym pass** — uses **intra-file parallelism**: a small pool of producer threads
+      decompresses/reads the synonym files and pushes byte-bounded line-chunks through a bounded channel,
+      and every worker draws from one shared queue, so the few very large files
+      (protein/smallmolecule/gene/drugchemicalconflated) are processed by **all** workers, not one thread
+      each. Per row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources),
+      assigns compact integer CURIE IDs via a hash-keyed dedup map (`xxh3_128(curie) → id`), and
+      accumulates normalized-term → (CURIE, source) postings. Each worker drains its per-CURIE rows and
+      term postings to bounded on-disk spill runs once its buffer fills — the term postings partitioned
+      per-shard at spill time (each `run_s{shard}_{id}.bin` holds only terms with
+      `xxh64(term) & (shards-1)` matching that shard), which keeps peak RAM flat regardless of input size
+      and lets the write phase merge each shard independently. Dead terms (purely numeric, or generic
+      labels like `none`/`nan`/`null`) are skipped, since they can never be queried.
+    - **Write** — a single redb write transaction in the primary file emits the dimension tables
+      (`prefixes`, `categories`, `sources`), the `curies` table (streamed from its spill runs), and the
+      `meta` schema tag (recording the shard count). The `records` table is then written **in parallel
+      across the shard files**: building on the per-shard spill partitioning, the write phase runs
+      `shard_count` independent k-way merges — one thread per shard, each merging only its own shard's
+      runs and inserting the merged term groups inline into that shard's redb file (one database per
+      shard, since redb allows a single writer per file) in hash-sorted batches for near-sequential B-tree
+      appends. Because every term's postings already live in its own shard's runs, each merge groups a
+      term completely with no cross-shard coordination; as the merge+insert is the bottleneck,
+      `shard_count` writers deliver ~N× single-threaded write throughput.
 
 ### Build Tunables (environment)
 
-Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a typical large build; override only when targeting an unusual machine.
+Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a typical large build;
+override only when targeting an unusual machine.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -51,22 +98,11 @@ Advanced tuning for the build's memory/speed trade-offs. Defaults are safe for a
 | `TABLASSERT_FULLMAP_REDB_CACHE_BYTES` | `2147483648` (2 GiB) | redb write-cache size. |
 | `TABLASSERT_FULLMAP_SPILL_DIR` | `<output>.spill.d` | Directory for intermediate spill runs (removed on success). |
 
-### Examples
-
-```bash
-# Full build (download, process, and generate the database)
-tablassert build-fullmap
-
-# Custom output location and BABEL version
-tablassert build-fullmap --output /data/fullmap/fullmap.redb --version 2026jul22
-
-# Tune concurrency for large builds
-tablassert build-fullmap --threads 8
-```
-
 ## Output Artifact
 
-A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling RECORDS shard files (`fullmap.s0.redb` … `fullmap.s15.redb` by default — one per `TABLASSERT_FULLMAP_SHARDS`, named after the output file stem in the same directory). Together they hold six tables (see `rust/src/fullmap.rs`):
+A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling RECORDS shard files
+(`fullmap.s0.redb` … `fullmap.s15.redb` by default — one per `TABLASSERT_FULLMAP_SHARDS`, named after the
+output file stem in the same directory). Together they hold six tables (see `rust/src/fullmap.rs`):
 
 | Table | Description |
 |-------|-------------|
@@ -77,13 +113,20 @@ A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling REC
 | `curies` | Compact `u32` id → CURIE record (CURIE, preferred name, category, taxon, source) (primary file) |
 | `meta` | Schema version tag (`tablassert.fullmap.v4`), the shard count (`shards`), and the BABEL `source_version` used to build the file (primary file) |
 
-The shard files must remain alongside the primary file — lookups discover them as siblings of the resolved primary path.
+The shard files must remain alongside the primary file — lookups discover them as siblings of the
+resolved primary path.
 
-Lookups (`lookup_fullmap_terms`) check the primary's `meta` schema tag before reading `records`, read the `shards` count to open exactly that many shard files, and fan the query terms out across the shards in parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or missing tag raises rather than silently reading incompatible data. Databases built under the older `v1`/`v2`/`v3` schemas are rejected — there is no automatic schema migration, so a schema bump (including the v3→v4 move to sharded files) requires rebuilding via `tablassert build-fullmap`.
+Lookups (`lookup_fullmap_terms`) check the primary's `meta` schema tag before reading `records`, read the
+`shards` count to open exactly that many shard files, and fan the query terms out across the shards in
+parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or
+missing tag raises rather than silently reading incompatible data. Databases built under the older
+`v1`/`v2`/`v3` schemas are rejected — there is no automatic schema migration, so a schema bump (including
+the v3→v4 move to sharded files) requires rebuilding via `tablassert build-fullmap`.
 
 ## Usage in Graph Config
 
-The `fullmap:` field in a graph configuration points at either the redb file directly or a base directory. Tablassert resolves it via `fullmap_db_path()`:
+The `fullmap:` field in a graph configuration points at either the redb file directly or a base
+directory. Tablassert resolves it via `fullmap_db_path()`:
 
 - If the path is a file or already ends in `.redb`, it's used as-is.
 - Else if `<path>/fullmap.redb` exists, that's used.
@@ -101,18 +144,14 @@ tables:
 
 ## Programmatic Usage
 
-When calling `resolve_many()` directly, pass the fullmap path (file or base directory) as the `fullmap` argument:
+Pass the fullmap path (file or base directory) as the `fullmap` argument to `resolve_many()`:
 
 ```python
 from pathlib import Path
 from tablassert.lib import resolve_many
 
-results = resolve_many(
-    col="gene",
-    entities=["TP53", "BRCA1"],
-    fullmap=Path("/path/to/fullmap"),
-    taxon="9606",
-)
+results = resolve_many(col="gene", entities=["TP53", "BRCA1"], fullmap=Path("/path/to/fullmap"), taxon="9606")
 ```
 
-See [Entity Resolution](api/fullmap.md) for the full `resolve()` API.
+See [Batch Resolution](api/lib.md) for the full `resolve_many()` reference and
+[Entity Resolution](api/fullmap.md) for the lower-level `resolve()` API.
