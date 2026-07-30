@@ -95,16 +95,14 @@ With network access and a configured endpoint:
 ```bash
 tablassert agent PMC11708054 PMC12345678 \
   --fullmap .fullmap \
-  --map-threshold 0.8 \
-  --qc-threshold 0.9 \
+  --map-threshold 0.25 \
   --max-improve-iters 3 \
   --max-steps 20 \
-  --state-dir .tablassert-agent \
-  --executor local
+  --state-dir .tablassert/agent
 ```
 
-Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`, `--qc-threshold`/`-qt`, `--max-improve-iters`/`-mi`,
-`--state-dir`/`-sd`, `--executor {local,docker}`/`-e`, `--backend {openai,litellm}`/`-b`, `--no-fetch`/`-nf`.
+Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`, `--max-improve-iters`/`-mi`,
+`--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`.
 
 ### What the supervisor does
 
@@ -125,12 +123,12 @@ advances — one difficult article never aborts the batch.
 
 ### Workspace layout & checkpoint / resume
 
-`tablassert agent` uses a **single stable workspace root** — `state_dir` (default `.tablassert-agent`,
+`tablassert agent` uses a **single stable workspace root** — `state_dir` (default `.tablassert/agent`,
 override with `--state-dir`). The CLI never sets a separate artifact root, so the checkpoint, the configs,
 the fetched downloads, and the build outputs **all co-locate** under it:
 
-```
-.tablassert-agent/                       # = state_dir (the workspace root)
+```text
+.tablassert/agent/                       # = state_dir (the workspace root)
   state.json                             # supervisor checkpoint (atomic; unchanged location)
   configs/<pmc_id>.yaml                  # best / accepted config (ALL configs in ONE folder)
   configs/<pmc_id>.derived.yaml          # initial agent-derived config
@@ -143,12 +141,11 @@ the fetched downloads, and the build outputs **all co-locate** under it:
 | `state.json` | supervisor checkpoint: `{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path}` per record | written **atomically** (tmp write + `os.replace`) after each config and each improve iteration; git-ignored |
 | `configs/<pmc_id>.yaml` | the best / accepted config for the article | the reuse entry point (below) |
 | `configs/<pmc_id>.derived.yaml` | the agent's initial derived config | kept for provenance |
-| `downloads/<pmc_id>/<prefix>/` | fetched PMC payload (main text + metadata + tables) | **stable** — persists across runs; `--no-fetch` replays this snapshot instead of re-downloading |
+| `downloads/<pmc_id>/<prefix>/` | fetched PMC payload (main text + metadata + tables) | **stable** — persists across runs |
 | `builds/<pmc_id>/` | KGX artifacts: `agent_0.0.1.{nodes,edges}.ndjson`, `table.yaml`, `graph.yaml`, `.tablassert/store` | **stable** — the built graph for the article |
 
 Re-running the same command **resumes** from the checkpoint: records already `MAPPED`/`SKIPPED` are
-skipped. Because `downloads/` persists, a resumed or `--no-fetch` run reuses the already-fetched payload
-with no re-download.
+skipped. The `downloads/` payload persists on disk across runs.
 
 ### Reusing agent outputs with the full pipeline
 
@@ -156,12 +153,12 @@ The best config's `source.local` points at the downloaded table under `downloads
 (non-agent) pipeline can reuse the agent's output **without re-fetching**:
 
 ```bash
-tablassert build-kg .tablassert-agent/configs/PMC11708054.yaml --table-config --fullmap ./fullmap
+tablassert build-kg .tablassert/agent/configs/PMC11708054.yaml --table-config --fullmap ./fullmap
 ```
 
 !!! warning "Not relocatable"
     `source.local` in the best config is an **absolute** path into `downloads/<pmc_id>/`. The workspace is
-    therefore **not relocatable** — moving or renaming the `.tablassert-agent` folder breaks that reference
+    therefore **not relocatable** — moving or renaming the `.tablassert/agent` folder breaks that reference
     (re-run the agent, or fix `source.local`, after any move).
 
 ## The tools
@@ -203,8 +200,6 @@ PMC article text and tables are **untrusted data**. Defenses:
   instructions, and any embedded commands are ignored.
 - **Minimal authorized imports** — the executor allowlist is just `["yaml"]`, so a hijacked agent cannot
   `import os`/`subprocess`.
-- **Sandboxed executor option** — `--executor docker` runs model-written code in a sandbox; the default
-  `local` executor is **not** a security boundary (use `docker` for untrusted inputs).
 
 ## Evaluation & optimization loop
 
