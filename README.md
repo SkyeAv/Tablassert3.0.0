@@ -20,16 +20,11 @@ tablassert build-kg config.yaml
 pip install tablassert
 ```
 
-The base install includes everything needed to build knowledge graphs from CSV/TSV sources. Optional extras are available for CPU compatibility and quality control:
-
-```bash
-pip install "tablassert[rt]"  # Polars build for CPUs without the required instructions
-pip install "tablassert[qc]"  # Enable QC (torch + sentence-transformers BioBERT, scikit-learn)
-```
-
-Excel (`.xlsx`) inputs are read through Polars' `calamine` engine and additionally require `python-calamine` (`pip install python-calamine`).
-
-QC is opt-in: pass `--qc` to `build-kg` to run the three-stage audit (exact → fuzzy → BioBERT). See the [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for the full flag reference.
+The base install builds knowledge graphs from CSV/TSV/Excel sources. Optional extras (`rt`, `qc`,
+`agent`) add CPU-compatible Polars, the three-stage QC audit, and the autonomous agent — see the
+[Installation guide](https://skyeav.github.io/Tablassert/installation/) for the full matrix. QC is opt-in
+at build time (`build-kg --qc`); see the [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for the
+complete flag reference.
 
 ## Quick Demo
 
@@ -37,30 +32,20 @@ QC is opt-in: pass `--qc` to `build-kg` to run the three-stage audit (exact → 
 from pathlib import Path
 from tablassert.lib import resolve_many
 
-# Resolve gene names to CURIEs against a fullmap database
-results = resolve_many(
-    col="gene",
-    entities=["TP53", "BRCA1", "EGFR"],
-    fullmap=Path("/path/to/fullmap"),
-    taxon="9606",
-)
-
-for row in results:
-    print(f"{row['original_gene']} → {row['gene']} ({row['gene_name']})")
-# TP53 → HGNC:11998 (TP53)
-# BRCA1 → HGNC:1100 (BRCA1)
-# EGFR → HGNC:3236 (EGFR)
+results = resolve_many(col="gene", entities=["TP53", "BRCA1"], fullmap=Path("/path/to/fullmap"), taxon="9606")
+# [{"original_gene": "TP53", "gene": "HGNC:11998", "gene_name": "TP53", ...}, ...]
 ```
 
-Point `resolve_many()` at a fullmap database and resolve any iterable of entity strings to CURIEs — no LazyFrame setup or NLP preprocessing required. For full pipeline builds with YAML configuration, use `tablassert build-kg config.yaml`.
+Point `resolve_many()` at a fullmap database to resolve any iterable of entity strings to CURIEs — no
+LazyFrame setup or NLP preprocessing required. See the
+[Batch Resolution API](https://skyeav.github.io/Tablassert/api/lib/) for the full reference; for
+YAML-configured pipeline builds use `tablassert build-kg config.yaml`.
 
 ## Key Features
 
-- **Declarative Configuration** — YAML-based, no code required
-- **Entity Resolution** — Maps text to biological entities (genes, diseases, chemicals)
-- **Quality Control** — Optional three-stage validation (exact → fuzzy → BERT embeddings)
-- **KGX Compliance** — NCATS Translator-compatible NDJSON output
-- **Performance** — Lazy evaluation pipelines with Polars and an embedded redb-accelerated entity resolution database
+Declarative YAML configs, built-in entity resolution, optional three-stage QC, and KGX-compliant NDJSON
+output — with lazy Polars pipelines over an embedded redb resolution database. See the
+[documentation](https://skyeav.github.io/Tablassert/) for the full feature overview and use-case gallery.
 
 ## Developing
 
