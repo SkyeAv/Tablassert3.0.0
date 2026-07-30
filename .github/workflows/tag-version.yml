@@ -1,4 +1,5 @@
-name: Deploy to PyPI
+name: Tag version
+
 on:
   workflow_dispatch:
   push:
@@ -8,24 +9,28 @@ on:
       - pyproject.toml
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: tag-version-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  detect-version-change:
+  tag-version:
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
-    outputs:
-      should_publish: ${{ steps.version.outputs.should_publish }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Check pyproject version change
+
+      - name: Read pyproject version
         id: version
         env:
           BEFORE_SHA: ${{ github.event.before }}
@@ -61,75 +66,27 @@ jobs:
 
           current_version = read_version(Path("pyproject.toml").read_bytes())
           if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
-              should_publish = True
+              changed = True
           else:
               previous_version = read_version(read_previous_pyproject())
-              should_publish = previous_version != current_version
-
+              changed = previous_version != current_version
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              print(f"should_publish={str(should_publish).lower()}", file=output)
+              print(f"changed={str(changed).lower()}", file=output)
+              print(f"tag=v{current_version}", file=output)
           PY
 
-  sdist:
-    needs: detect-version-change
-    if: needs.detect-version-change.outputs.should_publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-      - name: Build sdist
-        run: uv build --sdist
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdist
-          path: dist/*.tar.gz
-
-  wheels:
-    needs: detect-version-change
-    if: needs.detect-version-change.outputs.should_publish == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python interpreters
-        uses: actions/setup-python@v5
-        with:
-          python-version: |
-            3.11
-            3.12
-            3.13
-            3.14
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          args: --release --find-interpreter --locked --compatibility pypi --out dist
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.os }}
-          path: dist/*.whl
-
-  publish:
-    needs: [detect-version-change, sdist, wheels]
-    if: needs.detect-version-change.outputs.should_publish == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
+      - name: Create and push tag
+        if: steps.version.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "::notice::Tag ${tag} already exists; skipping"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${tag}"
+          git push origin "${tag}"
