@@ -4,7 +4,7 @@
 This file is for two audiences: (1) YAML configuration authors and (2) package contributors.
 When source code and prose docs disagree, treat `src/tablassert/models.py` and `src/tablassert/cli.py` as the current authority.
 If you encounter older configurations, migrate `datassert:` to `fullmap:` (the graph-config field pointing at the entity-resolution database).
-Current CLI behavior queries a single embedded redb file at `fullmap/data/fullmap.redb`.
+Current CLI behavior queries an embedded redb database whose primary file is `fullmap/data/fullmap.redb`; its sibling RECORDS shard files (`fullmap.s*.redb`, in the same directory) are required for lookup and must stay co-located with it.
 
 ## Quickstart
 - [README](README.md): high-level overview, install snippets, and one-command graph build.

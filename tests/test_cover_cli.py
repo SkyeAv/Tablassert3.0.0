@@ -10,9 +10,10 @@ stubbed, and all artifacts land in ``tmp_path``. No network, no real Rust build.
 from __future__ import annotations
 
 import io
+from email.message import Message
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -107,12 +108,13 @@ def test_download_babel_file_restarts_when_server_ignores_range(tmp_path: Path, 
 
 
 def test_download_babel_file_raises_after_exhausting_retries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cover cli.py:434-440 — every attempt fails => per-attempt warning, backoff, then raise.
+    """Every network attempt fails => per-attempt warning, exponential backoff, then raise.
 
-    ``urlopen`` always raises ``URLError``; ``time.sleep`` is stubbed to record the 5s backoffs
-    (keeping the test instant). With ``retries=3`` the ``except (OSError, URLError)`` block runs
-    three times (434-439) and the loop exits via ``raise BabelDownloadError`` (440) carrying the
-    last error.
+    WHY: ``urlopen`` always raises ``URLError``; ``time.sleep`` is stubbed to record the
+    backoffs (keeping the test instant). Backoff is exponential (``5 * 2 ** (attempt-1)``,
+    capped at 60s) and only fires when another attempt remains, so with ``retries=3`` attempts
+    1 and 2 sleep 5s and 10s and the FINAL attempt skips the dead sleep before the loop exits
+    via ``raise BabelDownloadError`` carrying the last error.
     """
     sleeps: list[float] = []
     monkeypatch.setattr(cli.time, "sleep", sleeps.append)
@@ -123,7 +125,51 @@ def test_download_babel_file_raises_after_exhausting_retries(tmp_path: Path, mon
     monkeypatch.setattr(cli, "urlopen", _fail)
     with pytest.raises(BabelDownloadError):
         download_babel_file("f.gz", "https://example.com/f.gz", tmp_path, retries=3)
-    assert sleeps == [5, 5, 5]  # one backoff per failed attempt
+    assert sleeps == [5, 10]  # exponential backoff; no sleep after the final attempt
+
+
+def test_download_babel_file_404_raises_immediately(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-retryable 4xx (404) raises ``BabelDownloadError`` on the FIRST attempt.
+
+    WHY: a 404/403 (e.g. a mistyped ``--version``) can never succeed on retry; burning every
+    attempt with backoff wastes ~25s. The ``HTTPError`` handler re-raises immediately for
+    non-retryable 4xx (anything 400-499 except the transient 408/429), so ``urlopen`` is called
+    exactly once and no backoff sleeps fire before the error surfaces.
+    """
+    sleeps: list[float] = []
+    monkeypatch.setattr(cli.time, "sleep", sleeps.append)
+
+    attempts: list[int] = []
+
+    def _404(request: Any, timeout: int) -> None:
+        attempts.append(1)
+        raise HTTPError("https://example.com/f.gz", 404, "Not Found", Message(), None)
+
+    monkeypatch.setattr(cli, "urlopen", _404)
+    with pytest.raises(BabelDownloadError):
+        download_babel_file("f.gz", "https://example.com/f.gz", tmp_path, retries=5)
+    assert len(attempts) == 1  # failed fast on the first attempt, no retries
+    assert sleeps == []  # no backoff before raising
+
+
+def test_download_babel_file_retries_transient_http_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A retryable ``HTTPError`` (5xx, or 408/429) warns, backs off, and retries.
+
+    WHY: only non-retryable 4xx fail fast; 5xx and the transient 408/429 codes fall through to
+    the SAME exponential backoff as network errors. With ``retries=3`` the retryable HTTPError
+    path sleeps 5s then 10s (``5*2**0``, ``5*2**1``) and skips the sleep after the final attempt
+    before raising — proving the backoff guard fires in the HTTPError branch too.
+    """
+    sleeps: list[float] = []
+    monkeypatch.setattr(cli.time, "sleep", sleeps.append)
+
+    def _500(request: Any, timeout: int) -> None:
+        raise HTTPError("https://example.com/f.gz", 500, "Internal Server Error", Message(), None)
+
+    monkeypatch.setattr(cli, "urlopen", _500)
+    with pytest.raises(BabelDownloadError):
+        download_babel_file("f.gz", "https://example.com/f.gz", tmp_path, retries=3)
+    assert sleeps == [5, 10]  # exponential backoff, skipped after the final attempt
 
 
 def test_download_babel_file_zero_retries_raises_without_attempt(tmp_path: Path) -> None:

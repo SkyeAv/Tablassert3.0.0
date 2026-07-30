@@ -130,10 +130,18 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
     if misses:
         try:
             pair_rows: list[dict[str, object]] = rs.lookup_fullmap_terms(db, misses, threads=threads, return_format="pairs")
-        except TypeError:
+        except TypeError as exc:
+            # Only swallow the signature-mismatch TypeError from an old extension that
+            # lacks return_format; any other TypeError is a real bug and must propagate.
+            if "return_format" not in str(exc):
+                raise
+            # Legacy extension without return_format: re-query the FULL term set so
+            # already-cached terms are not dropped from the returned rows.
             return rs.lookup_fullmap_terms(db, terms, threads=threads)
         if pair_rows and "records" not in pair_rows[0]:
-            return pair_rows
+            # Legacy row shape covers only `misses`; re-query the FULL term set so
+            # already-cached terms are not dropped when _TERM_CACHE is partially warm.
+            return rs.lookup_fullmap_terms(db, terms, threads=threads)
         seen: set[str] = set()
         for row in pair_rows:
             term = str(row["term"])

@@ -9,7 +9,7 @@ from itertools import chain
 from multiprocessing import Pool
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, BinaryIO, Literal
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import cyclopts
@@ -431,12 +431,28 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
             part_path.replace(final_path)
             download_logger.info("Downloaded {url} -> {path}", url=url, path=final_path)
             return final_path
+        except HTTPError as e:
+            # HTTPError subclasses URLError, so this clause must precede the
+            # (OSError, URLError) handler below. Non-retryable 4xx (e.g. a 404 from a
+            # mistyped --version) fail fast instead of burning every attempt; 408/429
+            # are transient and fall through to backoff like 5xx.
+            if e.code not in (408, 429) and 400 <= e.code < 500:
+                raise BabelDownloadError(url, attempt, e) from e
+            last_error = e
+            download_logger.warning(
+                "Download attempt {attempt}/{retries} failed for {url}: {error}", attempt=attempt, retries=retries, url=url, error=e
+            )
+            if attempt < retries:
+                time.sleep(min(60, 5 * 2 ** (attempt - 1)))
         except (OSError, URLError) as e:
             last_error = e
             download_logger.warning(
                 "Download attempt {attempt}/{retries} failed for {url}: {error}", attempt=attempt, retries=retries, url=url, error=e
             )
-            time.sleep(5)
+            # Exponential backoff (5, 10, 20, ... capped at 60s) only when another attempt
+            # remains — no dead sleep after the final failed attempt before raising.
+            if attempt < retries:
+                time.sleep(min(60, 5 * 2 ** (attempt - 1)))
     raise BabelDownloadError(url, retries, last_error or RuntimeError("no attempts made")) from last_error
 
 
@@ -682,8 +698,8 @@ def build_fullmap_pipeline(
     )
 
 
-@APP.command(name="gen-fullmap")
-def gen_fullmap(
+@APP.command(name="build-fullmap")
+def build_fullmap(
     output: Annotated[Path, cyclopts.Parameter(name=["--output", "-o"])] = Path("./fullmap/data/fullmap.redb"),
     cache: Annotated[Path, cyclopts.Parameter(name=["--cache", "-c"])] = Path("./fullmap/downloads"),
     version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,

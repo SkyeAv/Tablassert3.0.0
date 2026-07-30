@@ -17,7 +17,12 @@ LOG_FORMAT: str = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {extra[category]} | {m
 
 logger.configure(extra={"category": "PIPELINE"})
 logger.remove()
-logger.add((LOGASSERT / "tablassert.log"), level="INFO", format=LOG_FORMAT, rotation="100 MB", encoding="utf-8", mode="w")
+# mode="a" + enqueue=True: under multiprocessing Pool() (spawn) each worker re-imports
+# this module and reopens the log. mode="w" would truncate the parent's log mid-run, so
+# append mode (O_APPEND) is what makes concurrent cross-process writes safe; enqueue=True
+# additionally serializes writes through a per-process queue so threads within one process
+# don't interleave partial lines.
+logger.add((LOGASSERT / "tablassert.log"), level="INFO", format=LOG_FORMAT, rotation="100 MB", encoding="utf-8", mode="a", enqueue=True)
 
 
 def cat(name: str) -> Logger:

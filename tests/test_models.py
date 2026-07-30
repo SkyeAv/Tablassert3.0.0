@@ -379,6 +379,28 @@ def test_section_with_rows() -> None:
     assert source.rows == [1, 2, 5]
 
 
+def test_section_rows_and_row_slice_accept_zero() -> None:
+    """Guard: `rows` and `row_slice` are zero-based, so 0 is a valid index.
+
+    WHY: both fields were typed ``PositiveInt``, which rejects 0 even though ``rows`` is
+    documented as zero-based (example ``[0, 2, 5]``), the runtime ``pick()`` gathers by
+    zero-based index, and ``crop()`` already types its bounds as ``NonNegativeInt``. A
+    ``rows``/``row_slice`` starting at the first row (index 0) must validate, while a
+    genuinely negative index is still rejected.
+    """
+    rows_source: Text = Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[0, 2, 5])  # pyright: ignore
+    assert rows_source.rows == [0, 2, 5]
+
+    slice_source: Text = Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", row_slice=[0, 50])  # pyright: ignore
+    assert slice_source.row_slice == [0, 50]
+
+    with pytest.raises(ValidationError):
+        Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[-1, 2])  # pyright: ignore
+
+    with pytest.raises(ValidationError):
+        Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", row_slice=[-1, 50])  # pyright: ignore
+
+
 def test_section_with_reindex() -> None:
     """section with reindex."""
     source: Text = Text(  # pyright: ignore

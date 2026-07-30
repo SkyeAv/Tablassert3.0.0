@@ -1,7 +1,7 @@
 """tablassert: declarative knowledge-graph extraction from tabular data.
 
 The compiled Rust extension (``tablassert.rs``) provides the performance-critical
-primitives — ``fullmap``, ``dedup_ndjson``, ``xxh32``, ``namespace_uuid`` — and is
+primitives — ``fullmap``, ``dedup_ndjson``, ``xxh32``/``xxh64``, ``namespace_uuid`` — and is
 required by every entry point.  It is built by ``maturin`` (PyO3) and shipped inside
 the wheel as ``tablassert/rs.<abi>.so``.
 

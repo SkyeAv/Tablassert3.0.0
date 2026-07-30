@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from yaml import CLoader
+from yaml import CSafeLoader
 
 
 def fastmerge(a: list[Any] | dict[str, Any], b: list[Any] | dict[str, Any]) -> Any:
@@ -52,7 +52,10 @@ def from_yaml(p: Path) -> object:
         Parsed YAML content (typically a ``dict``).
     """
     with p.open("r") as f:
-        return yaml.load(f, Loader=CLoader)
+        # CSafeLoader (not CLoader): config files may be untrusted, and CLoader honors
+        # tags like !!python/object/apply that construct arbitrary Python objects -> RCE.
+        # CSafeLoader keeps libyaml's C speed while refusing unsafe object construction.
+        return yaml.load(f, Loader=CSafeLoader)
 
 
 def to_yaml(p: Path, data: object) -> None:

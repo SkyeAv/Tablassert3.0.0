@@ -892,6 +892,82 @@ fn read_equiv_entry(r: &mut impl BufRead) -> std::io::Result<Option<EquivEntry>>
     Ok(Some((hash, key, equivs)))
 }
 
+/// A buffered reader over one sorted equiv run file (see `write_equiv_entry`).
+struct EquivRunReader {
+    reader: BufReader<File>,
+    cur: Option<EquivEntry>,
+}
+
+impl EquivRunReader {
+    fn new(path: &Path) -> std::io::Result<Self> {
+        let mut reader = BufReader::with_capacity(8 * 1024 * 1024, File::open(path)?);
+        let cur = read_equiv_entry(&mut reader)?;
+        Ok(Self { reader, cur })
+    }
+
+    fn advance(&mut self) -> std::io::Result<()> {
+        self.cur = read_equiv_entry(&mut self.reader)?;
+        Ok(())
+    }
+}
+
+/// Heap item for the equiv k-way merge: (Reverse(hash), Reverse(key), reader
+/// index, equivs).  `Reverse` makes the `BinaryHeap` (a max-heap) pop the
+/// smallest (hash, key) first, matching each run's on-disk sort order.
+type EquivMergeItem = (Reverse<u64>, Reverse<String>, usize, Vec<String>);
+
+/// K-way merge of sorted equiv run files, grouping equal (hash, key) entries
+/// across runs — the equivalents analog of `MergeHeap` (term runs).  Streams
+/// one merged group at a time so Phase 1b never materializes all equivalents
+/// in RAM; peak memory is the (hash, offset) index plus one buffered entry per
+/// run, preserving the Phase 1a spill bound for the ~200 GB case.
+struct EquivMergeHeap {
+    readers: Vec<EquivRunReader>,
+    heap: BinaryHeap<EquivMergeItem>,
+}
+
+impl EquivMergeHeap {
+    fn new(paths: &[PathBuf]) -> std::io::Result<Self> {
+        let mut readers = Vec::with_capacity(paths.len());
+        let mut heap = BinaryHeap::new();
+        for (idx, path) in paths.iter().enumerate() {
+            let mut rr = EquivRunReader::new(path)?;
+            if let Some((hash, key, equivs)) = rr.cur.take() {
+                heap.push((Reverse(hash), Reverse(key), idx, equivs));
+            }
+            readers.push(rr);
+        }
+        Ok(Self { readers, heap })
+    }
+
+    /// Return the next (hash, key) group with its merged (unsorted) equivalents.
+    fn next_group(&mut self) -> std::io::Result<Option<EquivEntry>> {
+        let Some((Reverse(hash), Reverse(key), idx, equivs)) = self.heap.pop() else {
+            return Ok(None);
+        };
+        let mut merged = equivs;
+        let mut to_advance = vec![idx];
+        // Group every run entry with the same (hash, key).  Hash equality is a
+        // necessary precondition for key equality, so comparing the hash first
+        // short-circuits the (rare) string comparison on distinct keys.
+        while let Some((Reverse(h), Reverse(k), _, _)) = self.heap.peek() {
+            if *h != hash || *k != key {
+                break;
+            }
+            let (_, _, i, e) = self.heap.pop().expect("peeked heap item disappeared");
+            merged.extend(e);
+            to_advance.push(i);
+        }
+        for i in to_advance {
+            self.readers[i].advance()?;
+            if let Some((h2, k2, e2)) = self.readers[i].cur.take() {
+                self.heap.push((Reverse(h2), Reverse(k2), i, e2));
+            }
+        }
+        Ok(Some((hash, key, merged)))
+    }
+}
+
 /// Drain a thread-local equivalents buffer into a sorted run file on disk.
 /// Called both mid-file (when the buffer exceeds the spill threshold) and at
 /// end-of-file, bounding per-thread anonymous memory during Phase 1a so a
@@ -1044,7 +1120,7 @@ impl EquivIndex {
         }
         let run_paths = run_paths.into_inner().unwrap();
 
-        // Phase 1b: read runs → parallel sort → linear group → write data file + build index.
+        // Phase 1b: external k-way merge of the sorted runs → write data file + build index.
         let data_path = spill_dir.join("equiv_data.bin");
         let mut dw =
             BufWriter::with_capacity(8 * 1024 * 1024, File::create(&data_path).map_err(py_err)?);
@@ -1052,30 +1128,18 @@ impl EquivIndex {
         let mut offsets: Vec<u64> = Vec::new();
         let mut offset: u64 = 0;
 
-        // The full-build target has enough RAM for the equivalent entries, and a
-        // parallel sort avoids the former single-threaded heap merge bottleneck.
-        let mut entries: Vec<EquivEntry> = Vec::new();
-        for path in &run_paths {
-            let file = File::open(path).map_err(py_err)?;
-            let mut reader = BufReader::with_capacity(8 * 1024 * 1024, file);
-            while let Some(entry) = read_equiv_entry(&mut reader).map_err(py_err)? {
-                entries.push(entry);
-            }
-        }
-        entries.par_sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        // Stream merged (hash, key) groups off disk instead of draining every
+        // run into one Vec and par_sort-ing it: that old path made peak RSS
+        // O(total equivalents) again, defeating the Phase 1a spill bound for
+        // the ~200 GB case in the module header.  This reuses the MergeHeap
+        // k-way pattern; only the (hash, offset) index plus one buffered entry
+        // per run stay in RAM (not the materialized key+equiv strings).
+        let mut merge = EquivMergeHeap::new(&run_paths).map_err(py_err)?;
 
         // Throttled Phase-0 progress: report every 1M merged groups (not per
         // group) to bound the GIL re-acquire count. total is 0 (indeterminate).
         let mut entries_merged: u64 = 0;
-        let mut iter = entries.into_iter().peekable();
-        while let Some((hash, key, mut equivs)) = iter.next() {
-            while let Some((h, k, _)) = iter.peek() {
-                if *h != hash || *k != key {
-                    break;
-                }
-                let (_, _, e) = iter.next().expect("peeked equivalent entry disappeared");
-                equivs.extend(e);
-            }
+        while let Some((hash, key, mut equivs)) = merge.next_group().map_err(py_err)? {
             equivs.sort();
             equivs.dedup();
 

@@ -13,8 +13,19 @@ import tablassert.cli as cli
 import tablassert.lib as lib
 from tablassert import rs
 from tablassert.biolink import Categories
-from tablassert.cli import gen_fullmap
-from tablassert.fullmap import _TERM_CACHE, ResolveSpec, filter_and_rank, fullmap_db_path, join_matches, lookup_rows, resolve, resolve_batch
+from tablassert.cli import build_fullmap
+from tablassert.fullmap import (
+    _TERM_CACHE,
+    ResolveSpec,
+    _db_cache_key,
+    _remember_term,
+    filter_and_rank,
+    fullmap_db_path,
+    join_matches,
+    lookup_rows,
+    resolve,
+    resolve_batch,
+)
 from tablassert.lib import to_store
 
 
@@ -663,7 +674,88 @@ def test_term_cache_invalidates_across_rebuild(tmp_path: Path) -> None:
     assert second[0]["CURIE"] == "HGNC:2222"  # fresh, not the stale HGNC:1100
 
 
-def test_gen_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lookup_rows_propagates_unrelated_typeerror(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A TypeError NOT mentioning ``return_format`` is a real bug inside the Rust call.
+
+    WHY: the legacy-compat handler exists only to tolerate an OLD extension whose
+    ``lookup_fullmap_terms`` lacks the ``return_format`` keyword. A blanket
+    ``except TypeError`` would also swallow genuine internal TypeErrors and mask
+    real bugs, so the handler now re-raises any TypeError whose message does not
+    name ``return_format``.
+    """
+    _TERM_CACHE.clear()
+
+    def boom(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+        raise TypeError("internal rust panic: null pointer")
+
+    monkeypatch.setattr(rs, "lookup_fullmap_terms", boom)
+    with pytest.raises(TypeError, match="internal rust panic"):
+        lookup_rows(fullmap_db, ["brca1"])
+
+
+def test_lookup_rows_legacy_signature_typeerror_requeries_full_term_set(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A legacy extension lacking ``return_format`` triggers a signature TypeError.
+
+    WHY: when the pairs query fails with a ``return_format`` signature TypeError,
+    the fallback must re-query the FULL term set (``terms``), not just ``misses``.
+    Re-querying only ``misses`` would drop already-cached terms from the returned
+    rows whenever ``_TERM_CACHE`` is partially warm. Here ``brca1`` is pre-warmed so
+    ``misses == ["mapk1"]``; the assertion proves the fallback passed the full set.
+    """
+    _TERM_CACHE.clear()
+    cache_key: tuple[Path, float] = _db_cache_key(fullmap_db)
+    _remember_term((cache_key[0], cache_key[1], "brca1"), [(0, 0)])  # warm one term -> misses == ["mapk1"]
+
+    calls: list[tuple[list[str], str]] = []
+    original = rs.lookup_fullmap_terms
+
+    def fake(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+        calls.append((list(terms), return_format))
+        if return_format == "pairs":
+            raise TypeError("lookup_fullmap_terms() got an unexpected keyword argument 'return_format'")
+        return original(db, terms, threads=threads)
+
+    monkeypatch.setattr(rs, "lookup_fullmap_terms", fake)
+    rows: list[dict[str, object]] = lookup_rows(fullmap_db, ["brca1", "mapk1"])
+
+    assert calls[0] == (["mapk1"], "pairs")  # pairs query hit only the misses
+    assert calls[-1] == (["brca1", "mapk1"], "rows")  # fallback re-queried the FULL term set
+    assert rows == original(fullmap_db, ["brca1", "mapk1"])  # cached term not dropped
+
+
+def test_lookup_rows_legacy_shape_requeries_full_term_set(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A legacy row shape (no ``records`` key) covering only ``misses`` triggers a full re-query.
+
+    WHY: an old extension may accept ``return_format`` but still return the legacy
+    flat row shape (no ``records`` key). Those rows cover only the ``misses`` subset,
+    so returning them directly would drop already-cached terms when ``_TERM_CACHE`` is
+    partially warm. ``lookup_rows`` must instead re-query the FULL term set. ``brca1``
+    is pre-warmed so ``misses == ["mapk1"]``; the assertion proves the re-query used
+    the full set and that the cached term survives in the returned rows.
+    """
+    _TERM_CACHE.clear()
+    cache_key: tuple[Path, float] = _db_cache_key(fullmap_db)
+    _remember_term((cache_key[0], cache_key[1], "brca1"), [(0, 0)])  # warm one term -> misses == ["mapk1"]
+
+    calls: list[tuple[list[str], str]] = []
+    original = rs.lookup_fullmap_terms
+
+    def fake(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+        calls.append((list(terms), return_format))
+        if return_format == "pairs":
+            # Legacy shape: rows carry no "records" key and cover only the queried misses.
+            return [{"term": term, "CURIE": "X:1"} for term in terms]
+        return original(db, terms, threads=threads)
+
+    monkeypatch.setattr(rs, "lookup_fullmap_terms", fake)
+    rows: list[dict[str, object]] = lookup_rows(fullmap_db, ["brca1", "mapk1"])
+
+    assert calls[0] == (["mapk1"], "pairs")  # pairs query hit only the misses
+    assert calls[-1] == (["brca1", "mapk1"], "rows")  # legacy shape forced a FULL re-query
+    assert rows == original(fullmap_db, ["brca1", "mapk1"])  # cached term not dropped
+
+
+def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """CLI command builds fullmap redb from downloaded BABEL fixtures."""
     classes: Path = write_jsonl(tmp_path / "classes.ndjson", [class_row("HGNC:1100", ["NCBIGene:672"])])
     synonyms: Path = write_jsonl(tmp_path / "HGNC.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["BRCA1"], "Gene")])
@@ -689,7 +781,7 @@ def test_gen_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(cli, "download_babel_file", fake_download_babel_file)
     monkeypatch.chdir(tmp_path)
 
-    gen_fullmap(output=output, version="test-version", threads=1)
+    build_fullmap(output=output, version="test-version", threads=1)
 
     assert downloaded_paths == [Path("fullmap/downloads/classes/classes.ndjson"), Path("fullmap/downloads/synonyms/HGNC.ndjson")]
     rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"], threads=1)

@@ -144,14 +144,14 @@ See [Table Configuration](configuration/table.md) and [Graph Configuration](conf
 
 ---
 
-## gen-fullmap
+## build-fullmap
 
 Build an embedded fullmap redb database from BABEL export files.
 
 ### Synopsis
 
 ```bash
-tablassert gen-fullmap [--output <path>] [--cache <path>] [--version <version>] [--threads <n>]
+tablassert build-fullmap [--output <path>] [--cache <path>] [--version <version>] [--threads <n>]
 ```
 
 ### Options
@@ -168,7 +168,7 @@ tablassert gen-fullmap [--output <path>] [--cache <path>] [--version <version>] 
 ### Example
 
 ```bash
-tablassert gen-fullmap --output /data/fullmap/fullmap.redb
+tablassert build-fullmap --output /data/fullmap/fullmap.redb
 ```
 
 ### Description
@@ -200,7 +200,7 @@ tablassert validate table-config.yaml
 ### Generate Fullmap Database
 
 ```bash
-tablassert gen-fullmap
+tablassert build-fullmap
 ```
 
 ## Workflow

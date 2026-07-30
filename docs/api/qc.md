@@ -57,7 +57,9 @@ Context fields used in QC failure logs for traceability.
 
 ### Return Value
 
-Returns a Polars LazyFrame containing only rows whose `col` value passed QC (via a semi-join on the surviving CURIEs). Failed pairs are logged with section/config/column context and their fuzzy/BioBERT scores.
+Returns a Polars LazyFrame containing only the rows whose `col` value (CURIE) has **at least one** passing pre-resolution/preferred-name pair.
+
+QC scores unique `(CURIE, pre_resolution, preferred_name)` pairs, but the result is joined back to the input via a **semi-join on the CURIE column** (`df.join(passed.select(col), on=col, how="semi")`). The retention granularity is therefore the CURIE, not the individual pair: if *any* pair for a CURIE passes any stage, *every* input row sharing that CURIE is kept — including rows that were themselves part of a failed pair. A CURIE (and thus all of its rows) is dropped only when *none* of its pairs pass any stage. Failed pairs are logged with section/config/column context and their fuzzy/BioBERT scores.
 
 ### Three-Stage Pipeline
 

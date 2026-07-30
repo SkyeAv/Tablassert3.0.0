@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+from yaml.constructor import ConstructorError
+
 from tablassert.ingests import fastmerge, from_yaml, to_sections
 
 
@@ -68,6 +71,24 @@ def test_from_yaml_reads_file(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     assert isinstance(data, dict)
     assert "source" in data
+
+
+def test_from_yaml_rejects_unsafe_python_tag(tmp_path: Path) -> None:
+    """from_yaml uses CSafeLoader, so unsafe Python object tags are NOT executed.
+
+    WHY: config files may be untrusted. The old ``CLoader`` honored tags like
+    ``!!python/object/apply:os.system``, constructing arbitrary Python objects and
+    executing code on load (RCE). ``CSafeLoader`` keeps libyaml's C speed but refuses
+    to construct unknown/unsafe tags, raising ``ConstructorError`` instead — so a
+    malicious config is rejected loudly and its payload never runs.
+    """
+    marker: Path = tmp_path / "pwned.txt"
+    malicious: Path = tmp_path / "malicious.yaml"
+    malicious.write_text(f'exploit: !!python/object/apply:os.system ["touch {marker}"]\n')
+
+    with pytest.raises(ConstructorError):
+        from_yaml(malicious)
+    assert not marker.exists()  # the tagged command was never executed
 
 
 def test_to_sections_expands_template(fixtures_path: Path) -> None:

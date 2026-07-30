@@ -2,8 +2,8 @@ use crate::json::{stable_json_bytes, strip_nulls};
 use crate::uuid::uuid_for_json_object;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
+use rustc_hash::FxHashMap;
 use serde_json::Value;
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
@@ -11,6 +11,22 @@ use xxhash_rust::xxh64::xxh64;
 
 fn runtime_error(error: impl ToString) -> PyErr {
     PyRuntimeError::new_err(error.to_string())
+}
+
+/// Collision-safe dedup decision.  Records are bucketed by xxh64 but a record
+/// is suppressed ONLY when its canonical bytes exactly match an existing entry
+/// in the bucket, so two DISTINCT records whose xxh64 collides both survive.
+/// (The former `HashSet<u64>` keyed on the hash alone silently dropped the
+/// second record on a collision — data loss at scale.)  Returns true when
+/// `bytes` is new and was recorded.
+fn record_if_new(seen: &mut FxHashMap<u64, Vec<Vec<u8>>>, bytes: &[u8]) -> bool {
+    let bucket = seen.entry(xxh64(bytes, 0)).or_default();
+    if bucket.iter().any(|existing| existing.as_slice() == bytes) {
+        false
+    } else {
+        bucket.push(bytes.to_vec());
+        true
+    }
 }
 
 fn label_edge(mut value: Value, domain: &str) -> PyResult<Value> {
@@ -47,7 +63,7 @@ pub fn dedup_ndjson(
     let domain: String = domain.unwrap_or_else(|| "TABLASSERT".to_string());
     let reader: BufReader<File> = BufReader::new(File::open(input).map_err(runtime_error)?);
     let mut writer: BufWriter<File> = BufWriter::new(File::create(output).map_err(runtime_error)?);
-    let mut seen: HashSet<u64> = HashSet::new();
+    let mut seen: FxHashMap<u64, Vec<Vec<u8>>> = FxHashMap::default();
 
     reader
         .lines()
@@ -60,22 +76,66 @@ pub fn dedup_ndjson(
         .try_for_each(|record| -> PyResult<()> {
             if let Some(value) = record? {
                 let bytes: Vec<u8> = stable_json_bytes(&value).map_err(runtime_error)?;
-                if seen.insert(xxh64(&bytes, 0)) {
+                if record_if_new(&mut seen, &bytes) {
                     writer.write_all(&bytes).map_err(runtime_error)?;
                     writer.write_all(b"\n").map_err(runtime_error)?;
                 }
             }
             Ok(())
-        })
+        })?;
+    // Flush explicitly and propagate failure: relying on BufWriter's drop-time
+    // flush would swallow a final write error and report success with truncated
+    // output.
+    writer.flush().map_err(runtime_error)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::dedup_ndjson;
+    use super::{dedup_ndjson, record_if_new};
+    use rustc_hash::FxHashMap;
     use serde_json::Value;
     use std::fs;
     use tempfile::tempdir;
     use uuid::Uuid;
+
+    #[test]
+    fn record_if_new_suppresses_only_exact_byte_duplicates() {
+        // WHY: dedup must be collision-safe. Keying on xxh64 alone (the old
+        // HashSet<u64>) would drop a distinct record that hashes into an
+        // occupied bucket; suppression must require an exact byte match.
+        let mut seen: FxHashMap<u64, Vec<Vec<u8>>> = FxHashMap::default();
+        // First sighting of a record is new.
+        assert!(record_if_new(&mut seen, b"{\"id\":\"A\"}"));
+        // A byte-identical record is suppressed.
+        assert!(!record_if_new(&mut seen, b"{\"id\":\"A\"}"));
+        // Distinct records survive even when they land in the same hash bucket
+        // (a real xxh64 collision is impractical to force, so this exercises the
+        // byte-exact equality path that decides suppression directly).
+        assert!(record_if_new(&mut seen, b"{\"id\":\"B\"}"));
+        assert!(!record_if_new(&mut seen, b"{\"id\":\"B\"}"));
+    }
+
+    #[test]
+    fn dedup_ndjson_keeps_distinct_records() {
+        // WHY: two different records must both survive dedup; only an identical
+        // duplicate is collapsed.
+        let dir = tempdir().expect("tempdir");
+        let input = dir.path().join("nodes.ndjson.tmp");
+        let output = dir.path().join("nodes.ndjson");
+        fs::write(&input, "{\"id\":\"A\"}\n{\"id\":\"B\"}\n{\"id\":\"A\"}\n").expect("write input");
+
+        dedup_ndjson(input, output.clone(), false, None).expect("dedup nodes");
+
+        let lines: Vec<String> = fs::read_to_string(output)
+            .expect("read output")
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            lines,
+            vec!["{\"id\":\"A\"}".to_string(), "{\"id\":\"B\"}".to_string()]
+        );
+    }
 
     #[test]
     fn dedup_ndjson_deduplicates_nodes() {

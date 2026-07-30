@@ -5,7 +5,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, PositiveInt, field_validator, model_validator
 
 from tablassert._lazy import LazyModule
 from tablassert.biolink import AgentTypes, Categories, KnowledgeLevels, Predicates, Qualifiers
@@ -79,8 +79,8 @@ class BaseSource(TablaBase):
     local: Path = Field(..., description="Local path to read from or download into.")
     url: HttpUrl = Field(..., description="Remote source URL fetched before parsing.")
 
-    rows: list[PositiveInt] | None = Field(None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]])
-    row_slice: list[PositiveInt | Literal[Tokens.AUTO]] | None = Field(
+    rows: list[NonNegativeInt] | None = Field(None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]])
+    row_slice: list[NonNegativeInt | Literal[Tokens.AUTO]] | None = Field(
         None,
         description="Two-value row bounds [start, stop]; each value can be an index or 'auto'.",
         examples=[[1, 50], [Tokens.AUTO, 100], [5, Tokens.AUTO]],

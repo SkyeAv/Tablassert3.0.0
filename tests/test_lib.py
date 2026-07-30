@@ -1794,7 +1794,15 @@ def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatc
 
 
 def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Path) -> None:
-    """compile_subgraph resolves value-encoded subject/object nodes into parquet output."""
+    """compile_subgraph resolves value-encoded subject/object nodes into parquet output.
+
+    The fake fullmap returns the legacy flat-row shape (no ``records`` key) for every call
+    regardless of ``return_format``, so ``lookup_rows`` takes its legacy-compat path: after the
+    ``return_format="pairs"`` query it re-queries the FULL term set (hardening so partially-warm
+    caches do not drop already-cached terms). The subject and object terms are therefore fetched
+    in two identical FULLY-BATCHED calls — never split per-column — which is the batching
+    guarantee this test asserts.
+    """
     rows: dict[str, list[dict[str, object]]] = {
         "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
         "tp53": [fake_fullmap_row("tp53", "HGNC:11998", "TP53", "Gene", 9606)],
@@ -1816,7 +1824,7 @@ def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Pa
     result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
     result: dict[str, Any] = pl.read_parquet(result_path).row(0, named=True)
 
-    assert calls == [["brca1", "tp53"]]
+    assert calls == [["brca1", "tp53"], ["brca1", "tp53"]]  # legacy-shape re-query; both fully batched
     assert result_path == store
     assert result["subject"] == "HGNC:1100"
     assert result["subject_name"] == "BRCA1"
