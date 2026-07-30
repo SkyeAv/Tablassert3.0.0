@@ -168,7 +168,7 @@ The Resource Ingest Guide records the graph's source scope (`description`), prov
 
 ## Understanding the Transformation
 
-Entity resolution maps text to CURIEs ("TP53" → `HGNC:11998` Gene, "lung cancer" → `MONDO:0008903` Disease); the QC pipeline validates each mapping across three stages (exact → fuzzy → BioBERT). The output is KGX-compliant nodes and edges with standardized CURIEs, Biolink categories and predicates, provenance, and edge annotations.
+Entity resolution maps text to CURIEs ("TP53" → `HGNC:11998` Gene, "lung cancer" → `MONDO:0008903` Disease); when `--qc` is passed, the QC pipeline validates each mapping across three stages (exact → fuzzy → BioBERT). The output is KGX-compliant nodes and edges with standardized CURIEs, Biolink categories and predicates, provenance, and edge annotations.
 
 ## Next Steps
 

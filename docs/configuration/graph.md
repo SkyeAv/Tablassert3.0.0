@@ -1,6 +1,6 @@
 # Graph Configuration Reference
 
-Graph configurations orchestrate one or more [table configurations](table.md) into a single knowledge-graph build — author one whenever you run `tablassert build-kg` to produce KGX output.
+Graph configurations orchestrate one or more [table configurations](table.md) into a single knowledge-graph build — author one to produce KGX output with `tablassert build-kg`. To build or test a single table config without authoring a graph file, use `build-kg --table-config`, which wraps it in a throwaway graph (see the [CLI reference](../cli.md#build-kg)).
 
 ## Purpose
 
