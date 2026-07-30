@@ -1595,15 +1595,13 @@ non-zero <strong>before</strong> any model call.</p>
 <p>With network access and a configured endpoint:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>PMC12345678<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--fullmap<span class="w"> </span>.fullmap<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--map-threshold<span class="w"> </span><span class="m">0</span>.8<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--qc-threshold<span class="w"> </span><span class="m">0</span>.9<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--max-improve-iters<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span>--max-steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert-agent<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span>--executor<span class="w"> </span><span class="nb">local</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--map-threshold<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--max-improve-iters<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--max-steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert/agent
 </code></pre></div>
-<p>Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>, <code>--qc-threshold</code>/<code>-qt</code>, <code>--max-improve-iters</code>/<code>-mi</code>,
-<code>--state-dir</code>/<code>-sd</code>, <code>--executor {local,docker}</code>/<code>-e</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, <code>--no-fetch</code>/<code>-nf</code>.</p>
+<p>Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>, <code>--max-improve-iters</code>/<code>-mi</code>,
+<code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>.</p>
 <h3 id="what-the-supervisor-does">What the supervisor does<a class="headerlink" href="#what-the-supervisor-does" title="Permanent link">&para;</a></h3>
 <p>The <strong>outer supervisor is deterministic Python</strong> (not an LLM) — smolagents' #1 practice is deterministic
 control flow over agentic decisions. For each PMC id it:</p>
@@ -1620,10 +1618,10 @@ control flow over agentic decisions. For each PMC id it:</p>
 <p>A config that won't map after <code>--max-improve-iters</code> is marked <code>SKIPPED: &lt;reason&gt;</code> and the supervisor
 advances — one difficult article never aborts the batch.</p>
 <h3 id="workspace-layout-checkpoint-resume">Workspace layout &amp; checkpoint / resume<a class="headerlink" href="#workspace-layout-checkpoint-resume" title="Permanent link">&para;</a></h3>
-<p><code>tablassert agent</code> uses a <strong>single stable workspace root</strong> — <code>state_dir</code> (default <code>.tablassert-agent</code>,
+<p><code>tablassert agent</code> uses a <strong>single stable workspace root</strong> — <code>state_dir</code> (default <code>.tablassert/agent</code>,
 override with <code>--state-dir</code>). The CLI never sets a separate artifact root, so the checkpoint, the configs,
 the fetched downloads, and the build outputs <strong>all co-locate</strong> under it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>.tablassert-agent/                       # = state_dir (the workspace root)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>.tablassert/agent/                       # = state_dir (the workspace root)
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  state.json                             # supervisor checkpoint (atomic; unchanged location)
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  configs/&lt;pmc_id&gt;.yaml                  # best / accepted config (ALL configs in ONE folder)
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial agent-derived config
@@ -1657,7 +1655,7 @@ the fetched downloads, and the build outputs <strong>all co-locate</strong> unde
 <tr>
 <td><code>downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/</code></td>
 <td>fetched PMC payload (main text + metadata + tables)</td>
-<td><strong>stable</strong> — persists across runs; <code>--no-fetch</code> replays this snapshot instead of re-downloading</td>
+<td><strong>stable</strong> — persists across runs</td>
 </tr>
 <tr>
 <td><code>builds/&lt;pmc_id&gt;/</code></td>
@@ -1667,17 +1665,16 @@ the fetched downloads, and the build outputs <strong>all co-locate</strong> unde
 </tbody>
 </table>
 <p>Re-running the same command <strong>resumes</strong> from the checkpoint: records already <code>MAPPED</code>/<code>SKIPPED</code> are
-skipped. Because <code>downloads/</code> persists, a resumed or <code>--no-fetch</code> run reuses the already-fetched payload
-with no re-download.</p>
+skipped. The <code>downloads/</code> payload persists on disk across runs.</p>
 <h3 id="reusing-agent-outputs-with-the-full-pipeline">Reusing agent outputs with the full pipeline<a class="headerlink" href="#reusing-agent-outputs-with-the-full-pipeline" title="Permanent link">&para;</a></h3>
 <p>The best config's <code>source.local</code> points at the downloaded table under <code>downloads/&lt;pmc_id&gt;/</code>, so the full
 (non-agent) pipeline can reuse the agent's output <strong>without re-fetching</strong>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>.tablassert-agent/configs/PMC11708054.yaml<span class="w"> </span>--table-config<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>.tablassert/agent/configs/PMC11708054.yaml<span class="w"> </span>--table-config<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Not relocatable</p>
 <p><code>source.local</code> in the best config is an <strong>absolute</strong> path into <code>downloads/&lt;pmc_id&gt;/</code>. The workspace is
-therefore <strong>not relocatable</strong> — moving or renaming the <code>.tablassert-agent</code> folder breaks that reference
+therefore <strong>not relocatable</strong> — moving or renaming the <code>.tablassert/agent</code> folder breaks that reference
 (re-run the agent, or fix <code>source.local</code>, after any move).</p>
 </div>
 <h2 id="the-tools">The tools<a class="headerlink" href="#the-tools" title="Permanent link">&para;</a></h2>
@@ -1751,8 +1748,6 @@ self-correct the exact offending field.</p>
   instructions, and any embedded commands are ignored.</li>
 <li><strong>Minimal authorized imports</strong> — the executor allowlist is just <code>["yaml"]</code>, so a hijacked agent cannot
   <code>import os</code>/<code>subprocess</code>.</li>
-<li><strong>Sandboxed executor option</strong> — <code>--executor docker</code> runs model-written code in a sandbox; the default
-  <code>local</code> executor is <strong>not</strong> a security boundary (use <code>docker</code> for untrusted inputs).</li>
 </ul>
 <h2 id="evaluation-optimization-loop">Evaluation &amp; optimization loop<a class="headerlink" href="#evaluation-optimization-loop" title="Permanent link">&para;</a></h2>
 <p>The harness scores every run on three objectives and optimizes them as a black box.</p>
