@@ -442,12 +442,11 @@ provenance:
 
 #### Manual provenance override
 
-Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section.
+Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section's upstream sources, publications, and KL/AT. The edge `primary_knowledge_source` is **not** overridable per section — it always derives from the graph-level `infores` (see [Graph](graph.md)); put manual infores CURIEs in `upstream_resource_ids`.
 
 ```yaml
 provenance:
   override:
-    infores: infores:external-kg
     upstream_resource_ids:
       - infores:external-source
     publications:
@@ -460,13 +459,12 @@ Override fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `infores` | String | No | Per-section `primary_knowledge_source`. Defaults to the graph-level `infores`, then to `infores:<graph-name>`. Must start with `infores:`. |
-| `upstream_resource_ids` | List[String] | No | Upstream source infores CURIEs replacing the repo-derived `PMC`/`PMID` source map. Each entry must start with `infores:`. |
+| `upstream_resource_ids` | List[String] | No | Manual upstream source infores CURIEs replacing the repo-derived `PMC`/`PMID` source map — the sanctioned place for manual infores. Each entry must start with `infores:`. |
 | `publications` | List[String] | No | Manual publication CURIEs. Entries must currently start with `PMCID:`; PMID compatibility for manual overrides is intentionally deferred. |
 | `knowledge_level` | String | No | Override-specific KL value. Defaults to `statistical_association`. |
 | `agent_type` | String | No | Override-specific AT value. Defaults to `data_analysis_pipeline`. |
 
-Tablassert emits the graph or section infores as the Biolink-compatible `primary_knowledge_source` edge slot — a single-element list such as `["infores:multiomics-kg"]`, matching the form of `upstream_resource_ids`. Older `resource_id` output has been replaced so generated KGX is compatible with the Biolink edge allow-list.
+Tablassert emits the graph-level infores (or `infores:<graph-name>` when unset) as the Biolink-compatible `primary_knowledge_source` edge slot — a single-element list such as `["infores:multiomics-kg"]`, matching the form of `upstream_resource_ids`. The override cannot set a per-section `primary_knowledge_source`; manual infores CURIEs belong in `upstream_resource_ids`. Older `resource_id` output has been replaced so generated KGX is compatible with the Biolink edge allow-list.
 
 ### Annotations
 

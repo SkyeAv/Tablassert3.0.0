@@ -492,13 +492,13 @@ def _download_detail(downloaded: int, total: int) -> str:
 
 @APP.command(name="build-kg")
 def build_kg(
-    configuration_file: Path,
+    configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])],
     release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False,
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
     head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
     table_config: Annotated[bool, cyclopts.Parameter(name=["--table-config", "-tc"], negative="")] = False,
-    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])] = Path("./fullmap"),
+    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-fm"])] = Path("./fullmap"),
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
@@ -536,13 +536,10 @@ def agent(
     api_base: Annotated[str | None, cyclopts.Parameter(name=["--api-base", "-ab"])] = None,
     api_key: Annotated[str | None, cyclopts.Parameter(name=["--api-key", "-ak"])] = None,
     max_steps: Annotated[int, cyclopts.Parameter(name=["--max-steps", "-ms"])] = 20,
-    map_threshold: Annotated[float, cyclopts.Parameter(name=["--map-threshold", "-mt"])] = 0.8,
-    qc_threshold: Annotated[float, cyclopts.Parameter(name=["--qc-threshold", "-qt"])] = 0.9,
+    map_threshold: Annotated[float, cyclopts.Parameter(name=["--map-threshold", "-mt"])] = 0.25,
     max_improve_iters: Annotated[int, cyclopts.Parameter(name=["--max-improve-iters", "-mi"])] = 3,
-    state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir", "-sd"])] = Path(".tablassert-agent"),
-    executor: Annotated[Literal["local", "docker"], cyclopts.Parameter(name=["--executor", "-e"])] = "local",
+    state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir", "-sd"])] = Path(".tablassert") / "agent",
     backend: Annotated[Literal["openai", "litellm"], cyclopts.Parameter(name=["--backend", "-b"])] = "openai",
-    no_fetch: Annotated[bool, cyclopts.Parameter(name=["--no-fetch", "-nf"], negative="")] = False,
 ) -> None:
     """Autonomously derive, build, audit, and improve KG configs from PMC articles.
 
@@ -556,8 +553,7 @@ def agent(
     Model config comes from ``--model-id``/``--api-base``/``--api-key`` OR the ``TABLASSERT_AGENT_MODEL_ID``
     / ``TABLASSERT_AGENT_API_BASE`` / ``TABLASSERT_AGENT_API_KEY`` environment variables (explicit flags win).
     Secrets are NEVER hardcoded or defaulted: a missing value fails loud (exit 2) BEFORE any model is built.
-    ``--executor docker`` is the hardened, sandboxed code-execution option (``local`` runs in-process and is
-    not a security boundary). Requires the ``[agent]`` extra (``pip install tablassert[agent]``).
+    Requires the ``[agent]`` extra (``pip install tablassert[agent]``).
 
     Args:
         pmc_ids: One or more PMC article ids (positional).
@@ -567,12 +563,9 @@ def agent(
         api_key: API key (falls back to ``TABLASSERT_AGENT_API_KEY``).
         max_steps: Max inner-agent steps per article.
         map_threshold: Coverage an article must reach to be MAPPED.
-        qc_threshold: Target QC pass rate.
         max_improve_iters: Max deterministic improve iterations per article.
         state_dir: Checkpoint/resume directory.
-        executor: Code-execution backend; ``docker`` is the hardened sandbox.
         backend: Model backend (``openai`` or ``litellm``).
-        no_fetch: Skip PMC download (use already-fetched snapshot tables).
     """
     from tablassert import agent as agent_mod
 
@@ -596,12 +589,9 @@ def agent(
         fullmap=fullmap,
         build_model_factory=build_model_factory,
         map_threshold=map_threshold,
-        qc_threshold=qc_threshold,
         max_improve_iters=max_improve_iters,
         max_steps=max_steps,
         state_dir=state_dir,
-        executor=executor,
-        fetch=not no_fetch,
     )
 
     metrics_raw: object = result.get("metrics")

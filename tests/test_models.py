@@ -288,25 +288,19 @@ def test_provenance_custom_knowledge_level_and_agent_type() -> None:
 
 
 def test_manual_provenance_validates_prefixes() -> None:
-    """manual provenance accepts explicit infores/PMCID values for non-PMC sources."""
+    """manual provenance accepts explicit upstream-infores/PMCID values for non-PMC sources."""
     override = ManualProvenance(  # pyright: ignore
-        infores="infores:external-kg",
         upstream_resource_ids=["infores:external-source"],
         publications=["PMCID:PMC1234567"],
         knowledge_level="knowledge_assertion",  # pyright: ignore[reportArgumentType]
         agent_type="manual_agent",  # pyright: ignore[reportArgumentType]
     )
-    assert override.infores == "infores:external-kg"
     assert override.upstream_resource_ids == ["infores:external-source"]
     assert override.publications == ["PMCID:PMC1234567"]
 
 
 def test_manual_provenance_rejects_unprefixed_values() -> None:
-    """manual provenance rejects non-infores sources and non-PMCID publications."""
-    with pytest.raises(ValidationError) as exc_info:
-        ManualProvenance(infores="external-kg")  # pyright: ignore
-    assert "override-bad-infores" in str(exc_info.value)
-
+    """manual provenance rejects non-infores upstream sources and non-PMCID publications."""
     with pytest.raises(ValidationError) as exc_info:
         ManualProvenance(upstream_resource_ids=["external-source"])  # pyright: ignore
     assert "override-bad-upstream-infores" in str(exc_info.value)
@@ -316,9 +310,21 @@ def test_manual_provenance_rejects_unprefixed_values() -> None:
     assert "override-bad-publication" in str(exc_info.value)
 
 
+def test_manual_provenance_rejects_infores_key() -> None:
+    """manual provenance no longer accepts a per-section ``infores`` key.
+
+    The edge ``primary_knowledge_source`` always derives from the graph-level
+    infores; manual infores CURIEs belong in ``upstream_resource_ids``. A stray
+    ``infores`` key is now an unknown field, and ``TablaBase`` forbids extras.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(infores="infores:external-kg")  # pyright: ignore
+    assert "infores" in str(exc_info.value)
+
+
 def test_provenance_override_replaces_publication_requirement() -> None:
     """publication is required unless manual provenance override is set."""
-    p = Provenance(override={"infores": "infores:external-kg", "publications": ["PMCID:PMC1234567"]})  # pyright: ignore
+    p = Provenance(override={"upstream_resource_ids": ["infores:external-source"], "publications": ["PMCID:PMC1234567"]})  # pyright: ignore
     assert p.publication is None
     assert p.override is not None
 
@@ -327,7 +333,7 @@ def test_provenance_override_replaces_publication_requirement() -> None:
     assert "provenance-missing-publication" in str(exc_info.value)
 
     with pytest.raises(ValidationError) as exc_info:
-        Provenance(publication="PMC1234567", override={"infores": "infores:external-kg"})  # pyright: ignore
+        Provenance(publication="PMC1234567", override={"upstream_resource_ids": ["infores:external-source"]})  # pyright: ignore
     assert "provenance-publication-and-override" in str(exc_info.value)
 
 

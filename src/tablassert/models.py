@@ -288,16 +288,14 @@ class ManualProvenance(TablaBase):
 
     When present under :class:`Provenance`, these values replace the legacy
     repo/publication-derived provenance while keeping the same KL/AT defaults.
+    The edge ``primary_knowledge_source`` always derives from the graph-level
+    ``infores`` (or ``infores:<graph-name>``); manual infores CURIEs belong in
+    ``upstream_resource_ids``.
     """
 
-    infores: str | None = Field(
-        None,
-        description="Optional per-section primary knowledge source infores CURIE; defaults to the graph infores when omitted.",
-        examples=["infores:my-kg"],
-    )
     upstream_resource_ids: list[str] = Field(
         default_factory=list,
-        description="Upstream source infores CURIEs emitted instead of the repo-derived source map.",
+        description="Manual upstream source infores CURIEs emitted instead of the repo-derived source map; the sanctioned place for manual infores.",
         examples=[["infores:my-upstream"]],
     )
     publications: list[str] | None = Field(
@@ -309,13 +307,6 @@ class ManualProvenance(TablaBase):
         KnowledgeLevels.STATISTICAL_ASSOCIATION, description="Biolink KL/AT knowledge level applied to produced edges."
     )
     agent_type: AgentTypes = Field(AgentTypes.DATA_ANALYSIS_PIPELINE, description="Biolink KL/AT agent type responsible for produced edges.")
-
-    @field_validator("infores", mode="after")
-    @classmethod
-    def infores_curie(cls, infores: str | None) -> str | None:
-        if infores is None:
-            return None
-        return validate_infores_curie(infores, "override-bad-infores")
 
     @field_validator("upstream_resource_ids", mode="after")
     @classmethod

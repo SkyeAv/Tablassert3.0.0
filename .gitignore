@@ -36,4 +36,3 @@
 # mkdocs build output
 site/
 .ralph/
-.tablassert-agent/

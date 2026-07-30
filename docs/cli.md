@@ -49,23 +49,19 @@ PMC ids are passed positionally (also accepted as `--pmc-ids`). This page lists 
 | `--api-base`, `-ab` | str | No | `None` | OpenAI-compatible base URL (env `TABLASSERT_AGENT_API_BASE`) |
 | `--api-key`, `-ak` | str | No | `None` | API key secret (env `TABLASSERT_AGENT_API_KEY`) |
 | `--max-steps`, `-ms` | int | No | `20` | Max inner-agent steps per article |
-| `--map-threshold`, `-mt` | float | No | `0.8` | Coverage an article must reach to be MAPPED |
-| `--qc-threshold`, `-qt` | float | No | `0.9` | Target QC pass rate |
+| `--map-threshold`, `-mt` | float | No | `0.25` | Coverage an article must reach to be MAPPED |
 | `--max-improve-iters`, `-mi` | int | No | `3` | Max deterministic improve iterations per article |
-| `--state-dir`, `-sd` | Path | No | `.tablassert-agent` | Checkpoint/resume workspace directory |
-| `--executor`, `-e` | {local, docker} | No | `local` | Code-execution backend; `docker` is the hardened sandbox |
+| `--state-dir`, `-sd` | Path | No | `.tablassert/agent` | Checkpoint/resume workspace directory |
 | `--backend`, `-b` | {openai, litellm} | No | `openai` | Model backend |
-| `--no-fetch`, `-nf` | Flag | No | `False` | Skip PMC download; reuse the already-fetched snapshot |
 
 ```bash
-tablassert agent PMC11708054 --fullmap ./fullmap --executor docker
+tablassert agent PMC11708054 --fullmap ./fullmap
 ```
 
-!!! warning "Secrets & sandboxing"
+!!! warning "Secrets"
     Model config comes from the flags above **or** the `TABLASSERT_AGENT_*` environment variables
     (explicit flags win). Secrets are **never** hardcoded or defaulted — a missing value fails loud
-    (exit 2) **before** any model is built. `--executor docker` is the hardened sandbox; the default
-    `local` executor runs in-process and is **not** a security boundary (use `docker` for untrusted input).
+    (exit 2) **before** any model is built.
 
 ---
 
@@ -102,17 +98,17 @@ YAML configuration file.
 tablassert build-kg CONFIGURATION-FILE [ARGS]
 ```
 
-By default the positional `CONFIGURATION-FILE` (also `--configuration-file`) is a **graph** YAML.
+By default the positional `CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is a **graph** YAML.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `CONFIGURATION-FILE` (`--configuration-file`) | Path | Yes | — | Graph YAML (or a table YAML with `--table-config`) |
+| `CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph YAML (or a table YAML with `--table-config`) |
 | `--release`, `-r` | Flag | No | `False` | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
 | `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the `[qc]` extra |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
 | `--table-config`, `-tc` | Flag | No | `False` | Build/test one table (Section) config without writing a graph config (wrapped in a throwaway `TEMP_KG` graph) |
-| `--fullmap`, `-f` | Path | No | `./fullmap` | Fullmap path for the throwaway `TEMP_KG` graph when `--table-config` is passed |
+| `--fullmap`, `-fm` | Path | No | `./fullmap` | Fullmap path for the throwaway `TEMP_KG` graph when `--table-config` is passed |
 
 ```bash
 tablassert build-kg graph.yaml --qc --log

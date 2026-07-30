@@ -257,7 +257,7 @@ def test_candidate_tables_returns_all_tables(tmp_path: Path) -> None:
 
 
 def test_candidate_tables_none_raises(tmp_path: Path) -> None:
-    """No table among the files -> ``FileNotFoundError`` (the --no-fetch guard)."""
+    """No table among the files -> ``FileNotFoundError`` (fail-fast when a fetch yields no tables)."""
     with pytest.raises(FileNotFoundError, match="No supplementary table"):
         candidate_tables([tmp_path / "a.xml", tmp_path / "b.jpg"])
 

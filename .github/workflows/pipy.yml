@@ -11,11 +11,37 @@ permissions:
   contents: read
 
 jobs:
+  detect-version-change:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.version.outputs.should_publish }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Check pyproject version change
+        id: version
+        uses: ./.github/actions/detect-pyproject-version-change
+        with:
+          before-sha: ${{ github.event.before }}
+          event-name: ${{ github.event_name }}
+
   sdist:
+    needs: detect-version-change
+    if: needs.detect-version-change.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@v4
       - name: Build sdist
@@ -27,6 +53,8 @@ jobs:
           path: dist/*.tar.gz
 
   wheels:
+    needs: detect-version-change
+    if: needs.detect-version-change.outputs.should_publish == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +63,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Set up Python interpreters
         uses: actions/setup-python@v5
         with:
@@ -55,7 +85,8 @@ jobs:
           path: dist/*.whl
 
   publish:
-    needs: [sdist, wheels]
+    needs: [detect-version-change, sdist, wheels]
+    if: needs.detect-version-change.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write

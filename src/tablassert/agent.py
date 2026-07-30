@@ -352,8 +352,7 @@ def candidate_tables(files: list[Path]) -> list[Path]:
     """Return EVERY downloaded data-table file, raising ``FileNotFoundError`` when there is none.
 
     The supervisor presents all candidates to the agent (which chooses among them and among Excel
-    worksheets); the fail-fast guard matters for the ``--no-fetch`` snapshot path, where no fetch gate
-    has already run.
+    worksheets); the fail-fast guard raises when a fetch yields no data tables.
     """
     tables: list[Path] = [path for path in files if is_table_file(path.name)]
     if not tables:
@@ -1598,7 +1597,6 @@ def build_agent(
     instructions: str = INSTRUCTIONS,
     max_steps: int = 20,
     planning_interval: int = 3,
-    executor_type: str = "local",
     additional_authorized_imports: list[str] | None = None,
     step_callbacks: list[Callable[[object, object], None]] | None = None,
     final_answer_checks: list[Callable[..., bool]] | None = None,
@@ -1613,10 +1611,7 @@ def build_agent(
     yields an empty tool list: the supervisor builds the fullmap-bound tools (US-009) and passes
     them in, since they need a fullmap this factory does not have.
 
-    SECURITY: ``executor_type="local"`` runs model-written code in-process and is NOT a security
-    boundary; ``executor_type="docker"`` is the HARDENED option (sandboxed executor). Pass
-    ``executor_type`` straight through (``local``/``docker``/``e2b``). ``verbosity_level`` (a
-    smolagents ``LogLevel``) is forwarded only when not None.
+    ``verbosity_level`` (a smolagents ``LogLevel``) is forwarded only when not None.
     """
     _require("smolagents")
     from smolagents import CodeAgent  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
@@ -1634,7 +1629,7 @@ def build_agent(
         "additional_authorized_imports": imports,
         "step_callbacks": callbacks,
         "final_answer_checks": checks,
-        "executor_type": executor_type,
+        "executor_type": "local",
     }
     if verbosity_level is not None:
         agent_kwargs["verbosity_level"] = verbosity_level
@@ -1975,14 +1970,11 @@ def run_supervisor(
     *,
     fullmap: Path,
     build_model_factory: Callable[[], object],
-    map_threshold: float = 0.8,
-    qc_threshold: float = 0.9,
+    map_threshold: float = 0.25,
     max_improve_iters: int = 3,
     max_steps: int = 20,
-    state_dir: Path = Path(".tablassert-agent"),
-    executor: str = "local",
+    state_dir: Path = Path(".tablassert") / "agent",
     workdir: Path | None = None,
-    fetch: bool = True,
     name: str = "agent",
     version: str = "0.0.1",
 ) -> dict[str, object]:
@@ -1990,8 +1982,7 @@ def run_supervisor(
 
     For each pmc id (resume-aware: terminal DONE/MAPPED/SKIPPED records are skipped):
       1. mark RUNNING + checkpoint; fetch the latest-version article payload (``fetch_pmc_article``, the
-         single seam tests monkeypatch; or a pre-fetched snapshot when ``fetch`` is False) and present ALL
-         candidate tables + the main-text path to the agent;
+         single seam tests monkeypatch) and present ALL candidate tables + the main-text path to the agent;
       2. run the INNER agent (``build_agent`` + ``build_model_factory()``) whose schema-gated
          final answer is the initial Section config;
       3. ``build_and_audit`` it for coverage, then run the deterministic IMPROVE loop
@@ -2036,14 +2027,7 @@ def run_supervisor(
             rec.attempts += 1
             save_state(state_dir, state)
 
-            files: list[Path]
-            if fetch:
-                files = fetch_pmc_article(pmc_id, pmc_download_dir(art_root, pmc_id))
-            else:  # --no-fetch: resolve an already-fetched snapshot (the `fetch` param was previously dead)
-                snapshot: Path = pmc_download_dir(art_root, pmc_id)
-                files = sorted(path for path in snapshot.rglob("*") if path.is_file())
-                if not files:
-                    raise FileNotFoundError(f"--no-fetch but no snapshot files under {snapshot}.")
+            files: list[Path] = fetch_pmc_article(pmc_id, pmc_download_dir(art_root, pmc_id))
             tables: list[Path] = candidate_tables(files)
             table_list: str = "\n".join(f"  - {path}" for path in tables)
             article_xml: Path | None = next((path for path in files if path.suffix.lower() in {".xml", ".nxml"}), None)
@@ -2053,7 +2037,6 @@ def run_supervisor(
                 model=build_model_factory(),
                 tools=make_tools(fullmap=fullmap, table_path=tables[0], name=name, version=version),
                 max_steps=max_steps,
-                executor_type=executor,
                 step_callbacks=[make_step_callback(metrics)],
                 verbosity_level=verbosity,
             )
@@ -2159,7 +2142,6 @@ def run_supervisor(
 
     state.metrics = {
         "map_threshold": map_threshold,
-        "qc_threshold": qc_threshold,
         "mapped": mapped,
         "skipped": skipped,
         "mean_best_coverage": mean_best,
