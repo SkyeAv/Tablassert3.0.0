@@ -1,6 +1,6 @@
 # Graph Configuration Reference
 
-Graph configurations orchestrate the processing of multiple table configurations into a single knowledge graph output.
+Graph configurations orchestrate one or more [table configurations](table.md) into a single knowledge-graph build — author one whenever you run `tablassert build-kg` to produce KGX output.
 
 ## Purpose
 

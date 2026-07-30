@@ -1,6 +1,6 @@
 # Batch Resolution (lib)
 
-The `lib` module exposes `resolve_many()`, a high-level convenience function for resolving an iterable of entity strings to CURIEs without requiring manual LazyFrame construction or NLP preprocessing.
+The `lib` module exposes `resolve_many()`, a high-level convenience function that batch-resolves an iterable of entity strings to CURIEs — use it in scripts and notebooks when you want results without building LazyFrames or running NLP preprocessing yourself.
 
 It wraps the lower-level [`resolve()`](fullmap.md) pipeline — preserving the original input text, applying `level_one` and `level_two` normalization, querying the embedded fullmap redb database, executing entity resolution, optionally running the QC audit (when `qc=True`), and returning results as a plain Python list of row dictionaries.
 
