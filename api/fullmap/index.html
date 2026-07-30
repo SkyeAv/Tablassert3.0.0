@@ -1,175 +1,1441 @@
-<!DOCTYPE html>
-<html class="writer-html5" lang="en" >
-<head>
-    <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <link rel="shortcut icon" href="../../img/favicon.ico" />
-    <title>Entity Resolution - Tablassert</title>
-    <link rel="stylesheet" href="../../css/theme.css" />
-    <link rel="stylesheet" href="../../css/theme_extra.css" />
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
     
-      <script>
-        // Current page data
-        var mkdocs_page_name = "Entity Resolution";
-        var mkdocs_page_input_path = "api/fullmap.md";
-        var mkdocs_page_url = null;
-      </script>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in.">
+      
+      
+      
+        <link rel="canonical" href="https://skyeav.github.io/Tablassert/api/fullmap/">
+      
+      
+        <link rel="prev" href="../../configuration/advanced-example/">
+      
+      
+        <link rel="next" href="../lib/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
-    <!--[if lt IE 9]>
-      <script src="../../js/html5shiv.min.js"></script>
-    <![endif]-->
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
-      <script>hljs.highlightAll();</script> 
-</head>
+    
+      
+        <title>Entity Resolution - Tablassert</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
 
-<body class="wy-body-for-nav" role="document">
 
-  <div class="wy-grid-for-nav">
-    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
-    <div class="wy-side-scroll">
-      <div class="wy-side-nav-search">
-          <a href="../.." class="icon icon-home"> Tablassert
-        </a><div role="search">
-  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
-      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
-  </form>
-</div>
-      </div>
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
 
-      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
-                </li>
-              </ul>
-              <p class="caption"><span class="caption-text">Configuration</span></p>
-              <ul>
-                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/graph/">Graph Config</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/table/">Table Config</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../../configuration/advanced-example/">Advanced Example</a>
-                  </li>
-              </ul>
-              <p class="caption"><span class="caption-text">API Reference</span></p>
-              <ul class="current">
-                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Entity Resolution</a>
-    <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#resolve">resolve()</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#function-signature">Function Signature</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#parameters">Parameters</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#return-value">Return Value</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#duckdb-query">DuckDB Query</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#example-usage">Example Usage</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#mapping-a-python-list">Mapping a Python List</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#nlp-processing-levels">NLP Processing Levels</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#case-dependent-behavior">Case-Dependent Behavior</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#provenance-tracking">Provenance Tracking</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#integration-with-qc">Integration with QC</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../lib/">Batch Resolution</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../qc/">Quality Control</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../utils/">Utilities</a>
-                  </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Changelog</a>
-                </li>
-              </ul>
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#entity-resolution-fullmap" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Tablassert" class="md-header__button md-logo" aria-label="Tablassert" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Tablassert
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Entity Resolution
+            
+          </span>
+        </div>
       </div>
     </div>
-    </nav>
-
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
-          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="../..">Tablassert</a>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
         
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
       </nav>
-      <div class="wy-nav-content">
-        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
-  <ul class="wy-breadcrumbs">
-    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
-          <li class="breadcrumb-item">API Reference</li>
-      <li class="breadcrumb-item active">Entity Resolution</li>
-    <li class="wy-breadcrumbs-aside">
-    </li>
-  </ul>
-  <hr/>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
-            <div class="section" itemprop="articleBody">
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SkyeAv/Tablassert" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SkyeAv/Tablassert
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../fullmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fullmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../examples/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Use Case Gallery
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../agent/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Agent
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../configuration/graph/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
               
-                <h1 id="entity-resolution-fullmap">Entity Resolution (fullmap)</h1>
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Tablassert" class="md-nav__button md-logo" aria-label="Tablassert" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Tablassert
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SkyeAv/Tablassert" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SkyeAv/Tablassert
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fullmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fullmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Case Gallery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/table/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Table Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/advanced-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entity Resolution
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entity Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resolve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolve()
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="resolve()">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#function-signature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Function Signature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#return-value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return Value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lookup-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lookup Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mapping-a-python-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mapping a Python List
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nlp-processing-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NLP Processing Levels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#case-dependent-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Case-Dependent Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provenance-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance Tracking
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-with-qc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration with QC
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resolve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolve()
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="resolve()">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#function-signature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Function Signature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#return-value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return Value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lookup-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lookup Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mapping-a-python-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mapping a Python List
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nlp-processing-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NLP Processing Levels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#case-dependent-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Case-Dependent Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provenance-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance Tracking
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-with-qc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration with QC
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="entity-resolution-fullmap">Entity Resolution (fullmap)<a class="headerlink" href="#entity-resolution-fullmap" title="Permanent link">&para;</a></h1>
 <p>The <code>fullmap</code> module provides entity resolution functionality, mapping text strings to standardized biological entities (CURIEs).</p>
-<h2 id="resolve">resolve()</h2>
-<p>Primary entity resolution function using DuckDB queries against the datassert database.</p>
-<h3 id="function-signature">Function Signature</h3>
-<pre><code class="language-python">def resolve(
-  lf: pl.LazyFrame,
-  col: str,
-  conns: list[object],
-  taxon: Optional[str] = None,
-  prioritize: Optional[list[Categories]] = None,
-  avoid: Optional[list[Categories]] = None,
-  log: bool = True,
-  section_hash: Optional[str] = None,
-  config_file: Optional[str] = None,
-  column_context: bool = True,
-  tag: str = &quot; two&quot;
-) -&gt; pl.LazyFrame
-</code></pre>
-<h3 id="parameters">Parameters</h3>
+<h2 id="resolve">resolve()<a class="headerlink" href="#resolve" title="Permanent link">&para;</a></h2>
+<p>Primary entity resolution function, querying the embedded fullmap redb database.</p>
+<h3 id="function-signature">Function Signature<a class="headerlink" href="#function-signature" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  <span class="n">col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  <span class="n">db</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  <span class="n">taxon</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  <span class="n">prioritize</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">Categories</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  <span class="n">avoid</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">Categories</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  <span class="n">log</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  <span class="n">section_hash</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  <span class="n">config_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  <span class="n">column_context</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="n">tag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;_two&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  <span class="n">threads</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
+</code></pre></div>
+<h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
 <p><strong><code>lf: pl.LazyFrame</code></strong></p>
-<p>Input LazyFrame containing the data to process. Internally collected at explicit collection points for DuckDB queries and joins.</p>
+<p>Input LazyFrame containing the data to process. Internally collected at explicit collection points for redb lookups and joins.</p>
 <p><strong><code>col: str</code></strong></p>
 <p>Column name containing text strings to resolve.</p>
-<p><strong><code>conns: list[object]</code></strong></p>
-<p>List of 10 DuckDB shard connections to the datassert database.</p>
-<p>Each shard contains:
+<p><strong><code>db: Path</code></strong></p>
+<p>Path to the fullmap redb file (already resolved — see <code>fullmap_db_path()</code> and <a href="../../fullmap/">Fullmap</a>).</p>
+<p>The database contains:
 - Synonym mappings (text → CURIE)
 - Preferred entity names
 - Biolink categories
@@ -180,23 +1446,25 @@
 <p>Example: <code>"9606"</code> filters to human-specific entities.</p>
 <p><strong><code>prioritize: Optional[list[Categories]]</code></strong></p>
 <p>Optional list of Biolink categories to prefer when multiple matches exist.</p>
-<p>Example: <code>[Categories.Gene, Categories.Protein]</code> prefers gene/protein mappings.</p>
+<p>Example: <code>[Categories.GENE, Categories.PROTEIN]</code> prefers gene/protein mappings.</p>
 <p><strong><code>avoid: Optional[list[Categories]]</code></strong></p>
 <p>Optional list of Biolink categories to exclude from results.</p>
-<p>Example: <code>[Categories.Gene]</code> prevents gene mappings.</p>
+<p>Example: <code>[Categories.GENE]</code> prevents gene mappings.</p>
 <p><strong><code>log: bool</code> (default: <code>True</code>)</strong></p>
 <p>Controls unmatched-value logging. When enabled, unresolved terms are logged with section/config/column context.</p>
 <p><strong><code>section_hash: Optional[str]</code> / <code>config_file: Optional[str]</code></strong></p>
 <p>Optional context fields used for operational logging when unmatched values are encountered.</p>
 <p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
 <p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the query result adds a category frequency score and prefers more frequent category hits.</p>
-<p><strong><code>tag: str</code> (default: <code>" two"</code>)</strong></p>
+<p><strong><code>tag: str</code> (default: <code>"_two"</code>)</strong></p>
 <p>Suffix appended to <code>col</code> to locate the <code>level_two</code> output column.</p>
 <p><code>resolve()</code> expects the LazyFrame to already have two NLP columns applied upstream:
 - <code>col</code> — the <code>level_one</code> output (whitespace stripped, lowercased)
 - <code>col + tag</code> — the <code>level_two</code> output (non-word characters removed via <code>\W+</code>)</p>
-<p>The default <code>" two"</code> matches <code>level_two</code>'s default tag.</p>
-<h3 id="return-value">Return Value</h3>
+<p>The default <code>"_two"</code> matches <code>level_two</code>'s default tag.</p>
+<p><strong><code>threads: Optional[int]</code> (default: <code>None</code>)</strong></p>
+<p>Optional worker-thread count passed through to the Rust lookup for parallel term batching.</p>
+<h3 id="return-value">Return Value<a class="headerlink" href="#return-value" title="Permanent link">&para;</a></h3>
 <p>Returns a Polars LazyFrame with these columns added:</p>
 <table>
 <thead>
@@ -213,42 +1481,42 @@
 <td><code>"HGNC:11998"</code></td>
 </tr>
 <tr>
-<td><code>{col} name</code></td>
+<td><code>{col}_name</code></td>
 <td>Preferred entity name</td>
 <td><code>"TP53"</code></td>
 </tr>
 <tr>
-<td><code>{col} category</code></td>
+<td><code>{col}_category</code></td>
 <td>Biolink category</td>
 <td><code>"biolink:Gene"</code></td>
 </tr>
 <tr>
-<td><code>{col} taxon</code></td>
+<td><code>{col}_taxon</code></td>
 <td>NCBI Taxon ID</td>
 <td><code>"NCBITaxon:9606"</code></td>
 </tr>
 <tr>
-<td><code>{col} source</code></td>
+<td><code>{col}_source</code></td>
 <td>Source database</td>
 <td><code>"HGNC"</code></td>
 </tr>
 <tr>
-<td><code>{col} source version</code></td>
+<td><code>{col}_source_version</code></td>
 <td>Database version</td>
 <td><code>"2025-01"</code></td>
 </tr>
 <tr>
-<td><code>{col} nlp level</code></td>
+<td><code>{col}_nlp_level</code></td>
 <td>NLP processing level</td>
 <td><code>1</code> or <code>2</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="duckdb-query">DuckDB Query</h3>
-<p>The function executes a SQL query that:</p>
+<h3 id="lookup-pipeline">Lookup Pipeline<a class="headerlink" href="#lookup-pipeline" title="Permanent link">&para;</a></h3>
+<p>The function:</p>
 <ol>
 <li>
-<p><strong>Builds an in-memory term table</strong> by collecting terms from both NLP levels, deduplicating by keeping first occurrences for deterministic ordering, and registering them in DuckDB as <code>PARQUET</code> via <code>conn.register("PARQUET", df.to_arrow())</code>.</p>
+<p><strong>Builds an in-memory term table</strong> by collecting terms from both NLP levels and deduplicating by keeping first occurrences for deterministic ordering, then looks them up against the redb <code>records</code> table via the Rust <code>lookup_fullmap_terms()</code> extension function.</p>
 </li>
 <li>
 <p><strong>Ranks matches</strong> by:</p>
@@ -270,150 +1538,197 @@
 <p><strong>Deduplicates</strong> to one CURIE per input string</p>
 </li>
 </ol>
-<h3 id="example-usage">Example Usage</h3>
-<pre><code class="language-python">from tablassert.fullmap import resolve
-from tablassert.enums import Categories
-import duckdb
-import polars as pl
-
-# Open all 10 shard connections
-datassert_dir = &quot;/path/to/datassert&quot;
-conns = [
-    duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
-    for i in range(10)
-]
-
-# LazyFrame with data to resolve
-lf = pl.scan_parquet(&quot;data.parquet&quot;)
-
-# Resolve gene symbols to CURIEs
-result = resolve(
-  lf=lf,
-  col=&quot;gene_symbol&quot;,
-  conns=conns,
-  taxon=&quot;9606&quot;,  # Human only
-  prioritize=[Categories.Gene],
-  avoid=[Categories.Protein],
-  log=True,
-  section_hash=&quot;tutorial-section&quot;,
-  config_file=&quot;tutorial-table.yaml&quot;,
-  column_context=True,
-)
-
-# Result LazyFrame includes:
-# - gene_symbol: &quot;HGNC:11998&quot;
-# - gene_symbol name: &quot;TP53&quot;
-# - gene_symbol category: &quot;biolink:Gene&quot;
-# - etc.
-</code></pre>
-<h3 id="mapping-a-python-list">Mapping a Python List</h3>
+<h3 id="example-usage">Example Usage<a class="headerlink" href="#example-usage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.fullmap</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.biolink</span><span class="w"> </span><span class="kn">import</span> <span class="n">Categories</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># Path to the fullmap redb file</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">db</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/path/to/fullmap/data/fullmap.redb&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># LazyFrame with data to resolve</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_parquet</span><span class="p">(</span><span class="s2">&quot;data.parquet&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="c1"># Resolve gene symbols to CURIEs</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">result</span> <span class="o">=</span> <span class="n">resolve</span><span class="p">(</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>  <span class="n">lf</span><span class="o">=</span><span class="n">lf</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>  <span class="n">col</span><span class="o">=</span><span class="s2">&quot;gene_symbol&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>  <span class="n">db</span><span class="o">=</span><span class="n">db</span><span class="p">,</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>  <span class="n">taxon</span><span class="o">=</span><span class="s2">&quot;9606&quot;</span><span class="p">,</span>  <span class="c1"># Human only</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>  <span class="n">prioritize</span><span class="o">=</span><span class="p">[</span><span class="n">Categories</span><span class="o">.</span><span class="n">GENE</span><span class="p">],</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>  <span class="n">avoid</span><span class="o">=</span><span class="p">[</span><span class="n">Categories</span><span class="o">.</span><span class="n">PROTEIN</span><span class="p">],</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>  <span class="n">log</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>  <span class="n">section_hash</span><span class="o">=</span><span class="s2">&quot;tutorial-section&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>  <span class="n">config_file</span><span class="o">=</span><span class="s2">&quot;tutorial-table.yaml&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>  <span class="n">column_context</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="p">)</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="c1"># Result LazyFrame includes:</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="c1"># - gene_symbol: &quot;HGNC:11998&quot;</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="c1"># - gene_symbol_name: &quot;TP53&quot;</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="c1"># - gene_symbol_category: &quot;biolink:Gene&quot;</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="c1"># - etc.</span>
+</code></pre></div>
+<h3 id="mapping-a-python-list">Mapping a Python List<a class="headerlink" href="#mapping-a-python-list" title="Permanent link">&para;</a></h3>
 <p>A common entry point for programmatic use is resolving a plain Python list of terms:</p>
-<pre><code class="language-python">import duckdb
-import polars as pl
-from tablassert.fullmap import resolve
-from tablassert.nlp import level_one, level_two
-from tablassert.enums import Categories
-
-# Open all 10 shard connections
-datassert_dir = &quot;/path/to/datassert&quot;
-conns = [
-    duckdb.connect(f&quot;{datassert_dir}/data/{i}.duckdb&quot;, read_only=True)
-    for i in range(10)
-]
-
-# Map a list of gene symbols to CURIEs
-genes = [&quot;TP53&quot;, &quot;BRCA1&quot;, &quot;EGFR&quot;, &quot;KRAS&quot;]
-lf = pl.LazyFrame({&quot;gene&quot;: genes})
-
-# Apply NLP normalization (required before resolve)
-lf = level_one(lf, &quot;gene&quot;)   # lowercase + strip
-lf = level_two(lf, &quot;gene&quot;)   # remove non-word chars → &quot;gene two&quot; column
-
-result = resolve(
-    lf=lf,
-    col=&quot;gene&quot;,
-    conns=conns,
-    taxon=&quot;9606&quot;,               # Human only
-    prioritize=[Categories.Gene],
-    log=False,
-).collect()
-
-print(result.select([&quot;gene&quot;, &quot;gene name&quot;, &quot;gene category&quot;]))
-</code></pre>
-<h3 id="nlp-processing-levels">NLP Processing Levels</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.fullmap</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.nlp</span><span class="w"> </span><span class="kn">import</span> <span class="n">level_one</span><span class="p">,</span> <span class="n">level_two</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.biolink</span><span class="w"> </span><span class="kn">import</span> <span class="n">Categories</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Path to the fullmap redb file</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">db</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/path/to/fullmap/data/fullmap.redb&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Map a list of gene symbols to CURIEs</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">genes</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;TP53&quot;</span><span class="p">,</span> <span class="s2">&quot;BRCA1&quot;</span><span class="p">,</span> <span class="s2">&quot;EGFR&quot;</span><span class="p">,</span> <span class="s2">&quot;KRAS&quot;</span><span class="p">]</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">({</span><span class="s2">&quot;gene&quot;</span><span class="p">:</span> <span class="n">genes</span><span class="p">})</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="c1"># Apply NLP normalization (required before resolve)</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">level_one</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="s2">&quot;gene&quot;</span><span class="p">)</span>   <span class="c1"># lowercase + strip</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">level_two</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="s2">&quot;gene&quot;</span><span class="p">)</span>   <span class="c1"># remove non-word chars → &quot;gene_two&quot; column</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">result</span> <span class="o">=</span> <span class="n">resolve</span><span class="p">(</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="n">lf</span><span class="o">=</span><span class="n">lf</span><span class="p">,</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="n">col</span><span class="o">=</span><span class="s2">&quot;gene&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    <span class="n">db</span><span class="o">=</span><span class="n">db</span><span class="p">,</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    <span class="n">taxon</span><span class="o">=</span><span class="s2">&quot;9606&quot;</span><span class="p">,</span>               <span class="c1"># Human only</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="n">prioritize</span><span class="o">=</span><span class="p">[</span><span class="n">Categories</span><span class="o">.</span><span class="n">GENE</span><span class="p">],</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="n">log</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">select</span><span class="p">([</span><span class="s2">&quot;gene&quot;</span><span class="p">,</span> <span class="s2">&quot;gene_name&quot;</span><span class="p">,</span> <span class="s2">&quot;gene_category&quot;</span><span class="p">]))</span>
+</code></pre></div>
+<h3 id="nlp-processing-levels">NLP Processing Levels<a class="headerlink" href="#nlp-processing-levels" title="Permanent link">&para;</a></h3>
 <p><code>resolve()</code> requires that <code>level_one</code> and <code>level_two</code> have been applied to the LazyFrame before calling it:</p>
 <p><strong><code>level_one</code> output</strong> (column: <code>col</code>):
 - Whitespace stripped, lowercased
 - Queried first; preferred for acronyms and gene symbols</p>
-<p><strong><code>level_two</code> output</strong> (column: <code>col + " two"</code>):
+<p><strong><code>level_two</code> output</strong> (column: <code>col + "_two"</code>):
 - All non-word characters removed (<code>\W+</code> → <code>""</code>) from the <code>level_one</code> result
 - Used as fallback when <code>level_one</code> produces no match
 - Preferred for disease names and free text</p>
 <p>Rows without a valid CURIE are filtered from the returned frame.</p>
-<h3 id="case-dependent-behavior">Case-Dependent Behavior</h3>
+<h3 id="case-dependent-behavior">Case-Dependent Behavior<a class="headerlink" href="#case-dependent-behavior" title="Permanent link">&para;</a></h3>
 <p><code>"TP53"</code> vs <code>"tp53"</code>:
 - After <code>level_one</code>: both become <code>"tp53"</code> — matches any case variant
 - <code>level_two</code> further strips punctuation, helping with hyphenated or slash-delimited names</p>
 <p>This preserves specificity for case-sensitive identifiers while allowing looser matching for general terms.</p>
-<h3 id="provenance-tracking">Provenance Tracking</h3>
+<h3 id="provenance-tracking">Provenance Tracking<a class="headerlink" href="#provenance-tracking" title="Permanent link">&para;</a></h3>
 <p>Every resolved entity includes:
 - <strong>Source database</strong> (HGNC, MONDO, ChEBI, etc.)
 - <strong>Source version</strong> (database snapshot date)
 - <strong>Matched synonym</strong> (which text triggered the match)</p>
 <p>This enables auditing and quality control.</p>
-<h2 id="integration-with-qc">Integration with QC</h2>
+<h2 id="integration-with-qc">Integration with QC<a class="headerlink" href="#integration-with-qc" title="Permanent link">&para;</a></h2>
 <p>Entity resolution output is validated by <code>fullmap_audit()</code> from the <code>qc</code> module before being included in the knowledge graph.</p>
 <p>See <a href="../qc/">Quality Control</a> for details.</p>
-<h2 id="next-steps">Next Steps</h2>
+<h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><a href="../qc/">Quality Control</a></strong> - Multi-stage validation</li>
 <li><strong><a href="../../configuration/table/">Configuration</a></strong> - How to specify prioritize/avoid in YAML</li>
 </ul>
-              
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
             </div>
-          </div><footer>
-    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="../../configuration/advanced-example/" class="btn btn-neutral float-left" title="Advanced Example"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../lib/" class="btn btn-neutral float-right" title="Batch Resolution">Next <span class="icon icon-circle-arrow-right"></span></a>
-    </div>
-
-  <hr/>
-
-  <div role="contentinfo">
-    <!-- Copyright etc -->
-  </div>
-
-  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
-</footer>
           
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
-      </div>
-
-    </section>
-
-  </div>
-
-  <div class="rst-versions" role="note" aria-label="Versions">
-  <span class="rst-current-version" data-toggle="rst-current-version">
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
     
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../configuration/advanced-example/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Advanced Example">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Advanced Example
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../lib/" class="md-footer__link md-footer__link--next" aria-label="Next: Batch Resolution">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Batch Resolution
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
     
-      <span><a href="../../configuration/advanced-example/" style="color: #fcfcfc">&laquo; Previous</a></span>
-    
-    
-      <span><a href="../lib/" style="color: #fcfcfc">Next &raquo;</a></span>
-    
-  </span>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
 </div>
-    <script src="../../js/jquery-3.6.0.min.js"></script>
-    <script>var base_url = "../..";</script>
-    <script src="../../js/theme_extra.js"></script>
-    <script src="../../js/theme.js"></script>
-      <script src="../../search/main.js"></script>
-    <script>
-        jQuery(function () {
-            SphinxRtdTheme.Navigation.enable(true);
-        });
-    </script>
-
-</body>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "search.suggest", "content.code.copy", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
 </html>

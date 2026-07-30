@@ -1,158 +1,1424 @@
-<!DOCTYPE html>
-<html class="writer-html5" lang="en" >
-<head>
-    <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <link rel="shortcut icon" href="../../img/favicon.ico" />
-    <title>Graph Config - Tablassert</title>
-    <link rel="stylesheet" href="../../css/theme.css" />
-    <link rel="stylesheet" href="../../css/theme_extra.css" />
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
     
-      <script>
-        // Current page data
-        var mkdocs_page_name = "Graph Config";
-        var mkdocs_page_input_path = "configuration/graph.md";
-        var mkdocs_page_url = null;
-      </script>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in.">
+      
+      
+      
+        <link rel="canonical" href="https://skyeav.github.io/Tablassert/configuration/graph/">
+      
+      
+        <link rel="prev" href="../../agent/">
+      
+      
+        <link rel="next" href="../table/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
-    <!--[if lt IE 9]>
-      <script src="../../js/html5shiv.min.js"></script>
-    <![endif]-->
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
-      <script>hljs.highlightAll();</script> 
-</head>
+    
+      
+        <title>Graph Config - Tablassert</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
 
-<body class="wy-body-for-nav" role="document">
 
-  <div class="wy-grid-for-nav">
-    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
-    <div class="wy-side-scroll">
-      <div class="wy-side-nav-search">
-          <a href="../.." class="icon icon-home"> Tablassert
-        </a><div role="search">
-  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
-      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
-  </form>
-</div>
-      </div>
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
 
-      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../docker/">Docker</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../datassert/">Datassert</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../cli/">CLI Reference</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../tutorial/">Tutorial</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../examples/">Use Case Gallery</a>
-                </li>
-              </ul>
-              <p class="caption"><span class="caption-text">Configuration</span></p>
-              <ul class="current">
-                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Graph Config</a>
-    <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#purpose">Purpose</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#schema">Schema</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#required-fields">Required Fields</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#optional-fields">Optional Fields</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#field-details">Field Details</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#path-resolution">Path Resolution</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#minimal-example">Minimal Example</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#multi-table-example">Multi-Table Example</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#processing-flow">Processing Flow</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#output-files">Output Files</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#real-world-example">Real-World Example</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../table/">Table Config</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../advanced-example/">Advanced Example</a>
-                  </li>
-              </ul>
-              <p class="caption"><span class="caption-text">API Reference</span></p>
-              <ul>
-                  <li class="toctree-l1"><a class="reference internal" href="../../api/fullmap/">Entity Resolution</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../../api/lib/">Batch Resolution</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../../api/qc/">Quality Control</a>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../../api/utils/">Utilities</a>
-                  </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../changelog/">Changelog</a>
-                </li>
-              </ul>
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#graph-configuration-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Tablassert" class="md-header__button md-logo" aria-label="Tablassert" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Tablassert
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Graph Config
+            
+          </span>
+        </div>
       </div>
     </div>
-    </nav>
-
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
-          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="../..">Tablassert</a>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
         
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
       </nav>
-      <div class="wy-nav-content">
-        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
-  <ul class="wy-breadcrumbs">
-    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
-          <li class="breadcrumb-item">Configuration</li>
-      <li class="breadcrumb-item active">Graph Config</li>
-    <li class="wy-breadcrumbs-aside">
-    </li>
-  </ul>
-  <hr/>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
-            <div class="section" itemprop="articleBody">
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SkyeAv/Tablassert" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SkyeAv/Tablassert
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../fullmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fullmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../examples/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Use Case Gallery
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../agent/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Agent
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/fullmap/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
               
-                <h1 id="graph-configuration-reference">Graph Configuration Reference</h1>
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Tablassert" class="md-nav__button md-logo" aria-label="Tablassert" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Tablassert
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SkyeAv/Tablassert" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SkyeAv/Tablassert
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fullmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fullmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Case Gallery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Config
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field Details
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#path-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path Resolution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-table-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Table Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#processing-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing Flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#real-world-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Real-World Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../table/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Table Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../advanced-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/fullmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entity Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/lib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field Details
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#path-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path Resolution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-table-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Table Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#processing-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing Flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#real-world-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Real-World Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="graph-configuration-reference">Graph Configuration Reference<a class="headerlink" href="#graph-configuration-reference" title="Permanent link">&para;</a></h1>
 <p>Graph configurations orchestrate the processing of multiple table configurations into a single knowledge graph output.</p>
-<h2 id="purpose">Purpose</h2>
+<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
 <p>A graph configuration file specifies:
-- Output knowledge graph name and version
-- Whether QC auditing runs during the build
+- Output knowledge graph name, version, and description
 - List of table configurations to process
-- Database locations for entity resolution and provenance</p>
-<h2 id="schema">Schema</h2>
-<h3 id="required-fields">Required Fields</h3>
+- Database location for entity resolution
+- Resource Ingest Guide (RIG) metadata (contributions and UI explanation)</p>
+<p>QC auditing and verbose logging are controlled at build time via the <code>build-kg --qc</code> and <code>build-kg --log</code> flags — they are <strong>not</strong> graph-config fields.</p>
+<h2 id="schema">Schema<a class="headerlink" href="#schema" title="Permanent link">&para;</a></h2>
+<h3 id="required-fields">Required Fields<a class="headerlink" href="#required-fields" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -165,12 +1431,17 @@
 <tr>
 <td><code>name</code></td>
 <td>String</td>
-<td>Knowledge graph name (used in output filename)</td>
+<td>Knowledge graph name (used in output filenames and the RIG)</td>
 </tr>
 <tr>
 <td><code>version</code></td>
 <td>String</td>
-<td>Knowledge graph version (used in output filename)</td>
+<td>Knowledge graph version (used in output filenames)</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>String</td>
+<td>Source-scope description written into the generated RIG</td>
 </tr>
 <tr>
 <td><code>tables</code></td>
@@ -178,13 +1449,13 @@
 <td>Paths to table configuration YAML files</td>
 </tr>
 <tr>
-<td><code>datassert</code></td>
+<td><code>fullmap</code></td>
 <td>Path</td>
-<td>Path to datassert directory containing DuckDB shards</td>
+<td>Path to the fullmap redb file, or a base directory containing it</td>
 </tr>
 </tbody>
 </table>
-<h3 id="optional-fields">Optional Fields</h3>
+<h3 id="optional-fields">Optional Fields<a class="headerlink" href="#optional-fields" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -195,46 +1466,38 @@
 </thead>
 <tbody>
 <tr>
-<td><code>syntax</code></td>
+<td><code>contributions</code></td>
+<td>List[String]</td>
+<td>RIG contribution statements for graph provenance. Defaults to <code>["Tablassert: KGX and RIG generation"]</code></td>
+</tr>
+<tr>
+<td><code>ui_explanation</code></td>
 <td>String</td>
-<td>Configuration version. Defaults to <code>"GC2"</code> (also accepts <code>"TC3"</code>); overriding is not recommended.</td>
+<td>RIG explanation applied to generated edge-type metadata. Defaults to a built-in description of how Tablassert transforms source records into Biolink associations</td>
 </tr>
 <tr>
-<td><code>pubmed_db</code></td>
-<td>Path</td>
-<td>Path to SQLite PubMed metadata database</td>
-</tr>
-<tr>
-<td><code>pmc_db</code></td>
-<td>Path</td>
-<td>Path to SQLite PMC figure captions database</td>
-</tr>
-<tr>
-<td><code>log</code></td>
-<td>Boolean</td>
-<td>Log unmatched entities and audit details during graph builds</td>
-</tr>
-<tr>
-<td><code>qc</code></td>
-<td>Boolean</td>
-<td>Enable the QC audit stage during graph builds</td>
+<td><code>infores</code></td>
+<td>String</td>
+<td>Graph-level <code>infores:</code> CURIE emitted as the default Biolink <code>primary_knowledge_source</code> and RIG <code>source_info.infores_id</code>. Defaults to <code>infores:&lt;kebab-name&gt;</code> derived from <code>name</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="field-details">Field Details</h3>
-<p><strong><code>syntax: "GC2"</code></strong></p>
-<p>Configuration syntax version. Defaults to <code>"GC2"</code> (the type also accepts <code>"TC3"</code>); overriding the default is not recommended.</p>
+<h3 id="field-details">Field Details<a class="headerlink" href="#field-details" title="Permanent link">&para;</a></h3>
 <p><strong><code>name: string</code></strong></p>
-<p>Output knowledge graph name. Used as prefix for NDJSON files.</p>
+<p>Output knowledge graph name. Used as the prefix for the NDJSON and RIG output files.</p>
 <p>Example: <code>name: MULTIOMICS_KG</code> produces <code>MULTIOMICS_KG_{version}.nodes.ndjson</code></p>
 <p><strong><code>version: string</code></strong></p>
-<p>Output knowledge graph version. Used as suffix for NDJSON files.</p>
+<p>Output knowledge graph version. Used as the suffix for output files.</p>
 <p>Common values: <code>"1.0.0"</code>, <code>"UNSTABLE"</code>, <code>"BETA"</code></p>
-<p><strong><code>log: bool = false</code></strong></p>
-<p>When <code>true</code>, Tablassert logs unmatched entities and audit details during the graph build. When <code>false</code>, unmatched entities are silently filtered.</p>
-<p><strong><code>qc: bool = false</code></strong></p>
-<p>When <code>true</code>, Tablassert runs the QC audit stage after entity resolution for node-like columns. When <code>false</code>, the build skips QC entirely.</p>
-<p>This field only controls whether QC runs. Install <code>tablassert[qc]</code> or <code>tablassert[qc-cuda]</code> if you plan to enable it.</p>
+<p><strong><code>description: string</code></strong></p>
+<p>A short human-readable description of the graph's source scope. Written into the generated Resource Ingest Guide (RIG). Required.</p>
+<p><strong><code>contributions: list[string]</code></strong></p>
+<p>Contribution statements recorded in the RIG <code>provenance_info</code>. Defaults to <code>["Tablassert: KGX and RIG generation"]</code> when omitted.</p>
+<p><strong><code>ui_explanation: string</code></strong></p>
+<p>Human-readable explanation applied to each generated edge type's metadata in the RIG. Defaults to a built-in description when omitted.</p>
+<p><strong><code>infores: string</code></strong></p>
+<p>Optional graph-level information-resource CURIE. When omitted, Tablassert derives <code>infores:&lt;kebab-name&gt;</code> from <code>name</code> (for example, <code>MULTIOMICS_KG</code> → <code>infores:multiomics-kg</code>). When set, it must start with <code>infores:</code> and becomes the default edge <code>primary_knowledge_source</code> plus the RIG <code>source_info.infores_id</code>.</p>
+<p>Use this when the graph's Translator information resource differs from the output name or when a non-PMC/PMID source KG needs a stable manually-curated infores.</p>
 <p><strong><code>tables: list[path]</code></strong></p>
 <p>List of table configuration file paths. Can be absolute or relative to the current working directory (paths are resolved against the process CWD, not the graph-config file location).</p>
 <p>Each table config defines:
@@ -243,139 +1506,174 @@
 - Provenance information
 - Edge annotations</p>
 <p>See <a href="../table/">Table Configuration</a> for details.</p>
-<p><strong><code>datassert: path</code></strong></p>
-<p>Path to the <a href="../../datassert/">datassert</a> directory for entity resolution. Tablassert opens 10 shard files from <code>datassert/data/{0..9}.duckdb</code>. This database contains:
+<p><strong><code>fullmap: path</code></strong></p>
+<p>Path to the <a href="../../fullmap/">fullmap</a> redb file for entity resolution, or a base directory containing it. Tablassert resolves the actual file via <code>fullmap_db_path()</code>. This database contains:
 - Synonym mappings (text → CURIE)
 - Biolink categories
 - Taxonomic information
 - Source provenance (which database provided the mapping)</p>
-<p>See <a href="../../datassert/">Datassert</a> for installation, build commands, and database schema.</p>
-<p><strong><code>pubmed_db: path</code></strong></p>
-<p>Optional path to SQLite database with PubMed metadata:
-- MeSH terms
-- Authors
-- Journal information
-- Publication dates</p>
-<p>When provided, this enriches edges with MeSH annotations.</p>
-<p><strong><code>pmc_db: path</code></strong></p>
-<p>Optional path to SQLite database with PubMed Central figure captions.</p>
-<p>When provided, this is used when provenance specifies PMC publications.</p>
-<h2 id="path-resolution">Path Resolution</h2>
+<p>See <a href="../../fullmap/">Fullmap</a> for build commands and database schema.</p>
+<h2 id="path-resolution">Path Resolution<a class="headerlink" href="#path-resolution" title="Permanent link">&para;</a></h2>
 <p>Paths can be:
-- <strong>Absolute:</strong> <code>/home/user/data/datassert</code>
+- <strong>Absolute:</strong> <code>/home/user/data/fullmap</code>
 - <strong>Relative to the current working directory:</strong> <code>./tables/table1.yaml</code> (note: paths are resolved against the process CWD, not the graph-config file location — there is no config-relative resolver)</p>
-<h2 id="minimal-example">Minimal Example</h2>
-<pre><code class="language-yaml">syntax: GC2
-name: MY_GRAPH
-version: 1.0.0
-log: true
-qc: true
-tables:
-  - ./my-table.yaml
-datassert: /data/datassert
-pubmed_db: /data/PubMed.db
-pmc_db: /data/PMCSuppCaptions.db
-</code></pre>
-<h2 id="multi-table-example">Multi-Table Example</h2>
-<pre><code class="language-yaml">syntax: GC2
-name: MULTIOMICS_KG
-version: UNSTABLE
-tables:
-  - /configs/gene-disease-associations.yaml
-  - /configs/drug-targets.yaml
-  - /configs/protein-interactions.yaml
-datassert: /databases/datassert
-pubmed_db: /databases/PubMed.db
-pmc_db: /databases/PMCSuppCaptions.db
-</code></pre>
-<h2 id="processing-flow">Processing Flow</h2>
-<p>When you run <code>tablassert build graph.yaml</code>:</p>
+<h2 id="minimal-example">Minimal Example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MY_GRAPH</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0.0</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Knowledge graph built from configured tabular source data.</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">infores</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:my-graph</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-table.yaml</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/fullmap</span>
+</code></pre></div>
+<h2 id="multi-table-example">Multi-Table Example<a class="headerlink" href="#multi-table-example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MULTIOMICS_KG</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UNSTABLE</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multi-omics knowledge graph integrating gene-disease, drug-target, and protein-interaction tables.</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/gene-disease-associations.yaml</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/drug-targets.yaml</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/protein-interactions.yaml</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/databases/fullmap</span>
+</code></pre></div>
+<h2 id="processing-flow">Processing Flow<a class="headerlink" href="#processing-flow" title="Permanent link">&para;</a></h2>
+<p>When you run <code>tablassert build-kg graph.yaml</code>:</p>
 <ol>
 <li><strong>Load graph configuration</strong> - Parse YAML, validate schema</li>
 <li><strong>Load table configurations</strong> - Parse each YAML in <code>tables</code></li>
 <li><strong>Extract sections</strong> - Expand templates into per-section <code>Tcode</code> instances</li>
 <li><strong>Collect instructions (per section):</strong></li>
-<li>Download source file (if URL specified)</li>
-<li>Apply transformations and resolve entities using <code>datassert</code></li>
-<li>Validate with the QC audit when <code>qc: true</code></li>
-<li>Enrich with provenance: query <code>pubmed_db</code> (MeSH) and <code>pmc_db</code> (captions) when configured</li>
+<li>Read the source file from disk (<code>source.local</code>)</li>
+<li>Apply transformations and resolve entities using <code>fullmap</code></li>
+<li>Validate with the QC audit when <code>build-kg --qc</code> is passed</li>
 <li><strong>Build subgraphs</strong> - Compile each section's resolved data into a parquet file</li>
-<li><strong>Compile graph</strong> - Aggregate all subgraph parquets and export <code>{name}_{version}.nodes.ndjson</code> / <code>.edges.ndjson</code></li>
+<li><strong>Compile graph</strong> - Aggregate all subgraph parquets and export <code>{name}_{version}.nodes.ndjson</code> / <code>.edges.ndjson</code> / <code>.RIG.yaml</code></li>
 </ol>
-<blockquote>
-<p>Note: provenance enrichment (<code>with_mesh</code>/<code>with_captions</code>) and QC both run during the per-section Collect Instructions stage, <em>before</em> subgraphs are built — not as a separate post-aggregation step.</p>
-</blockquote>
-<h2 id="output-files">Output Files</h2>
-<p>Given this configuration:</p>
-<pre><code class="language-yaml">name: EXAMPLE_KG
-version: 2.0.0
-</code></pre>
+<h2 id="output-files">Output Files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
+<p>Given this configuration:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">EXAMPLE_KG</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.0.0</span>
+</code></pre></div></p>
 <p>Produces:
 - <code>EXAMPLE_KG_2.0.0.nodes.ndjson</code>
-- <code>EXAMPLE_KG_2.0.0.edges.ndjson</code></p>
-<h2 id="real-world-example">Real-World Example</h2>
+- <code>EXAMPLE_KG_2.0.0.edges.ndjson</code>
+- <code>EXAMPLE_KG_2.0.0.RIG.yaml</code></p>
+<h2 id="real-world-example">Real-World Example<a class="headerlink" href="#real-world-example" title="Permanent link">&para;</a></h2>
 <p>From MOKGV6.yaml:</p>
-<pre><code class="language-yaml">syntax: GC2
-name: MULTIOMICS_KG
-version: UNSTABLE
-tables:
-  - /local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml
-datassert: /local_raid1/sgoetz/CODE/DATASSERT/datassert
-pubmed_db: /local_raid1/sgoetz/DBSTORE/PUBMED/PubMed.db
-pmc_db: /local_raid1/sgoetz/DBSTORE/CAPTIONS/PMCSuppCaptions.db
-</code></pre>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MULTIOMICS_KG</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UNSTABLE</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multi-omics knowledge graph derived from the ALAMV6 tabular source.</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/local_raid1/sgoetz/CODE/FULLMAP/fullmap</span>
+</code></pre></div>
 <p>This processes a single table configuration (ALAMV6.yaml) into a knowledge graph named <code>MULTIOMICS_KG_UNSTABLE</code>.</p>
-<h2 id="next-steps">Next Steps</h2>
+<h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><a href="../table/">Table Configuration</a></strong> - Learn how to define table transformations</li>
-<li><strong><a href="../../datassert/">Datassert</a></strong> - Entity-resolution database installation and build</li>
+<li><strong><a href="../../fullmap/">Fullmap</a></strong> - Entity-resolution database build and schema</li>
 <li><strong><a href="../../tutorial/">Tutorial</a></strong> - Complete example walkthrough</li>
 </ul>
-              
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
             </div>
-          </div><footer>
-    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="../../examples/" class="btn btn-neutral float-left" title="Use Case Gallery"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../table/" class="btn btn-neutral float-right" title="Table Config">Next <span class="icon icon-circle-arrow-right"></span></a>
-    </div>
-
-  <hr/>
-
-  <div role="contentinfo">
-    <!-- Copyright etc -->
-  </div>
-
-  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
-</footer>
           
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
-      </div>
-
-    </section>
-
-  </div>
-
-  <div class="rst-versions" role="note" aria-label="Versions">
-  <span class="rst-current-version" data-toggle="rst-current-version">
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
     
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../agent/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Agent">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Agent
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../table/" class="md-footer__link md-footer__link--next" aria-label="Next: Table Config">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Table Config
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
     
-      <span><a href="../../examples/" style="color: #fcfcfc">&laquo; Previous</a></span>
-    
-    
-      <span><a href="../table/" style="color: #fcfcfc">Next &raquo;</a></span>
-    
-  </span>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
 </div>
-    <script src="../../js/jquery-3.6.0.min.js"></script>
-    <script>var base_url = "../..";</script>
-    <script src="../../js/theme_extra.js"></script>
-    <script src="../../js/theme.js"></script>
-      <script src="../../search/main.js"></script>
-    <script>
-        jQuery(function () {
-            SphinxRtdTheme.Navigation.enable(true);
-        });
-    </script>
-
-</body>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "search.suggest", "content.code.copy", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
 </html>
