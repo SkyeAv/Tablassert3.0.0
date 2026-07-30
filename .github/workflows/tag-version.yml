@@ -1,0 +1,54 @@
+name: Tag version
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - pyproject.toml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-version-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag-version:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Read pyproject version
+        id: version
+        uses: ./.github/actions/detect-pyproject-version-change
+        with:
+          before-sha: ${{ github.event.before }}
+          event-name: ${{ github.event_name }}
+
+      - name: Create and push tag
+        if: steps.version.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "::notice::Tag ${tag} already exists; skipping"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${tag}"
+          git push origin "${tag}"
