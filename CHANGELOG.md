@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 8.0.1 - 2026-07-30
+
 ### Breaking Changes
 - **Slimmed the `tablassert agent` CLI surface.** Removed the `--qc-threshold`/`-qt` flag (it was echoed into the run metrics but never gated any decision — the accept/`MAPPED` outcome is driven solely by `--map-threshold` coverage), the `--executor`/`-e` flag and its Docker sandbox option (model-written code now always runs on the in-process `local` executor), and the `--no-fetch`/`-nf` flag (the supervisor always fetches the PMC payload). The `--map-threshold` default was lowered from `0.8` to `0.25`, and the agent workspace default moved from the standalone `.tablassert-agent/` directory to `.tablassert/agent/` (under the shared, already-git-ignored `.tablassert/` parent).
 - Renamed CLI commands to a consistent verb-noun scheme and retired the legacy `datassert` naming throughout: `build` → `build-kg` (`validate` and `build-fullmap` are unchanged — they already fit the scheme). The `Graph` config field `datassert` is renamed to `fullmap` (also renaming the `resolve_many()` keyword argument from `datassert` to `fullmap`); existing graph YAML configs must rename their `datassert:` key to `fullmap:`. This is a pure naming migration. `build-fullmap`'s default `--output`/`--cache` directories moved from `./datassert/` to `./fullmap/`. (Note: the embedded fullmap database format was independently changed — see the redb schema item below — so existing `fullmap.redb` files **do** need to be rebuilt with `tablassert build-fullmap`.)
