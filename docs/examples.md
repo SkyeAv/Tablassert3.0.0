@@ -1,10 +1,12 @@
 # Use Case Gallery
 
-Real-world patterns for transforming tabular data into knowledge graphs with Tablassert. Each example shows a complete configuration with explanations.
+**Turn real tabular sources — CSV, TSV, or Excel — into KGX-compliant nodes and edges.** Each pattern
+below leads with the data type and the outcome it produces, then gives a complete, schema-valid
+configuration and the techniques that make it work.
 
 ## Gene-Disease Associations
 
-Transform a gene-disease association table into KGX-compliant edges with statistical annotations.
+Transform a **CSV** of gene-disease associations into KGX-compliant edges with statistical annotations.
 
 **Data:** CSV with gene symbols, disease names, and p-values
 
@@ -20,15 +22,13 @@ template:
     subject:
       method: column
       encoding: A
-      prioritize:
-        - Gene
+      prioritize: [Gene]
       taxon: 9606
     predicate: associated_with
     object:
       method: column
       encoding: B
-      prioritize:
-        - Disease
+      prioritize: [Disease]
   provenance:
     repo: PMID
     publication: "12345678"
@@ -40,16 +40,15 @@ template:
 
 **Key techniques:**
 
-- **Taxonomic filtering** (`taxon: 9606`) restricts gene resolution to human genes
-- **Category prioritization** ensures genes resolve as `biolink:Gene` and diseases as `biolink:Disease`
-- **Column annotations** attach per-row p-values to each edge
-- **Excel column letters** (`A`, `B`, `C`) reference columns in headerless sources — converted internally to Polars column names
+- **Taxonomic filtering** (`taxon: 9606`) restricts gene resolution to human genes; **category prioritization** resolves genes as `biolink:Gene` and diseases as `biolink:Disease`.
+- **Column annotations** attach per-row p-values to each edge (Excel column letters `A`/`B`/`C` reference headerless columns).
 
 ---
 
 ## Drug-Target Interactions
 
-Extract drug-target relationships from a curated interaction database.
+Extract drug-target relationships from a curated **TSV** interaction database into KGX edges tagged with
+interaction type and assay.
 
 **Data:** TSV with drug names, target genes, and interaction types
 
@@ -65,16 +64,12 @@ template:
     subject:
       method: column
       encoding: A
-      prioritize:
-        - ChemicalEntity
-        - SmallMolecule
+      prioritize: [ChemicalEntity, SmallMolecule]
     predicate: interacts_with
     object:
       method: column
       encoding: B
-      prioritize:
-        - Gene
-        - Protein
+      prioritize: [Gene, Protein]
       taxon: 9606
   provenance:
     repo: PMID
@@ -90,15 +85,15 @@ template:
 
 **Key techniques:**
 
-- **Multiple prioritized categories** (`ChemicalEntity`, `SmallMolecule`) give entity resolution fallback options
-- **Fixed-value annotation** (`method: value`) attaches the same assay description to all edges
-- **TSV delimiter** (`delimiter: "\t"`) handles tab-separated files
+- **Multiple prioritized categories** (`ChemicalEntity`, `SmallMolecule`) give entity resolution fallback options.
+- **Fixed-value annotation** (`method: value`) attaches the same assay description to all edges; `delimiter: "\t"` handles tab-separated files.
 
 ---
 
 ## Microbiome-Metabolite Correlations
 
-Extract microbe-metabolite correlations with taxonomic name cleaning.
+Turn an **Excel** sheet of microbe-metabolite correlations into KGX edges, cleaning raw taxonomic names
+with a regex pipeline on the way.
 
 **Data:** Excel with raw taxonomic names, correlation coefficients, and p-values
 
@@ -114,19 +109,13 @@ template:
     subject:
       method: column
       encoding: A
-      prioritize:
-        - OrganismTaxon
-      avoid:
-        - Gene
-      remove:
-        - "^NA "
+      prioritize: [OrganismTaxon]
+      avoid: [Gene]
+      remove: ["^NA "]
       regex:
-        - pattern: ".*g__"
-          replacement: ""
-        - pattern: ";s__"
-          replacement: " "
-        - pattern: "sp"
-          replacement: "sp. "
+        - {pattern: ".*g__", replacement: ""}
+        - {pattern: ";s__", replacement: " "}
+        - {pattern: "sp", replacement: "sp. "}
     predicate: correlated_with
     object:
       method: value
@@ -152,16 +141,15 @@ template:
 
 **Key techniques:**
 
-- **Regex pipeline** cleans raw taxonomic strings (e.g., `d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`). Patterns must be Polars `str.replace_all()`-compatible — no capturing groups (`(...)` / `\1`) and no lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`). Chain several simple substitutions instead.
-- **Avoid list** (`avoid: [Gene]`) prevents organism names from resolving to gene entities
-- **Fixed-value object** (`method: value`) assigns the same metabolite CURIE to all rows
-- **Excel source** with sheet name and row slicing
+- **Regex pipeline** cleans raw taxonomic strings (`d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`). Patterns must be Polars `str.replace_all()`-compatible (Rust `regex` engine) — no backreferences (`\1`, `\2`, …) or lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`); plain and non-capturing groups are supported, so chain several simple substitutions when needed.
+- **Avoid list** (`avoid: [Gene]`) prevents organism names resolving to gene entities; **fixed-value object** (`method: value`) assigns the same metabolite CURIE to all rows.
 
 ---
 
 ## Multi-Pathway Gene Mapping
 
-Map genes to multiple pathways from a single source using sections.
+Map genes from a single **CSV** to multiple pathway databases (KEGG, Reactome) in one pass using
+template + sections.
 
 **Data:** CSV with gene symbols and multiple pathway columns
 
@@ -177,8 +165,7 @@ template:
     subject:
       method: column
       encoding: A
-      prioritize:
-        - Gene
+      prioritize: [Gene]
       taxon: 9606
     object:
       method: value
@@ -193,8 +180,7 @@ sections:
       object:
         method: column
         encoding: B
-        prioritize:
-          - Pathway
+        prioritize: [Pathway]
     annotations:
       - annotation: pathway_database
         method: value
@@ -205,8 +191,7 @@ sections:
       object:
         method: column
         encoding: C
-        prioritize:
-          - Pathway
+        prioritize: [Pathway]
     annotations:
       - annotation: pathway_database
         method: value
@@ -215,15 +200,15 @@ sections:
 
 **Key techniques:**
 
-- **Template + sections** avoids repeating source and provenance for each pathway column
-- **Section overrides** — each section provides its own predicate and object while inheriting the shared subject and source
-- **Per-section annotations** tag edges with the pathway database source
+- **Template + sections** avoids repeating source and provenance for each pathway column — each section provides its own predicate and object while inheriting the shared subject and source.
+- **Per-section annotations** tag edges with the pathway database source.
 
 ---
 
 ## Conditional Filtering with Reindex
 
-Filter rows based on column values before entity resolution.
+Filter a **CSV** of gene-disease associations down to significant, well-powered rows before building KGX
+edges (reindex on column values).
 
 **Data:** CSV with gene-disease associations and significance thresholds
 
@@ -236,25 +221,19 @@ template:
     row_slice: [1, auto]
     delimiter: ","
     reindex:
-      - column: C
-        comparison: lt
-        comparator: 0.05
-      - column: D
-        comparison: ge
-        comparator: 100
+      - {column: C, comparison: lt, comparator: 0.05}
+      - {column: D, comparison: ge, comparator: 100}
   statement:
     subject:
       method: column
       encoding: A
-      prioritize:
-        - Gene
+      prioritize: [Gene]
       taxon: 9606
     predicate: associated_with
     object:
       method: column
       encoding: B
-      prioritize:
-        - Disease
+      prioritize: [Disease]
   provenance:
     repo: PMID
     publication: "55667788"
@@ -269,15 +248,15 @@ template:
 
 **Key techniques:**
 
-- **Reindex filtering** keeps only rows where column C (p-value) < 0.05 AND column D (sample size) >= 100
-- **Comparison operators** — `lt` (less than), `ge` (greater or equal), `eq`, `ne`, `gt`, `le`
-- **Multiple reindex conditions** are ANDed together
+- **Reindex filtering** keeps only rows where column C (p-value) < 0.05 AND column D (sample size) >= 100; multiple reindex conditions are ANDed together.
+- **Comparison operators** — `lt` (less than), `ge` (greater or equal), `eq`, `ne`, `gt`, `le`.
 
 ---
 
 ## Null Handling with Forward Fill
 
-Process hierarchical data where parent values propagate down through empty cells.
+Build `subclass_of` edges from a hierarchical **CSV** where parent categories propagate down through
+empty cells (forward fill).
 
 **Data:** CSV with category headers followed by subcategory rows (gaps in category column)
 
@@ -294,14 +273,12 @@ template:
       method: column
       encoding: A
       fill: forward
-      prioritize:
-        - ChemicalEntity
+      prioritize: [ChemicalEntity]
     predicate: subclass_of
     object:
       method: column
       encoding: B
-      prioritize:
-        - ChemicalEntity
+      prioritize: [ChemicalEntity]
   provenance:
     repo: PMID
     publication: "99887766"
@@ -309,8 +286,8 @@ template:
 
 **Key techniques:**
 
-- **Forward fill** (`fill: forward`) propagates the last non-null value downward, mapping subcategory rows to their parent category
-- **Other fill strategies** — `backward`, `min`, `max`, `mean`, `zero`, `one`
+- **Forward fill** (`fill: forward`) propagates the last non-null value downward, mapping subcategory rows to their parent category.
+- **Other fill strategies** — `backward`, `min`, `max`, `mean`, `zero`, `one`.
 
 ---
 

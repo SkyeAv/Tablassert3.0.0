@@ -1,6 +1,7 @@
 # Installation
 
-This guide covers installing Tablassert on your system.
+Get a working `tablassert` install, then pick the `rt` / `qc` / `agent` extras that match how you will
+use it (building graphs, auditing mappings, or running the autonomous agent).
 
 ## Prerequisites
 
@@ -12,14 +13,11 @@ This guide covers installing Tablassert on your system.
 See the [official UV installation guide](https://github.com/astral-sh/uv) for your platform:
 
 ```bash
-# On Linux/macOS with curl
+# Linux/macOS with curl
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# On Linux/macOS with pip
+# or with pip (any platform)
 pip install uv
-
-# On Windows with PowerShell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 ## Installation Methods
@@ -47,8 +45,8 @@ This creates a virtual environment in `.venv/`, installs the development depende
 
 ### Method 2: Install from PyPI
 
-Recommended for most users who just need the CLI.
-The base install includes everything needed to build knowledge graphs from CSV/TSV sources. QC runtime support is opt-in.
+Recommended for most users. The base install builds knowledge graphs from CSV/TSV sources; QC and other
+extras are opt-in.
 
 ```bash
 # Option A: Install from PyPI with UV
@@ -64,6 +62,7 @@ pip install tablassert
 |---|---|---|
 | `rt` | Runtime-compatible Polars build | `polars[rtcompat]` |
 | `qc` | QC runtime (exact → fuzzy → BioBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
+| `agent` | Autonomous PMC → KG agent (`tablassert agent`) | `smolagents`, `dspy`, `litellm` |
 
 ```bash
 # Install with runtime-compatible Polars
@@ -76,15 +75,13 @@ pip install "tablassert[rt]"
 # Install the QC runtime
 uv tool install "tablassert[qc]"
 pip install "tablassert[qc]"
+
+# Install the autonomous agent
+uv tool install "tablassert[agent]"
+pip install "tablassert[agent]"
 ```
 
 Excel (`.xlsx`) input is read through Polars' `calamine` engine and additionally requires `python-calamine` (`pip install python-calamine`).
-
-Tablassert CLI is now available:
-
-```bash
-tablassert --help
-```
 
 ### Method 3: Install from GitHub main
 
@@ -93,9 +90,6 @@ Use this when you want the latest main-branch build.
 ```bash
 # Install from main branch
 uv tool install git+https://github.com/SkyeAv/Tablassert.git@main
-
-# Tablassert CLI is now available
-tablassert --help
 ```
 
 ### Method 4: Install from local source
@@ -109,20 +103,13 @@ cd Tablassert
 
 # Install Tablassert CLI tool from local source
 uv tool install .
-
-# Tablassert CLI is now available
-tablassert --help
 ```
 
 ## Verifying Installation
 
-After installation, verify that Tablassert is working correctly:
+Confirm the CLI is on your path (use `uv run tablassert --help` for the in-repo dev environment):
 
 ```bash
-# If using UV
-uv run tablassert --help
-
-# If installed as a UV tool
 tablassert --help
 ```
 
@@ -137,17 +124,7 @@ make setup
 make check
 ```
 
-The underlying stable gate commands are:
-
-```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
-uv run pytest
-cargo fmt --check --manifest-path rust/Cargo.toml
-cargo test --manifest-path rust/Cargo.toml
-cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
-```
+The underlying stable gates are `ruff check` / `ruff format --check`, `pyright`, `pytest`, and `cargo fmt --check` / `cargo test` / `cargo clippy --all-targets -- -D warnings` (see [Development](development.md)).
 
 Install pre-commit hooks if you want the gates to run automatically before commits:
 
@@ -170,46 +147,21 @@ uv run maturin develop --manifest-path rust/Cargo.toml
 
 ## Troubleshooting
 
-### Python Version Issues
+### Python version
 
-Tablassert requires Python 3.11 or higher. If you encounter version errors:
+Tablassert requires Python 3.11+. On version errors, check `python --version` and pin a supported
+release:
 
 ```bash
-# Check your Python version
-python --version
-
-# Use UV to manage Python versions
 uv python install 3.11
 uv python pin 3.11
 ```
 
-### Dependency Installation Issues
+### QC runtime
 
-If you encounter dependency installation issues, try:
-
-```bash
-# Reinstall dependencies and rebuild the editable extension
-uv sync --group dev --extra qc --reinstall
-uv run maturin develop --manifest-path rust/Cargo.toml
-```
-
-### Polars CPU Instruction Issues
-
-If your machine does not support the CPU instructions required by default Polars
-builds, install Tablassert with the `rt` extra from `pyproject.toml`:
-
-```bash
-uv tool install "tablassert[rt]"
-# or
-pip install "tablassert[rt]"
-```
-
-### QC Runtime Issues
-
-If you run `build-kg --qc` without the QC runtime installed, install it:
+If `build-kg --qc` reports a missing QC runtime, install the `qc` extra (torch / sentence-transformers
+BioBERT backend for the audit stage):
 
 ```bash
 pip install "tablassert[qc]"
 ```
-
-The `qc` extra installs the torch / sentence-transformers BioBERT backend used by the audit stage.

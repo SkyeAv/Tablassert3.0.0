@@ -28,6 +28,7 @@ Current CLI behavior queries an embedded redb database whose primary file is `fu
 
 ## Contributor Development
 - [Contributing Guide](CONTRIBUTING.md): setup, style conventions, checks, and PR expectations.
+- [Development](docs/development.md): docs-site contributor setup and the local `uv run mkdocs build --strict` docs gate.
 - [Project Metadata](pyproject.toml): dependencies, tooling config, and CLI entrypoint. Optional extras: `rt` and `qc`.
 - [Tests](tests/): pytest coverage and fixtures.
 - [MkDocs Configuration](mkdocs.yml): docs navigation and published pages.

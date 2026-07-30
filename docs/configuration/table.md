@@ -1,15 +1,6 @@
 # Table Configuration Reference
 
-Table configurations define how Tablassert transforms tabular data (Excel, CSV, TSV) into knowledge graph assertions.
-
-## Purpose
-
-A table configuration specifies:
-- Data source location and format
-- How to extract subject-predicate-object triples
-- Entity resolution rules (taxonomic filtering, category preferences)
-- Provenance metadata
-- Optional edge annotations
+Table configurations define how Tablassert transforms tabular data (Excel, CSV, TSV) into knowledge-graph assertions — author one per source table to declare its source, triple mappings, entity-resolution rules, provenance, and optional edge annotations.
 
 ## Template vs Sections
 
@@ -87,39 +78,6 @@ sections:
       predicate: treats  # Replaces the template predicate
 ```
 
-### Use Cases
-
-**Single output:** Template only
-```yaml
-template:
-  source: {kind: text, local: data.csv, url: https://example.com/data.csv}
-  statement: {...}
-```
-
-**Multiple predicates, same source:**
-```yaml
-template:
-  source: {kind: excel, local: data.xlsx, url: https://example.com/data.xlsx}
-  provenance: {repo: PMC, publication: "PMC123"}
-
-sections:
-  - statement: {predicate: treats}
-  - statement: {predicate: prevents}
-```
-
-**Multiple columns, shared provenance:**
-```yaml
-template:
-  source: {kind: text, local: data.csv, url: https://example.com/data.csv}
-  provenance: {repo: PMID, publication: "456"}
-  statement:
-    subject: {method: column, encoding: A}
-
-sections:
-  - statement: {object: {method: column, encoding: B}}
-  - statement: {object: {method: column, encoding: C}}
-```
-
 ## Configuration Schema
 
 ### Source
@@ -145,9 +103,7 @@ source:
   local: ./data/mydata.xlsx
   url: https://example.com/data.xlsx
   sheet: "Sheet1"
-  row_slice:
-    - 1  # Start at the second physical row
-    - auto  # Read to end
+  row_slice: [1, auto]  # Start at the second physical row, read to end
 ```
 
 > **Specify `kind` explicitly.** Tablassert selects the reader purely from the declared `kind` — `excel` reads a workbook (`sheet`), `text` scans delimited text (`delimiter`); the file on disk is never inspected to infer its format. Because `kind` carries a default, a source whose `kind` is omitted or does not match the actual file is still accepted and fed to the wrong reader, surfacing only later as a read error or garbled rows. Stating `kind` explicitly makes a mis-declared source fail fast.
@@ -171,9 +127,7 @@ source:
   local: ./data/mydata.tsv
   url: https://example.com/data.tsv
   delimiter: "\t"
-  row_slice:
-    - 1
-    - auto
+  row_slice: [1, auto]
 ```
 
 #### Reindexing (Conditional Filtering)
@@ -189,9 +143,7 @@ Filter rows based on column values.
 **Example:**
 ```yaml
 reindex:
-  - column: C
-    comparison: lt
-    comparator: 0.05  # Keep rows where column C < 0.05
+  - {column: C, comparison: lt, comparator: 0.05}  # Keep rows where column C < 0.05
 ```
 
 ### Statement (Triple Definition)
@@ -248,12 +200,7 @@ subject:
   encoding: CHEBI:41774  # All rows get this CURIE
 ```
 
-**`method: column`** - Reference a source column
-
-Source files are read without headers, so column references are Excel-style letters:
-- Column A -> `"A"`
-- Column B -> `"B"`
-- Column AA -> `"AA"`
+**`method: column`** - Reference a source column (Excel-style letters, since sources are read without headers)
 
 ```yaml
 subject:
@@ -286,9 +233,7 @@ Common taxon IDs:
 ```yaml
 subject:
   encoding: A
-  prioritize:
-    - Gene
-    - Protein
+  prioritize: [Gene, Protein]
 ```
 
 If "TP53" maps to both Gene and Protein, prefer Gene.
@@ -299,10 +244,8 @@ If "TP53" maps to both Gene and Protein, prefer Gene.
 subject:
   method: column
   encoding: A
-  prioritize:
-    - OrganismTaxon
-  avoid:
-    - Gene
+  prioritize: [OrganismTaxon]
+  avoid: [Gene]
 ```
 
 Prevents misclassifying organism names as genes.
@@ -315,10 +258,8 @@ Prevents misclassifying organism names as genes.
 subject:
   encoding: A
   regex:
-    - pattern: ".*g__"
-      replacement: ""  # Remove genus prefix
-    - pattern: ";s__"
-      replacement: " "  # Replace species separator
+    - {pattern: ".*g__", replacement: ""}   # Remove genus prefix
+    - {pattern: ";s__", replacement: " "}   # Replace species separator
 ```
 
 Executed in order.
@@ -330,8 +271,7 @@ Executed in order.
 ```yaml
 subject:
   encoding: A
-  remove:
-    - "^NA "  # Strip leading "NA " prefix from cell text
+  remove: ["^NA "]  # Strip leading "NA " prefix from cell text
 ```
 
 Each entry is applied as a regex replace-with-empty-string on the cell text in place (rows are not dropped). Same regex constraints apply as the `regex` field — Polars-compatible patterns only, no backreferences or lookarounds.
@@ -412,9 +352,7 @@ metadata and should not be declared manually.
 **Example:**
 ```yaml
 qualifiers:
-  - qualifier: anatomical_context_qualifier
-    method: value
-    encoding: UBERON:0000061
+  - {qualifier: anatomical_context_qualifier, method: value, encoding: UBERON:0000061}
 ```
 
 ### Provenance
@@ -478,17 +416,9 @@ Optional edge attributes (statistical metadata, notes, etc.).
 **Example:**
 ```yaml
 annotations:
-  - annotation: p_value
-    method: column
-    encoding: C  # Read from column C
-
-  - annotation: sample_size
-    method: value
-    encoding: 450  # Literal value for all edges
-
-  - annotation: multiple_testing_correction_method
-    method: value
-    encoding: "Benjamini Hochberg"
+  - {annotation: p_value, method: column, encoding: C}        # Read from column C
+  - {annotation: sample_size, method: value, encoding: 450}   # Literal value for all edges
+  - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
   - annotation: log2fc_relative_to_vehicle_control
@@ -513,40 +443,6 @@ Any other annotation name is treated as **supporting context**. At the end of `c
 This means nothing in your source data is silently dropped: context that doesn't map to a structured Biolink slot travels along inside `supporting_text` instead.
 
 In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance, and it folds into `supporting_text` like any other non-allow-list column (e.g. `"extracted_from_row_number: 42"`).
-
-## Complete Example
-
-Minimal table configuration:
-
-```yaml
-template:
-  source:
-    kind: text
-    local: ./data.csv
-    url: https://example.com/data.csv
-    row_slice: [1, auto]
-    delimiter: ","
-
-  statement:
-    subject:
-      method: column
-      encoding: A
-      prioritize: [Gene]
-    predicate: associated_with
-    object:
-      method: column
-      encoding: B
-      prioritize: [Disease]
-
-  provenance:
-    repo: PMID
-    publication: "12345678"
-
-  annotations:
-    - annotation: p_value
-      method: column
-      encoding: C
-```
 
 ## Next Steps
 

@@ -1,14 +1,9 @@
 # Advanced Example: Real-World Configuration
 
-This page presents a real-world table configuration (ALAMV6.yaml) with annotations explaining each section.
-
-## Overview
-
-**Data Source:** Microbiome-chemical correlation analysis from PMC11708054
-
-**Goal:** Extract correlations between gut microbiota and tamoxifen metabolites
-
-**Complexity:** Excel file, complex regex for taxonomic names, statistical annotations
+A fully-annotated real-world table configuration (ALAMV6.yaml) showing complex regex, taxonomic
+filtering, and statistical annotations working together. **Source:** microbiome–chemical correlation
+analysis from PMC11708054 — an Excel file from which we extract correlations between gut microbiota
+and tamoxifen metabolites.
 
 ## Full Configuration
 
@@ -31,28 +26,17 @@ template:
       encoding: A  # Column A contains organism names
 
       # Prefer organism classifications over genes
-      prioritize:
-        - OrganismTaxon
-      avoid:
-        - Gene
+      prioritize: [OrganismTaxon]
+      avoid: [Gene]
 
       # Strip non-value text in place (rows are not dropped)
-      remove:
-        - "^NA "  # Cells starting with "NA "
+      remove: ["^NA "]  # Cells starting with "NA "
 
       # Clean taxonomic names with regex
       regex:
-        # Remove genus prefix "g__"
-        - pattern: ".*g__"
-          replacement: ""
-
-        # Replace species separator ";s__" with space
-        - pattern: ";s__"
-          replacement: " "
-
-        # Add space after "sp" abbreviation
-        - pattern: "sp"
-          replacement: "sp. "
+        - {pattern: ".*g__", replacement: ""}    # Remove genus prefix "g__"
+        - {pattern: ";s__", replacement: " "}    # Replace species separator ";s__" with space
+        - {pattern: "sp", replacement: "sp. "}   # Add space after "sp" abbreviation
 
     predicate: correlated_with
 
@@ -65,119 +49,45 @@ template:
     repo: PMC
     publication: PMC11708054
 
-  # Statistical metadata as edge annotations
+  # Statistical metadata as edge annotations (method: value = constant,
+  # method: column = per-row)
   annotations:
-    # Fixed values
-    - annotation: sample_size
-      method: value
-      encoding: 9
+    - {annotation: sample_size, method: value, encoding: 9}
+    - {annotation: p_value, method: column, encoding: C}
+    - {annotation: multiple_testing_correction_method, method: value, encoding: Benjamini Hochberg}
+    - {annotation: relationship_strength, method: column, encoding: B}   # Spearman rho
+    - {annotation: assertion_method, method: value, encoding: Spearman correlation}
 
-    # Column values
-    - annotation: p_value
-      method: column
-      encoding: C  # Column C
-
-    # Fixed method description
-    - annotation: multiple_testing_correction_method
-      method: value
-      encoding: Benjamini Hochberg
-
-    # Column values (correlation coefficient)
-    - annotation: relationship_strength
-      method: column
-      encoding: B  # Column B (Spearman rho)
-
-    # Fixed method
-    - annotation: assertion_method
-      method: value
-      encoding: Spearman correlation
-
-    # Freetext catch-all — anything that doesn't map cleanly to a structured
-    # annotation (study design caveats, non-standard units, qualitative
-    # observations) belongs here rather than being dropped.
+    # Freetext catch-all for context that doesn't map to a structured annotation
     - annotation: miscellaneous_notes
       method: value
       encoding: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction
 ```
 
-> **`miscellaneous_notes` is a freetext escape hatch.** Use it whenever the source carries context you can't otherwise cleanly encode — assay variants, post-hoc qualifiers, "values are log-transformed", etc. It accepts `method: value` for a constant note across the whole table or `method: column` to pull per-row notes from the source.
+`miscellaneous_notes` is a freetext escape hatch — use `method: value` for a constant note across the
+whole table or `method: column` to pull per-row notes from the source (see
+[allow-list and auto-folding](table.md#allow-list-and-auto-folding)).
 
 ## Key Techniques
 
-### Excel Column References
+- **Excel column letters** — `encoding: A`/`B`/`C` reference the first/second/third columns of the
+  headerless source (organism names, Spearman rho, p-value).
+- **Regex pipeline** — the subject runs three substitutions in order: `.*g__` → ``
+  (`d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`), then `;s__` → ` `
+  (`Lactobacillus;s__rhamnosus` → `Lactobacillus rhamnosus`), then `sp` → `sp. `.
+- **Taxonomic filtering** — `prioritize: [OrganismTaxon]` + `avoid: [Gene]` stop "Lactobacillus"
+  resolving to a similarly-named gene.
+- **Mixed annotations** — `method: value` for constants (same every row), `method: column` for
+  per-row values.
+- **Subject-predicate-object** — subject varies per row (column), predicate `correlated_with` is
+  fixed, object `CHEBI:41774` is fixed → `Lactobacillus rhamnosus --[correlated_with]--> 13C-tamoxifen`.
 
-Excel columns are referenced by letter:
-- `encoding: A` → First column (organism names)
-- `encoding: B` → Second column (correlation coefficient)
-- `encoding: C` → Third column (p-value)
-
-### Complex Regex Pipeline
-
-The subject field uses three regex transformations in sequence:
-
-**1. Remove genus prefix:**
-```yaml
-- pattern: ".*g__"
-  replacement: ""
-```
-`"d__Bacteria;p__Firmicutes;g__Lactobacillus"` → `"Lactobacillus"`
-
-**2. Replace species separator:**
-```yaml
-- pattern: ";s__"
-  replacement: " "
-```
-`"Lactobacillus;s__rhamnosus"` → `"Lactobacillus rhamnosus"`
-
-**3. Format species abbreviation:**
-```yaml
-- pattern: "sp"
-  replacement: "sp. "
-```
-`"Lactobacillus sp"` → `"Lactobacillus sp. "`
-
-> **Regex constraint:** Each `pattern` is handed to Polars `str.replace_all()` (Rust `regex` crate). **Backreferences (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not allowed** and will fail validation. Plain groups `(...)` and non-capturing groups `(?:...)` *are* supported. Express transformations as a sequence of simple anchored / character-class substitutions where possible — the pipeline above is a deliberate three-step chain. If the transformation can't be expressed without those unsupported features, capture the leftover context in a `miscellaneous_notes` annotation rather than fighting the regex engine.
-
-### Taxonomic Filtering
-
-Prevent incorrect entity resolution:
-
-```yaml
-prioritize:
-  - OrganismTaxon  # Prefer organism classifications
-avoid:
-  - Gene  # Don't map to genes
-```
-
-Without this, "Lactobacillus" might incorrectly map to a gene with similar name.
-
-### Mixed Annotation Methods
-
-Combines literal values and column references:
-
-```yaml
-annotations:
-  # Literal (same for all rows)
-  - annotation: sample_size
-    method: value
-    encoding: 9
-
-  # Column (varies per row)
-  - annotation: p_value
-    method: column
-    encoding: C
-```
-
-### Subject-Predicate-Object Pattern
-
-- **Subject:** Organism name (from column, varies per row)
-- **Predicate:** `correlated_with` (fixed)
-- **Object:** CHEBI:41774 (fixed CURIE for all rows)
-
-This creates edges like:
-```
-Lactobacillus rhamnosus --[correlated_with]--> 13C-tamoxifen
-```
+??? note "Regex dialect constraint"
+    Each `pattern` is handed to Polars `str.replace_all()` (Rust `regex` crate). **Backreferences
+    (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not allowed**
+    and fail validation; plain `(...)` and non-capturing `(?:...)` groups are supported. Express
+    transformations as a chain of simple substitutions, or capture leftover context in a
+    `miscellaneous_notes` annotation. See [Text Transformations](table.md#text-transformations).
 
 ## Output Example
 
@@ -187,9 +97,11 @@ Lactobacillus rhamnosus --[correlated_with]--> 13C-tamoxifen
 {"id":"CHEBI:41774","name":"13C-tamoxifen","category":["biolink:ChemicalEntity"]}
 ```
 
-**Edges:**
-
-Allow-listed annotation columns (`sample_size`, `p_value`, `relationship_strength`) stay as top-level edge fields (numeric annotations are emitted as controlled-notation strings). Any annotation name that is not a Biolink slot — here `assertion_method`, `multiple_testing_correction_method`, and `miscellaneous_notes` — is folded into the edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically), along with the built-in `extracted_from_row_number`:
+**Edges:** Allow-listed annotation columns (`sample_size`, `p_value`, `relationship_strength`) stay as
+top-level edge fields (numeric annotations as controlled-notation strings). Any non-Biolink-slot name —
+here `assertion_method`, `multiple_testing_correction_method`, `miscellaneous_notes` — folds into the
+edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically), alongside the built-in
+`extracted_from_row_number`:
 
 ```json
 {
@@ -209,9 +121,9 @@ Allow-listed annotation columns (`sample_size`, `p_value`, `relationship_strengt
 }
 ```
 
-## Template + Sections Example
+## Template + Sections (multiple predicates)
 
-Here's how you'd use sections if you wanted multiple predicates from the same source:
+Split one source into positive/negative correlations with two sections:
 
 ```yaml
 template:
@@ -236,31 +148,24 @@ sections:
       predicate: positively_correlated_with
     source:
       reindex:
-        - column: B  # Correlation coefficient
-          comparison: gt
-          comparator: 0
+        - {column: B, comparison: gt, comparator: 0}  # Correlation coefficient
 
   # Section 2: Negative correlations
   - statement:
       predicate: negatively_correlated_with
     source:
       reindex:
-        - column: B
-          comparison: lt
-          comparator: 0
+        - {column: B, comparison: lt, comparator: 0}
 ```
 
-This produces two sets of edges from one table:
-1. Positive correlations (rho > 0)
-2. Negative correlations (rho < 0)
+Produces two edge sets from one table: rho > 0 and rho < 0.
 
 ---
 
 ## Dual-Column Mapping
 
-This pattern maps both subject and object from columns — both nodes require entity resolution.
-
-**Use case:** Correlation tables where each row links two biological entities (e.g., metabolite ↔ microbe).
+Both subject and object come from columns, so both nodes undergo entity resolution. **Use case:**
+correlation tables linking two biological entities per row (e.g., metabolite ↔ microbe).
 
 ```yaml
 template:
@@ -275,49 +180,39 @@ template:
     subject:
       method: column
       encoding: A  # Column A: metabolite names
-      remove:
-        - ".*_"    # Strip trailing underscore artifacts
-      prioritize:
-        - SmallMolecule
-        - ChemicalEntity
+      remove: [".*_"]    # Strip trailing underscore artifacts
+      prioritize: [SmallMolecule, ChemicalEntity]
 
     predicate: correlated_with
 
     object:
       method: column
       encoding: B  # Column B: microbe names
-      prioritize:
-        - OrganismTaxon
+      prioritize: [OrganismTaxon]
       regex:
-        - pattern: _
-          replacement: ' '   # "Lactobacillus_rhamnosus" → "Lactobacillus rhamnosus"
+        - {pattern: _, replacement: ' '}   # "Lactobacillus_rhamnosus" → "Lactobacillus rhamnosus"
 
   provenance:
     repo: PMC
     publication: PMC12345678
 
   annotations:
-    - annotation: p_value
-      method: column
-      encoding: E
-    - annotation: relationship_strength
-      method: column
-      encoding: C
+    - {annotation: p_value, method: column, encoding: E}
+    - {annotation: relationship_strength, method: column, encoding: C}
 ```
 
-### Key Techniques
-
-**Both nodes from columns:** Setting `method: column` on both subject and object means both undergo entity resolution via `resolve()`. Each gets its own `prioritize` list to guide disambiguation.
-
-**`remove` vs `regex`:** Both transform cell text in place before resolution (neither drops rows). `remove` strips each listed regex pattern by replacing it with an empty string; `regex` applies an ordered `pattern`→`replacement` substitution list.
+Each column-mapped node gets its own `prioritize` list to guide disambiguation. `remove` strips each
+listed pattern (replace with empty string); `regex` applies an ordered `pattern`→`replacement` list —
+both transform cell text in place before resolution, and neither drops rows.
 
 ---
 
-## Template + Sections
+## Template + Sections (wide table)
 
-This pattern handles wide tables where each column encodes a different object (e.g., 24 metabolite columns for the same set of microbe rows). Sections inherit the template's `source`, `provenance`, and `subject`, overriding only the `object` and optionally `row_slice` per section.
-
-**Use case:** Studies reporting microbe–metabolite associations across many metabolites, one column each.
+Wide tables where each column encodes a different object (e.g., 24 metabolite columns for the same
+microbe rows). Sections inherit the template's `source`, `provenance`, and `subject`, overriding only
+the `object` (and optionally `row_slice`) per section — one section entry per metabolite column keeps a
+24-metabolite config out of 24 separate files.
 
 ```yaml
 template:
@@ -332,13 +227,10 @@ template:
     subject:
       method: column
       encoding: A  # Microbe names
-      prioritize:
-        - OrganismTaxon
-      avoid:
-        - Gene
+      prioritize: [OrganismTaxon]
+      avoid: [Gene]
       regex:
-        - pattern: "\\[|\\]"
-          replacement: ""    # Strip bracket annotations
+        - {pattern: "\\[|\\]", replacement: ""}    # Strip bracket annotations
 
     predicate: correlated_with
 
@@ -360,9 +252,7 @@ sections:
     source:
       row_slice: [2, auto]
     annotations:
-      - annotation: relationship_strength
-        method: column
-        encoding: B
+      - {annotation: relationship_strength, method: column, encoding: B}
 
   - statement:
       object:
@@ -371,33 +261,10 @@ sections:
     source:
       row_slice: [2, auto]
     annotations:
-      - annotation: relationship_strength
-        method: column
-        encoding: C
+      - {annotation: relationship_strength, method: column, encoding: C}
 
-  - statement:
-      object:
-        method: value
-        encoding: CHEBI:16414   # Valine
-    source:
-      row_slice: [2, auto]
-    annotations:
-      - annotation: relationship_strength
-        method: column
-        encoding: D
-
-  # ... (pattern repeats for each metabolite column)
+  # ... (one section per metabolite column; pattern repeats)
 ```
-
-### Key Techniques
-
-**Shared template, per-section overrides:** The `source`, `provenance`, and `subject` are defined once in `template`. Each section only needs to declare what changes — the `object` CURIE and the annotation column.
-
-**`row_slice` per section:** When each metabolite occupies a different column range or row range, `row_slice` can be overridden per section independently of the template.
-
-**Scaling:** This pattern keeps 24-metabolite configs from becoming 24 separate files. Add a section entry per metabolite column; everything else is inherited.
-
----
 
 ## Next Steps
 

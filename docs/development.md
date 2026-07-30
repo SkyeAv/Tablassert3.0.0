@@ -1,6 +1,7 @@
 # Development
 
-This page is the docs-site entry point for contributor setup. The canonical contributor guide is [`CONTRIBUTING.md`](https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md).
+Set up a Tablassert dev environment and learn the contributor workflow — build the Rust extension,
+run the test and docs gates locally, and lint/format. The canonical contributor guide is [`CONTRIBUTING.md`](https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md).
 
 ## Setup from source
 
@@ -36,6 +37,16 @@ uv run pyright
 uv run pytest tests/test_lib.py::test_idxname_single_letter
 cargo test --manifest-path rust/Cargo.toml
 ```
+
+## Documentation
+
+This site is built with MkDocs Material. After editing anything under `docs/` or `mkdocs.yml`, validate the whole site locally before committing:
+
+```bash
+uv run mkdocs build --strict
+```
+
+`--strict` promotes any warning — a dead cross-link, a nav entry pointing at a missing file, or a missing referenced doc — to a build failure, so documentation drift is caught here rather than only on the deployed site. Style and PR expectations live in the canonical contributor guide, [`CONTRIBUTING.md`](https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md).
 
 ## Fullmap builds
 

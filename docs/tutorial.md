@@ -1,6 +1,12 @@
 # Tutorial: Your First Knowledge Graph
 
-This tutorial walks through building a simple knowledge graph from a CSV file of gene-disease associations. You'll learn the complete workflow: creating configurations, running Tablassert, and examining the output.
+**By the end of this tutorial you will have built a KGX-compliant knowledge graph from a CSV of
+gene-disease associations** — nodes and edges with standardized CURIEs, biolink categories, provenance,
+and statistical annotations, ready for NCATS Translator. You'll learn the complete workflow: creating
+configurations, running Tablassert, and examining the output.
+
+The input files ship under `docs/examples/` and are validated against the live schema by the test suite;
+the configurations below reproduce them exactly.
 
 **Time:** 5-10 minutes
 
@@ -12,7 +18,7 @@ This tutorial walks through building a simple knowledge graph from a CSV file of
 
 ## The Data
 
-We have a CSV file with gene-disease associations:
+The input is a CSV of gene-disease associations, shipped at `docs/examples/tutorial-data.csv`:
 
 ```csv
 gene_symbol,disease_name,p_value,sample_size
@@ -26,27 +32,19 @@ KRAS,pancreatic cancer,0.002,320
 
 ## Step 1: Create the Data File
 
-Save the CSV as `tutorial-data.csv`:
-
-```bash
-cat > tutorial-data.csv <<'EOF'
-gene_symbol,disease_name,p_value,sample_size
-TP53,lung cancer,0.001,450
-BRCA1,breast cancer,0.0001,1200
-EGFR,colorectal cancer,0.005,680
-KRAS,pancreatic cancer,0.002,320
-EOF
-```
+If you're following along outside the repository, save the CSV from [The Data](#the-data) above as `tutorial-data.csv`.
 
 ## Step 2: Create Table Configuration
 
-Create `tutorial-table.yaml`:
+Create `tutorial-table.yaml`. This config is shipped, test-validated, at
+`docs/examples/tutorial-table.yaml` (checked against the live schema by the test suite); the listing
+below matches it exactly:
 
 ```yaml
 template:
   source:
     kind: text
-    local: ./tutorial-data.csv
+    local: ./docs/examples/tutorial-data.csv
     url: https://example.com/data.csv
     row_slice:
       - 1
@@ -76,8 +74,12 @@ template:
       encoding: D
 ```
 
+!!! note "Paths"
+    The shipped fixture reads the CSV from `docs/examples/tutorial-data.csv` (repo-root-relative). If you
+    saved your own `tutorial-data.csv` in Step 1, set `source.local: ./tutorial-data.csv` instead.
+
 **What this does:**
-- **source**: Reads CSV, skips header row (row_slice starts at 1)
+- **source**: Reads the CSV, skipping the header row (`row_slice` starts at 1)
 - **statement**: Creates edges where genes (subject) are `associated_with` diseases (object)
 - **subject/object**: Uses `column` method to read from columns A (gene symbol) and B (disease name)
 - **prioritize**: Tells entity resolution to prefer Gene/Disease categories
@@ -85,18 +87,20 @@ template:
 
 ## Step 3: Create Graph Configuration
 
-Create `tutorial-graph.yaml`:
+Create `tutorial-graph.yaml`. The shipped, test-validated version lives at
+`docs/examples/tutorial-graph.yaml`; the listing below matches it exactly:
 
 ```yaml
 name: TUTORIAL_KG
 version: 1.0.0
 description: Tutorial knowledge graph built from configured tabular source data.
 tables:
-  - ./tutorial-table.yaml
+  - ./docs/examples/tutorial-table.yaml
 fullmap: /path/to/fullmap
 ```
 
-**Important:** Replace the database paths with your actual paths.
+**Important:** Replace `fullmap` with the path to your fullmap redb (and adjust `tables` if your table
+config lives elsewhere).
 
 **What this does:**
 - **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson`, `TUTORIAL_KG_1.0.0.edges.ndjson`, and `TUTORIAL_KG_1.0.0.RIG.yaml`
@@ -164,30 +168,7 @@ The Resource Ingest Guide records the graph's source scope (`description`), prov
 
 ## Understanding the Transformation
 
-**Input:** Text strings ("TP53", "lung cancer")
-
-**Entity Resolution:**
-- "TP53" → `HGNC:11998` (Gene)
-- "lung cancer" → `MONDO:0008903` (Disease)
-
-**Quality Control:**
-- Stage 1: Exact match check
-- Stage 2: Fuzzy matching (if needed)
-- Stage 3: BERT semantic similarity (if needed)
-
-**Output:** KGX-compliant nodes and edges with:
-- Standardized identifiers (CURIEs)
-- Biolink categories and predicates
-- Provenance metadata
-- Edge annotations
-
-## What You Learned
-
-- **Table configuration** defines data sources and transformations
-- **Graph configuration** orchestrates multiple tables
-- **Entity resolution** maps text to standardized identifiers
-- **QC pipeline** validates mappings across three stages
-- **Output** is KGX-compliant NDJSON ready for NCATS Translator
+Entity resolution maps text to CURIEs ("TP53" → `HGNC:11998` Gene, "lung cancer" → `MONDO:0008903` Disease); when `--qc` is passed, the QC pipeline validates each mapping across three stages (exact → fuzzy → BioBERT). The output is KGX-compliant nodes and edges with standardized CURIEs, Biolink categories and predicates, provenance, and edge annotations.
 
 ## Next Steps
 
