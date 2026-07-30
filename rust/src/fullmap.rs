@@ -2499,7 +2499,7 @@ fn lookup_pair_terms_db(
 const LOOKUP_PARALLEL_MIN: usize = 1024;
 
 /// Default worker count for lookups when the caller passes no `threads`.
-/// The production build-graph resolve sends ONE batch of all distinct node-column
+/// The production build-kg resolve sends ONE batch of all distinct node-column
 /// terms (often huge) with `threads=None`; parallelizing that across the RECORDS
 /// shards is the win, so large batches default to `available_parallelism`.  Small
 /// batches (< `LOOKUP_PARALLEL_MIN`) stay single-threaded to avoid spawn overhead.
@@ -2625,7 +2625,7 @@ fn lookup_terms(
 }
 
 /// Look up fullmap records for `terms`.  `threads=None` (the production
-/// build-graph default) auto-selects the worker count via `default_lookup_workers`:
+/// build-kg default) auto-selects the worker count via `default_lookup_workers`:
 /// batches >= `LOOKUP_PARALLEL_MIN` fan out across the RECORDS shards in
 /// parallel (up to 16 by default), smaller batches stay single-threaded.  An
 /// explicit `threads=Some(1)` always forces the serial path.  The GIL is released
@@ -3326,7 +3326,7 @@ mod tests {
         assert_eq!(rows_par, rows_ser);
     }
 
-    /// The production build-graph resolve calls `lookup_fullmap_terms` with
+    /// The production build-kg resolve calls `lookup_fullmap_terms` with
     /// `threads=None`, so the parallel shard fan-out must kick in from the Rust
     /// DEFAULT alone — not just when a test passes `threads>=2`.  This builds a
     /// large fixture and probes it with a batch that crosses `LOOKUP_PARALLEL_MIN`

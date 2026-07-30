@@ -10,6 +10,7 @@ import polars as pl
 import pytest
 
 import tablassert.cli as cli
+import tablassert.fullmap as fullmap
 import tablassert.lib as lib
 from tablassert import rs
 from tablassert.biolink import Categories
@@ -753,6 +754,33 @@ def test_lookup_rows_legacy_shape_requeries_full_term_set(fullmap_db: Path, monk
     assert calls[0] == (["mapk1"], "pairs")  # pairs query hit only the misses
     assert calls[-1] == (["brca1", "mapk1"], "rows")  # legacy shape forced a FULL re-query
     assert rows == original(fullmap_db, ["brca1", "mapk1"])  # cached term not dropped
+
+
+def test_lookup_rows_legacy_fallback_warns_once(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The legacy-compat fallback warns once per process, not on every lookup.
+
+    WHY: a stale extension forces the slow full-term re-query on every call; the
+    one-time ``_warn_legacy_compat`` flag surfaces the mismatch on the first
+    fallback and stays silent afterwards. Calling ``lookup_rows`` twice against a
+    legacy-shape fake exercises both branches — the first call warns and sets the
+    flag, the second sees it set and skips — while still re-querying correctly.
+    """
+    _TERM_CACHE.clear()
+    monkeypatch.setattr(fullmap, "_LEGACY_COMPAT_WARNED", False)
+    original = rs.lookup_fullmap_terms
+
+    def fake(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+        if return_format == "pairs":
+            return [{"term": term, "CURIE": "X:1"} for term in terms]  # legacy shape: no "records"
+        return original(db, terms, threads=threads)
+
+    monkeypatch.setattr(rs, "lookup_fullmap_terms", fake)
+
+    lookup_rows(fullmap_db, ["brca1"])
+    assert fullmap._LEGACY_COMPAT_WARNED is True  # first fallback warned and set the flag
+
+    lookup_rows(fullmap_db, ["mapk1"])  # second fallback: flag already set -> skip branch
+    assert fullmap._LEGACY_COMPAT_WARNED is True
 
 
 def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

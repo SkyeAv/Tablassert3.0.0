@@ -431,20 +431,13 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
             part_path.replace(final_path)
             download_logger.info("Downloaded {url} -> {path}", url=url, path=final_path)
             return final_path
-        except HTTPError as e:
-            # HTTPError subclasses URLError, so this clause must precede the
-            # (OSError, URLError) handler below. Non-retryable 4xx (e.g. a 404 from a
-            # mistyped --version) fail fast instead of burning every attempt; 408/429
-            # are transient and fall through to backoff like 5xx.
-            if e.code not in (408, 429) and 400 <= e.code < 500:
+        except (HTTPError, OSError, URLError) as e:
+            # HTTPError subclasses URLError, so it is matched in this single clause and
+            # checked first for the fail-fast case. Non-retryable 4xx (e.g. a 404 from a
+            # mistyped --version) fail fast instead of burning every attempt; 408/429 are
+            # transient and fall through to backoff like 5xx and other network errors.
+            if isinstance(e, HTTPError) and e.code not in (408, 429) and 400 <= e.code < 500:
                 raise BabelDownloadError(url, attempt, e) from e
-            last_error = e
-            download_logger.warning(
-                "Download attempt {attempt}/{retries} failed for {url}: {error}", attempt=attempt, retries=retries, url=url, error=e
-            )
-            if attempt < retries:
-                time.sleep(min(60, 5 * 2 ** (attempt - 1)))
-        except (OSError, URLError) as e:
             last_error = e
             download_logger.warning(
                 "Download attempt {attempt}/{retries} failed for {url}: {error}", attempt=attempt, retries=retries, url=url, error=e

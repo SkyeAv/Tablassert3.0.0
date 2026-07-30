@@ -17,6 +17,33 @@ _TERM_CACHE: OrderedDict[tuple[Path, float, str], list[tuple[int, int]] | None] 
 _TERM_CACHE_MAX: int = 100_000
 _SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], str]] = {}
 
+# One-time-per-process flag: set when a legacy-compat fallback first fires so the
+# degraded-mode warning is logged once, not on every lookup against a stale extension.
+_LEGACY_COMPAT_WARNED: bool = False
+
+
+def _warn_legacy_compat(reason: str) -> None:
+    """Log once per process that a stale fullmap extension forced the slow path.
+
+    Args:
+        reason: Short description of which legacy fallback triggered.
+
+    WHY: the legacy-compat fallbacks re-query the FULL term set on every call
+    (bypassing ``_TERM_CACHE``) — correct but slow. A single warning surfaces that
+    the running Rust extension is older than the Python package (a mismatched
+    wheel) so operators can rebuild it, without spamming the log on every lookup.
+    """
+    global _LEGACY_COMPAT_WARNED
+    if _LEGACY_COMPAT_WARNED:
+        return
+    logger.warning(
+        "Legacy fullmap extension detected ({reason}); falling back to a full term re-query on every "
+        "lookup. Rebuild the Rust extension (maturin develop) to restore the optimized pairs path.",
+        reason=reason,
+    )
+    _LEGACY_COMPAT_WARNED = True
+
+
 if TYPE_CHECKING:
     import polars as pl
 else:
@@ -137,10 +164,12 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
                 raise
             # Legacy extension without return_format: re-query the FULL term set so
             # already-cached terms are not dropped from the returned rows.
+            _warn_legacy_compat("no return_format support")
             return rs.lookup_fullmap_terms(db, terms, threads=threads)
         if pair_rows and "records" not in pair_rows[0]:
             # Legacy row shape covers only `misses`; re-query the FULL term set so
             # already-cached terms are not dropped when _TERM_CACHE is partially warm.
+            _warn_legacy_compat("legacy row shape")
             return rs.lookup_fullmap_terms(db, terms, threads=threads)
         seen: set[str] = set()
         for row in pair_rows:
