@@ -50,7 +50,7 @@ def test_agent_env_fallback_and_forwarding(monkeypatch: pytest.MonkeyPatch, caps
 
     Why: the CLI is thin glue over ``run_supervisor``. With the three env vars set (and no flags),
     ``resolve_model_config`` must fill the model config from the environment, and the thresholds /
-    executor / fetch flag / fullmap must reach the supervisor unchanged. ``run_supervisor`` and
+    fullmap must reach the supervisor unchanged. ``run_supervisor`` and
     ``build_model`` are monkeypatched (module attributes the command looks up at call time) so no real
     agent runs; invoking the forwarded ``build_model_factory`` then proves the factory resolved the env
     config and handed it to ``build_model``.
@@ -75,14 +75,12 @@ def test_agent_env_fallback_and_forwarding(monkeypatch: pytest.MonkeyPatch, caps
     monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
     monkeypatch.setattr("tablassert.agent.build_model", fake_build_model)
 
-    agent(["PMC1", "PMC2"], fullmap=Path("/tmp/fm"), map_threshold=0.7, max_improve_iters=5, executor="docker", no_fetch=True)
+    agent(["PMC1", "PMC2"], fullmap=Path("/tmp/fm"), map_threshold=0.7, max_improve_iters=5)
 
     assert captured["pmc_ids"] == ["PMC1", "PMC2"]
     assert captured["fullmap"] == Path("/tmp/fm")
     assert captured["map_threshold"] == 0.7
     assert captured["max_improve_iters"] == 5
-    assert captured["executor"] == "docker"
-    assert captured["fetch"] is False  # no_fetch=True -> fetch=False
 
     # The forwarded factory resolves config from the environment and builds via the patched build_model.
     factory = captured["build_model_factory"]
@@ -100,12 +98,11 @@ def test_agent_cli_flag_parsing() -> None:
     """A full argv parses into the command's bound args WITHOUT executing the body.
 
     Why: the documented UX is positional PMC ids plus flags. cyclopts' ``parse_args`` binds tokens to
-    the signature without running the function, so this proves ``agent PMC9 --fullmap ... --executor
-    docker`` parses (positional list + required ``--fullmap`` + typed flags) with no model/network run.
+    the signature without running the function, so this proves ``agent PMC9 --fullmap ... --map-threshold``
+    parses (positional list + required ``--fullmap`` + typed flags) with no model/network run.
     """
-    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm", "--map-threshold", "0.5", "--executor", "docker"], exit_on_error=False)
+    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm", "--map-threshold", "0.5"], exit_on_error=False)
     assert fn is agent
     assert bound.args == (["PMC9"],)
     assert bound.kwargs["fullmap"] == Path("/tmp/fm")
     assert bound.kwargs["map_threshold"] == 0.5
-    assert bound.kwargs["executor"] == "docker"

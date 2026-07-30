@@ -267,61 +267,6 @@ def test_supervisor_resume_skips_done(tmp_path: Path, fullmap_db: Path, monkeypa
     assert calls.count("PMCB") == 1
 
 
-def test_supervisor_no_fetch_uses_snapshot(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """fetch=False resolves tables from a pre-fetched snapshot and NEVER calls fetch_pmc_article."""
-    import tablassert.agent as agent_mod
-
-    workdir: Path = tmp_path / "w"
-    snapshot: Path = workdir / "downloads" / "PMC1"
-    snapshot.mkdir(parents=True)
-    table: Path = snapshot / "good.tsv"
-    table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
-    good_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
-
-    calls: list[str] = []
-
-    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
-        calls.append(pmc_id)
-        return [table]
-
-    monkeypatch.setattr(agent_mod, "fetch_pmc_article", fake_fetch)
-    result = run_supervisor(
-        ["PMC1"],
-        fullmap=fullmap_db,
-        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
-        map_threshold=0.8,
-        state_dir=tmp_path / "state",
-        workdir=workdir,
-        fetch=False,
-    )
-    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
-    assert calls == []  # fetch_pmc_article must NOT run when fetch=False
-
-
-def test_supervisor_no_fetch_empty_snapshot_skipped(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """fetch=False with an EMPTY snapshot dir -> SKIPPED (no tables to map)."""
-    import tablassert.agent as agent_mod
-
-    workdir: Path = tmp_path / "w"
-    (workdir / "downloads" / "PMC1").mkdir(parents=True)  # empty snapshot
-
-    def boom(*args: object, **kwargs: object) -> list[Path]:
-        raise AssertionError("must not fetch")
-
-    monkeypatch.setattr(agent_mod, "fetch_pmc_article", boom)
-    result = run_supervisor(
-        ["PMC1"],
-        fullmap=fullmap_db,
-        build_model_factory=lambda: make_fake_model(),
-        map_threshold=0.8,
-        state_dir=tmp_path / "state",
-        workdir=workdir,
-        fetch=False,
-    )
-    assert result["records"]["PMC1"].status == "SKIPPED"  # pyright: ignore[reportIndexIssue]
-    assert result["records"]["PMC1"].notes.startswith("SKIPPED")  # pyright: ignore[reportIndexIssue]
-
-
 def test_supervisor_fetch_no_table_skipped(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A fetch that fails fast with 'No supplementary tables' marks the record SKIPPED (batch advances)."""
     import tablassert.agent as agent_mod
