@@ -5,6 +5,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
+from unittest.mock import Mock
 
 import polars as pl
 import pytest
@@ -757,16 +758,24 @@ def test_lookup_rows_legacy_shape_requeries_full_term_set(fullmap_db: Path, monk
 
 
 def test_lookup_rows_legacy_fallback_warns_once(fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The legacy-compat fallback warns once per process, not on every lookup.
+    """The legacy-compat fallback warns once and still preserves every term's rows.
 
-    WHY: a stale extension forces the slow full-term re-query on every call; the
-    one-time ``_warn_legacy_compat`` flag surfaces the mismatch on the first
-    fallback and stays silent afterwards. Calling ``lookup_rows`` twice against a
-    legacy-shape fake exercises both branches — the first call warns and sets the
-    flag, the second sees it set and skips — while still re-querying correctly.
+    WHY: a stale extension forces the slow full-term re-query on every call. The
+    fallback must (a) surface that degraded mode with a SINGLE warning — not one
+    per lookup — and (b) re-query the FULL term set so a partially warm cache does
+    not drop already-cached terms. This spies on ``fullmap.logger.warning`` to
+    assert exactly one warning across two lookups, warms ``brca1`` so ``misses ==
+    ["mapk1"]``, and verifies both terms survive in the returned rows each time
+    (checking the externally visible behavior, not just the internal flag).
     """
     _TERM_CACHE.clear()
     monkeypatch.setattr(fullmap, "_LEGACY_COMPAT_WARNED", False)
+    warn_spy: Mock = Mock()
+    monkeypatch.setattr(fullmap.logger, "warning", warn_spy)
+
+    cache_key: tuple[Path, float] = _db_cache_key(fullmap_db)
+    _remember_term((cache_key[0], cache_key[1], "brca1"), [(0, 0)])  # warm one term -> misses == ["mapk1"]
+
     original = rs.lookup_fullmap_terms
 
     def fake(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
@@ -776,11 +785,14 @@ def test_lookup_rows_legacy_fallback_warns_once(fullmap_db: Path, monkeypatch: p
 
     monkeypatch.setattr(rs, "lookup_fullmap_terms", fake)
 
-    lookup_rows(fullmap_db, ["brca1"])
-    assert fullmap._LEGACY_COMPAT_WARNED is True  # first fallback warned and set the flag
+    first: list[dict[str, object]] = lookup_rows(fullmap_db, ["brca1", "mapk1"])
+    second: list[dict[str, object]] = lookup_rows(fullmap_db, ["brca1", "mapk1"])
 
-    lookup_rows(fullmap_db, ["mapk1"])  # second fallback: flag already set -> skip branch
+    assert warn_spy.call_count == 1  # warned once across BOTH lookups, not once per call
     assert fullmap._LEGACY_COMPAT_WARNED is True
+    expected: list[dict[str, object]] = original(fullmap_db, ["brca1", "mapk1"])
+    assert first == expected  # cached brca1 + missed mapk1 both preserved on the first lookup
+    assert second == expected  # ... and on the second (silent) fallback
 
 
 def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
