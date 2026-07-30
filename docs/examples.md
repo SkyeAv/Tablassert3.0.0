@@ -1,10 +1,12 @@
 # Use Case Gallery
 
-Real-world patterns for transforming tabular data into knowledge graphs with Tablassert. Each example shows a complete configuration with explanations.
+**Turn real tabular sources — CSV, TSV, or Excel — into KGX-compliant nodes and edges.** Each pattern
+below leads with the data type and the outcome it produces, then gives a complete, schema-valid
+configuration and the techniques that make it work.
 
 ## Gene-Disease Associations
 
-Transform a gene-disease association table into KGX-compliant edges with statistical annotations.
+Transform a **CSV** of gene-disease associations into KGX-compliant edges with statistical annotations.
 
 **Data:** CSV with gene symbols, disease names, and p-values
 
@@ -49,7 +51,8 @@ template:
 
 ## Drug-Target Interactions
 
-Extract drug-target relationships from a curated interaction database.
+Extract drug-target relationships from a curated **TSV** interaction database into KGX edges tagged with
+interaction type and assay.
 
 **Data:** TSV with drug names, target genes, and interaction types
 
@@ -98,7 +101,8 @@ template:
 
 ## Microbiome-Metabolite Correlations
 
-Extract microbe-metabolite correlations with taxonomic name cleaning.
+Turn an **Excel** sheet of microbe-metabolite correlations into KGX edges, cleaning raw taxonomic names
+with a regex pipeline on the way.
 
 **Data:** Excel with raw taxonomic names, correlation coefficients, and p-values
 
@@ -161,7 +165,8 @@ template:
 
 ## Multi-Pathway Gene Mapping
 
-Map genes to multiple pathways from a single source using sections.
+Map genes from a single **CSV** to multiple pathway databases (KEGG, Reactome) in one pass using
+template + sections.
 
 **Data:** CSV with gene symbols and multiple pathway columns
 
@@ -223,7 +228,8 @@ sections:
 
 ## Conditional Filtering with Reindex
 
-Filter rows based on column values before entity resolution.
+Filter a **CSV** of gene-disease associations down to significant, well-powered rows before building KGX
+edges (reindex on column values).
 
 **Data:** CSV with gene-disease associations and significance thresholds
 
@@ -277,7 +283,8 @@ template:
 
 ## Null Handling with Forward Fill
 
-Process hierarchical data where parent values propagate down through empty cells.
+Build `subclass_of` edges from a hierarchical **CSV** where parent categories propagate down through
+empty cells (forward fill).
 
 **Data:** CSV with category headers followed by subcategory rows (gaps in category column)
 

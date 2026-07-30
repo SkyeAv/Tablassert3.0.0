@@ -1,6 +1,12 @@
 # Tutorial: Your First Knowledge Graph
 
-This tutorial walks through building a simple knowledge graph from a CSV file of gene-disease associations. You'll learn the complete workflow: creating configurations, running Tablassert, and examining the output.
+**By the end of this tutorial you will have built a KGX-compliant knowledge graph from a CSV of
+gene-disease associations** — nodes and edges with standardized CURIEs, biolink categories, provenance,
+and statistical annotations, ready for NCATS Translator. You'll learn the complete workflow: creating
+configurations, running Tablassert, and examining the output.
+
+The input files ship under `docs/examples/` and are validated against the live schema by the test suite;
+the configurations below reproduce them exactly.
 
 **Time:** 5-10 minutes
 
@@ -12,7 +18,7 @@ This tutorial walks through building a simple knowledge graph from a CSV file of
 
 ## The Data
 
-We have a CSV file with gene-disease associations:
+The input is a CSV of gene-disease associations, shipped at `docs/examples/tutorial-data.csv`:
 
 ```csv
 gene_symbol,disease_name,p_value,sample_size
@@ -26,7 +32,7 @@ KRAS,pancreatic cancer,0.002,320
 
 ## Step 1: Create the Data File
 
-Save the CSV as `tutorial-data.csv`:
+If you're following along outside the repository, save the CSV above as `tutorial-data.csv`:
 
 ```bash
 cat > tutorial-data.csv <<'EOF'
@@ -40,13 +46,15 @@ EOF
 
 ## Step 2: Create Table Configuration
 
-Create `tutorial-table.yaml`:
+Create `tutorial-table.yaml`. This config is shipped, test-validated, at
+`docs/examples/tutorial-table.yaml` (checked against the live schema by the test suite); the listing
+below matches it exactly:
 
 ```yaml
 template:
   source:
     kind: text
-    local: ./tutorial-data.csv
+    local: ./docs/examples/tutorial-data.csv
     url: https://example.com/data.csv
     row_slice:
       - 1
@@ -76,8 +84,12 @@ template:
       encoding: D
 ```
 
+!!! note "Paths"
+    The shipped fixture reads the CSV from `docs/examples/tutorial-data.csv` (repo-root-relative). If you
+    saved your own `tutorial-data.csv` in Step 1, set `source.local: ./tutorial-data.csv` instead.
+
 **What this does:**
-- **source**: Reads CSV, skips header row (row_slice starts at 1)
+- **source**: Reads the CSV, skipping the header row (`row_slice` starts at 1)
 - **statement**: Creates edges where genes (subject) are `associated_with` diseases (object)
 - **subject/object**: Uses `column` method to read from columns A (gene symbol) and B (disease name)
 - **prioritize**: Tells entity resolution to prefer Gene/Disease categories
@@ -85,18 +97,20 @@ template:
 
 ## Step 3: Create Graph Configuration
 
-Create `tutorial-graph.yaml`:
+Create `tutorial-graph.yaml`. The shipped, test-validated version lives at
+`docs/examples/tutorial-graph.yaml`; the listing below matches it exactly:
 
 ```yaml
 name: TUTORIAL_KG
 version: 1.0.0
 description: Tutorial knowledge graph built from configured tabular source data.
 tables:
-  - ./tutorial-table.yaml
+  - ./docs/examples/tutorial-table.yaml
 fullmap: /path/to/fullmap
 ```
 
-**Important:** Replace the database paths with your actual paths.
+**Important:** Replace `fullmap` with the path to your fullmap redb (and adjust `tables` if your table
+config lives elsewhere).
 
 **What this does:**
 - **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson`, `TUTORIAL_KG_1.0.0.edges.ndjson`, and `TUTORIAL_KG_1.0.0.RIG.yaml`

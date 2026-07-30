@@ -1,11 +1,13 @@
 # Autonomous Agent (`[agent]` extra)
 
-The optional `[agent]` extra adds an autonomous pipeline that turns **PubMed Central (PMC)**
-supplementary tables into **NCATS Translator-compliant KGX knowledge graphs** — deriving a Tablassert
-config, building and auditing the graph, and iteratively improving the config until the entity
-resolution *maps* (coverage threshold), with the whole loop scored on **quality / cost / wrong tool
-calls**. It is built on [smolagents](https://github.com/huggingface/smolagents) `CodeAgent` (a ReAct
-loop) and [DSPy](https://dspy.ai) GEPA for prompt optimization.
+**Why this exists:** hand-authoring a Tablassert config for every PMC supplementary table does not scale.
+The optional `[agent]` extra makes it autonomous — point it at **PubMed Central (PMC)** article IDs and it
+**derives the config for you**, then builds, audits, and iteratively improves the graph until the entity
+resolution *maps* (coverage threshold). The outcome is an **NCATS Translator-compliant KGX knowledge
+graph** per article, with the whole loop scored on **quality / cost / wrong tool calls**.
+
+Under the hood it is built on [smolagents](https://github.com/huggingface/smolagents) `CodeAgent` (a
+ReAct loop) and [DSPy](https://dspy.ai) GEPA for prompt optimization.
 
 !!! warning "Optional extra"
     The base `tablassert` package does **not** require any of this. `smolagents` and `dspy` are imported
@@ -105,6 +107,8 @@ tablassert agent PMC11708054 PMC12345678 \
 
 Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`, `--qc-threshold`/`-qt`, `--max-improve-iters`/`-mi`,
 `--state-dir`/`-sd`, `--executor {local,docker}`/`-e`, `--backend {openai,litellm}`/`-b`, `--no-fetch`/`-nf`.
+The [CLI reference — `agent`](cli.md#agent) is the authoritative flag table; the list here is a compact
+reminder.
 
 ### What the supervisor does
 
