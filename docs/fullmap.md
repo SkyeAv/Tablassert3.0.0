@@ -10,10 +10,7 @@ files (`fullmap.s0.redb` … `fullmap.s15.redb` by default) holding the term→p
 biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS
 Translator BABEL export files.
 
-Unlike the DuckDB-shard architecture used in earlier versions (built by a separate external `datassert`
-Go CLI), Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or
-install step is required. The sharding described here is a distinct, in-process redb shard scheme, not
-the old external DuckDB shards.
+Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step required (this is an in-process redb shard scheme, not the older external DuckDB shards).
 
 ## Build Command
 

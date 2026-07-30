@@ -78,10 +78,6 @@ original == preferred_name
 - The original text contains `:` (already looks like a CURIE).
 - The preferred name matches an exception prefix (`^LOC` or `^si:`).
 
-**Example passes:**
-- Original: `"TP53"` → Preferred: `"TP53"` ✓
-- Original: `"diabetes"` → Preferred: `"diabetes mellitus"` ✗ (goes to Stage 2)
-
 **Performance:** O(1) string comparison per row.
 
 #### Stage 2: Fuzzy Matching
@@ -99,10 +95,6 @@ fuzz.ratio(original, preferred) >= 70
 or fuzz.partial_token_sort_ratio(original, preferred) >= 80
 ```
 
-**Example passes:**
-- Original: `"breast ca"` → Preferred: `"breast cancer"` ✓
-- Original: `"T53"` → Preferred: `"tumor protein p53"` ✗ (goes to Stage 3)
-
 **Performance:** O(n) string operations, batched.
 
 #### Stage 3: BioBERT Semantic Similarity
@@ -119,10 +111,6 @@ similarity = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()
 return similarity >= 0.5
 ```
 
-**Example passes:**
-- Original: `"lung carcinoma"` → Preferred: `"lung cancer"` ✓ (high semantic similarity)
-- Original: `"random text"` → Preferred: `"diabetes"` ✗ (rejected, low similarity)
-
 **Performance:** Expensive (transformer inference); the model is loaded once and cached.
 
 ### BioBERT Model
@@ -138,11 +126,6 @@ return similarity >= 0.5
 `get_biobert()` loads the model from the local cache when present; otherwise it downloads `pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb` and saves it for future runs.
 
 **Cache location:** `.tablassert/biobert/` on disk (`qc.MODEL`); the loaded model object is also cached in memory for the lifetime of the process.
-
-**Why caching matters:**
-- Fuzzy matching: large speedup on repeated strings (batched)
-- BioBERT inference: avoids re-encoding repeated strings and re-downloading the model
-- Enables iterative development without recomputing
 
 ### Example Usage
 
