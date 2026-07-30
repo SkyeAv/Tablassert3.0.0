@@ -127,7 +127,7 @@ advances — one difficult article never aborts the batch.
 override with `--state-dir`). The CLI never sets a separate artifact root, so the checkpoint, the configs,
 the fetched downloads, and the build outputs **all co-locate** under it:
 
-```
+```text
 .tablassert/agent/                       # = state_dir (the workspace root)
   state.json                             # supervisor checkpoint (atomic; unchanged location)
   configs/<pmc_id>.yaml                  # best / accepted config (ALL configs in ONE folder)
