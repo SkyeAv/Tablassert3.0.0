@@ -1789,7 +1789,7 @@
 </thead>
 <tbody>
 <tr>
-<td><code>configuration_file</code></td>
+<td><code>configuration_file</code> (or <code>--configuration-file</code>, <code>-f</code>)</td>
 <td>Path</td>
 <td>Yes</td>
 <td>Knowledge Graph Configuration -- See Docs</td>
@@ -1825,7 +1825,7 @@
 <td>Treat the positional config as a TABLE (Section) YAML wrapped in a throwaway <code>TEMP_KG</code> graph, instead of a Graph YAML</td>
 </tr>
 <tr>
-<td><code>--fullmap</code>, <code>-f</code></td>
+<td><code>--fullmap</code>, <code>-fm</code></td>
 <td>Path</td>
 <td>No</td>
 <td>Fullmap path for the throwaway <code>TEMP_KG</code> graph when <code>--table-config</code> is passed (default <code>./fullmap</code>)</td>
@@ -1840,7 +1840,7 @@
 </code></pre></div>
 <h3 id="description_1">Description<a class="headerlink" href="#description_1" title="Permanent link">&para;</a></h3>
 <p>This command runs the full extraction pipeline from a graph configuration file. It loads table configurations, reads each table's source file from disk, applies transformations, resolves entities through fullmap, optionally validates mappings with the QC pipeline (exact → fuzzy → BioBERT) when <code>--qc</code> is passed, and compiles subgraphs into KGX-compliant NDJSON files plus a Resource Ingest Guide (RIG).</p>
-<p>By default the positional config is a Graph YAML. With <code>--table-config</code>/<code>-tc</code> it is instead a table (Section) YAML that Tablassert wraps in a throwaway graph (<code>name: TEMP_KG</code>, <code>version: 0.0.0</code>) so a single table config can be built or tested without authoring a full graph config; <code>--fullmap</code>/<code>-f</code> sets the fullmap path for that throwaway graph (default <code>./fullmap</code>), and the RIG <code>contributions</code>/<code>ui_explanation</code> fall back to the Graph model defaults.</p>
+<p>By default the positional config is a Graph YAML. With <code>--table-config</code>/<code>-tc</code> it is instead a table (Section) YAML that Tablassert wraps in a throwaway graph (<code>name: TEMP_KG</code>, <code>version: 0.0.0</code>) so a single table config can be built or tested without authoring a full graph config; <code>--fullmap</code>/<code>-fm</code> sets the fullmap path for that throwaway graph (default <code>./fullmap</code>), and the RIG <code>contributions</code>/<code>ui_explanation</code> fall back to the Graph model defaults.</p>
 <p>The process executes in parallel stages with a three-row live progress block (logs print above the live block):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>✓ Stage 1 · LOADING TABLES · 0:00:01.20
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>✓ Stage 2 · EXTRACTING SECTIONS · 0:00:00.80
