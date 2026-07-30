@@ -16,7 +16,7 @@
         <link rel="prev" href="../qc/">
       
       
-        <link rel="next" href="../../changelog/">
+        <link rel="next" href="../../development/">
       
       
         
@@ -263,13 +263,13 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../development/" class="md-tabs__link">
+      <a href="../../tutorial/" class="md-tabs__link">
         
   
   
     
   
-  Development
+  Tutorial
 
       </a>
     </li>
@@ -282,13 +282,13 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../fullmap/" class="md-tabs__link">
+      <a href="../../examples/" class="md-tabs__link">
         
   
   
     
   
-  Fullmap
+  Use Case Gallery
 
       </a>
     </li>
@@ -320,32 +320,13 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../tutorial/" class="md-tabs__link">
+      <a href="../../fullmap/" class="md-tabs__link">
         
   
   
     
   
-  Tutorial
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../../examples/" class="md-tabs__link">
-        
-  
-  
-    
-  
-  Use Case Gallery
+  Fullmap
 
       </a>
     </li>
@@ -410,6 +391,25 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
   
 
       
@@ -538,14 +538,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/" class="md-nav__link">
+      <a href="../../tutorial/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Development
+    Tutorial
   
 
     
@@ -565,14 +565,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fullmap/" class="md-nav__link">
+      <a href="../../examples/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Fullmap
+    Use Case Gallery
   
 
     
@@ -619,41 +619,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tutorial/" class="md-nav__link">
+      <a href="../../fullmap/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Tutorial
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../examples/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Use Case Gallery
+    Fullmap
   
 
     
@@ -713,10 +686,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -734,8 +707,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -861,10 +834,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
             
   
   
@@ -882,8 +855,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_9">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1193,6 +1166,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../changelog/" class="md-nav__link">
         
   
@@ -1387,7 +1387,7 @@
 
 
 <h1 id="utilities-utils">Utilities (utils)<a class="headerlink" href="#utilities-utils" title="Permanent link">&para;</a></h1>
-<p>The <code>tablassert.utils</code> module provides the shared working-directory constants and a compact hashing helper. Deterministic UUID generation for KGX edge identifiers lives in the Rust extension (<code>tablassert.rs</code>) and is documented below as well.</p>
+<p>The <code>tablassert.utils</code> module provides the shared working-directory constants and a compact hashing helper used throughout the CLI — import it for deterministic section hashes and the <code>.tablassert/</code> artifact layout. Deterministic UUID generation for KGX edge identifiers lives in the Rust extension (<code>tablassert.rs</code>) and is documented below as well.</p>
 <h2 id="constants">Constants<a class="headerlink" href="#constants" title="Permanent link">&para;</a></h2>
 <p><strong><code>BASE: Path</code></strong> — <code>Path("./.tablassert")</code></p>
 <p>The single parent working directory. All runtime artifacts live beneath it.</p>
@@ -1499,13 +1499,13 @@
         
         
           
-          <a href="../../changelog/" class="md-footer__link md-footer__link--next" aria-label="Next: Changelog">
+          <a href="../../development/" class="md-footer__link md-footer__link--next" aria-label="Next: Development">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Changelog
+                Development
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://skyeav.github.io/Tablassert/agent/">
       
       
-        <link rel="prev" href="../examples/">
+        <link rel="prev" href="../fullmap/">
       
       
         <link rel="next" href="../configuration/graph/">
@@ -263,13 +263,13 @@
   
   
     <li class="md-tabs__item">
-      <a href="../development/" class="md-tabs__link">
+      <a href="../tutorial/" class="md-tabs__link">
         
   
   
     
   
-  Development
+  Tutorial
 
       </a>
     </li>
@@ -282,13 +282,13 @@
   
   
     <li class="md-tabs__item">
-      <a href="../fullmap/" class="md-tabs__link">
+      <a href="../examples/" class="md-tabs__link">
         
   
   
     
   
-  Fullmap
+  Use Case Gallery
 
       </a>
     </li>
@@ -320,32 +320,13 @@
   
   
     <li class="md-tabs__item">
-      <a href="../tutorial/" class="md-tabs__link">
+      <a href="../fullmap/" class="md-tabs__link">
         
   
   
     
   
-  Tutorial
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../examples/" class="md-tabs__link">
-        
-  
-  
-    
-  
-  Use Case Gallery
+  Fullmap
 
       </a>
     </li>
@@ -410,6 +391,25 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
   
 
       
@@ -538,14 +538,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/" class="md-nav__link">
+      <a href="../tutorial/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Development
+    Tutorial
   
 
     
@@ -565,14 +565,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../fullmap/" class="md-nav__link">
+      <a href="../examples/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Fullmap
+    Use Case Gallery
   
 
     
@@ -619,41 +619,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../tutorial/" class="md-nav__link">
+      <a href="../fullmap/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Tutorial
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../examples/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Use Case Gallery
+    Fullmap
   
 
     
@@ -921,10 +894,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -942,8 +915,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1064,10 +1037,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
             
   
   
@@ -1085,8 +1058,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1211,6 +1184,33 @@
           </ul>
         </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1450,12 +1450,13 @@
 
 
 <h1 id="autonomous-agent-agent-extra">Autonomous Agent (<code>[agent]</code> extra)<a class="headerlink" href="#autonomous-agent-agent-extra" title="Permanent link">&para;</a></h1>
-<p>The optional <code>[agent]</code> extra adds an autonomous pipeline that turns <strong>PubMed Central (PMC)</strong>
-supplementary tables into <strong>NCATS Translator-compliant KGX knowledge graphs</strong> — deriving a Tablassert
-config, building and auditing the graph, and iteratively improving the config until the entity
-resolution <em>maps</em> (coverage threshold), with the whole loop scored on <strong>quality / cost / wrong tool
-calls</strong>. It is built on <a href="https://github.com/huggingface/smolagents">smolagents</a> <code>CodeAgent</code> (a ReAct
-loop) and <a href="https://dspy.ai">DSPy</a> GEPA for prompt optimization.</p>
+<p><strong>Why this exists:</strong> hand-authoring a Tablassert config for every PMC supplementary table does not scale.
+The optional <code>[agent]</code> extra makes it autonomous — point it at <strong>PubMed Central (PMC)</strong> article IDs and it
+<strong>derives the config for you</strong>, then builds, audits, and iteratively improves the graph until the entity
+resolution <em>maps</em> (coverage threshold). The outcome is an <strong>NCATS Translator-compliant KGX knowledge
+graph</strong> per article, with the whole loop scored on <strong>quality / cost / wrong tool calls</strong>.</p>
+<p>Under the hood it is built on <a href="https://github.com/huggingface/smolagents">smolagents</a> <code>CodeAgent</code> (a
+ReAct loop) and <a href="https://dspy.ai">DSPy</a> GEPA for prompt optimization.</p>
 <div class="admonition warning">
 <p class="admonition-title">Optional extra</p>
 <p>The base <code>tablassert</code> package does <strong>not</strong> require any of this. <code>smolagents</code> and <code>dspy</code> are imported
@@ -1594,14 +1595,16 @@ non-zero <strong>before</strong> any model call.</p>
 <h2 id="running-it-for-real">Running it for real<a class="headerlink" href="#running-it-for-real" title="Permanent link">&para;</a></h2>
 <p>With network access and a configured endpoint:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>PMC12345678<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--fullmap<span class="w"> </span>.fullmap<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--map-threshold<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--max-improve-iters<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--max-steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert/agent
 </code></pre></div>
 <p>Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>, <code>--max-improve-iters</code>/<code>-mi</code>,
-<code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>.</p>
+<code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>.
+The <a href="../cli/#agent">CLI reference — <code>agent</code></a> is the authoritative flag table; the list here is a compact
+reminder.</p>
 <h3 id="what-the-supervisor-does">What the supervisor does<a class="headerlink" href="#what-the-supervisor-does" title="Permanent link">&para;</a></h3>
 <p>The <strong>outer supervisor is deterministic Python</strong> (not an LLM) — smolagents' #1 practice is deterministic
 control flow over agentic decisions. For each PMC id it:</p>
@@ -1826,7 +1829,7 @@ fully air-gapped.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../examples/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Use Case Gallery">
+          <a href="../fullmap/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Fullmap">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1836,7 +1839,7 @@ fully air-gapped.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Use Case Gallery
+                Fullmap
               </div>
             </div>
           </a>
