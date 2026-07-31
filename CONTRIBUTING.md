@@ -140,7 +140,7 @@ cargo test --manifest-path rust/Cargo.toml fullmap::tests::clean_strips_matching
 
 ## Fullmap development notes
 
-Fullmap builds are the heaviest local workflow. The build tunables are documented in [Fullmap: Build Tunables](docs/fullmap.md#build-tunables-environment); keep that page as the source of truth for `TABLASSERT_FULLMAP_SHARDS`, spill settings, producer counts, cache sizing, and related environment variables.
+Fullmap builds are the heaviest local workflow. The build tunables are documented in [Fullmap: Build Tunables](docs/fullmap.md#build-tunables-environment); keep that page as the source of truth for spill settings, producer counts, cache sizing, and related environment variables.
 
 If a full BABEL build fails with `EMFILE`, `Too many open files`, or another NOFILE-limit error, raise the shell limit before rerunning:
 

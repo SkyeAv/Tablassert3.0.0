@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+- **Removed the `TABLASSERT_FULLMAP_SHARDS` environment variable.** The number of on-disk RECORDS shard files is now fixed at the compile-time cap (`16`) and can no longer be overridden at build time; the variable is silently ignored if set. Default builds are unaffected — the previous default was already `16`. The read path still honors the shard count recorded in an existing database's `meta` table (`shards`), so databases built with fewer shards under the old variable continue to open and resolve correctly. See `docs/fullmap.md`.
+
 ## 8.0.1 - 2026-07-30
 
 ### Breaking Changes
