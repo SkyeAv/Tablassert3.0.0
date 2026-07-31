@@ -1449,6 +1449,69 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <td><code>openai</code></td>
 <td>Model backend</td>
 </tr>
+<tr>
+<td><code>--reflexion</code></td>
+<td>bool</td>
+<td>No</td>
+<td><code>False</code></td>
+<td>Enable the tier-2 LLM reflexion improver (same model config) when the deterministic proposer stalls</td>
+</tr>
+<tr>
+<td><code>--judge-model</code></td>
+<td>str</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Model id for the semantic judge gate; MAPPED then also requires the score to clear <code>--judge-threshold</code></td>
+</tr>
+<tr>
+<td><code>--judge-threshold</code></td>
+<td>float</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Semantic judge normalized-score threshold for MAPPED (<code>0.5</code> when unset)</td>
+</tr>
+<tr>
+<td><code>--local</code>, <code>-l</code></td>
+<td>list[str]</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Local payload: one DIR for all ids, or <code>PMCid=DIR</code> mappings; skips the PMC-AWS fetch (exit 2 on a missing DIR)</td>
+</tr>
+<tr>
+<td><code>--optimize</code>, <code>-o</code></td>
+<td>bool</td>
+<td>No</td>
+<td><code>False</code></td>
+<td>Run GEPA prompt optimization and persist optimized instructions instead of running the supervisor</td>
+</tr>
+<tr>
+<td><code>--instructions-file</code></td>
+<td>Path</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Load GEPA-optimized instructions from a prior <code>--optimize</code> run</td>
+</tr>
+<tr>
+<td><code>--instructions-out</code></td>
+<td>Path</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Where <code>--optimize</code> writes optimized instructions (default <code>&lt;state-dir&gt;/optimized_instructions.yaml</code>)</td>
+</tr>
+<tr>
+<td><code>--max-metric-calls</code></td>
+<td>int</td>
+<td>No</td>
+<td><code>8</code></td>
+<td>GEPA metric-call budget for <code>--optimize</code></td>
+</tr>
+<tr>
+<td><code>--dataset</code></td>
+<td>Path</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>YAML/JSON list of <code>{table_summary, coverage_feedback}</code> examples for <code>--optimize</code></td>
+</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap

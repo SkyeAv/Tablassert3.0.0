@@ -725,6 +725,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="PMC-AWS data source">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-payloads-non-open-access-articles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local payloads (non-open-access articles)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -755,6 +772,28 @@
     <span class="md-ellipsis">
       
         What the supervisor does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-gates-reflexion-improver-semantic-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional gates: reflexion improver &amp; semantic judge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-section-configs-one-per-paper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-section configs (one per paper)
       
     </span>
   </a>
@@ -838,6 +877,17 @@
   
     <nav class="md-nav" aria-label="Evaluation &amp; optimization loop">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#real-run-prompt-optimization-optimize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Real-run prompt optimization (--optimize)
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#golden-fixture" class="md-nav__link">
@@ -1288,6 +1338,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="PMC-AWS data source">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-payloads-non-open-access-articles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local payloads (non-open-access articles)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1318,6 +1385,28 @@
     <span class="md-ellipsis">
       
         What the supervisor does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-gates-reflexion-improver-semantic-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional gates: reflexion improver &amp; semantic judge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-section-configs-one-per-paper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-section configs (one per paper)
       
     </span>
   </a>
@@ -1401,6 +1490,17 @@
   
     <nav class="md-nav" aria-label="Evaluation &amp; optimization loop">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#real-run-prompt-optimization-optimize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Real-run prompt optimization (--optimize)
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#golden-fixture" class="md-nav__link">
@@ -1491,6 +1591,11 @@ extra with <code>pip install tablassert[agent]</code>.</p>
 <td>(any)</td>
 <td>optional fallback / rate-limiting model backend</td>
 </tr>
+<tr>
+<td><code>pdfminer.six</code></td>
+<td>(any)</td>
+<td>extract a <code>.pdf</code> main text into data-fenced context (<code>pmc_article_context</code>)</td>
+</tr>
 </tbody>
 </table>
 <h2 id="pmc-aws-data-source">PMC-AWS data source<a class="headerlink" href="#pmc-aws-data-source" title="Permanent link">&para;</a></h2>
@@ -1537,9 +1642,10 @@ failing fast (cheap checks before any large download and before any model call):
 </ol>
 <p>The main text is wired into the agent via the <code>pmc_article_context</code> tool, which parses the JATS <code>.xml</code>
 into a compact, data-fenced summary (title, abstract, section outline, and a supplementary-table manifest
-with labels/captions). For Excel tables, <code>read_table</code> lists <strong>all worksheets</strong> and reads a chosen one via
-<code>sheet=</code> (set <code>source.sheet</code> in the config), so the agent can check every table and every sheet before
-authoring a config.</p>
+with labels/captions). A <code>.txt</code> is a fenced excerpt; a <code>.pdf</code> is extracted to a fenced excerpt via
+<code>pdfminer.six</code> (so PDF-only articles still give the agent main-text context). For Excel tables,
+<code>read_table</code> lists <strong>all worksheets</strong> and reads a chosen one via <code>sheet=</code> (set <code>source.sheet</code> in the
+config), so the agent can check every table and every sheet before authoring a config.</p>
 <div class="admonition failure">
 <p class="admonition-title">The old paths are dead</p>
 <p>The legacy <code>s3://pmc-open-access</code> bucket, the FTP <code>oa_file_list.csv</code>, and the per-article <code>tar.gz</code>
@@ -1551,6 +1657,19 @@ bundles were <strong>deprecated and removed (Aug 2026)</strong>. The PMC website
 <p>Only the <strong>open-access subset</strong> of PMC (~half) is available here. Articles are <strong>CC-BY</strong>: cite the
 source and DOI (e.g. PMC11708054 → <a href="https://doi.org/10.1128/mbio.01679-24">10.1128/mbio.01679-24</a>).</p>
 </div>
+<h3 id="local-payloads-non-open-access-articles">Local payloads (non-open-access articles)<a class="headerlink" href="#local-payloads-non-open-access-articles" title="Permanent link">&para;</a></h3>
+<p>Only the open-access subset of PMC is fetchable from the bucket. To run the <strong>same</strong> derive/build/improve
+pipeline on an article you already hold locally (e.g. a non-open-access paper), pass <code>--local</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># one directory used for every PMC id</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--local<span class="w"> </span>./payloads/PMC11708054
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># per-article directories</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC1<span class="w"> </span>PMC2<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--local<span class="w"> </span><span class="nv">PMC1</span><span class="o">=</span>./payloads/p1<span class="w"> </span><span class="nv">PMC2</span><span class="o">=</span>./payloads/p2
+</code></pre></div>
+<p>A local payload directory holds the table(s) and (optionally) the article main text. When <code>--local</code> is
+given for an id, the supervisor locates the files there and <strong>does not fetch from PMC-AWS</strong>; each section's
+<code>source.local</code> points at the local file (set <code>source.url</code> to the original download link if you want the
+config to be re-fetchable). A <code>--local</code> directory that does not exist fails loud (exit 2).</p>
 <h2 id="model-configuration">Model configuration<a class="headerlink" href="#model-configuration" title="Permanent link">&para;</a></h2>
 <p>The agent talks to an <strong>OpenAI-compatible</strong> endpoint (e.g. a Qwen endpoint). Configuration comes from
 CLI flags <strong>and</strong> environment variables — <strong>secrets are never hardcoded</strong>, and the command <strong>fails
@@ -1586,23 +1705,25 @@ loudly</strong> if any required value is unset.</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_MODEL_ID</span><span class="o">=</span><span class="s2">&quot;qwen3-max&quot;</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_API_BASE</span><span class="o">=</span><span class="s2">&quot;https://YOUR-ENDPOINT.example.com/v1&quot;</span><span class="w">   </span><span class="c1"># placeholder</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_API_KEY</span><span class="o">=</span><span class="s2">&quot;sk-***&quot;</span><span class="w">                                  </span><span class="c1"># placeholder — never commit a real key</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_MODEL_ID</span><span class="o">=</span><span class="s2">&quot;qwen3-max&quot;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_API_BASE</span><span class="o">=</span><span class="s2">&quot;https://YOUR-ENDPOINT.example.com/v1&quot;</span><span class="w">   </span><span class="c1"># placeholder</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_API_KEY</span><span class="o">=</span><span class="s2">&quot;sk-***&quot;</span><span class="w">                                  </span><span class="c1"># placeholder — never commit a real key</span>
 </code></pre></div>
 <p>If a value is missing, <code>tablassert agent</code> prints a message naming the exact flag/env var and exits
 non-zero <strong>before</strong> any model call.</p>
 <h2 id="running-it-for-real">Running it for real<a class="headerlink" href="#running-it-for-real" title="Permanent link">&para;</a></h2>
 <p>With network access and a configured endpoint:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>PMC12345678<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--map-threshold<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--max-improve-iters<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--max-steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert/agent
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>PMC12345678<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--map-threshold<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--max-improve-iters<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--max-steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert/agent
 </code></pre></div>
 <p>Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>, <code>--max-improve-iters</code>/<code>-mi</code>,
-<code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>.
+<code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
+<code>--judge-model</code>, <code>--judge-threshold</code>, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
+(<code>--instructions-file</code>, <code>--instructions-out</code>, <code>--max-metric-calls</code>, <code>--dataset</code>).
 The <a href="../cli/#agent">CLI reference — <code>agent</code></a> is the authoritative flag table; the list here is a compact
 reminder.</p>
 <h3 id="what-the-supervisor-does">What the supervisor does<a class="headerlink" href="#what-the-supervisor-does" title="Permanent link">&para;</a></h3>
@@ -1611,25 +1732,60 @@ control flow over agentic decisions. For each PMC id it:</p>
 <ol>
 <li><strong>Fetches</strong> the latest-version article payload (<code>fetch_pmc_article</code>: main text + metadata + all tables;
    fails fast on not-open-access / no-table) and presents <strong>all</strong> candidate tables to the agent.</li>
-<li>Runs the <strong>inner <code>CodeAgent</code></strong> to <em>derive</em> an initial Section config (<code>pmc_article_context</code> → <code>read_table</code>
-   → <code>derive_config</code>, gated by the Section JSON schema). The agent picks the table + worksheet to map.</li>
+<li>Runs the <strong>inner <code>CodeAgent</code></strong> to <em>derive</em> an initial table config (<code>pmc_article_context</code> → <code>read_table</code>
+   → <code>derive_config</code>, every section gated by the Section JSON schema). The agent maps <strong>each</strong> mappable
+   table/worksheet as its own section — <strong>one config per paper</strong> (see below).</li>
 <li><strong>Builds + audits</strong> in one deterministic mega-tool (<code>build_and_audit</code>: validate → build → QC → coverage).</li>
 <li><strong>Improves</strong> while coverage <code>&lt; map_threshold</code> and budget remains: <code>propose_config_edit</code> → rebuild →
    <strong>accept iff strictly better</strong> (monotonic — regressions are rejected).</li>
 <li><strong>Records</strong> metrics, <strong>checkpoints</strong>, and moves to the next config.</li>
 </ol>
 <p>A config that won't map after <code>--max-improve-iters</code> is marked <code>SKIPPED: &lt;reason&gt;</code> and the supervisor
-advances — one difficult article never aborts the batch.</p>
+advances — one difficult article never aborts the batch. A config that <strong>builds</strong> but whose fullmap
+coverage <strong>cannot be measured</strong> (an unreproducible source frame) is marked <code>BUILT_UNMEASURED</code> — a
+terminal <strong>non-failure</strong> that is neither a certified <code>MAPPED</code> nor counted as a <code>SKIPPED</code>; the best
+config is still written and is reusable by the full pipeline. Coverage measurement itself is
+multi-cwd: a relative <code>source.local</code> is resolved against the build workdir as well as the current
+directory before a config is declared unmeasurable.</p>
+<h3 id="optional-gates-reflexion-improver-semantic-judge">Optional gates: reflexion improver &amp; semantic judge<a class="headerlink" href="#optional-gates-reflexion-improver-semantic-judge" title="Permanent link">&para;</a></h3>
+<p>Two opt-in extensions layer on top of the deterministic improve loop (both reuse the configured
+endpoint; neither is required):</p>
+<ul>
+<li><strong><code>--reflexion</code></strong> — when the deterministic <code>propose_config_edit</code> stalls, a tier-2 LLM reflexion
+  improver reflects on the coverage feedback and proposes an edit that may change predicate/source
+  (same model config).</li>
+<li><strong><code>--judge-model</code> / <code>--judge-threshold</code></strong> — a semantic judge scores the built output; when
+  <code>--judge-model</code> is set, <code>MAPPED</code> additionally requires the normalized score to clear
+  <code>--judge-threshold</code> (<code>0.5</code> when unset). Without <code>--judge-model</code> the coverage gate alone decides.</li>
+</ul>
+<h3 id="multi-section-configs-one-per-paper">Multi-section configs (one per paper)<a class="headerlink" href="#multi-section-configs-one-per-paper" title="Permanent link">&para;</a></h3>
+<p>The agent authors <strong>one table config per paper</strong> that may contain <strong>multiple sections</strong> — one per
+mappable supplementary table/worksheet. The config is shaped as <code>{template, sections}</code>:</p>
+<ul>
+<li><strong><code>template</code></strong> carries the shared per-paper <strong>provenance</strong> (<code>repo</code> + <code>publication</code>) and nothing else —
+  in particular <strong>no <code>source</code></strong>.</li>
+<li><strong><code>sections</code></strong> is a list with one entry per table; <strong>each section owns its own <code>source</code></strong> (its own
+  <code>local</code> path <strong>and</strong> its own <code>source.url</code> download link, plus <code>sheet</code>/<code>row_slice</code>/<code>delimiter</code> as
+  needed) and its own <code>statement</code>. Different sections can therefore reference <strong>different files with
+  different download links</strong>.</li>
+</ul>
+<p>The final-answer gate (<code>validate_table_config</code>) validates <strong>every</strong> section, so a config is accepted
+only when all of its sections are schema-valid. <code>map_coverage</code> measures each section and reports an
+<strong>aggregate</strong> (<code>overall</code> = mean of section coverages, <code>min</code> = weakest section, <code>measured</code> = true iff
+every section measured, plus the per-section breakdown under <code>sections</code>). <code>propose_config_edit</code> edits
+each section independently from its own coverage entry. A single-table paper is still one config with
+one section. State and storage stay <strong>per-paper</strong>: one best config (<code>configs/&lt;pmc_id&gt;.yaml</code>) holding
+all sections, with <code>section_coverages</code> recorded for visibility.</p>
 <h3 id="workspace-layout-checkpoint-resume">Workspace layout &amp; checkpoint / resume<a class="headerlink" href="#workspace-layout-checkpoint-resume" title="Permanent link">&para;</a></h3>
 <p><code>tablassert agent</code> uses a <strong>single stable workspace root</strong> — <code>state_dir</code> (default <code>.tablassert/agent</code>,
 override with <code>--state-dir</code>). The CLI never sets a separate artifact root, so the checkpoint, the configs,
 the fetched downloads, and the build outputs <strong>all co-locate</strong> under it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>.tablassert/agent/                       # = state_dir (the workspace root)
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  state.json                             # supervisor checkpoint (atomic; unchanged location)
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  configs/&lt;pmc_id&gt;.yaml                  # best / accepted config (ALL configs in ONE folder)
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial agent-derived config
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  builds/&lt;pmc_id&gt;/                       # KGX agent_0.0.1.{nodes,edges}.ndjson + table.yaml + graph.yaml + .tablassert/store — stable
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>.tablassert/agent/                       # = state_dir (the workspace root)
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  state.json                             # supervisor checkpoint (atomic; unchanged location)
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  configs/&lt;pmc_id&gt;.yaml                  # best / accepted config (ALL configs in ONE folder)
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial agent-derived config
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  builds/&lt;pmc_id&gt;/                       # KGX agent_0.0.1.{nodes,edges}.ndjson + table.yaml + graph.yaml + .tablassert/store — stable
 </code></pre></div>
 <table>
 <thead>
@@ -1672,7 +1828,7 @@ skipped. The <code>downloads/</code> payload persists on disk across runs.</p>
 <h3 id="reusing-agent-outputs-with-the-full-pipeline">Reusing agent outputs with the full pipeline<a class="headerlink" href="#reusing-agent-outputs-with-the-full-pipeline" title="Permanent link">&para;</a></h3>
 <p>The best config's <code>source.local</code> points at the downloaded table under <code>downloads/&lt;pmc_id&gt;/</code>, so the full
 (non-agent) pipeline can reuse the agent's output <strong>without re-fetching</strong>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>.tablassert/agent/configs/PMC11708054.yaml<span class="w"> </span>--table-config<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>.tablassert/agent/configs/PMC11708054.yaml<span class="w"> </span>--table-config<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Not relocatable</p>
@@ -1698,7 +1854,7 @@ therefore <strong>not relocatable</strong> — moving or renaming the <code>.tab
 <tr>
 <td><code>pmc_article_context</code></td>
 <td>tool</td>
-<td>parse the JATS main text into a <strong>data-fenced</strong> summary (title/abstract/sections/supplementary manifest)</td>
+<td>parse the JATS main text into a <strong>data-fenced</strong> summary (title/abstract/sections/supplementary manifest); <code>.txt</code>/<code>.pdf</code> render a fenced excerpt (PDF via <code>pdfminer.six</code>)</td>
 </tr>
 <tr>
 <td><code>read_table</code></td>
@@ -1708,7 +1864,7 @@ therefore <strong>not relocatable</strong> — moving or renaming the <code>.tab
 <tr>
 <td><code>derive_config</code></td>
 <td>tool</td>
-<td>author a Section config; <code>output_schema = Section.model_json_schema()</code></td>
+<td>author a table config (<code>template</code> + one section per table); each section must satisfy <code>Section.model_json_schema()</code></td>
 </tr>
 <tr>
 <td><code>build_and_audit</code></td>
@@ -1734,8 +1890,10 @@ self-correct the exact offending field.</p>
 <ul>
 <li><strong>ReAct + planning</strong> — <code>CodeAgent</code> is a ReAct loop; <code>planning_interval=3</code> re-plans every few steps.</li>
 <li><strong>Structured / constrained output</strong> — <code>derive_config</code> injects the Section JSON schema; a
-  <code>final_answer_checks=[validate_section]</code> gate means the agent can only terminate with a schema-valid config.</li>
-<li><strong>Few-shot exemplars</strong> — the tutorial gene~disease config and the ALAMV6 organism~chemical config.</li>
+  <code>final_answer_checks=[validate_table_config]</code> gate means the agent can only terminate with a config
+  whose <strong>every section</strong> is schema-valid (multi-section configs are validated section-by-section).</li>
+<li><strong>Few-shot exemplars</strong> — the tutorial gene~disease section, the ALAMV6 organism~chemical section, and a
+  multi-section config (one config, two tables, each section its own source/url).</li>
 <li><strong>Reflexion-style self-critique</strong> — <code>propose_config_edit</code> / <code>reflexion_improve</code> reflect on failing rows,
   error codes, and unresolved terms, then make a targeted, schema-valid edit.</li>
 <li><strong>Error-recovery prompting</strong> — tools return rich coded errors; the prompt directs the agent to read the
@@ -1776,16 +1934,36 @@ deterministic heuristic is used.</p>
 </ul>
 <p><strong>Reporting:</strong> <code>pareto_frontier(runs)</code> returns the <strong>non-dominated set</strong> over (quality ↑, cost ↓,
 wrong-calls ↓) and its <strong>knee</strong> (best quality per unit cost).</p>
+<h3 id="real-run-prompt-optimization-optimize">Real-run prompt optimization (<code>--optimize</code>)<a class="headerlink" href="#real-run-prompt-optimization-optimize" title="Permanent link">&para;</a></h3>
+<p>GEPA prompt optimization is a first-class CLI path. <code>tablassert agent --optimize</code> (<code>-o</code>) runs
+<code>dspy.GEPA</code> with a real reflection LM (built from the same <code>--model-id</code>/<code>--api-base</code>/<code>--api-key</code>
+config) and <strong>persists the optimized instructions</strong> instead of running the supervisor:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+</code></pre></div>
+<p><code>--dataset</code> is a YAML/JSON list of <code>{table_summary, coverage_feedback}</code> examples; <code>--max-metric-calls</code>
+bounds the GEPA metric budget. <code>save_optimized_instructions</code> / <code>load_optimized_instructions</code> persist and
+reload the prompt (a <code>{instructions, descriptions}</code> mapping). Without <code>--instructions-file</code> the built-in
+<code>INSTRUCTIONS</code> prompt is used. (A real optimization run needs a live model; the offline suite exercises
+this path via an injectable <code>gepa_cls</code> stub.)</p>
 <h3 id="golden-fixture">Golden fixture<a class="headerlink" href="#golden-fixture" title="Permanent link">&para;</a></h3>
 <p><code>tests/agent_fixtures/PMC11708054/</code> is an offline replay pair: the ALAMV6 reference config, a small
 <strong>synthetic</strong> source table, and a trimmed reference config (CC-BY attribution to PMC11708054; the
-reference KGX is computed in-test against a tiny real redb — nothing large is committed).</p>
+reference KGX is computed in-test against a tiny real redb — nothing large is committed). A second
+fixture, <code>tests/agent_fixtures/GENE_DISEASE/</code>, is a gene~disease config in multi-section
+(<code>{template, sections}</code>) shape with PMID provenance — used to keep the offline heuristic judge and the
+W3 multi-section validation honest on a distinct config.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>The agent suite is <strong>fully offline</strong> — no live LLM or network. It uses a <code>FakeModel</code> smolagents stub,
 mocked/snapshotted PMC data, a tiny real redb (<code>rs.build_fullmap_db</code>), and injectable GEPA stubs.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
 </code></pre></div>
 <p>Without the extra, the base suite stays green and every agent test skips via <code>pytest.importorskip</code>.</p>
 <div class="admonition tip">
