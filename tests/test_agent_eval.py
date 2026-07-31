@@ -21,12 +21,15 @@ import yaml
 
 from tablassert.agent import (
     JUDGE_DIMENSIONS,
+    _judge_provenance,
     cost_metric,
     coverage_metric,
     dominates,
     gepa_metric,
     judge_config,
+    load_gepa_dataset,
     load_kgx,
+    load_optimized_instructions,
     node_edge_f1,
     pareto_frontier,
     qc_pass_rate_metric,
@@ -34,10 +37,13 @@ from tablassert.agent import (
     reflexion_improve,
     reliability_metric,
     run_gepa,
+    save_optimized_instructions,
     validate_section,
+    validate_table_config,
 )
 
 FIXTURE_DIR: Path = Path(__file__).parent / "agent_fixtures" / "PMC11708054"
+SECOND_FIXTURE_DIR: Path = Path(__file__).parent / "agent_fixtures" / "GENE_DISEASE"
 
 # A genuinely valid minimal Section config (used wherever a schema-valid YAML string is needed).
 VALID_CFG: str = yaml.safe_dump(
@@ -404,3 +410,79 @@ def test_judge_verbosity_debiasing_fires_with_baseline() -> None:
     assert penalized["normalized"] == pytest.approx(0.95)  # 1.0 * 0.95 verbosity penalty (ratio 100/10 > 2)
     assert unpenalized["normalized"] == pytest.approx(1.0)  # ratio 1.0 -> identity
     assert penalized["normalized"] < unpenalized["normalized"]
+
+
+# --------------------------------------------------------------------------- #
+# W6: optimized-instructions persist/load, GEPA dataset, smarter judge, second fixture
+# --------------------------------------------------------------------------- #
+
+
+def test_optimized_instructions_roundtrip(tmp_path: Path) -> None:
+    """save_optimized_instructions -> load_optimized_instructions round-trips the prompt + descriptions."""
+    out: Path = tmp_path / "optimized_instructions.yaml"
+    save_optimized_instructions(out, "OPTIMIZED PROMPT", {"propose": "OPTIMIZED DESC"})
+    assert load_optimized_instructions(out) == "OPTIMIZED PROMPT"
+    # The persisted mapping also carries the descriptions.
+    data: dict[str, Any] = yaml.safe_load(out.read_text())
+    assert data["descriptions"] == {"propose": "OPTIMIZED DESC"}
+
+
+def test_load_optimized_instructions_absent_and_bare(tmp_path: Path) -> None:
+    """A missing file -> None; a bare YAML string of instructions loads directly."""
+    assert load_optimized_instructions(tmp_path / "nope.yaml") is None
+    bare: Path = tmp_path / "bare.yaml"
+    bare.write_text("just a prompt string")
+    assert load_optimized_instructions(bare) == "just a prompt string"
+
+
+def test_load_gepa_dataset(tmp_path: Path) -> None:
+    """load_gepa_dataset reads a YAML list of example dicts, dropping non-dict rows."""
+    ds: Path = tmp_path / "dataset.yaml"
+    ds.write_text(yaml.safe_dump([{"table_summary": "s1", "coverage_feedback": "c1"}, "not-a-dict", {"table_summary": "s2"}]))
+    rows = load_gepa_dataset(ds)
+    assert rows == [{"table_summary": "s1", "coverage_feedback": "c1"}, {"table_summary": "s2"}]
+
+
+def test_judge_provenance_smarter() -> None:
+    """W6 smarter heuristic: manual override -> 3, repo+pub -> 3, partial -> 1, none -> 0."""
+
+    def cfg(provenance: dict[str, Any]) -> str:
+        return yaml.safe_dump(
+            {
+                "source": {"kind": "text", "local": "./t.tsv", "url": "https://e.com/t.tsv", "delimiter": "\t"},
+                "statement": {
+                    "subject": {"method": "value", "encoding": "A"},
+                    "predicate": "associated_with",
+                    "object": {"method": "value", "encoding": "B"},
+                },
+                "provenance": provenance,
+            }
+        )
+
+    assert _judge_provenance(cfg({"repo": "PMC", "publication": "PMC1"})) == 3
+    assert _judge_provenance(cfg({"repo": "PMC", "publication": "PMC1", "override": {"upstream_resource_ids": ["infores:x"]}})) == 3
+    assert _judge_provenance(cfg({"repo": "PMC"})) == 1  # partial credit (was 0)
+    assert _judge_provenance(cfg({})) == 0
+
+
+def test_second_fixture_present_and_valid() -> None:
+    """The second golden fixture (gene~disease, multi-section shape) exists and validates section-by-section."""
+    assert (SECOND_FIXTURE_DIR / "reference_config.yaml").is_file()
+    assert (SECOND_FIXTURE_DIR / "source_table.csv").is_file()
+    text: str = (SECOND_FIXTURE_DIR / "reference_config.yaml").read_text()
+    assert validate_table_config(text) is True
+    # It is a genuine multi-section config (template + sections), distinct from the PMC fixture.
+    parsed: dict[str, Any] = yaml.safe_load(text)
+    assert "sections" in parsed
+    assert len(parsed["sections"]) >= 1
+
+
+def test_second_fixture_offline_judge_scores() -> None:
+    """The offline heuristic judge scores the second fixture (no judge model) with a sane normalized value."""
+    text: str = (SECOND_FIXTURE_DIR / "reference_config.yaml").read_text()
+    report: dict[str, Any] = {"coverage_pct": 1.0}
+    metrics: dict[str, Any] = {"steps": 2}
+    verdict: dict[str, Any] = judge_config(text, report, metrics)  # no judge_model -> offline heuristic
+    assert 0.0 <= verdict["normalized"] <= 1.0
+    assert verdict["scores"]["schema_validity"] == 3.0  # the fixture is schema-valid
+    assert verdict["scores"]["provenance_completeness"] == 3.0  # repo + publication

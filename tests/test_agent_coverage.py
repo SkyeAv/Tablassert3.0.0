@@ -216,3 +216,29 @@ def test_coverage_unmeasurable_source_is_not_perfect(tmp_path: Path, redb: Path)
     result: dict[str, Any] = map_coverage(cfg, fullmap=redb)
     assert result["measured"] is False
     assert result["overall"] == 0.0  # NOT a false perfect 1.0
+
+
+def test_coverage_multi_cwd_resolves_relative_source(tmp_path: Path, redb: Path) -> None:
+    """W5: a RELATIVE ``source.local`` that exists under ``workdir`` (but NOT the process cwd) is measurable.
+
+    The ``redb`` fixture chdir's to ``tmp_path``; here the table lives in a DIFFERENT dir passed as
+    ``workdir``. Without multi-cwd resolution the frame reproduction would fail (the relative path is
+    absent from the cwd) and report unmeasurable; with it, ``map_coverage`` retries under ``workdir``
+    and measures for real (brca1/mapk1 resolve -> 1.0).
+    """
+    elsewhere: Path = tmp_path / "elsewhere"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "rel.tsv").write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+    cfg: dict[str, Any] = {
+        "source": {"kind": "text", "local": "rel.tsv", "url": "https://example.com/rel.tsv", "delimiter": "\t"},
+        "statement": {
+            "subject": {"method": "column", "encoding": "A"},
+            "predicate": "associated_with",
+            "object": {"method": "column", "encoding": "B"},
+        },
+        "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+    }
+    # The process cwd (the redb fixture's tmp_path) has NO rel.tsv; only ``elsewhere`` (the workdir) does.
+    result: dict[str, Any] = map_coverage(cfg, fullmap=redb, workdir=elsewhere)
+    assert result["measured"] is True
+    assert result["overall"] == 1.0

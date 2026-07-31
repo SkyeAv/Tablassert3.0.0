@@ -25,6 +25,7 @@ from tablassert.agent import (
     make_step_callback,
     resolve_model_config,
     validate_section,
+    validate_table_config,
 )
 
 
@@ -138,12 +139,12 @@ def test_build_model_constructs_offline() -> None:
 
 
 def test_build_agent_wires_checks_and_callback() -> None:
-    """build_agent wires validate_section into final_answer_checks and a default step callback."""
+    """build_agent wires validate_table_config into final_answer_checks and a default step callback."""
     pytest.importorskip("smolagents")
     agent = build_agent(model=make_fake_model(), tools=[])
     assert agent is not None
     checks: Any = getattr(agent, "final_answer_checks", [])
-    assert validate_section in checks
+    assert validate_table_config in checks
     assert getattr(agent, "step_callbacks", None) is not None
 
 

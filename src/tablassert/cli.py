@@ -540,6 +540,15 @@ def agent(
     max_improve_iters: Annotated[int, cyclopts.Parameter(name=["--max-improve-iters", "-mi"])] = 3,
     state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir", "-sd"])] = Path(".tablassert") / "agent",
     backend: Annotated[Literal["openai", "litellm"], cyclopts.Parameter(name=["--backend", "-b"])] = "openai",
+    reflexion: Annotated[bool, cyclopts.Parameter(name=["--reflexion"], negative="")] = False,
+    judge_model: Annotated[str | None, cyclopts.Parameter(name=["--judge-model"])] = None,
+    judge_threshold: Annotated[float | None, cyclopts.Parameter(name=["--judge-threshold"])] = None,
+    local: Annotated[list[str] | None, cyclopts.Parameter(name=["--local", "-l"])] = None,
+    optimize: Annotated[bool, cyclopts.Parameter(name=["--optimize", "-o"], negative="")] = False,
+    instructions_file: Annotated[Path | None, cyclopts.Parameter(name=["--instructions-file"])] = None,
+    instructions_out: Annotated[Path | None, cyclopts.Parameter(name=["--instructions-out"])] = None,
+    max_metric_calls: Annotated[int, cyclopts.Parameter(name=["--max-metric-calls"])] = 8,
+    dataset: Annotated[Path | None, cyclopts.Parameter(name=["--dataset"])] = None,
 ) -> None:
     """Autonomously derive, build, audit, and improve KG configs from PMC articles.
 
@@ -566,6 +575,20 @@ def agent(
         max_improve_iters: Max deterministic improve iterations per article.
         state_dir: Checkpoint/resume directory.
         backend: Model backend (``openai`` or ``litellm``).
+        reflexion: Enable the tier-2 LLM reflexion improver (uses the same model config) for edits that
+            may change predicate/source when the deterministic proposer stalls.
+        judge_model: Optional model id for the semantic judge gate (uses ``--api-base``/``--api-key``);
+            when set, MAPPED additionally requires the judge score to clear ``--judge-threshold``.
+        judge_threshold: Semantic judge normalized-score threshold for MAPPED (default 0.5 when unset).
+        local: Use a local payload instead of fetching from PMC-AWS: a single DIR (applied to every id) or
+            one or more ``PMCid=DIR`` mappings (per-article). Fails loud (exit 2) if a DIR does not exist.
+        optimize: Run GEPA prompt optimization over the model config and persist optimized instructions
+            (instead of running the supervisor); use ``--instructions-out`` to choose the output file.
+        instructions_file: Load GEPA-optimized instructions (from a prior ``--optimize`` run) for this run.
+        instructions_out: Where ``--optimize`` writes optimized instructions (default
+            ``<state-dir>/optimized_instructions.yaml``).
+        max_metric_calls: GEPA metric-call budget for ``--optimize``.
+        dataset: Optional YAML/JSON list of ``{table_summary, coverage_feedback}`` examples for ``--optimize``.
     """
     from tablassert import agent as agent_mod
 
@@ -584,6 +607,65 @@ def agent(
     def build_model_factory() -> object:
         return agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend)
 
+    # Tier-2 reflexion (optional): a prompt-callable over the same model config, built lazily per call.
+    reflexion_factory: Callable[[], object] | None = None
+    if reflexion:
+
+        def _make_reflexion() -> object:
+            return agent_mod.make_prompt_callable(agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend))
+
+        reflexion_factory = _make_reflexion
+
+    # Semantic judge (optional): a prompt-callable over the judge model (same api_base/api_key).
+    judge: object | None = None
+    if judge_model is not None:
+        judge = agent_mod.make_prompt_callable(agent_mod.build_model(judge_model, resolved_base, resolved_key, backend=backend))
+
+    # Local payload (optional, W4): a DIR for all ids, or PMCid=DIR mappings; fail loud on a missing dir.
+    def parse_local(specs: list[str] | None) -> dict[str, Path] | Path | None:
+        if not specs:
+            return None
+        if len(specs) == 1 and "=" not in specs[0]:
+            single: Path = Path(specs[0])
+            if not single.is_dir():
+                print(f"tablassert agent: --local directory does not exist: {single}", file=sys.stderr)
+                raise SystemExit(2)
+            return single
+        mapping: dict[str, Path] = {}
+        for spec in specs:
+            if "=" not in spec:
+                print(f"tablassert agent: --local expects DIR or PMCid=DIR, got {spec!r}", file=sys.stderr)
+                raise SystemExit(2)
+            pid, _, dirstr = spec.partition("=")
+            per_dir: Path = Path(dirstr)
+            if not per_dir.is_dir():
+                print(f"tablassert agent: --local directory does not exist: {per_dir}", file=sys.stderr)
+                raise SystemExit(2)
+            mapping[pid.strip()] = per_dir
+        return mapping
+
+    local_payload: dict[str, Path] | Path | None = parse_local(local)
+
+    # W6 optimization path: run GEPA over the model config and persist optimized instructions; do NOT run
+    # the supervisor. The reflection LM is a real dspy.LM (deferred live path); offline tests monkeypatch
+    # ``run_gepa``/``make_dspy_lm`` so no model/network fires.
+    if optimize:
+        reflection_lm: object = agent_mod.make_dspy_lm(resolved_id, resolved_base, resolved_key)
+        gepa_dataset: list[dict[str, object]] | None = agent_mod.load_gepa_dataset(dataset) if dataset is not None else None
+        gepa_result: dict[str, object] = agent_mod.run_gepa(
+            seed_instructions=agent_mod.INSTRUCTIONS, reflection_lm=reflection_lm, dataset=gepa_dataset, max_metric_calls=max_metric_calls
+        )
+        out_path: Path = instructions_out if instructions_out is not None else (state_dir / "optimized_instructions.yaml")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        opt_instructions: object = gepa_result.get("optimized_instructions", agent_mod.INSTRUCTIONS)
+        opt_descriptions: object = gepa_result.get("optimized_descriptions")
+        agent_mod.save_optimized_instructions(out_path, str(opt_instructions), opt_descriptions if isinstance(opt_descriptions, dict) else None)
+        print(f"tablassert agent: optimized instructions -> {out_path}")
+        return
+
+    # Normal run: optionally load GEPA-optimized instructions (--instructions-file).
+    run_instructions: str | None = agent_mod.load_optimized_instructions(instructions_file) if instructions_file is not None else None
+
     result: dict[str, object] = agent_mod.run_supervisor(
         list(pmc_ids),
         fullmap=fullmap,
@@ -592,6 +674,11 @@ def agent(
         max_improve_iters=max_improve_iters,
         max_steps=max_steps,
         state_dir=state_dir,
+        reflexion_model_factory=reflexion_factory,
+        judge_model=judge,
+        judge_threshold=judge_threshold,
+        local=local_payload,
+        instructions=run_instructions,
     )
 
     metrics_raw: object = result.get("metrics")

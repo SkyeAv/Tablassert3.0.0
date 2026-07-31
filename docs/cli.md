@@ -53,6 +53,15 @@ PMC ids are passed positionally (also accepted as `--pmc-ids`). This page lists 
 | `--max-improve-iters`, `-mi` | int | No | `3` | Max deterministic improve iterations per article |
 | `--state-dir`, `-sd` | Path | No | `.tablassert/agent` | Checkpoint/resume workspace directory |
 | `--backend`, `-b` | {openai, litellm} | No | `openai` | Model backend |
+| `--reflexion` | bool | No | `False` | Enable the tier-2 LLM reflexion improver (same model config) when the deterministic proposer stalls |
+| `--judge-model` | str | No | `None` | Model id for the semantic judge gate; MAPPED then also requires the score to clear `--judge-threshold` |
+| `--judge-threshold` | float | No | `None` | Semantic judge normalized-score threshold for MAPPED (`0.5` when unset) |
+| `--local`, `-l` | list[str] | No | `None` | Local payload: one DIR for all ids, or `PMCid=DIR` mappings; skips the PMC-AWS fetch (exit 2 on a missing DIR) |
+| `--optimize`, `-o` | bool | No | `False` | Run GEPA prompt optimization and persist optimized instructions instead of running the supervisor |
+| `--instructions-file` | Path | No | `None` | Load GEPA-optimized instructions from a prior `--optimize` run |
+| `--instructions-out` | Path | No | `None` | Where `--optimize` writes optimized instructions (default `<state-dir>/optimized_instructions.yaml`) |
+| `--max-metric-calls` | int | No | `8` | GEPA metric-call budget for `--optimize` |
+| `--dataset` | Path | No | `None` | YAML/JSON list of `{table_summary, coverage_feedback}` examples for `--optimize` |
 
 ```bash
 tablassert agent PMC11708054 --fullmap ./fullmap

@@ -379,7 +379,14 @@ def test_supervisor_breaks_after_rejected_edit(tmp_path: Path, fullmap_db: Path,
     calls: dict[str, int] = {"build": 0}
 
     def fake_build(
-        config_yaml: str, *, fullmap: Path, name: str = "agent", version: str = "0.0.1", qc: bool = False, workdir: Path | None = None
+        config_yaml: str,
+        *,
+        fullmap: Path,
+        name: str = "agent",
+        version: str = "0.0.1",
+        qc: bool = False,
+        head: bool = False,
+        workdir: Path | None = None,
     ) -> dict[str, Any]:  # pyright: ignore[reportUnusedParameter]
         calls["build"] += 1
         return {
@@ -419,3 +426,457 @@ def test_supervisor_breaks_after_rejected_edit(tmp_path: Path, fullmap_db: Path,
     )
     assert calls["build"] == 2  # initial build + ONE rejected improve, then break (not 1 + 5)
     assert result["records"]["PMC1"].status == "SKIPPED"  # 0.5 < 0.8 and never improved
+
+
+def test_supervisor_built_unmeasured_is_non_failure(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """W5: a config that BUILDS (ok=True) but whose coverage is UNMEASURABLE -> BUILT_UNMEASURED.
+
+    ``build_and_audit`` is stubbed to report a successful build with ``measured=False`` (e.g. an
+    unreproducible source frame). The supervisor must record the TERMINAL non-failure BUILT_UNMEASURED,
+    write the best config, and NOT count it as a SKIPPED failure; the metrics report ``built_unmeasured``.
+    """
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+
+    def fake_build(
+        config_yaml: str, *, fullmap: Path, name: str = "agent", version: str = "0.0.1", qc: bool = False, workdir: Path | None = None
+    ) -> dict[str, Any]:  # pyright: ignore[reportUnusedParameter]
+        return {
+            "ok": True,
+            "coverage_pct": 0.0,
+            "measured": False,
+            "qc_pass_rate": None,
+            "errors": ["coverage unmeasurable: could not reproduce the source frame (treated as 0.0, not a perfect score)"],
+            "error_codes": [],
+            "kgx_path": None,
+            "edges_path": None,
+            "node_count": 1,
+            "edge_count": 1,
+            "unresolved": [],
+        }
+
+    monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
+    monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []})
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "no safe edit"))
+
+    result: dict[str, Any] = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        max_improve_iters=3,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "BUILT_UNMEASURED"  # NOT SKIPPED, NOT MAPPED
+    assert rec.notes.startswith("BUILT_UNMEASURED")
+    assert rec.best_config_path is not None
+    assert Path(rec.best_config_path).is_file()  # the best config is still written
+    metrics: dict[str, object] = result["metrics"]  # pyright: ignore[reportAssignmentType]
+    assert metrics["built_unmeasured"] == 1
+    assert metrics["mapped"] == 0
+    assert metrics["skipped"] == 0
+
+
+def test_supervisor_resume_skips_built_unmeasured(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """W5: BUILT_UNMEASURED is TERMINAL — a resume over the same id does not reprocess it (no re-fetch)."""
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tmapk1\n")
+    calls: list[str] = _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+    state_dir: Path = tmp_path / "state"
+
+    monkeypatch.setattr(
+        agent_mod,
+        "build_and_audit",
+        lambda *a, **k: {
+            "ok": True,
+            "coverage_pct": 0.0,
+            "measured": False,
+            "qc_pass_rate": None,
+            "errors": [],
+            "error_codes": [],
+            "kgx_path": None,
+            "edges_path": None,
+            "node_count": 1,
+            "edge_count": 1,
+            "unresolved": [],
+        },
+    )
+    monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []})
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "no safe edit"))
+
+    def factory() -> object:
+        return make_fake_model(final_yaml=good_yaml)
+
+    first = run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w")
+    assert first["records"]["PMC1"].status == "BUILT_UNMEASURED"  # pyright: ignore[reportIndexIssue]
+
+    second = run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w")
+    assert second["records"]["PMC1"].status == "BUILT_UNMEASURED"  # pyright: ignore[reportIndexIssue]
+    assert calls.count("PMC1") == 1, "fetch must not be called again for the terminal BUILT_UNMEASURED record"
+
+
+# --------------------------------------------------------------------------- #
+# W1: tier-2 LLM reflexion + semantic judge gate
+# --------------------------------------------------------------------------- #
+
+
+def _judge_lines(score: int) -> str:
+    """A pointwise judge response scoring every dimension ``score`` (0-3)."""
+    dims: list[str] = [
+        "schema_validity",
+        "coverage_appropriateness",
+        "qc_pass",
+        "predicate_category_appropriateness",
+        "provenance_completeness",
+        "efficiency",
+        "tool_call_cleanliness",
+    ]
+    return "\n".join(f"{d}: {score}" for d in dims)
+
+
+def _patch_build_sequence(monkeypatch: pytest.MonkeyPatch, coverages: list[float]) -> None:
+    """Stub ``build_and_audit`` to return successive ``coverage_pct`` values (fast; no real build).
+
+    Used by the gate/reflexion wiring tests where build FIDELITY is not the point. Once ``coverages`` is
+    exhausted the last value repeats. ``measured`` is True and ``ok`` True so the MAPPED/gate path runs.
+    """
+    import tablassert.agent as agent_mod
+
+    idx: dict[str, int] = {"i": 0}
+
+    def fake_build(
+        config_yaml: str,
+        *,
+        fullmap: Path,
+        name: str = "agent",
+        version: str = "0.0.1",
+        qc: bool = False,
+        head: bool = False,
+        workdir: Path | None = None,
+    ) -> dict[str, Any]:  # pyright: ignore[reportUnusedParameter]
+        cov: float = coverages[idx["i"]] if idx["i"] < len(coverages) else coverages[-1]
+        idx["i"] += 1
+        return {
+            "ok": True,
+            "coverage_pct": cov,
+            "measured": True,
+            "qc_pass_rate": None,
+            "errors": [],
+            "error_codes": [],
+            "kgx_path": None,
+            "edges_path": None,
+            "node_count": 1,
+            "edge_count": 1,
+            "unresolved": [],
+        }
+
+    monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
+
+
+def test_supervisor_tier2_reflexion_on_stall(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When tier-1 deterministic candidates stall, tier-2 LLM reflexion supplies a distinct, better config.
+
+    The object column is unresolvable (coverage 0.5) and the deterministic proposer is stubbed to yield
+    nothing; the reflexion model returns a config that makes the object a fixed literal (vacuous -> 1.0),
+    which the supervisor accepts -> MAPPED, with the tier-2 rationale recorded.
+    """
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tzzznotreal\nbrca1\tzzznotreal\n")
+    _patch_fetch(monkeypatch, table)
+    first_yaml: str = yaml.safe_dump(_column_cfg(table))
+
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [])  # tier 1 stalls
+    # Builds: initial 0.5, then the tier-2 head + full builds both 1.0 (the reflexion fix).
+    _patch_build_sequence(monkeypatch, [0.5, 1.0, 1.0])
+
+    fixed: dict[str, Any] = _column_cfg(table)
+    fixed["statement"]["object"] = {"method": "value", "encoding": "CHEBI:41774"}  # vacuous -> coverage 1.0
+    fixed_yaml: str = yaml.safe_dump(fixed, sort_keys=False)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=first_yaml),
+        map_threshold=1.0,
+        max_improve_iters=2,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        reflexion_model_factory=lambda: lambda prompt: fixed_yaml,
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "MAPPED"
+    assert rec.last_edits == "tier-2 LLM reflexion edit"
+    assert rec.coverage_history[-1] >= 1.0
+
+
+def test_supervisor_semantic_gate_blocks_low_score(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Coverage reaches threshold but a configured judge scores below judge_threshold -> SKIPPED (semantic gate)."""
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))  # coverage 1.0
+    _patch_build_sequence(monkeypatch, [1.0])
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        judge_model=lambda prompt: _judge_lines(1),  # normalized ~0.33
+        judge_threshold=0.9,
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "SKIPPED"
+    assert "semantic gate" in rec.notes
+
+
+def test_supervisor_semantic_gate_passes_high_score(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Coverage reaches threshold AND the judge score clears judge_threshold -> MAPPED."""
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+    _patch_build_sequence(monkeypatch, [1.0])
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        judge_model=lambda prompt: _judge_lines(3),  # normalized 1.0
+        judge_threshold=0.5,
+    )
+    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+
+
+def test_supervisor_no_judge_coverage_only(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a judge model, coverage ALONE gates MAPPED (the offline heuristic judge is advisory only)."""
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+    _patch_build_sequence(monkeypatch, [1.0])
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )  # no judge_model
+    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+
+
+# --------------------------------------------------------------------------- #
+# W2: head intermediate builds + full final build; multi-iteration improve loop
+# --------------------------------------------------------------------------- #
+
+
+def test_supervisor_head_intermediate_full_final(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Intermediate improve builds use head=True; the accepted config gets a FULL build (head=False)."""
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "glue.tsv", "g__brca1\tmapk1\ng__brca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    first_yaml: str = yaml.safe_dump(_column_cfg(table))  # 0.5 -> full edit (regex strip) -> 1.0
+
+    head_flags: list[bool] = []
+    real_build = agent_mod.build_and_audit
+
+    def spy_build(
+        config_yaml: str,
+        *,
+        fullmap: Path,
+        name: str = "agent",
+        version: str = "0.0.1",
+        qc: bool = False,
+        head: bool = False,
+        workdir: Path | None = None,
+    ) -> dict[str, Any]:
+        head_flags.append(head)
+        return real_build(config_yaml, fullmap=fullmap, name=name, version=version, qc=qc, head=head, workdir=workdir)
+
+    monkeypatch.setattr(agent_mod, "build_and_audit", spy_build)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=first_yaml),
+        map_threshold=1.0,
+        max_improve_iters=3,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )
+    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+    assert head_flags[0] is False  # initial build is full
+    assert any(head_flags)  # at least one head intermediate scoring build
+    assert head_flags[-1] is False  # the accepted config's persisted build is full
+
+
+def test_supervisor_loop_iterates_while_improving(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The improve loop runs >1 iteration when successive candidates keep improving coverage."""
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [(good_yaml, "edit")])
+    coverages: list[float] = [0.2, 0.5, 0.5, 0.9, 0.9]  # initial, then (head, full) per accepted iter
+    idx: dict[str, int] = {"i": 0}
+
+    def fake_build(
+        config_yaml: str,
+        *,
+        fullmap: Path,
+        name: str = "agent",
+        version: str = "0.0.1",
+        qc: bool = False,
+        head: bool = False,
+        workdir: Path | None = None,
+    ) -> dict[str, Any]:  # pyright: ignore[reportUnusedParameter]
+        cov: float = coverages[idx["i"]] if idx["i"] < len(coverages) else 0.9
+        idx["i"] += 1
+        return {
+            "ok": True,
+            "coverage_pct": cov,
+            "measured": True,
+            "qc_pass_rate": None,
+            "errors": [],
+            "error_codes": [],
+            "kgx_path": None,
+            "edges_path": None,
+            "node_count": 1,
+            "edge_count": 1,
+            "unresolved": [],
+        }
+
+    monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        max_improve_iters=5,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "MAPPED"
+    assert rec.coverage_history == [0.2, 0.5, 0.9]  # initial + 2 accepted improvements => >1 iteration
+
+
+# --------------------------------------------------------------------------- #
+# W4: local-payload input (no PMC-AWS fetch)
+# --------------------------------------------------------------------------- #
+
+
+def test_supervisor_local_payload_no_network(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """W4: a local payload (a bare DIR) runs the same pipeline with NO fetch -> MAPPED; task flags local payload."""
+    import tablassert.agent as agent_mod
+
+    payload: Path = tmp_path / "payload"
+    payload.mkdir()
+    table: Path = payload / "s1.tsv"
+    table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+
+    def boom_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        raise AssertionError("fetch_pmc_article must NOT be called for a local payload")
+
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", boom_fetch)
+
+    captured: dict[str, str] = {}
+    real_build_agent = agent_mod.build_agent
+
+    def spy_build_agent(*args: object, **kwargs: object) -> object:
+        agent = real_build_agent(*args, **kwargs)
+
+        class _Spy:
+            def run(self, task: str) -> object:
+                captured["task"] = task
+                return agent.run(task)  # pyright: ignore[reportAttributeAccessIssue]
+
+        return _Spy()
+
+    monkeypatch.setattr(agent_mod, "build_agent", spy_build_agent)
+
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        local=payload,  # a bare Path applies to every id
+    )
+    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+    assert str(table) in captured["task"]
+    assert "local payload" in captured["task"]  # no fabricated S3 link for local files
+
+
+def test_supervisor_local_payload_per_id_mapping(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """W4: a {pmc_id: dir} mapping selects the per-article local payload; unmapped ids still fetch."""
+    import tablassert.agent as agent_mod
+
+    payload: Path = tmp_path / "payload"
+    payload.mkdir()
+    table: Path = payload / "s1.tsv"
+    table.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+
+    fetched: list[str] = []
+
+    def fake_fetch(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[Path]:  # pyright: ignore[reportUnusedParameter]
+        fetched.append(pmc_id)
+        return [table]
+
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", fake_fetch)
+
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+    result = run_supervisor(
+        ["PMCLOCAL", "PMCFETCH"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        local={"PMCLOCAL": payload},  # only PMCLOCAL is local; PMCFETCH falls back to fetch
+    )
+    records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
+    assert records["PMCLOCAL"].status == "MAPPED"
+    assert records["PMCFETCH"].status == "MAPPED"
+    assert fetched == ["PMCFETCH"]  # fetch used ONLY for the id without a local payload
+
+
+def test_supervisor_local_payload_no_table_skipped(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """W4: a local payload with no data table is SKIPPED (fail-fast), and the batch advances."""
+    import tablassert.agent as agent_mod
+
+    payload: Path = tmp_path / "payload"
+    payload.mkdir()
+    (payload / "notes.txt").write_text("no table here")  # not a data table
+
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not fetch")))
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        local=payload,
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "SKIPPED"

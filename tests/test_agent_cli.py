@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tablassert.agent import ENV_API_BASE, ENV_API_KEY, ENV_MODEL_ID
+from tablassert.agent import ENV_API_BASE, ENV_API_KEY, ENV_MODEL_ID, load_optimized_instructions, save_optimized_instructions
 from tablassert.cli import APP, agent
 
 
@@ -106,3 +106,76 @@ def test_agent_cli_flag_parsing() -> None:
     assert bound.args == (["PMC9"],)
     assert bound.kwargs["fullmap"] == Path("/tmp/fm")
     assert bound.kwargs["map_threshold"] == 0.5
+
+
+def test_agent_optimize_flag_parses() -> None:
+    """``-o``/``--optimize`` parses to optimize=True without executing the body."""
+    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm", "-o"], exit_on_error=False)
+    assert fn is agent
+    assert bound.kwargs["optimize"] is True
+
+
+def test_agent_optimize_persists_instructions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """W6: ``--optimize`` runs GEPA (stubbed) and persists optimized instructions; the supervisor is NOT run."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    monkeypatch.setattr("tablassert.agent.make_dspy_lm", lambda *a, **k: object())
+
+    def fake_run_gepa(**kwargs: object) -> dict[str, object]:
+        assert kwargs.get("seed_instructions")  # the seed prompt is passed
+        return {"optimized_instructions": "OPTIMIZED PROMPT", "optimized_descriptions": {"propose": "DESC"}, "stats": {}, "frontier": []}
+
+    monkeypatch.setattr("tablassert.agent.run_gepa", fake_run_gepa)
+
+    def fail_supervisor(*a: object, **k: object) -> object:
+        raise AssertionError("run_supervisor must NOT run when --optimize is set")
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
+
+    out: Path = tmp_path / "opt.yaml"
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, instructions_out=out)
+
+    assert out.is_file()
+    assert load_optimized_instructions(out) == "OPTIMIZED PROMPT"
+    assert "optimized instructions" in capsys.readouterr().out
+
+
+def test_agent_instructions_file_forwarded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """W6: ``--instructions-file`` loads optimized instructions and forwards them to the supervisor."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    instr_file: Path = tmp_path / "instr.yaml"
+    save_optimized_instructions(instr_file, "CUSTOM PROMPT")
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), instructions_file=instr_file)
+    assert captured["instructions"] == "CUSTOM PROMPT"
+
+
+def test_agent_no_instructions_file_passes_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without ``--instructions-file`` the supervisor receives instructions=None (default INSTRUCTIONS)."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"))
+    assert captured["instructions"] is None
