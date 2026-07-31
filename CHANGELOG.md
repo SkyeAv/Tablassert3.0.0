@@ -6,6 +6,9 @@ All notable changes to this project are documented in this file.
 
 ### Breaking Changes
 - **Removed the `TABLASSERT_FULLMAP_SHARDS` environment variable.** The number of on-disk RECORDS shard files is now fixed at the compile-time cap (`16`) and can no longer be overridden at build time; the variable is silently ignored if set. Default builds are unaffected — the previous default was already `16`. The read path still honors the shard count recorded in an existing database's `meta` table (`shards`), so databases built with fewer shards under the old variable continue to open and resolve correctly. See `docs/fullmap.md`.
+- **Removed the `build-kg --table-config`/`-tc` flag** (and the `build-kg --fullmap`/`-fm` flag, which existed solely to feed it). `build-kg` now always takes a graph YAML; the throwaway `TEMP_KG` wrapper for building a bare table (Section) config is gone. To build a single table config, wrap it in a graph config — `tablassert agent` already writes a ready `graph.yaml` alongside each build under `builds/<pmc_id>/`. (`validate --schema table` still checks a bare table config on its own.)
+- **Renamed `build-kg`'s configuration-file parameter** from `configuration_file` to `graph_configuration_file` to reflect that it is always a graph config. The CLI flags are unchanged (`--configuration-file`/`-f` and positional); only the positional metavar (`GRAPH-CONFIGURATION-FILE`) and the Python / bound-argument name change.
+- **`validate` no longer auto-detects the config kind.** The YAML-sniffing heuristic (a top-level `tables` key ⇒ graph, otherwise table) is removed; `validate` now requires an explicit `--schema {graph,table}`/`-s` flag selecting which schema to validate against. `tablassert validate foo.yaml` now fails without `--schema`; use `--schema graph` (validates the `Graph` model and every referenced table) or `--schema table` (validates section syntax only).
 
 ## 8.0.1 - 2026-07-30
 

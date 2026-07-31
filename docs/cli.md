@@ -104,24 +104,21 @@ Use this to build a KGX NDJSON knowledge graph (nodes, edges, and a Resource Ing
 YAML configuration file.
 
 ```bash
-tablassert build-kg CONFIGURATION-FILE [ARGS]
+tablassert build-kg GRAPH-CONFIGURATION-FILE [ARGS]
 ```
 
-By default the positional `CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is a **graph** YAML.
+The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is a **graph** YAML.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph YAML (or a table YAML with `--table-config`) |
+| `GRAPH-CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph YAML |
 | `--release`, `-r` | Flag | No | `False` | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
 | `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the `[qc]` extra |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
-| `--table-config`, `-tc` | Flag | No | `False` | Build/test one table (Section) config without writing a graph config (wrapped in a throwaway `TEMP_KG` graph) |
-| `--fullmap`, `-fm` | Path | No | `./fullmap` | Fullmap path for the throwaway `TEMP_KG` graph when `--table-config` is passed |
 
 ```bash
 tablassert build-kg graph.yaml --qc --log
-tablassert build-kg table-config.yaml --table-config --fullmap ./fullmap
 ```
 
 Output is written to the current directory as `{name}_{version}.nodes.ndjson`,
@@ -140,26 +137,26 @@ Output is written to the current directory as `{name}_{version}.nodes.ndjson`,
 
 ## validate
 
-Use this to validate a graph or table configuration without running the build — ideal for CI and
-pre-commit hooks. Both forms work: `tablassert validate <file>` and `tablassert validate -f <file>`.
+Use this to validate a configuration against a schema without running the build — ideal for CI and
+pre-commit hooks. The required `--schema` flag selects which schema to validate against (the kind is
+no longer sniffed from the YAML).
 
 ```bash
-tablassert validate CONFIGURATION-FILE
-tablassert validate -f CONFIGURATION-FILE
+tablassert validate CONFIGURATION-FILE --schema graph
+tablassert validate -f CONFIGURATION-FILE --schema table
 ```
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph **or** table configuration to validate |
+| `CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Configuration file to validate |
+| `--schema`, `-s` | `graph` \| `table` | Yes | — | Schema to validate against: `graph` validates the `Graph` model **and** every referenced table; `table` validates section syntax only |
 
-The config kind is detected from the YAML: a mapping with a top-level `tables` key is a **graph**
-config (validates the `Graph` model **and** every referenced table); anything else is a **table**
-config (validates section syntax). Exits non-zero on any schema error. See
-[Table Configuration](configuration/table.md) and [Graph Configuration](configuration/graph.md).
+Exits non-zero on any schema error. See [Table Configuration](configuration/table.md) and
+[Graph Configuration](configuration/graph.md).
 
 ```bash
-tablassert validate table-config.yaml
-tablassert validate graph.yaml
+tablassert validate table-config.yaml --schema table
+tablassert validate graph.yaml --schema graph
 ```
 
 ---
@@ -167,7 +164,7 @@ tablassert validate graph.yaml
 ## Typical workflow
 
 1. Author a table config, then a graph config that references it.
-2. `tablassert validate graph.yaml` — fail fast on schema errors.
+2. `tablassert validate graph.yaml --schema graph` — fail fast on schema errors.
 3. `tablassert build-kg graph.yaml` — produce KGX NDJSON + RIG (add `--qc` to audit mappings).
 
 ## Next Steps
