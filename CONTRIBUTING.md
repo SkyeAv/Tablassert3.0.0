@@ -100,13 +100,13 @@ What the gates cover:
 
 - **Ruff linting and formatting.** The current tree enforces core pycodestyle/pyflakes safety checks plus stale-suppression detection. It also enforces an expanded rule set covering common bug patterns (bugbear), simplifications, Python-version upgrades, pytest style, import order, and comprehensions. Treat `uv run ruff check .` and `uv run ruff format --check .` as the stable interface rather than relying on individual rule codes.
 - **Pyright.** Type checking runs through `uv run pyright`; the project is tightening this as a strict-inference ratchet over time.
-- **Python tests.** The suite is offline and currently runs 324 tests in roughly 40-45 seconds, reporting coverage around 94%.
+- **Python tests.** The suite is offline and runs in parallel by default via [pytest-xdist](https://pypi.org/project/pytest-xdist/) (`-n auto` in `pyproject.toml`): over 600 tests in ~20-30 seconds, reporting around 90% coverage in the default CI environment (`--extra qc`). Disable parallelism for a single serial run with `pytest -n 0`.
 - **Rust tests.** `cargo test --manifest-path rust/Cargo.toml` currently runs 46 Rust unit tests for the extension.
 - **Rust style and lints.** `cargo fmt --check` enforces formatting; clippy runs all targets with warnings denied.
 
 ## Pre-commit hooks
 
-Install hooks after setup if you want the same checks to run automatically:
+Install hooks after setup to run the fast, auto-fixing checks automatically on every commit. The slower whole-repo gates (pyright, the full pytest suite, cargo-clippy, cargo-test) are intentionally **not** pre-commit hooks — they run in CI on every pull request instead, so committing stays fast.
 
 ```bash
 uv run pre-commit install
@@ -116,11 +116,7 @@ Configured hooks:
 
 - `ruff`: fixes lint issues in `src/` and `tests/` when possible.
 - `ruff-format`: formats Python files in `src/` and `tests/`.
-- `pyright`: runs `uv run pyright` once per commit attempt.
-- `pytest`: rebuilds the extension with `uv run maturin develop --manifest-path rust/Cargo.toml`, then runs `uv run pytest`.
 - `cargo-fmt`: runs `cargo fmt --check --manifest-path rust/Cargo.toml`.
-- `cargo-clippy`: runs `cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings`.
-- `cargo-test`: runs `cargo test --manifest-path rust/Cargo.toml`.
 
 ## Running subsets
 
