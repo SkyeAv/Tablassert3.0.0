@@ -126,7 +126,7 @@ make check
 
 The underlying stable gates are `ruff check` / `ruff format --check`, `pyright`, `pytest`, and `cargo fmt --check` / `cargo test` / `cargo clippy --all-targets -- -D warnings` (see [Development](development.md)).
 
-Install pre-commit hooks if you want the gates to run automatically before commits:
+Install pre-commit hooks to run the fast lint/format checks automatically before commits (the full gates run in CI):
 
 ```bash
 uv run pre-commit install
