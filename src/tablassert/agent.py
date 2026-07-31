@@ -1464,16 +1464,12 @@ def _apply_node_edits(
     return changed, rationale_lines, unresolved_seen
 
 
-def _propose_multi_section(
-    parsed: dict[str, object], original_yaml: str, report: dict[str, object], hint_prefixes: list[str], hint_regex: list[str]
-) -> tuple[str, str]:
-    """Propose per-section NodeEncoding edits for a ``{template, sections}`` table config (W3).
+def _columns_selector(report: dict[str, object]) -> Callable[[int], dict[str, object]]:
+    """Return a function mapping a section index to its per-column coverage entry (W3).
 
-    Each section is edited from its OWN coverage entry (``report["sections"][i]["per_column"]``, aligned
-    positionally with ``to_sections`` order; falls back to the top-level ``per_column`` for legacy/minimal
-    reports). The template (shared provenance) is never touched. Re-validates the WHOLE config via
-    :func:`validate_table_config` before returning; on no safe edit or a validation failure, returns the
-    ORIGINAL config. Called only from :func:`propose_config_edit` (inside its try/except, so never raises).
+    Uses ``report["sections"][i]["per_column"]`` when present (aligned positionally with ``to_sections``
+    order); falls back to the top-level ``per_column`` for legacy/minimal reports. Shared by the
+    multi-section proposer and the per-category proposer so both resolve section columns identically.
     """
     cov_sections: object = report.get("sections")
     section_reports: list[object] = cov_sections if isinstance(cov_sections, list) else []
@@ -1487,6 +1483,22 @@ def _propose_multi_section(
             if isinstance(per_column, dict):
                 return per_column
         return top_columns
+
+    return columns_for
+
+
+def _propose_multi_section(
+    parsed: dict[str, object], original_yaml: str, report: dict[str, object], hint_prefixes: list[str], hint_regex: list[str]
+) -> tuple[str, str]:
+    """Propose per-section NodeEncoding edits for a ``{template, sections}`` table config (W3).
+
+    Each section is edited from its OWN coverage entry (``report["sections"][i]["per_column"]``, aligned
+    positionally with ``to_sections`` order; falls back to the top-level ``per_column`` for legacy/minimal
+    reports). The template (shared provenance) is never touched. Re-validates the WHOLE config via
+    :func:`validate_table_config` before returning; on no safe edit or a validation failure, returns the
+    ORIGINAL config. Called only from :func:`propose_config_edit` (inside its try/except, so never raises).
+    """
+    columns_for = _columns_selector(report)
 
     cfg: dict[str, object] = copy.deepcopy(parsed)
     rationale_lines: list[str] = []
@@ -1613,18 +1625,7 @@ def _propose_category(parsed: dict[str, object], report: dict[str, object], cate
     """
     hint_prefixes: list[str] = _string_hints(report.get("exclude_prefixes"))
     hint_regex: list[str] = _string_hints(report.get("exclude_regex"))
-    cov_sections: object = report.get("sections")
-    section_reports: list[object] = cov_sections if isinstance(cov_sections, list) else []
-    top_per_column: object = report.get("per_column")
-    top_columns: dict[str, object] = top_per_column if isinstance(top_per_column, dict) else {}
-
-    def columns_for(idx: int) -> dict[str, object]:
-        if idx < len(section_reports):
-            entry: object = section_reports[idx]
-            per_column: object = entry.get("per_column") if isinstance(entry, dict) else None
-            if isinstance(per_column, dict):
-                return per_column
-        return top_columns
+    columns_for = _columns_selector(report)
 
     cfg: dict[str, object] = copy.deepcopy(parsed)
     rationale_lines: list[str] = []
@@ -2617,13 +2618,21 @@ def run_supervisor(
                     )
                     raw_cov2: object = head_report.get("coverage_pct")
                     cov2: float = float(raw_cov2) if isinstance(raw_cov2, (int, float)) else 0.0
-                    if cov2 > current_cov:  # ACCEPT iff strictly better -> full build for correct artifacts
+                    if cov2 > current_cov:  # head sample looks better -> confirm with a FULL build before committing
                         full_report: dict[str, object] = build_and_audit(
                             edited, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id)
                         )
                         full_cov: object = full_report.get("coverage_pct")
+                        full_cov_f: float = float(full_cov) if isinstance(full_cov, (int, float)) else 0.0
+                        # Commit IFF the full build actually succeeded AND beat the prior best. A failing or
+                        # lower-scoring full build (the 5-row head sample was optimistic) must NOT regress the
+                        # persisted best config, the monotonic coverage_history, or best_coverage; the on-disk
+                        # intermediate build is irrelevant because map_coverage measures the config, never the
+                        # workdir artifacts (its workdir is never-written).
+                        if not bool(full_report.get("ok")) or full_cov_f <= current_cov:
+                            continue  # full build did not confirm the head win; try the next candidate
                         current_config = edited
-                        current_cov = float(full_cov) if isinstance(full_cov, (int, float)) else cov2
+                        current_cov = full_cov_f
                         current_ok = bool(full_report.get("ok"))
                         current_unmeasured = full_report.get("measured") is False
                         current_report = full_report
@@ -2642,20 +2651,24 @@ def run_supervisor(
                         )
                         raw_cov3: object = head_report3.get("coverage_pct")
                         cov3: float = float(raw_cov3) if isinstance(raw_cov3, (int, float)) else 0.0
-                        if cov3 > current_cov:  # ACCEPT -> full build for correct artifacts
+                        if cov3 > current_cov:  # head sample looks better -> confirm with a FULL build before committing
                             full_report3: dict[str, object] = build_and_audit(
                                 revised, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id)
                             )
                             full_cov3: object = full_report3.get("coverage_pct")
-                            current_config = revised
-                            current_cov = float(full_cov3) if isinstance(full_cov3, (int, float)) else cov3
-                            current_ok = bool(full_report3.get("ok"))
-                            current_unmeasured = full_report3.get("measured") is False
-                            current_report = full_report3
-                            rec.coverage_history.append(current_cov)
-                            rec.last_edits = "tier-2 LLM reflexion edit"
-                            rec.best_coverage = current_cov
-                            improved = True
+                            full_cov3_f: float = float(full_cov3) if isinstance(full_cov3, (int, float)) else 0.0
+                            # Same guard as tier 1: commit IFF the full build succeeded AND beat the prior best;
+                            # otherwise leave current_config / coverage_history / best_coverage untouched.
+                            if bool(full_report3.get("ok")) and full_cov3_f > current_cov:
+                                current_config = revised
+                                current_cov = full_cov3_f
+                                current_ok = bool(full_report3.get("ok"))
+                                current_unmeasured = full_report3.get("measured") is False
+                                current_report = full_report3
+                                rec.coverage_history.append(current_cov)
+                                rec.last_edits = "tier-2 LLM reflexion edit"
+                                rec.best_coverage = current_cov
+                                improved = True
 
                 iters += 1
                 rec.attempts += 1
@@ -3230,8 +3243,8 @@ def load_optimized_instructions(path: Path) -> str | None:
     if not p.is_file():
         return None
     try:
-        data: object = yaml.safe_load(p.read_text())
-    except yaml.YAMLError:
+        data: object = yaml.safe_load(p.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError, UnicodeDecodeError):
         return None
     if isinstance(data, dict):
         instr: object = data.get("instructions")
@@ -3249,16 +3262,19 @@ def load_gepa_dataset(path: Path) -> list[dict[str, Any]]:
     return []
 
 
-def make_dspy_lm(model_id: str | None, api_base: str | None, api_key: str | None) -> object:
-    """Build a ``dspy.LM`` for GEPA reflection from an OpenAI-compatible config (W6 real-run path).
+def make_dspy_lm(model_id: str | None, api_base: str | None, api_key: str | None, *, backend: str = "openai") -> object:
+    """Build a ``dspy.LM`` for GEPA reflection from the resolved model config (W6 real-run path).
 
-    Used only on the (deferred) live ``--optimize`` path; ``dspy.LM`` speaks litellm-style model strings,
-    so the model is prefixed ``openai/`` for an OpenAI-compatible endpoint. Lazy-imports dspy.
+    Used only on the (deferred) live ``--optimize`` path. ``dspy.LM`` speaks litellm-style model strings:
+    ``backend="openai"`` prefixes ``openai/`` for an OpenAI-compatible endpoint (a bare model id), while
+    ``backend="litellm"`` passes the model id through unchanged (it already carries a litellm provider
+    prefix). Mirrors :func:`build_model`. Lazy-imports dspy.
     """
     _require("dspy")
     import dspy as _dspy  # pyright: ignore[reportMissingImports]
 
-    return _dspy.LM(model=f"openai/{model_id}", api_base=api_base, api_key=api_key)
+    model: str = str(model_id) if backend == "litellm" else f"openai/{model_id}"
+    return _dspy.LM(model=model, api_base=api_base, api_key=api_key)
 
 
 def dominates(a: dict[str, Any], b: dict[str, Any]) -> bool:

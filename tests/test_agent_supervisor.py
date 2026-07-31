@@ -442,7 +442,14 @@ def test_supervisor_built_unmeasured_is_non_failure(tmp_path: Path, fullmap_db: 
     good_yaml: str = yaml.safe_dump(_column_cfg(table))
 
     def fake_build(
-        config_yaml: str, *, fullmap: Path, name: str = "agent", version: str = "0.0.1", qc: bool = False, workdir: Path | None = None
+        config_yaml: str,
+        *,
+        fullmap: Path,
+        name: str = "agent",
+        version: str = "0.0.1",
+        qc: bool = False,
+        head: bool = False,
+        workdir: Path | None = None,
     ) -> dict[str, Any]:  # pyright: ignore[reportUnusedParameter]
         return {
             "ok": True,
@@ -615,6 +622,114 @@ def test_supervisor_tier2_reflexion_on_stall(tmp_path: Path, fullmap_db: Path, m
     assert rec.status == "MAPPED"
     assert rec.last_edits == "tier-2 LLM reflexion edit"
     assert rec.coverage_history[-1] >= 1.0
+
+
+@pytest.mark.parametrize(
+    "full_overrides",
+    [
+        {"coverage_pct": 0.2},  # full build scored LOWER than the prior best (0.3)
+        {"ok": False, "coverage_pct": 0.9},  # full build FAILED despite an optimistic head score
+    ],
+    ids=["lower-coverage", "failed-build"],
+)
+def test_supervisor_improve_rejects_unconfirmed_full_build(
+    full_overrides: dict[str, Any], tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CodeRabbit: a confirming full build that fails or scores <= the prior best is NOT committed.
+
+    The 5-row head sample optimistically scores 0.8 > 0.3, but the subsequent full build either scores
+    lower (0.2) or fails (ok=False). The supervisor must reject it: coverage_history stays monotonic
+    ([0.3]), best_coverage is preserved, and the article is SKIPPED rather than regressed.
+    """
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [(good_yaml, "edit")])
+    monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.3, "measured": True, "per_column": {}, "unresolved": []})
+
+    base: dict[str, Any] = {
+        "ok": True,
+        "coverage_pct": 0.0,
+        "measured": True,
+        "qc_pass_rate": None,
+        "errors": [],
+        "error_codes": [],
+        "kgx_path": None,
+        "edges_path": None,
+        "node_count": 1,
+        "edge_count": 1,
+        "unresolved": [],
+    }
+    reports: list[dict[str, Any]] = [{**base, "coverage_pct": 0.3}, {**base, "coverage_pct": 0.8}, {**base, **full_overrides}]
+    idx: dict[str, int] = {"i": 0}
+
+    def fake_build(
+        config_yaml: str,
+        *,
+        fullmap: Path,
+        name: str = "agent",
+        version: str = "0.0.1",
+        qc: bool = False,
+        head: bool = False,
+        workdir: Path | None = None,
+    ) -> dict[str, Any]:  # pyright: ignore[reportUnusedParameter]
+        report: dict[str, Any] = reports[idx["i"]] if idx["i"] < len(reports) else reports[-1]
+        idx["i"] += 1
+        return report
+
+    monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.9,
+        max_improve_iters=3,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.coverage_history == [0.3]  # the rejected full build is NOT appended -> monotonic
+    assert rec.best_coverage == 0.3
+    assert rec.status == "SKIPPED"
+
+
+def test_supervisor_tier2_rejects_unconfirmed_full_build(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CodeRabbit: a tier-2 reflexion full build that does not beat the prior best is NOT committed.
+
+    Tier 1 stalls (no candidates); tier 2 proposes a config whose head sample scores 0.8 > 0.3 but whose
+    full build regresses to 0.2. The supervisor must reject it: coverage_history stays [0.3], best_coverage
+    is preserved, the tier-2 rationale is NOT recorded, and the article is SKIPPED.
+    """
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [])  # tier 1 stalls
+    monkeypatch.setattr(agent_mod, "llm_propose_config_edit", lambda cfg, rep, task, model=None: good_yaml)  # tier 2 proposes
+    monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.3, "measured": True, "per_column": {}, "unresolved": []})
+    _patch_build_sequence(monkeypatch, [0.3, 0.8, 0.2])  # initial 0.3, tier-2 head 0.8, tier-2 full 0.2 (regresses)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.9,
+        max_improve_iters=2,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        reflexion_model_factory=lambda: lambda prompt: good_yaml,
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.coverage_history == [0.3]  # the rejected tier-2 full build is NOT appended -> monotonic
+    assert rec.best_coverage == 0.3
+    assert rec.last_edits != "tier-2 LLM reflexion edit"  # the rejected edit is NOT recorded
+    assert rec.status == "SKIPPED"
 
 
 def test_supervisor_semantic_gate_blocks_low_score(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:

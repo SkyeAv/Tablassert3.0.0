@@ -435,6 +435,13 @@ def test_load_optimized_instructions_absent_and_bare(tmp_path: Path) -> None:
     assert load_optimized_instructions(bare) == "just a prompt string"
 
 
+def test_load_optimized_instructions_unreadable_returns_none(tmp_path: Path) -> None:
+    """CodeRabbit: an unreadable file (invalid UTF-8) yields None instead of aborting the run."""
+    bad: Path = tmp_path / "bad.yaml"
+    bad.write_bytes(b"\xff\xfe\x00not valid utf-8")  # read_text(encoding='utf-8') raises UnicodeDecodeError
+    assert load_optimized_instructions(bad) is None
+
+
 def test_load_gepa_dataset(tmp_path: Path) -> None:
     """load_gepa_dataset reads a YAML list of example dicts, dropping non-dict rows."""
     ds: Path = tmp_path / "dataset.yaml"

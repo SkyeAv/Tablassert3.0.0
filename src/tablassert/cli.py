@@ -604,6 +604,12 @@ def agent(
             print(f"tablassert agent: missing {which}. Set --{flag} or the {env} environment variable. Never hardcode secrets.", file=sys.stderr)
             raise SystemExit(2)
 
+    # A normalized-score threshold outside [0, 1] (or non-finite, e.g. nan/inf) silently changes the
+    # semantic gate (-1 passes every score); fail loud BEFORE any model is built.
+    if judge_threshold is not None and not 0 <= judge_threshold <= 1:
+        print("tablassert agent: --judge-threshold must be a finite number between 0 and 1.", file=sys.stderr)
+        raise SystemExit(2)
+
     def build_model_factory() -> object:
         return agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend)
 
@@ -637,11 +643,16 @@ def agent(
                 print(f"tablassert agent: --local expects DIR or PMCid=DIR, got {spec!r}", file=sys.stderr)
                 raise SystemExit(2)
             pid, _, dirstr = spec.partition("=")
+            pid = pid.strip()
+            dirstr = dirstr.strip()
+            if not pid or not dirstr:
+                print(f"tablassert agent: --local expects PMCid=DIR, got {spec!r}", file=sys.stderr)
+                raise SystemExit(2)
             per_dir: Path = Path(dirstr)
             if not per_dir.is_dir():
                 print(f"tablassert agent: --local directory does not exist: {per_dir}", file=sys.stderr)
                 raise SystemExit(2)
-            mapping[pid.strip()] = per_dir
+            mapping[pid] = per_dir
         return mapping
 
     local_payload: dict[str, Path] | Path | None = parse_local(local)
@@ -650,11 +661,18 @@ def agent(
     # the supervisor. The reflection LM is a real dspy.LM (deferred live path); offline tests monkeypatch
     # ``run_gepa``/``make_dspy_lm`` so no model/network fires.
     if optimize:
-        reflection_lm: object = agent_mod.make_dspy_lm(resolved_id, resolved_base, resolved_key)
+        reflection_lm: object = agent_mod.make_dspy_lm(resolved_id, resolved_base, resolved_key, backend=backend)
         gepa_dataset: list[dict[str, object]] | None = agent_mod.load_gepa_dataset(dataset) if dataset is not None else None
         gepa_result: dict[str, object] = agent_mod.run_gepa(
             seed_instructions=agent_mod.INSTRUCTIONS, reflection_lm=reflection_lm, dataset=gepa_dataset, max_metric_calls=max_metric_calls
         )
+        # A failed GEPA compile falls back to the SEED instructions with stats["error"]; do NOT persist that
+        # unoptimized prompt or report success -- fail loud with a non-zero status.
+        gepa_stats: object = gepa_result.get("stats")
+        gepa_error: object = gepa_stats.get("error") if isinstance(gepa_stats, dict) else None
+        if gepa_error:
+            print(f"tablassert agent: GEPA optimization failed: {gepa_error}", file=sys.stderr)
+            raise SystemExit(1)
         out_path: Path = instructions_out if instructions_out is not None else (state_dir / "optimized_instructions.yaml")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         opt_instructions: object = gepa_result.get("optimized_instructions", agent_mod.INSTRUCTIONS)
