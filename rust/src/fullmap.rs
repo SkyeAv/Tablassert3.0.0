@@ -3547,6 +3547,67 @@ mod tests {
         assert_eq!(rows.len(), 50);
     }
 
+    /// The public entry point ignores `TABLASSERT_FULLMAP_SHARDS`: even when it is
+    /// set to a smaller value, `build_fullmap_db` writes exactly
+    /// `SHARD_COUNT_SHARDS` (16) shard files and records META.shards="16".  This is
+    /// the regression guard for removing the env-var tunable — the layout tests
+    /// above call `build_fullmap_inner` / `build_test` directly and so cannot catch
+    /// a public path that re-reads the variable.  Setting the variable here is safe
+    /// across concurrent tests: the build no longer reads it (its only reader,
+    /// `resolve_shard_count`, was removed), and it is removed again before any
+    /// assertion can panic.
+    #[test]
+    fn public_build_ignores_shards_env_var() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("HGNC.ndjson");
+        let output = dir.path().join("fullmap.redb");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..50 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+        drop(synonym_file);
+
+        std::env::set_var("TABLASSERT_FULLMAP_SHARDS", "2");
+        let built = Python::attach(|py| {
+            build_fullmap_db(
+                py,
+                output.clone(),
+                Vec::new(),
+                vec![synonyms],
+                Some(2),
+                None,
+            )
+        });
+        std::env::remove_var("TABLASSERT_FULLMAP_SHARDS");
+        built.unwrap();
+
+        // The env var is ignored: META advertises 16 shards, all 16 sibling shard
+        // files exist (s0..s15), and there is no s16.
+        let database = open_cached(output.clone()).unwrap();
+        let read = database.begin_read().unwrap();
+        let meta = read.open_table(META).unwrap();
+        assert_eq!(meta.get("shards").unwrap().unwrap().value(), "16");
+        drop(meta);
+        drop(read);
+        for index in 0..SHARD_COUNT_SHARDS {
+            assert!(
+                shard_path(&output, index).exists(),
+                "missing shard file {index}"
+            );
+        }
+        assert!(!shard_path(&output, SHARD_COUNT_SHARDS).exists());
+
+        // Lookups still resolve across all 16 shards.
+        let terms: Vec<String> = (0..50).map(|i| format!("gene{i}")).collect();
+        let rows = lookup_terms(output, terms, Some(4)).unwrap();
+        assert_eq!(rows.len(), 50);
+    }
+
     /// Backward compatibility: databases built/advertising the former 4-shard
     /// layout must continue to open exactly those four shard files and route terms
     /// with a 4-shard mask, even though new default builds now write 16 shards.
