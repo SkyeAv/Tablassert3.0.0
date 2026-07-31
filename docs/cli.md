@@ -142,8 +142,8 @@ pre-commit hooks. The required `--schema` flag selects which schema to validate 
 no longer sniffed from the YAML).
 
 ```bash
-tablassert validate CONFIGURATION-FILE --schema {graph,table}
-tablassert validate -f CONFIGURATION-FILE --schema {graph,table}
+tablassert validate CONFIGURATION-FILE --schema graph
+tablassert validate -f CONFIGURATION-FILE --schema table
 ```
 
 | Option | Type | Required | Default | Description |

@@ -358,11 +358,12 @@ def test_supervisor_builds_to_stable_builds_dir(tmp_path: Path, fullmap_db: Path
 def test_supervisor_best_config_pipeline_reuse(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The BEST config references the STABLE download and rebuilds from a FRESH cwd (REQ-LAYOUT-5/8).
 
-    Why: the pipeline-reuse contract. ``tablassert build-kg`` (via the agent-written
-    ``builds/<pmc>/graph.yaml`` wrapper) must be able to reuse the supervisor's accepted config WITHOUT
-    re-fetching: its ``source.local`` must be the REAL, persisted download under ``state_dir/downloads/<pmc>/``
-    (not a temp path), and because that path is ABSOLUTE the config must build from ANY cwd. This proves the
-    download is real + referenced and that the best config is self-sufficient for downstream reuse.
+    Why: the pipeline-reuse contract. The supervisor's accepted (best) config must be reusable WITHOUT
+    re-fetching by passing it straight back through the Python API (``build_and_audit`` — the same call
+    the supervisor uses): its ``source.local`` must be the REAL, persisted download under
+    ``state_dir/downloads/<pmc>/`` (not a temp path), and because that path is ABSOLUTE the config must
+    build from ANY cwd. This proves the download is real + referenced and that the best config is
+    self-sufficient for downstream reuse.
     """
     pytest.importorskip("smolagents")
     import yaml

@@ -4,7 +4,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cyclopts.exceptions import MissingArgumentError  # pyright: ignore[reportMissingImports]
 
+from tablassert import cli
 from tablassert.cli import build_pipeline, validate, validate_pipeline
 from tablassert.errors import GraphValidationError, SectionValidationError
 from tablassert.ingests import to_yaml
@@ -78,6 +80,26 @@ def test_validate_command_selects_schema_explicitly(tmp_path: Path) -> None:
     graph_file: Path = tmp_path / "graph.yaml"
     to_yaml(graph_file, {"name": "TEST", "version": "1.0.0", "description": "test graph", "tables": [str(table)], "fullmap": ".fullmap"})
     assert validate(graph_file, schema="graph") is None
+
+
+def test_validate_schema_flag_parses_and_is_required(tmp_path: Path) -> None:
+    """Guard: ``validate`` binds ``--schema``/``-s`` through the parser and REQUIRES it.
+
+    The direct ``validate()`` calls above bypass Cyclopts; this pins the live CLI contract — the
+    schema binds via ``--schema`` and ``-s``, and omitting it fails (it is a required option, no
+    longer sniffed from the YAML). ``parse_args`` binds WITHOUT executing, so no validation runs.
+    """
+    config: Path = tmp_path / "config.yaml"
+
+    def parse(argv: list[str]) -> dict[str, Any]:
+        fn, bound, _ = cli.APP.parse_args(argv, exit_on_error=False)
+        assert fn is validate
+        return dict(bound.arguments)
+
+    assert parse(["validate", str(config), "--schema", "table"])["schema"] == "table"
+    assert parse(["validate", "-f", str(config), "-s", "graph"])["schema"] == "graph"
+    with pytest.raises(MissingArgumentError):
+        parse(["validate", str(config)])
 
 
 def test_validate_command_graph_branch_rejects_invalid_table(tmp_path: Path, fixtures_path: Path) -> None:

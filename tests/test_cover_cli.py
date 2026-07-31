@@ -16,6 +16,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 
 import pytest
+from cyclopts.exceptions import UnknownOptionError  # pyright: ignore[reportMissingImports]
 
 from tablassert import cli, rs
 from tablassert.cli import build_fullmap_pipeline, build_kg, download_babel_file, validate_graph_pipeline
@@ -207,8 +208,9 @@ def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
     ``build-kg`` previously exposed its configuration file ONLY positionally, while ``validate``
     accepted ``--configuration-file``/``-f``. This pins the now-consistent parsing (``-f`` belongs
     to the configuration file). The bound argument is keyed by the ``graph_configuration_file``
-    parameter name. cyclopts' ``parse_args`` binds tokens WITHOUT executing the command, so no
-    build runs.
+    parameter name. It also locks the removal of the deprecated ``--table-config``/``-tc`` and
+    ``--fullmap`` options (parsing them now raises). cyclopts' ``parse_args`` binds tokens WITHOUT
+    executing the command, so no build runs.
     """
     config: Path = tmp_path / "graph.yaml"
 
@@ -222,6 +224,10 @@ def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
     # The configuration file now also binds via -f and --configuration-file (matches validate).
     assert parse(["build-kg", "-f", str(config)])["graph_configuration_file"] == config
     assert parse(["build-kg", "--configuration-file", str(config)])["graph_configuration_file"] == config
+    # The removed --table-config/-tc and --fullmap options are now rejected (locks the removal).
+    for removed in (["--table-config"], ["-tc"], ["--fullmap", str(config)]):
+        with pytest.raises(UnknownOptionError):
+            parse(["build-kg", str(config), *removed])
 
 
 def test_build_fullmap_pipeline_reports_download_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
