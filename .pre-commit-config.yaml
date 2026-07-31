@@ -1,3 +1,6 @@
+# Fast, auto-fixing checks only. Slow, whole-repo gates (pyright, the full pytest
+# suite, cargo-clippy, cargo-test) run in CI on every PR instead — running them in a
+# pre-commit hook rebuilds the Rust extension and runs the whole suite on every commit.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.12
@@ -9,37 +12,9 @@ repos:
         files: ^(src|tests)/.*\.py$
   - repo: local
     hooks:
-      - id: pyright
-        name: pyright
-        entry: uv run pyright
-        language: system
-        types: [python]
-        files: ^(src|tests)/.*\.py$
-        pass_filenames: false
-      - id: pytest
-        name: pytest
-        entry: bash -c 'uv run maturin develop --manifest-path rust/Cargo.toml && uv run pytest'
-        language: system
-        types: [python]
-        files: ^(src|tests|rust)/
-        pass_filenames: false
       - id: cargo-fmt
         name: cargo-fmt
         entry: cargo fmt --check --manifest-path rust/Cargo.toml
-        language: system
-        types: [rust]
-        files: ^rust/
-        pass_filenames: false
-      - id: cargo-clippy
-        name: cargo-clippy
-        entry: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
-        language: system
-        types: [rust]
-        files: ^rust/
-        pass_filenames: false
-      - id: cargo-test
-        name: cargo-test
-        entry: cargo test --manifest-path rust/Cargo.toml
         language: system
         types: [rust]
         files: ^rust/

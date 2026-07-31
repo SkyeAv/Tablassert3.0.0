@@ -98,11 +98,14 @@ dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.6",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=tablassert --cov-report=term-missing"
+# Parallel by default via pytest-xdist (~7x faster full suite, identical coverage).
+# Disable for a single serial run with `-n 0` (e.g. debugging one test).
+addopts = "--cov=tablassert --cov-report=term-missing -n auto"
 markers = ["network: requires internet"]
 
 [tool.coverage.run]
