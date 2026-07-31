@@ -197,22 +197,20 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
         calls.append((stages, fn, arg, kwargs))
 
     monkeypatch.setattr(cli, "run", _fake_run)
-    build_kg(config, release=True, qc=True, log=True, head=True, table_config=True, fullmap=Path("./fm"))
-    assert calls == [
-        (6, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True, "table_config": True, "fullmap": Path("./fm")})
-    ]
+    build_kg(config, release=True, qc=True, log=True, head=True)
+    assert calls == [(6, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True})]
 
 
 def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
     """Guard: ``build-kg``'s config binds positionally AND via ``-f``/``--configuration-file``.
 
     ``build-kg`` previously exposed its configuration file ONLY positionally, while ``validate``
-    accepted ``--configuration-file``/``-f``. This pins the now-consistent parsing and that the
-    ``--fullmap`` short alias is ``-fm`` (``-f`` belongs to the configuration file). cyclopts'
-    ``parse_args`` binds tokens WITHOUT executing the command, so no build runs.
+    accepted ``--configuration-file``/``-f``. This pins the now-consistent parsing (``-f`` belongs
+    to the configuration file). The bound argument is keyed by the ``graph_configuration_file``
+    parameter name. cyclopts' ``parse_args`` binds tokens WITHOUT executing the command, so no
+    build runs.
     """
     config: Path = tmp_path / "graph.yaml"
-    fm: Path = tmp_path / "fm"
 
     def parse(argv: list[str]) -> dict[str, Any]:
         fn, bound, _ = cli.APP.parse_args(argv, exit_on_error=False)
@@ -220,13 +218,10 @@ def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
         return dict(bound.arguments)
 
     # Positional usage is unchanged.
-    assert parse(["build-kg", str(config)])["configuration_file"] == config
+    assert parse(["build-kg", str(config)])["graph_configuration_file"] == config
     # The configuration file now also binds via -f and --configuration-file (matches validate).
-    assert parse(["build-kg", "-f", str(config)])["configuration_file"] == config
-    assert parse(["build-kg", "--configuration-file", str(config)])["configuration_file"] == config
-    # --fullmap keeps its long form and gains the -fm short alias (-f is the config's now).
-    assert parse(["build-kg", str(config), "--fullmap", str(fm)])["fullmap"] == fm
-    assert parse(["build-kg", str(config), "-fm", str(fm)])["fullmap"] == fm
+    assert parse(["build-kg", "-f", str(config)])["graph_configuration_file"] == config
+    assert parse(["build-kg", "--configuration-file", str(config)])["graph_configuration_file"] == config
 
 
 def test_build_fullmap_pipeline_reports_download_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

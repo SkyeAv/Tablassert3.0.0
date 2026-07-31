@@ -132,4 +132,4 @@ def test_validate_command_happy_path(tmp_path: Path) -> None:
     # The three-stage validate pipeline alone does not raise on a valid section.
     assert validate_pipeline(config, PipelineProgress(total_stages=3)) is None
     # The cyclopts command wrapper (cli.py validate -> run(3, validate_pipeline, ...)).
-    assert validate(config) is None
+    assert validate(config, schema="table") is None

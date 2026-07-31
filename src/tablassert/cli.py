@@ -85,41 +85,23 @@ def _extract_sections_indexed(args: tuple[int, object, Path]) -> tuple[int, list
     return idx, to_sections(raw, table)  # pyright: ignore
 
 
-def _load_graph(configuration_file: Path, table_config: bool, fullmap: Path) -> Graph:
+def _load_graph(configuration_file: Path) -> Graph:
     """Load and validate the Graph config that drives a build.
 
-    By default ``configuration_file`` is a Graph YAML loaded directly. With
-    ``table_config=True`` it is instead a table (Section) YAML wrapped in a
-    throwaway ``TEMP_KG`` graph so a single table config can be built or tested
-    without authoring a full graph config; ``contributions`` and ``ui_explanation``
-    then fall back to the Graph model defaults.
-
     Args:
-        configuration_file: Graph YAML path, or a table YAML path when ``table_config``.
-        table_config: When ``True``, wrap the table YAML in a throwaway ``TEMP_KG`` graph.
-        fullmap: Fullmap path for the wrapped graph when ``table_config`` is ``True``.
+        configuration_file: Graph YAML path.
 
     Returns:
         The validated Graph model.
 
     Raises:
-        GraphValidationError: If the (possibly wrapped) graph fails Pydantic validation.
+        GraphValidationError: If the graph fails Pydantic validation.
     """
     from tablassert.ingests import from_yaml
     from tablassert.models import Graph
     from tablassert.progress import flatten_pydantic_error
 
-    raw: object
-    if table_config:
-        raw = {
-            "name": "TEMP_KG",
-            "version": "0.0.0",
-            "description": "Temporary knowledge graph generated to test a table configuration",
-            "tables": [configuration_file],
-            "fullmap": fullmap,
-        }
-    else:
-        raw = from_yaml(configuration_file)
+    raw: object = from_yaml(configuration_file)
     try:
         return Graph.model_validate(raw)
     except pydantic.ValidationError as e:
@@ -127,14 +109,7 @@ def _load_graph(configuration_file: Path, table_config: bool, fullmap: Path) -> 
 
 
 def build_pipeline(
-    configuration_file: Path,
-    progress: PipelineProgress,
-    release: bool = False,
-    qc: bool = False,
-    log: bool = False,
-    head: bool = False,
-    table_config: bool = False,
-    fullmap: Path = Path("./fullmap"),
+    configuration_file: Path, progress: PipelineProgress, release: bool = False, qc: bool = False, log: bool = False, head: bool = False
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
@@ -142,16 +117,12 @@ def build_pipeline(
     Tcodes → collect instructions → build subgraphs → compile graph.
 
     Args:
-        configuration_file: Path to the graph YAML file (or a table YAML
-            file when ``table_config`` is ``True``).
+        configuration_file: Path to the graph YAML file.
         progress: Pipeline progress reporter.
         release: When ``True``, emit release-mode artifacts.
         qc: When ``True``, run quality-control audits on each section.
         log: When ``True``, enable per-section verbose logging.
         head: When ``True``, preview a random sample of up to 5 rows per section (fast schema/shape check).
-        table_config: When ``True``, treat ``configuration_file`` as a table
-            (Section) YAML and wrap it in a throwaway ``TEMP_KG`` graph.
-        fullmap: Fullmap path used to wrap a table config when ``table_config`` is ``True``.
 
     Raises:
         GraphValidationError: If the graph YAML fails Pydantic validation.
@@ -164,7 +135,7 @@ def build_pipeline(
 
     # Stage 1/6: load tables.
     progress.stage("Loading Tables")
-    g: Graph = _load_graph(configuration_file, table_config, fullmap)
+    g: Graph = _load_graph(configuration_file)
     # imap_unordered yields in completion order, so each worker carries its input
     # index and we reassemble by index to keep raw[i] aligned with g.tables[i].
     start, advance, _ = progress.section_loop(len(g.tables), "Load")
@@ -492,36 +463,32 @@ def _download_detail(downloaded: int, total: int) -> str:
 
 @APP.command(name="build-kg")
 def build_kg(
-    configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])],
+    graph_configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])],
     release: Annotated[bool, cyclopts.Parameter(name=["--release", "-r"], negative="")] = False,
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
     head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
-    table_config: Annotated[bool, cyclopts.Parameter(name=["--table-config", "-tc"], negative="")] = False,
-    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-fm"])] = Path("./fullmap"),
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
-    By default the positional config is a Graph YAML. With ``--table-config`` it is a
-    table (Section) YAML wrapped in a throwaway ``TEMP_KG`` graph (``--fullmap`` sets
-    the fullmap path) so a single table config can be built or tested without
-    authoring a full graph config.
+    The positional config is a Graph YAML that orchestrates one or more table
+    configs into a single knowledge-graph build.
     """
-    run(6, build_pipeline, configuration_file, release=release, qc=qc, log=log, head=head, table_config=table_config, fullmap=fullmap)
+    run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head)
 
 
 @APP.command(name="validate")
-def validate(configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])]) -> None:
-    """Validate a graph or table YAML configuration file.
+def validate(
+    configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])],
+    schema: Annotated[Literal["graph", "table"], cyclopts.Parameter(name=["--schema", "-s"])],
+) -> None:
+    """Validate a YAML configuration file against the graph or table config schema.
 
-    Detects the config kind from the YAML: a mapping with a top-level ``tables`` key
-    is a graph config (validates the Graph model AND every referenced table); anything
-    else is treated as a table config (validates section syntax only).
+    ``--schema graph`` validates the Graph model AND every referenced table; ``--schema
+    table`` validates section syntax only. The schema is selected explicitly rather than
+    sniffed from the YAML, so a config is always checked against the schema you expected.
     """
-    from tablassert.ingests import from_yaml
-
-    loaded: object = from_yaml(configuration_file)
-    if isinstance(loaded, dict) and "tables" in loaded:
+    if schema == "graph":
         run(2, validate_graph_pipeline, configuration_file)
     else:
         run(3, validate_pipeline, configuration_file)

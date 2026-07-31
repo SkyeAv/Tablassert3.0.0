@@ -214,10 +214,12 @@ skipped. The `downloads/` payload persists on disk across runs.
 ### Reusing agent outputs with the full pipeline
 
 The best config's `source.local` points at the downloaded table under `downloads/<pmc_id>/`, so the full
-(non-agent) pipeline can reuse the agent's output **without re-fetching**:
+(non-agent) pipeline can reuse the agent's output **without re-fetching**. The agent already writes a
+ready-to-build `graph.yaml` (wrapping `table.yaml` with the resolved fullmap) into `builds/<pmc_id>/`:
 
 ```bash
-tablassert build-kg .tablassert/agent/configs/PMC11708054.yaml --table-config --fullmap ./fullmap
+cd .tablassert/agent/builds/PMC11708054
+tablassert build-kg graph.yaml
 ```
 
 !!! warning "Not relocatable"
