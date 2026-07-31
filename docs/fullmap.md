@@ -85,7 +85,6 @@ override only when targeting an unusual machine.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TABLASSERT_FULLMAP_EXCLUDE_PREFIXES` | *(empty)* | Comma-separated CURIE prefixes to drop at build time (e.g. `INCHIKEY,Publication`). Excluding prefixes you never resolve dramatically cuts build time, peak memory, and database size. |
-| `TABLASSERT_FULLMAP_SHARDS` | `16` | Number of on-disk RECORDS shard files (`fullmap.s0..s<N-1>.redb`) the term index is hash-partitioned across, and the number of concurrent redb writers in the write phase. Non-powers-of-two round down to the nearest power of two (6→4, 3→2); clamped to the compile-time cap (16). The resolved count is recorded in the primary's `meta` table (`shards`) and the read path opens exactly that many shard files. |
 | `TABLASSERT_FULLMAP_CHUNK_BYTES` | `8388608` (8 MiB) | Byte budget per producer→worker line-chunk. Bounded by bytes (not line count) so chunk memory is fixed even for large synonym records. |
 | `TABLASSERT_FULLMAP_PRODUCERS` | `clamp(workers/4, 4, #files)` | Number of producer (decompressor) threads. Decompression far outpaces parallel processing, so a handful keeps all workers fed. |
 | `TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES` | `1000000` | Per-worker term-posting buffer size before spilling a sorted run to disk. Lower → less RAM, more run files. |
@@ -98,8 +97,10 @@ override only when targeting an unusual machine.
 ## Output Artifact
 
 A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling RECORDS shard files
-(`fullmap.s0.redb` … `fullmap.s15.redb` by default — one per `TABLASSERT_FULLMAP_SHARDS`, named after the
-output file stem in the same directory). Together they hold six tables (see `rust/src/fullmap.rs`):
+(`fullmap.s0.redb` … `fullmap.s15.redb` — one per shard, named after the output
+file stem in the same directory). The shard count is fixed at 16 (the read path
+still honors the count recorded in an existing database's `meta` table). Together
+they hold six tables (see `rust/src/fullmap.rs`):
 
 | Table | Description |
 |-------|-------------|

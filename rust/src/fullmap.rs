@@ -31,12 +31,13 @@ const SCHEMA_VERSION_V3: &str = "tablassert.fullmap.v3";
 const SCHEMA_VERSION_V2: &str = "tablassert.fullmap.v2";
 const SCHEMA_VERSION_V1: &str = "tablassert.fullmap.v1";
 const FULLMAP_SOURCE_VERSION: &str = "2026jul22";
-/// Compile-time maximum number of on-disk redb shard files the RECORDS table is
-/// hash-partitioned across, and the default when `TABLASSERT_FULLMAP_SHARDS` is
-/// unset.  Must be a power of two so `term_shard` can route with a bitmask.
-/// The runtime shard count (`resolve_shard_count`) is clamped to this cap; raise
-/// this const to allow more shard files.  Distinct from the in-memory
-/// `SHARD_COUNT` used by the concurrent build maps.
+/// Number of on-disk redb shard files the RECORDS table is hash-partitioned
+/// across.  The public build entry point always writes exactly this many shards
+/// (no longer environment-configurable); the read path still honors the
+/// per-database META `shards` value so databases built before the count was
+/// pinned keep working.  Must be a power of two so `term_shard` can route with a
+/// bitmask.  Distinct from the in-memory `SHARD_COUNT` used by the concurrent
+/// build maps.
 const SHARD_COUNT_SHARDS: usize = 16;
 /// A normalized term grouped with its deduplicated `(curie_id, source_id)` pairs.
 type TermPairs = (String, Vec<(u32, u8)>);
@@ -92,8 +93,8 @@ const DEFAULT_CHUNK_BYTES: usize = 8 * 1024 * 1024;
 
 /// Round `n` DOWN to the nearest power of two (6->4, 3->2, 5->4); powers of two
 /// are unchanged and any `n < 1` floors to 1.  The shard mask routing in
-/// `term_shard` requires a power-of-two shard count, so the runtime tunable is
-/// normalized through this before use.
+/// `term_shard` requires a power-of-two shard count, so the shard count read from
+/// a database's META is normalized through this before use.
 fn round_down_pow2(n: usize) -> usize {
     if n <= 1 {
         return 1;
@@ -104,15 +105,6 @@ fn round_down_pow2(n: usize) -> usize {
     } else {
         p / 2
     }
-}
-
-/// Resolve the on-disk RECORDS shard count from `TABLASSERT_FULLMAP_SHARDS`
-/// (default `SHARD_COUNT_SHARDS`).  Non-powers-of-two round DOWN to the nearest
-/// power of two (6->4, 3->2) and the result is clamped to `<= SHARD_COUNT_SHARDS`,
-/// the compile-time cap on shard files (raise the const to allow more).
-fn resolve_shard_count() -> usize {
-    let raw = env_usize("TABLASSERT_FULLMAP_SHARDS", SHARD_COUNT_SHARDS);
-    round_down_pow2(raw).clamp(1, SHARD_COUNT_SHARDS)
 }
 
 fn env_usize(name: &str, default: usize) -> usize {
@@ -2245,10 +2237,9 @@ pub fn build_fullmap_db(
         DEFAULT_REDB_CACHE_BYTES,
     );
     let insert_batch = env_usize("TABLASSERT_FULLMAP_INSERT_BATCH", DEFAULT_INSERT_BATCH);
-    // On-disk RECORDS shard count (one redb file + concurrent writer per shard).
-    // Defaults to SHARD_COUNT_SHARDS (16); non-powers-of-two round down,
-    // clamped to SHARD_COUNT_SHARDS.
-    let shard_count = resolve_shard_count();
+    // On-disk RECORDS shard count (one redb file + concurrent writer per shard),
+    // fixed at SHARD_COUNT_SHARDS (16).
+    let shard_count = SHARD_COUNT_SHARDS;
     let spill_dir = std::env::var("TABLASSERT_FULLMAP_SPILL_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -2338,9 +2329,10 @@ fn open_cached_shard(primary: &Path, index: usize) -> PyResult<Arc<Database>> {
 }
 
 /// Read the RECORDS shard count advertised in the primary's META, defaulting to
-/// `SHARD_COUNT_SHARDS` when absent.  The write path sets this from the runtime
-/// `TABLASSERT_FULLMAP_SHARDS` tunable, so the read path opens exactly the shards
-/// that exist and routes with the matching mask.
+/// `SHARD_COUNT_SHARDS` when absent.  New builds always record
+/// `SHARD_COUNT_SHARDS`; reading the value back keeps the read path compatible
+/// with databases built before the count was pinned, opening exactly the shards
+/// that exist and routing with the matching mask.
 fn shard_count_of(database: &Database) -> PyResult<usize> {
     let read = database.begin_read().map_err(py_err)?;
     let meta = read.open_table(META).map_err(py_err)?;
@@ -2349,10 +2341,10 @@ fn shard_count_of(database: &Database) -> PyResult<usize> {
         .map_err(py_err)?
         .and_then(|v| v.value().parse::<usize>().ok())
         .unwrap_or(SHARD_COUNT_SHARDS);
-    // Round down to a power of two before clamping, mirroring the write path's
-    // `resolve_shard_count`: the routing mask `xxh64(term) & (count - 1)` is only
-    // correct for powers of two, so a hand-edited non-pow2 META.shards (e.g. 3 ->
-    // mask &2) would silently misroute/drop lookups onto a subset of shards.
+    // Round down to a power of two before clamping: the routing mask
+    // `xxh64(term) & (count - 1)` is only correct for powers of two, so a legacy
+    // or hand-edited non-pow2 META.shards (e.g. 3 -> mask &2) would silently
+    // misroute/drop lookups onto a subset of shards.
     // `round_down_pow2(SHARD_COUNT_SHARDS) == SHARD_COUNT_SHARDS` (16 is a pow2),
     // so the default fallback above is preserved.
     Ok(round_down_pow2(count).clamp(1, SHARD_COUNT_SHARDS))
@@ -2958,10 +2950,9 @@ mod tests {
             .collect()
     }
 
-    /// `TABLASSERT_FULLMAP_SHARDS` may be any positive integer, but mask routing
-    /// only works for powers of two; `round_down_pow2` must round 6->4, 3->2,
-    /// 5->4, leave powers unchanged, and floor tiny/zero inputs at 1 so the shard
-    /// count is always a valid non-zero mask.
+    /// Mask routing only works for powers of two; `round_down_pow2` must round
+    /// 6->4, 3->2, 5->4, leave powers unchanged, and floor tiny/zero inputs at 1
+    /// so a legacy META shard count is always a valid non-zero mask.
     #[test]
     fn round_down_pow2_rounds_to_nearest_lower_power_of_two() {
         assert_eq!(round_down_pow2(0), 1);
@@ -2977,16 +2968,15 @@ mod tests {
     }
 
     /// The read path's `shard_count_of` must round a non-power-of-two META.shards
-    /// DOWN to a power of two, exactly like the write path's `resolve_shard_count`.
-    /// WHY: lookups route with the mask `xxh64(term) & (count - 1)`, which is only
-    /// correct for powers of two; a hand-edited META.shards of 3 (mask &2) would
-    /// route terms only onto shards {0,2}, silently misrouting/dropping lookups
-    /// (shard 1 opened but never queried, shard 3 never opened).  Rounding down
-    /// keeps the mask valid.  A missing/unparseable value falls back to the default
-    /// `SHARD_COUNT_SHARDS` (16) via `unwrap_or`, itself a power of two so the
-    /// round-down leaves it unchanged.  `"0"` PARSES (so the fallback does not fire)
-    /// and rounds down to 1, exactly mirroring the write path's `resolve_shard_count`
-    /// (`round_down_pow2(0) == 1`); 1 is still a valid mask (&0), so it is safe.
+    /// DOWN to a power of two.  WHY: lookups route with the mask
+    /// `xxh64(term) & (count - 1)`, which is only correct for powers of two; a
+    /// legacy or hand-edited META.shards of 3 (mask &2) would route terms only onto
+    /// shards {0,2}, silently misrouting/dropping lookups (shard 1 opened but never
+    /// queried, shard 3 never opened).  Rounding down keeps the mask valid.  A
+    /// missing/unparseable value falls back to the default `SHARD_COUNT_SHARDS`
+    /// (16) via `unwrap_or`, itself a power of two so the round-down leaves it
+    /// unchanged.  `"0"` PARSES (so the fallback does not fire) and rounds down to
+    /// 1 (`round_down_pow2(0) == 1`); 1 is still a valid mask (&0), so it is safe.
     #[test]
     fn shard_count_of_rounds_non_pow2_meta_down() {
         pyo3::Python::initialize();
@@ -3022,8 +3012,8 @@ mod tests {
         // Missing / unparseable -> default SHARD_COUNT_SHARDS (16) via unwrap_or.
         assert_eq!(check(None), SHARD_COUNT_SHARDS);
         assert_eq!(check(Some("not-a-number")), SHARD_COUNT_SHARDS);
-        // "0" parses (fallback does NOT fire) and rounds down to 1, mirroring the
-        // write path; 1 is a valid mask, so this is safe, not a misroute.
+        // "0" parses (fallback does NOT fire) and rounds down to 1; 1 is a valid
+        // mask, so this is safe, not a misroute.
         assert_eq!(check(Some("0")), 1);
     }
 
@@ -3477,12 +3467,13 @@ mod tests {
         );
     }
 
-    /// `TABLASSERT_FULLMAP_SHARDS` makes the shard count runtime-configurable.  A
-    /// 2-shard build must write META.shards="2", create exactly s0+s1 (each with a
-    /// RECORDS table, even the one that receives no terms), create no higher shard
-    /// files up to the compile-time cap, and the read path must open exactly 2
-    /// shards (from META) and still resolve every term — proving writer and reader
-    /// agree on the runtime shard mask.
+    /// The build and read paths agree on a parameterized shard count.  A 2-shard
+    /// build must write META.shards="2", create exactly s0+s1 (each with a RECORDS
+    /// table, even the one that receives no terms), create no higher shard files up
+    /// to the compile-time cap, and the read path must open exactly 2 shards (from
+    /// META) and still resolve every term.  The public entry point pins the count
+    /// to `SHARD_COUNT_SHARDS`, but this exercises the same parameterized path the
+    /// read path relies on for databases built with fewer shards.
     #[test]
     fn runtime_shard_count_builds_and_reads_fewer_shards() {
         pyo3::Python::initialize();
@@ -3523,7 +3514,7 @@ mod tests {
         )
         .unwrap();
 
-        // META.shards reflects the runtime count.
+        // META.shards reflects the parameterized shard count.
         let database = open_cached(output.clone()).unwrap();
         let read = database.begin_read().unwrap();
         let meta = read.open_table(META).unwrap();
@@ -3551,6 +3542,67 @@ mod tests {
         // Read path opens exactly 2 shards and resolves every term.
         let shards = open_cached_shards(&output).unwrap();
         assert_eq!(shards.len(), 2);
+        let terms: Vec<String> = (0..50).map(|i| format!("gene{i}")).collect();
+        let rows = lookup_terms(output, terms, Some(4)).unwrap();
+        assert_eq!(rows.len(), 50);
+    }
+
+    /// The public entry point ignores `TABLASSERT_FULLMAP_SHARDS`: even when it is
+    /// set to a smaller value, `build_fullmap_db` writes exactly
+    /// `SHARD_COUNT_SHARDS` (16) shard files and records META.shards="16".  This is
+    /// the regression guard for removing the env-var tunable — the layout tests
+    /// above call `build_fullmap_inner` / `build_test` directly and so cannot catch
+    /// a public path that re-reads the variable.  Setting the variable here is safe
+    /// across concurrent tests: the build no longer reads it (its only reader,
+    /// `resolve_shard_count`, was removed), and it is removed again before any
+    /// assertion can panic.
+    #[test]
+    fn public_build_ignores_shards_env_var() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("HGNC.ndjson");
+        let output = dir.path().join("fullmap.redb");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..50 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+        drop(synonym_file);
+
+        std::env::set_var("TABLASSERT_FULLMAP_SHARDS", "2");
+        let built = Python::attach(|py| {
+            build_fullmap_db(
+                py,
+                output.clone(),
+                Vec::new(),
+                vec![synonyms],
+                Some(2),
+                None,
+            )
+        });
+        std::env::remove_var("TABLASSERT_FULLMAP_SHARDS");
+        built.unwrap();
+
+        // The env var is ignored: META advertises 16 shards, all 16 sibling shard
+        // files exist (s0..s15), and there is no s16.
+        let database = open_cached(output.clone()).unwrap();
+        let read = database.begin_read().unwrap();
+        let meta = read.open_table(META).unwrap();
+        assert_eq!(meta.get("shards").unwrap().unwrap().value(), "16");
+        drop(meta);
+        drop(read);
+        for index in 0..SHARD_COUNT_SHARDS {
+            assert!(
+                shard_path(&output, index).exists(),
+                "missing shard file {index}"
+            );
+        }
+        assert!(!shard_path(&output, SHARD_COUNT_SHARDS).exists());
+
+        // Lookups still resolve across all 16 shards.
         let terms: Vec<String> = (0..50).map(|i| format!("gene{i}")).collect();
         let rows = lookup_terms(output, terms, Some(4)).unwrap();
         assert_eq!(rows.len(), 50);
