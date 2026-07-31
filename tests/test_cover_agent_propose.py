@@ -294,8 +294,8 @@ def test_supervisor_invalid_final_answer_skipped(tmp_path: Path, fullmap_db: Pat
     """Covers agent.py:2079-2082 — an agent final answer that fails the validate gate -> SKIPPED.
 
     ``build_agent`` is monkeypatched to a stub whose ``run`` returns a non-config string, so the
-    supervisor's post-run ``validate_section(config)`` gate fails and the record is marked SKIPPED
-    with the 'failed the validate_section gate' note, checkpointed, and skipped (batch advances).
+    supervisor's post-run ``validate_table_config(config)`` gate fails and the record is marked SKIPPED
+    with the 'failed the validate_table_config gate' note, checkpointed, and skipped (batch advances).
     """
     pytest.importorskip("smolagents")
     import tablassert.agent as agent_mod
@@ -322,7 +322,7 @@ def test_supervisor_invalid_final_answer_skipped(tmp_path: Path, fullmap_db: Pat
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "SKIPPED"
-    assert "validate_section gate" in rec.notes
+    assert "validate_table_config gate" in rec.notes
 
 
 def test_supervisor_coverage_failure_fallback(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:

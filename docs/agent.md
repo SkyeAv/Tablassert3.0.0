@@ -27,6 +27,7 @@ The extra pins:
 | `smolagents` | `==1.26.0` | `CodeAgent` ReAct loop, `OpenAIModel`/`LiteLLMModel`, tools |
 | `dspy` | `==3.2.1` | `dspy.GEPA` black-box prompt optimization |
 | `litellm` | (any) | optional fallback / rate-limiting model backend |
+| `pdfminer.six` | (any) | extract a `.pdf` main text into data-fenced context (`pmc_article_context`) |
 
 ## PMC-AWS data source
 
@@ -55,9 +56,10 @@ failing fast (cheap checks before any large download and before any model call):
 
 The main text is wired into the agent via the `pmc_article_context` tool, which parses the JATS `.xml`
 into a compact, data-fenced summary (title, abstract, section outline, and a supplementary-table manifest
-with labels/captions). For Excel tables, `read_table` lists **all worksheets** and reads a chosen one via
-`sheet=` (set `source.sheet` in the config), so the agent can check every table and every sheet before
-authoring a config.
+with labels/captions). A `.txt` is a fenced excerpt; a `.pdf` is extracted to a fenced excerpt via
+`pdfminer.six` (so PDF-only articles still give the agent main-text context). For Excel tables,
+`read_table` lists **all worksheets** and reads a chosen one via `sheet=` (set `source.sheet` in the
+config), so the agent can check every table and every sheet before authoring a config.
 
 !!! failure "The old paths are dead"
     The legacy `s3://pmc-open-access` bucket, the FTP `oa_file_list.csv`, and the per-article `tar.gz`
@@ -67,6 +69,24 @@ authoring a config.
 !!! note "Coverage + licensing"
     Only the **open-access subset** of PMC (~half) is available here. Articles are **CC-BY**: cite the
     source and DOI (e.g. PMC11708054 → [10.1128/mbio.01679-24](https://doi.org/10.1128/mbio.01679-24)).
+
+### Local payloads (non-open-access articles)
+
+Only the open-access subset of PMC is fetchable from the bucket. To run the **same** derive/build/improve
+pipeline on an article you already hold locally (e.g. a non-open-access paper), pass `--local`:
+
+```bash
+# one directory used for every PMC id
+tablassert agent PMC11708054 --fullmap ./fullmap --local ./payloads/PMC11708054
+
+# per-article directories
+tablassert agent PMC1 PMC2 --fullmap ./fullmap --local PMC1=./payloads/p1 PMC2=./payloads/p2
+```
+
+A local payload directory holds the table(s) and (optionally) the article main text. When `--local` is
+given for an id, the supervisor locates the files there and **does not fetch from PMC-AWS**; each section's
+`source.local` points at the local file (set `source.url` to the original download link if you want the
+config to be re-fetchable). A `--local` directory that does not exist fails loud (exit 2).
 
 ## Model configuration
 
@@ -104,7 +124,9 @@ tablassert agent PMC11708054 PMC12345678 \
 ```
 
 Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`, `--max-improve-iters`/`-mi`,
-`--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`.
+`--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`, plus `--local`/`-l`, `--reflexion`,
+`--judge-model`, `--judge-threshold`, and the `--optimize`/`-o` prompt-optimization flags
+(`--instructions-file`, `--instructions-out`, `--max-metric-calls`, `--dataset`).
 The [CLI reference — `agent`](cli.md#agent) is the authoritative flag table; the list here is a compact
 reminder.
 
@@ -115,15 +137,53 @@ control flow over agentic decisions. For each PMC id it:
 
 1. **Fetches** the latest-version article payload (`fetch_pmc_article`: main text + metadata + all tables;
    fails fast on not-open-access / no-table) and presents **all** candidate tables to the agent.
-2. Runs the **inner `CodeAgent`** to *derive* an initial Section config (`pmc_article_context` → `read_table`
-   → `derive_config`, gated by the Section JSON schema). The agent picks the table + worksheet to map.
+2. Runs the **inner `CodeAgent`** to *derive* an initial table config (`pmc_article_context` → `read_table`
+   → `derive_config`, every section gated by the Section JSON schema). The agent maps **each** mappable
+   table/worksheet as its own section — **one config per paper** (see below).
 3. **Builds + audits** in one deterministic mega-tool (`build_and_audit`: validate → build → QC → coverage).
 4. **Improves** while coverage `< map_threshold` and budget remains: `propose_config_edit` → rebuild →
    **accept iff strictly better** (monotonic — regressions are rejected).
 5. **Records** metrics, **checkpoints**, and moves to the next config.
 
 A config that won't map after `--max-improve-iters` is marked `SKIPPED: <reason>` and the supervisor
-advances — one difficult article never aborts the batch.
+advances — one difficult article never aborts the batch. A config that **builds** but whose fullmap
+coverage **cannot be measured** (an unreproducible source frame) is marked `BUILT_UNMEASURED` — a
+terminal **non-failure** that is neither a certified `MAPPED` nor counted as a `SKIPPED`; the best
+config is still written and is reusable by the full pipeline. Coverage measurement itself is
+multi-cwd: a relative `source.local` is resolved against the build workdir as well as the current
+directory before a config is declared unmeasurable.
+
+### Optional gates: reflexion improver & semantic judge
+
+Two opt-in extensions layer on top of the deterministic improve loop (both reuse the configured
+endpoint; neither is required):
+
+- **`--reflexion`** — when the deterministic `propose_config_edit` stalls, a tier-2 LLM reflexion
+  improver reflects on the coverage feedback and proposes an edit that may change predicate/source
+  (same model config).
+- **`--judge-model` / `--judge-threshold`** — a semantic judge scores the built output; when
+  `--judge-model` is set, `MAPPED` additionally requires the normalized score to clear
+  `--judge-threshold` (`0.5` when unset). Without `--judge-model` the coverage gate alone decides.
+
+### Multi-section configs (one per paper)
+
+The agent authors **one table config per paper** that may contain **multiple sections** — one per
+mappable supplementary table/worksheet. The config is shaped as `{template, sections}`:
+
+- **`template`** carries the shared per-paper **provenance** (`repo` + `publication`) and nothing else —
+  in particular **no `source`**.
+- **`sections`** is a list with one entry per table; **each section owns its own `source`** (its own
+  `local` path **and** its own `source.url` download link, plus `sheet`/`row_slice`/`delimiter` as
+  needed) and its own `statement`. Different sections can therefore reference **different files with
+  different download links**.
+
+The final-answer gate (`validate_table_config`) validates **every** section, so a config is accepted
+only when all of its sections are schema-valid. `map_coverage` measures each section and reports an
+**aggregate** (`overall` = mean of section coverages, `min` = weakest section, `measured` = true iff
+every section measured, plus the per-section breakdown under `sections`). `propose_config_edit` edits
+each section independently from its own coverage entry. A single-table paper is still one config with
+one section. State and storage stay **per-paper**: one best config (`configs/<pmc_id>.yaml`) holding
+all sections, with `section_coverages` recorded for visibility.
 
 ### Workspace layout & checkpoint / resume
 
@@ -170,9 +230,9 @@ tablassert build-kg .tablassert/agent/configs/PMC11708054.yaml --table-config --
 | Tool | Kind | Purpose |
 | --- | --- | --- |
 | `fetch_pmc_article` | function | PMC-AWS download of the useful latest-version payload (main text + metadata + tables), fail-fast |
-| `pmc_article_context` | tool | parse the JATS main text into a **data-fenced** summary (title/abstract/sections/supplementary manifest) |
+| `pmc_article_context` | tool | parse the JATS main text into a **data-fenced** summary (title/abstract/sections/supplementary manifest); `.txt`/`.pdf` render a fenced excerpt (PDF via `pdfminer.six`) |
 | `read_table` | tool | render a table as **data-fenced, spotlighted** text; lists **all worksheets** of an Excel file (`sheet=`) |
-| `derive_config` | tool | author a Section config; `output_schema = Section.model_json_schema()` |
+| `derive_config` | tool | author a table config (`template` + one section per table); each section must satisfy `Section.model_json_schema()` |
 | `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage mega-tool |
 | `map_coverage` | tool | fullmap term-resolution coverage (per-column + overall) |
 | `propose_config_edit` | tool | deterministic, constrained `NodeEncoding` edits + rationale |
@@ -186,8 +246,10 @@ The agent's `instructions` make the techniques explicit:
 
 - **ReAct + planning** — `CodeAgent` is a ReAct loop; `planning_interval=3` re-plans every few steps.
 - **Structured / constrained output** — `derive_config` injects the Section JSON schema; a
-  `final_answer_checks=[validate_section]` gate means the agent can only terminate with a schema-valid config.
-- **Few-shot exemplars** — the tutorial gene~disease config and the ALAMV6 organism~chemical config.
+  `final_answer_checks=[validate_table_config]` gate means the agent can only terminate with a config
+  whose **every section** is schema-valid (multi-section configs are validated section-by-section).
+- **Few-shot exemplars** — the tutorial gene~disease section, the ALAMV6 organism~chemical section, and a
+  multi-section config (one config, two tables, each section its own source/url).
 - **Reflexion-style self-critique** — `propose_config_edit` / `reflexion_improve` reflect on failing rows,
   error codes, and unresolved terms, then make a targeted, schema-valid edit.
 - **Error-recovery prompting** — tools return rich coded errors; the prompt directs the agent to read the
@@ -233,11 +295,36 @@ deterministic heuristic is used.
 **Reporting:** `pareto_frontier(runs)` returns the **non-dominated set** over (quality ↑, cost ↓,
 wrong-calls ↓) and its **knee** (best quality per unit cost).
 
+### Real-run prompt optimization (`--optimize`)
+
+GEPA prompt optimization is a first-class CLI path. `tablassert agent --optimize` (`-o`) runs
+`dspy.GEPA` with a real reflection LM (built from the same `--model-id`/`--api-base`/`--api-key`
+config) and **persists the optimized instructions** instead of running the supervisor:
+
+```bash
+# optimize the agent prompt over a dataset of examples, writing the result to a file
+tablassert agent PMC11708054 --fullmap ./fullmap --optimize \
+  --dataset examples/gepa-dataset.yaml --instructions-out .tablassert/agent/optimized_instructions.yaml
+
+# later, run the supervisor with the optimized prompt
+tablassert agent PMC11708054 --fullmap ./fullmap \
+  --instructions-file .tablassert/agent/optimized_instructions.yaml
+```
+
+`--dataset` is a YAML/JSON list of `{table_summary, coverage_feedback}` examples; `--max-metric-calls`
+bounds the GEPA metric budget. `save_optimized_instructions` / `load_optimized_instructions` persist and
+reload the prompt (a `{instructions, descriptions}` mapping). Without `--instructions-file` the built-in
+`INSTRUCTIONS` prompt is used. (A real optimization run needs a live model; the offline suite exercises
+this path via an injectable `gepa_cls` stub.)
+
 ### Golden fixture
 
 `tests/agent_fixtures/PMC11708054/` is an offline replay pair: the ALAMV6 reference config, a small
 **synthetic** source table, and a trimmed reference config (CC-BY attribution to PMC11708054; the
-reference KGX is computed in-test against a tiny real redb — nothing large is committed).
+reference KGX is computed in-test against a tiny real redb — nothing large is committed). A second
+fixture, `tests/agent_fixtures/GENE_DISEASE/`, is a gene~disease config in multi-section
+(`{template, sections}`) shape with PMID provenance — used to keep the offline heuristic judge and the
+W3 multi-section validation honest on a distinct config.
 
 ## Testing
 

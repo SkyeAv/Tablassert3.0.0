@@ -8,11 +8,13 @@ agent or network call ever fires.
 
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
-from tablassert.agent import ENV_API_BASE, ENV_API_KEY, ENV_MODEL_ID
+from tablassert.agent import ENV_API_BASE, ENV_API_KEY, ENV_MODEL_ID, load_optimized_instructions, save_optimized_instructions
 from tablassert.cli import APP, agent
 
 
@@ -106,3 +108,215 @@ def test_agent_cli_flag_parsing() -> None:
     assert bound.args == (["PMC9"],)
     assert bound.kwargs["fullmap"] == Path("/tmp/fm")
     assert bound.kwargs["map_threshold"] == 0.5
+
+
+def test_agent_optimize_flag_parses() -> None:
+    """``-o``/``--optimize`` parses to optimize=True without executing the body."""
+    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm", "-o"], exit_on_error=False)
+    assert fn is agent
+    assert bound.kwargs["optimize"] is True
+
+
+def test_agent_optimize_persists_instructions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """W6: ``--optimize`` runs GEPA (stubbed) and persists optimized instructions; the supervisor is NOT run."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    monkeypatch.setattr("tablassert.agent.make_dspy_lm", lambda *a, **k: object())
+
+    def fake_run_gepa(**kwargs: object) -> dict[str, object]:
+        assert kwargs.get("seed_instructions")  # the seed prompt is passed
+        return {"optimized_instructions": "OPTIMIZED PROMPT", "optimized_descriptions": {"propose": "DESC"}, "stats": {}, "frontier": []}
+
+    monkeypatch.setattr("tablassert.agent.run_gepa", fake_run_gepa)
+
+    def fail_supervisor(*a: object, **k: object) -> object:
+        raise AssertionError("run_supervisor must NOT run when --optimize is set")
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
+
+    out: Path = tmp_path / "opt.yaml"
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, instructions_out=out)
+
+    assert out.is_file()
+    assert load_optimized_instructions(out) == "OPTIMIZED PROMPT"
+    assert "optimized instructions" in capsys.readouterr().out
+
+
+def test_agent_instructions_file_forwarded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """W6: ``--instructions-file`` loads optimized instructions and forwards them to the supervisor."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    instr_file: Path = tmp_path / "instr.yaml"
+    save_optimized_instructions(instr_file, "CUSTOM PROMPT")
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), instructions_file=instr_file)
+    assert captured["instructions"] == "CUSTOM PROMPT"
+
+
+def test_agent_no_instructions_file_passes_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without ``--instructions-file`` the supervisor receives instructions=None (default INSTRUCTIONS)."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"))
+    assert captured["instructions"] is None
+
+
+@pytest.mark.parametrize("bad_threshold", [-1.0, 2.0, float("nan"), float("inf")])
+def test_agent_judge_threshold_out_of_range_exits_2(
+    bad_threshold: float, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CodeRabbit: --judge-threshold outside [0, 1] (or non-finite) fails loud (exit 2) before any model runs."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    def fail_supervisor(*a: object, **k: object) -> object:
+        raise AssertionError("run_supervisor must NOT run with an invalid --judge-threshold")
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
+
+    with pytest.raises(SystemExit) as exc_info:
+        agent(["PMC1"], fullmap=Path("/tmp/fm"), judge_threshold=bad_threshold)
+    assert exc_info.value.code == 2
+    assert "judge-threshold" in capsys.readouterr().err
+
+
+def test_agent_judge_threshold_valid_is_forwarded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A valid --judge-threshold (here 0.7) passes validation and reaches the supervisor unchanged."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), judge_threshold=0.7)
+    assert captured["judge_threshold"] == 0.7
+
+
+@pytest.mark.parametrize("bad_spec", ["PMC1=", "=DIR", "PMC1=   "])
+def test_agent_local_rejects_empty_mapping_components(bad_spec: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """CodeRabbit: --local PMCid=DIR with a blank PMC id or blank DIR fails loud (exit 2), not Path('.')."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    def fail_supervisor(*a: object, **k: object) -> object:
+        raise AssertionError("run_supervisor must NOT run with an invalid --local mapping")
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
+
+    with pytest.raises(SystemExit) as exc_info:
+        agent(["PMC1"], fullmap=Path("/tmp/fm"), local=[bad_spec])
+    assert exc_info.value.code == 2
+    assert "--local" in capsys.readouterr().err
+
+
+def test_agent_local_valid_mapping_forwarded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A valid --local PMCid=DIR mapping (existing dir) parses and reaches the supervisor as a dict."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), local=[f"PMC1={tmp_path}"])
+    assert captured["local"] == {"PMC1": tmp_path}
+
+
+def test_agent_optimize_forwards_backend_to_dspy_lm(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """CodeRabbit: --optimize forwards --backend to the GEPA reflection LM (not always openai)."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    lm_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def fake_make_dspy_lm(*args: object, **kwargs: object) -> object:
+        lm_calls.append((args, kwargs))
+        return object()
+
+    monkeypatch.setattr("tablassert.agent.make_dspy_lm", fake_make_dspy_lm)
+    monkeypatch.setattr(
+        "tablassert.agent.run_gepa", lambda **k: {"optimized_instructions": "X", "optimized_descriptions": {}, "stats": {}, "frontier": []}
+    )
+
+    out: Path = tmp_path / "opt.yaml"
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, backend="litellm", instructions_out=out)
+
+    args, kwargs = lm_calls[0]
+    assert args == ("m", "b", "k")
+    assert kwargs == {"backend": "litellm"}
+    assert out.is_file()  # a successful compile still persists
+
+
+def test_agent_optimize_gepa_error_exits_nonzero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """CodeRabbit: a failed GEPA compile (stats['error']) is NOT reported as optimized; exit 1, nothing saved."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    monkeypatch.setattr("tablassert.agent.make_dspy_lm", lambda *a, **k: object())
+    monkeypatch.setattr(
+        "tablassert.agent.run_gepa",
+        lambda **k: {"optimized_instructions": "SEED", "optimized_descriptions": {}, "stats": {"error": "boom"}, "frontier": []},
+    )
+
+    out: Path = tmp_path / "opt.yaml"
+    with pytest.raises(SystemExit) as exc_info:
+        agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, instructions_out=out)
+    assert exc_info.value.code == 1
+    assert not out.is_file()  # the unoptimized seed is NOT persisted
+    assert "GEPA optimization failed" in capsys.readouterr().err
+
+
+def test_make_dspy_lm_honors_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CodeRabbit: make_dspy_lm maps backend -> litellm model string (openai/ prefix vs pass-through)."""
+    import tablassert.agent as agent_mod
+
+    captured: list[dict[str, object]] = []
+
+    class _FakeLM:
+        def __init__(self, model: str, api_base: object = None, api_key: object = None) -> None:
+            captured.append({"model": model, "api_base": api_base, "api_key": api_key})
+
+    monkeypatch.setitem(sys.modules, "dspy", types.SimpleNamespace(LM=_FakeLM))
+
+    agent_mod.make_dspy_lm("gpt-x", "base", "key")  # default backend=openai
+    agent_mod.make_dspy_lm("anthropic/claude", "base", "key", backend="litellm")
+
+    assert captured[0]["model"] == "openai/gpt-x"
+    assert captured[1]["model"] == "anthropic/claude"

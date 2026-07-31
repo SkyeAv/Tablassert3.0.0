@@ -14,7 +14,14 @@ from typing import Any
 import pytest
 import yaml
 
-from tablassert.agent import make_propose_config_edit_tool, propose_config_edit, validate_section
+from tablassert.agent import (
+    llm_propose_config_edit,
+    make_propose_config_edit_tool,
+    propose_config_candidates,
+    propose_config_edit,
+    validate_section,
+    validate_table_config,
+)
 from tablassert.biolink import Categories
 
 # ``Categories`` is built dynamically; biolink's TYPE_CHECKING stub omits ORGANISM_TAXON, so derive the
@@ -162,3 +169,126 @@ def test_propose_tool() -> None:
     assert "config_yaml" in payload
     assert "rationale" in payload
     assert validate_section(payload["config_yaml"]) is True
+
+
+# --------------------------------------------------------------------------- #
+# W2: propose_config_candidates — ranked, distinct, idempotent
+# --------------------------------------------------------------------------- #
+
+
+def _taxonomic_noise_section() -> dict[str, Any]:
+    """A bare section whose subject has BOTH taxonomic and noise unresolved terms."""
+    return {
+        "source": {"kind": "text", "local": "./d.tsv", "url": "https://e.com/d.tsv", "delimiter": "\t"},
+        "statement": {
+            "subject": {"method": "column", "encoding": "A"},
+            "predicate": "associated_with",
+            "object": {"method": "value", "encoding": "CHEBI:41774"},
+        },
+        "provenance": {"repo": "PMC", "publication": "PMC1"},
+    }
+
+
+def _taxonomic_noise_report() -> dict[str, Any]:
+    return {
+        "overall": 0.0,
+        "per_column": {"subject": {"coverage": 0.0, "total": 2, "resolved": 0, "unresolved": ["g__Bacteroides", "NA control"], "method": "column"}},
+        "unresolved": ["g__Bacteroides", "NA control"],
+    }
+
+
+def test_propose_candidates_ranked_distinct() -> None:
+    """When taxonomic AND noise apply, candidates are ranked best-first and DISTINCT.
+
+    Rank 1 is the full edit (taxonomic knobs + noise remove); the narrower single-category variants
+    (taxonomic-only, noise-only) follow and differ from the full edit and each other.
+    """
+    cfg: dict[str, Any] = _taxonomic_noise_section()
+    candidates = propose_config_candidates(cfg, _taxonomic_noise_report())
+
+    assert len(candidates) >= 2
+    yamls: list[str] = [c[0] for c in candidates]
+    assert len(set(yamls)) == len(yamls), "candidates must be distinct"
+
+    # Rank 1 (full edit) has BOTH a taxonomic prioritize and a noise remove...
+    full: dict[str, Any] = yaml.safe_load(candidates[0][0])
+    assert ORGANISM_TAXON in full["statement"]["subject"]["prioritize"]
+    assert full["statement"]["subject"]["remove"]
+    # ...while a narrower variant drops one category (taxonomic-only has no remove).
+    taxonomic_only = [c for c in candidates if "taxonomic-only" in c[1]]
+    assert taxonomic_only
+    tax_only_subject: dict[str, Any] = yaml.safe_load(taxonomic_only[0][0])["statement"]["subject"]
+    assert ORGANISM_TAXON in tax_only_subject["prioritize"]
+    assert "remove" not in tax_only_subject
+
+
+def test_propose_candidates_idempotent() -> None:
+    """Re-proposing on the full edit yields NO new candidates (every knob already present)."""
+    cfg: dict[str, Any] = _taxonomic_noise_section()
+    candidates = propose_config_candidates(cfg, _taxonomic_noise_report())
+    assert candidates
+    full_yaml: str = candidates[0][0]
+    # The full edit already carries every applicable knob, so re-proposing finds nothing to add.
+    assert propose_config_candidates(full_yaml, _taxonomic_noise_report()) == []
+
+
+def test_propose_candidates_empty_when_no_safe_edit() -> None:
+    """A config with no unresolved terms yields no candidates."""
+    cfg: dict[str, Any] = _taxonomic_noise_section()
+    report: dict[str, Any] = {
+        "overall": 1.0,
+        "per_column": {"subject": {"coverage": 1.0, "total": 1, "resolved": 1, "unresolved": [], "method": "column"}},
+        "unresolved": [],
+    }
+    assert propose_config_candidates(cfg, report) == []
+
+
+# --------------------------------------------------------------------------- #
+# W1: llm_propose_config_edit — tier-2 reflexion (offline, fake callable model)
+# --------------------------------------------------------------------------- #
+
+
+def _revised_section(new_predicate: str = "correlated_with") -> str:
+    """A schema-valid revised config that changes the predicate (a change the deterministic proposer never makes)."""
+    cfg: dict[str, Any] = _taxonomic_noise_section()
+    cfg["statement"]["predicate"] = new_predicate
+    return yaml.safe_dump(cfg, sort_keys=False)
+
+
+def test_llm_propose_returns_valid_revised_config() -> None:
+    """A reflexion model returning a valid revised config (predicate changed) is accepted + gated valid."""
+    revised: str = _revised_section("correlated_with")
+    result = llm_propose_config_edit(_taxonomic_noise_section_yaml(), _taxonomic_noise_report(), "context", model=lambda prompt: revised)
+    assert result is not None
+    assert validate_table_config(result)
+    assert yaml.safe_load(result)["statement"]["predicate"] == "correlated_with"
+
+
+def test_llm_propose_extracts_fenced_yaml() -> None:
+    """A reflexion model wrapping the config in a ```yaml fence is still extracted + validated."""
+    revised: str = _revised_section("interacts_with")
+    fenced: str = f"Here is the revised config:\n```yaml\n{revised}\n```\n"
+    result = llm_propose_config_edit(_taxonomic_noise_section_yaml(), _taxonomic_noise_report(), "context", model=lambda prompt: fenced)
+    assert result is not None
+    assert yaml.safe_load(result)["statement"]["predicate"] == "interacts_with"
+
+
+def test_llm_propose_invalid_returns_none() -> None:
+    """A reflexion model returning an invalid config yields None (caller keeps the current best)."""
+    result = llm_propose_config_edit(
+        _taxonomic_noise_section_yaml(), _taxonomic_noise_report(), "context", model=lambda prompt: "definitely not a config"
+    )
+    assert result is None
+
+
+def test_llm_propose_never_raises() -> None:
+    """A reflexion model that raises is swallowed -> None (reflexion must never abort the caller)."""
+
+    def boom(prompt: str) -> str:
+        raise RuntimeError("synthetic model failure")
+
+    assert llm_propose_config_edit(_taxonomic_noise_section_yaml(), _taxonomic_noise_report(), "context", model=boom) is None
+
+
+def _taxonomic_noise_section_yaml() -> str:
+    return yaml.safe_dump(_taxonomic_noise_section(), sort_keys=False)

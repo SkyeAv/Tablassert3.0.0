@@ -229,3 +229,47 @@ def test_build_and_audit_measures_relative_source_with_correct_cwd(tmp_path: Pat
     assert report["ok"] is True
     assert report["coverage_pct"] == 1.0  # brca1/mapk1 resolve -> a REAL measurement, not vacuous
     assert not any("unmeasurable" in str(note) for note in report["errors"])
+
+
+def test_build_and_audit_multi_section_two_files(tmp_path: Path, redb: Path) -> None:
+    """W3: a ``{template, sections}`` config with TWO sections (different files) builds ONE graph.
+
+    Each section owns its own ``source`` (a different file); the template carries the shared provenance.
+    The build produces nodes/edges from BOTH sections and ``coverage_pct`` is the AGGREGATE (mean) across
+    sections, with ``measured`` True iff every section measured.
+    """
+    t1: Path = tmp_path / "s1.tsv"
+    t1.write_text("brca1\tmapk1\nbrca1\tmapk1\n")
+    t2: Path = tmp_path / "s2.tsv"
+    t2.write_text("mapk1\tbrca1\nmapk1\tbrca1\n")
+    cfg: dict[str, Any] = {
+        "template": {"provenance": {"repo": "PMC", "publication": "PMC1"}},
+        "sections": [
+            {
+                "source": {"kind": "text", "local": str(t1), "url": "https://example.com/s1.tsv", "delimiter": "\t"},
+                "statement": {
+                    "subject": {"method": "column", "encoding": "A"},
+                    "predicate": "associated_with",
+                    "object": {"method": "column", "encoding": "B"},
+                },
+            },
+            {
+                "source": {"kind": "text", "local": str(t2), "url": "https://example.com/s2.tsv", "delimiter": "\t"},
+                "statement": {
+                    "subject": {"method": "column", "encoding": "A"},
+                    "predicate": "associated_with",
+                    "object": {"method": "column", "encoding": "B"},
+                },
+            },
+        ],
+    }
+    result = build_and_audit(_yaml(cfg), fullmap=redb, workdir=tmp_path)
+    assert result["ok"] is True
+    assert result["measured"] is True
+    assert result["coverage_pct"] == 1.0  # both sections fully resolve -> aggregate mean 1.0
+    node_count = result["node_count"]
+    assert isinstance(node_count, int)
+    assert node_count > 0
+    edge_count = result["edge_count"]
+    assert isinstance(edge_count, int)
+    assert edge_count > 0
