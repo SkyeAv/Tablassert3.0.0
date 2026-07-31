@@ -1362,11 +1362,6 @@ override only when targeting an unusual machine.</p>
 <td>Comma-separated CURIE prefixes to drop at build time (e.g. <code>INCHIKEY,Publication</code>). Excluding prefixes you never resolve dramatically cuts build time, peak memory, and database size.</td>
 </tr>
 <tr>
-<td><code>TABLASSERT_FULLMAP_SHARDS</code></td>
-<td><code>16</code></td>
-<td>Number of on-disk RECORDS shard files (<code>fullmap.s0..s&lt;N-1&gt;.redb</code>) the term index is hash-partitioned across, and the number of concurrent redb writers in the write phase. Non-powers-of-two round down to the nearest power of two (6→4, 3→2); clamped to the compile-time cap (16). The resolved count is recorded in the primary's <code>meta</code> table (<code>shards</code>) and the read path opens exactly that many shard files.</td>
-</tr>
-<tr>
 <td><code>TABLASSERT_FULLMAP_CHUNK_BYTES</code></td>
 <td><code>8388608</code> (8 MiB)</td>
 <td>Byte budget per producer→worker line-chunk. Bounded by bytes (not line count) so chunk memory is fixed even for large synonym records.</td>
@@ -1410,8 +1405,10 @@ override only when targeting an unusual machine.</p>
 </table>
 <h2 id="output-artifact">Output Artifact<a class="headerlink" href="#output-artifact" title="Permanent link">&para;</a></h2>
 <p>A primary redb file (default <code>./fullmap/data/fullmap.redb</code>) plus its sibling RECORDS shard files
-(<code>fullmap.s0.redb</code> … <code>fullmap.s15.redb</code> by default — one per <code>TABLASSERT_FULLMAP_SHARDS</code>, named after the
-output file stem in the same directory). Together they hold six tables (see <code>rust/src/fullmap.rs</code>):</p>
+(<code>fullmap.s0.redb</code> … <code>fullmap.s15.redb</code> — one per shard, named after the output
+file stem in the same directory). The shard count is fixed at 16 (the read path
+still honors the count recorded in an existing database's <code>meta</code> table). Together
+they hold six tables (see <code>rust/src/fullmap.rs</code>):</p>
 <table>
 <thead>
 <tr>
