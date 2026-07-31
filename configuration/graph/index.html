@@ -1387,7 +1387,7 @@
 
 
 <h1 id="graph-configuration-reference">Graph Configuration Reference<a class="headerlink" href="#graph-configuration-reference" title="Permanent link">&para;</a></h1>
-<p>Graph configurations orchestrate one or more <a href="../table/">table configurations</a> into a single knowledge-graph build — author one to produce KGX output with <code>tablassert build-kg</code>. To build or test a single table config without authoring a graph file, use <code>build-kg --table-config</code>, which wraps it in a throwaway graph (see the <a href="../../cli/#build-kg">CLI reference</a>).</p>
+<p>Graph configurations orchestrate one or more <a href="../table/">table configurations</a> into a single knowledge-graph build — author one to produce KGX output with <code>tablassert build-kg</code> (see the <a href="../../cli/#build-kg">CLI reference</a>). To check a single table config on its own, use <code>tablassert validate &lt;table.yaml&gt; --schema table</code>.</p>
 <h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
 <p>A graph configuration file specifies:
 - Output knowledge graph name, version, and description

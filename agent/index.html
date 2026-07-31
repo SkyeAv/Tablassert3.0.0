@@ -1827,8 +1827,10 @@ the fetched downloads, and the build outputs <strong>all co-locate</strong> unde
 skipped. The <code>downloads/</code> payload persists on disk across runs.</p>
 <h3 id="reusing-agent-outputs-with-the-full-pipeline">Reusing agent outputs with the full pipeline<a class="headerlink" href="#reusing-agent-outputs-with-the-full-pipeline" title="Permanent link">&para;</a></h3>
 <p>The best config's <code>source.local</code> points at the downloaded table under <code>downloads/&lt;pmc_id&gt;/</code>, so the full
-(non-agent) pipeline can reuse the agent's output <strong>without re-fetching</strong>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>.tablassert/agent/configs/PMC11708054.yaml<span class="w"> </span>--table-config<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
+(non-agent) pipeline can reuse the agent's output <strong>without re-fetching</strong>. The agent already writes a
+ready-to-build <code>graph.yaml</code> (wrapping <code>table.yaml</code> with the resolved fullmap) into <code>builds/&lt;pmc_id&gt;/</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>.tablassert/agent/builds/PMC11708054
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>graph.yaml
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Not relocatable</p>

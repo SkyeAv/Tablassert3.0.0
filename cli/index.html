@@ -1576,9 +1576,9 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <h2 id="build-kg">build-kg<a class="headerlink" href="#build-kg" title="Permanent link">&para;</a></h2>
 <p>Use this to build a KGX NDJSON knowledge graph (nodes, edges, and a Resource Ingest Guide) from a
 YAML configuration file.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>GRAPH-CONFIGURATION-FILE<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
 </code></pre></div>
-<p>By default the positional <code>CONFIGURATION-FILE</code> (also <code>--configuration-file</code>, <code>-f</code>) is a <strong>graph</strong> YAML.</p>
+<p>The positional <code>GRAPH-CONFIGURATION-FILE</code> (also <code>--configuration-file</code>, <code>-f</code>) is a <strong>graph</strong> YAML.</p>
 <table>
 <thead>
 <tr>
@@ -1591,11 +1591,11 @@ YAML configuration file.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>CONFIGURATION-FILE</code> (<code>--configuration-file</code>, <code>-f</code>)</td>
+<td><code>GRAPH-CONFIGURATION-FILE</code> (<code>--configuration-file</code>, <code>-f</code>)</td>
 <td>Path</td>
 <td>Yes</td>
 <td>—</td>
-<td>Graph YAML (or a table YAML with <code>--table-config</code>)</td>
+<td>Graph YAML</td>
 </tr>
 <tr>
 <td><code>--release</code>, <code>-r</code></td>
@@ -1625,24 +1625,9 @@ YAML configuration file.</p>
 <td><code>False</code></td>
 <td>Fast output-shape preview: ≤5 random rows/section, cached to <code>.head.parquet</code>, never clobbers a full build</td>
 </tr>
-<tr>
-<td><code>--table-config</code>, <code>-tc</code></td>
-<td>Flag</td>
-<td>No</td>
-<td><code>False</code></td>
-<td>Build/test one table (Section) config without writing a graph config (wrapped in a throwaway <code>TEMP_KG</code> graph)</td>
-</tr>
-<tr>
-<td><code>--fullmap</code>, <code>-fm</code></td>
-<td>Path</td>
-<td>No</td>
-<td><code>./fullmap</code></td>
-<td>Fullmap path for the throwaway <code>TEMP_KG</code> graph when <code>--table-config</code> is passed</td>
-</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>graph.yaml<span class="w"> </span>--qc<span class="w"> </span>--log
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>table-config.yaml<span class="w"> </span>--table-config<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
 </code></pre></div>
 <p>Output is written to the current directory as <code>{name}_{version}.nodes.ndjson</code>,
 <code>{name}_{version}.edges.ndjson</code>, and <code>{name}_{version}.RIG.yaml</code>; intermediate parquet lands in
@@ -1658,10 +1643,11 @@ Subgraphs the detail line also shows the per-section phase (<code>load</code>, <
 </details>
 <hr />
 <h2 id="validate">validate<a class="headerlink" href="#validate" title="Permanent link">&para;</a></h2>
-<p>Use this to validate a graph or table configuration without running the build — ideal for CI and
-pre-commit hooks. Both forms work: <code>tablassert validate &lt;file&gt;</code> and <code>tablassert validate -f &lt;file&gt;</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE
+<p>Use this to validate a configuration against a schema without running the build — ideal for CI and
+pre-commit hooks. The required <code>--schema</code> flag selects which schema to validate against (the kind is
+no longer sniffed from the YAML).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>table
 </code></pre></div>
 <table>
 <thead>
@@ -1679,22 +1665,27 @@ pre-commit hooks. Both forms work: <code>tablassert validate &lt;file&gt;</code>
 <td>Path</td>
 <td>Yes</td>
 <td>—</td>
-<td>Graph <strong>or</strong> table configuration to validate</td>
+<td>Configuration file to validate</td>
+</tr>
+<tr>
+<td><code>--schema</code>, <code>-s</code></td>
+<td><code>graph</code> | <code>table</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Schema to validate against: <code>graph</code> validates the <code>Graph</code> model <strong>and</strong> every referenced table; <code>table</code> validates section syntax only</td>
 </tr>
 </tbody>
 </table>
-<p>The config kind is detected from the YAML: a mapping with a top-level <code>tables</code> key is a <strong>graph</strong>
-config (validates the <code>Graph</code> model <strong>and</strong> every referenced table); anything else is a <strong>table</strong>
-config (validates section syntax). Exits non-zero on any schema error. See
-<a href="../configuration/table/">Table Configuration</a> and <a href="../configuration/graph/">Graph Configuration</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml
+<p>Exits non-zero on any schema error. See <a href="../configuration/table/">Table Configuration</a> and
+<a href="../configuration/graph/">Graph Configuration</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml<span class="w"> </span>--schema<span class="w"> </span>table
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
 </code></pre></div>
 <hr />
 <h2 id="typical-workflow">Typical workflow<a class="headerlink" href="#typical-workflow" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Author a table config, then a graph config that references it.</li>
-<li><code>tablassert validate graph.yaml</code> — fail fast on schema errors.</li>
+<li><code>tablassert validate graph.yaml --schema graph</code> — fail fast on schema errors.</li>
 <li><code>tablassert build-kg graph.yaml</code> — produce KGX NDJSON + RIG (add <code>--qc</code> to audit mappings).</li>
 </ol>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
