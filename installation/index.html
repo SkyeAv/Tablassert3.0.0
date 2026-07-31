@@ -1593,7 +1593,7 @@ extras are opt-in.</p>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>make<span class="w"> </span>check
 </code></pre></div>
 <p>The underlying stable gates are <code>ruff check</code> / <code>ruff format --check</code>, <code>pyright</code>, <code>pytest</code>, and <code>cargo fmt --check</code> / <code>cargo test</code> / <code>cargo clippy --all-targets -- -D warnings</code> (see <a href="../development/">Development</a>).</p>
-<p>Install pre-commit hooks if you want the gates to run automatically before commits:</p>
+<p>Install pre-commit hooks to run the fast lint/format checks automatically before commits (the full gates run in CI):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pre-commit<span class="w"> </span>install
 </code></pre></div>
 <h2 id="upgrading-development-installation">Upgrading Development Installation<a class="headerlink" href="#upgrading-development-installation" title="Permanent link">&para;</a></h2>
