@@ -310,8 +310,18 @@ def test_make_dspy_lm_honors_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
 
     class _FakeLM:
-        def __init__(self, model: str, api_base: object = None, api_key: object = None) -> None:
-            captured.append({"model": model, "api_base": api_base, "api_key": api_key})
+        def __init__(
+            self,
+            model: str,
+            api_base: object = None,
+            api_key: object = None,
+            temperature: object = None,
+            max_tokens: object = None,
+            timeout: object = None,
+        ) -> None:
+            captured.append(
+                {"model": model, "api_base": api_base, "api_key": api_key, "temperature": temperature, "max_tokens": max_tokens, "timeout": timeout}
+            )
 
     monkeypatch.setitem(sys.modules, "dspy", types.SimpleNamespace(LM=_FakeLM))
 
@@ -320,3 +330,6 @@ def test_make_dspy_lm_honors_backend(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert captured[0]["model"] == "openai/gpt-x"
     assert captured[1]["model"] == "anthropic/claude"
+    # reasoning-model-safe defaults are passed through (a truncated config_yaml would stall GEPA)
+    assert captured[0]["temperature"] == 1.0
+    assert captured[0]["max_tokens"] == 16000

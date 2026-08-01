@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 from collections.abc import Callable
 from enum import Enum
@@ -20,6 +21,28 @@ _SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], s
 # One-time-per-process flag: set when a legacy-compat fallback first fires so the
 # degraded-mode warning is logged once, not on every lookup against a stale extension.
 _LEGACY_COMPAT_WARNED: bool = False
+
+# redb opens the fullmap with an exclusive file lock. A concurrent or just-finishing holder (e.g. the
+# agent's inner code-executor thread completing a build) can momentarily strand that lock; a lookup that
+# lands in that window would otherwise raise ``Database already open`` and surface as a false 0.0 coverage.
+# Retry briefly on that contention so transient lock overlap does not corrupt a build/coverage result.
+_LOCK_RETRY_TOKENS: tuple[str, ...] = ("already open", "acquire lock", "cannot acquire")
+_LOCK_ATTEMPTS: int = 10
+_LOCK_DELAY: float = 0.5
+
+
+def _call_with_lock_retry(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """Call a redb-backed ``rs`` function, retrying on transient ``Database already open`` lock contention."""
+    for attempt in range(_LOCK_ATTEMPTS):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:  # redb raises a generic error carrying the lock message; match on text
+            msg = str(exc).lower()
+            if attempt < _LOCK_ATTEMPTS - 1 and any(token in msg for token in _LOCK_RETRY_TOKENS):
+                time.sleep(_LOCK_DELAY * (attempt + 1))  # linear backoff: 0.5s, 1.0s, 1.5s, ...
+                continue
+            raise
+    return fn(*args, **kwargs)  # unreachable: the final loop iteration returns or raises above
 
 
 def _warn_legacy_compat(reason: str) -> None:
@@ -121,9 +144,9 @@ def _dimension_maps(db: Path, cache_key: tuple[Path, float]) -> tuple[list[str],
         return cached
     source_version: str = rs.fullmap_source_version()
     value: tuple[list[str], list[str], list[str], str] = (
-        list(rs.hydrate_prefixes(db)),
-        list(rs.hydrate_categories(db)),
-        list(rs.hydrate_sources(db)),
+        list(_call_with_lock_retry(rs.hydrate_prefixes, db)),
+        list(_call_with_lock_retry(rs.hydrate_categories, db)),
+        list(_call_with_lock_retry(rs.hydrate_sources, db)),
         source_version,
     )
     _SOURCE_CACHE.clear()
@@ -156,7 +179,7 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
 
     if misses:
         try:
-            pair_rows: list[dict[str, object]] = rs.lookup_fullmap_terms(db, misses, threads=threads, return_format="pairs")
+            pair_rows: list[dict[str, object]] = _call_with_lock_retry(rs.lookup_fullmap_terms, db, misses, threads=threads, return_format="pairs")
         except TypeError as exc:
             # Only swallow the signature-mismatch TypeError from an old extension that
             # lacks return_format; any other TypeError is a real bug and must propagate.
@@ -165,12 +188,12 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
             # Legacy extension without return_format: re-query the FULL term set so
             # already-cached terms are not dropped from the returned rows.
             _warn_legacy_compat("no return_format support")
-            return rs.lookup_fullmap_terms(db, terms, threads=threads)
+            return _call_with_lock_retry(rs.lookup_fullmap_terms, db, terms, threads=threads)
         if pair_rows and "records" not in pair_rows[0]:
             # Legacy row shape covers only `misses`; re-query the FULL term set so
             # already-cached terms are not dropped when _TERM_CACHE is partially warm.
             _warn_legacy_compat("legacy row shape")
-            return rs.lookup_fullmap_terms(db, terms, threads=threads)
+            return _call_with_lock_retry(rs.lookup_fullmap_terms, db, terms, threads=threads)
         seen: set[str] = set()
         for row in pair_rows:
             term = str(row["term"])
@@ -187,7 +210,7 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
     curie_ids: list[int] = sorted({curie_id for pairs in pairs_by_term.values() if pairs for curie_id, _source_id in pairs})
     if not curie_ids:
         return []
-    hydrated: list[dict[str, Any]] = rs.hydrate_curies(db, curie_ids)
+    hydrated: list[dict[str, Any]] = _call_with_lock_retry(rs.hydrate_curies, db, curie_ids)
     curie_map: dict[int, dict[str, Any]] = dict(zip(curie_ids, hydrated, strict=True))
     prefixes, categories, sources, source_version = _dimension_maps(db, cache_key)
     rows: list[dict[str, object]] = []

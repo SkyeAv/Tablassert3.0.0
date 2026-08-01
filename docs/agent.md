@@ -298,24 +298,40 @@ wrong-calls ↓) and its **knee** (best quality per unit cost).
 ### Real-run prompt optimization (`--optimize`)
 
 GEPA prompt optimization is a first-class CLI path. `tablassert agent --optimize` (`-o`) runs
-`dspy.GEPA` with a real reflection LM (built from the same `--model-id`/`--api-base`/`--api-key`
-config) and **persists the optimized instructions** instead of running the supervisor:
+`dspy.GEPA` and **persists the optimized instructions** instead of running the supervisor.
+
+Following GEPA best practice, the optimizer splits the models: a **strong reflection LM** (`--model-id`)
+proposes the few instruction edits, and an optional **fast task LM** (`--task-model`) runs the many
+candidate program evaluations. Pointing `--task-model` at a cheap model (e.g. a flash model) keeps the
+run fast while the strong model does the thinking; without `--task-model` the reflection LM is used for
+both. `--gepa-threads` parallelizes GEPA's evaluation pool.
 
 ```bash
 # optimize the agent prompt over a dataset of examples, writing the result to a file
 tablassert agent PMC11708054 --fullmap ./fullmap --optimize \
-  --dataset examples/gepa-dataset.yaml --instructions-out .tablassert/agent/optimized_instructions.yaml
+  --dataset examples/gepa-dataset.yaml --task-model qwen-flash \
+  --max-metric-calls 30 --gepa-threads 4 \
+  --instructions-out .tablassert/agent/optimized_instructions.yaml
 
 # later, run the supervisor with the optimized prompt
 tablassert agent PMC11708054 --fullmap ./fullmap \
   --instructions-file .tablassert/agent/optimized_instructions.yaml
 ```
 
-`--dataset` is a YAML/JSON list of `{table_summary, coverage_feedback}` examples; `--max-metric-calls`
-bounds the GEPA metric budget. `save_optimized_instructions` / `load_optimized_instructions` persist and
-reload the prompt (a `{instructions, descriptions}` mapping). Without `--instructions-file` the built-in
-`INSTRUCTIONS` prompt is used. (A real optimization run needs a live model; the offline suite exercises
-this path via an injectable `gepa_cls` stub.)
+`--dataset` is a YAML/JSON list of examples. Each example carries `table_summary` and
+`coverage_feedback` (the program inputs); it MAY also carry:
+
+- `fullmap` — a fullmap path. When present, the GEPA metric scores each proposed config with **real
+  fullmap coverage** (via a `build_and_audit` head-sample), so GEPA optimizes the genuine objective
+  rather than a validity-only proxy.
+- `workdir` — the directory a proposed config's relative `source.local` resolves against (LLMs mimic the
+  exemplar's `./downloads/...` paths), so coverage is measured on the actual table.
+- `head` — default `true`: score a fast 5-row preview; set `false` for full-fidelity coverage builds.
+
+`--max-metric-calls` bounds the GEPA metric budget. `save_optimized_instructions` /
+`load_optimized_instructions` persist and reload the prompt (a `{instructions, descriptions}` mapping).
+Without `--instructions-file` the built-in `INSTRUCTIONS` prompt is used. (A real optimization run needs a
+live model; the offline suite exercises this path via an injectable `gepa_cls` stub.)
 
 ### Golden fixture
 

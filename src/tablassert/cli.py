@@ -549,6 +549,8 @@ def agent(
     instructions_out: Annotated[Path | None, cyclopts.Parameter(name=["--instructions-out"])] = None,
     max_metric_calls: Annotated[int, cyclopts.Parameter(name=["--max-metric-calls"])] = 8,
     dataset: Annotated[Path | None, cyclopts.Parameter(name=["--dataset"])] = None,
+    task_model: Annotated[str | None, cyclopts.Parameter(name=["--task-model"])] = None,
+    gepa_threads: Annotated[int | None, cyclopts.Parameter(name=["--gepa-threads"])] = None,
 ) -> None:
     """Autonomously derive, build, audit, and improve KG configs from PMC articles.
 
@@ -589,6 +591,12 @@ def agent(
             ``<state-dir>/optimized_instructions.yaml``).
         max_metric_calls: GEPA metric-call budget for ``--optimize``.
         dataset: Optional YAML/JSON list of ``{table_summary, coverage_feedback}`` examples for ``--optimize``.
+            An example may also carry ``fullmap`` (a fullmap path used to score each proposed config with
+            REAL coverage) and ``head`` (default true: score a fast 5-row preview; set false for full builds).
+        task_model: Optional FAST model id for GEPA's many program evaluations (GEPA best practice: a cheap
+            task LM + a strong reflection LM); ``--model-id`` is the strong reflection LM. Defaults to the
+            reflection LM when unset.
+        gepa_threads: Optional thread count for GEPA's evaluation pool (parallelizes candidate scoring).
     """
     from tablassert import agent as agent_mod
 
@@ -661,10 +669,26 @@ def agent(
     # the supervisor. The reflection LM is a real dspy.LM (deferred live path); offline tests monkeypatch
     # ``run_gepa``/``make_dspy_lm`` so no model/network fires.
     if optimize:
+        # Resolve the output path to ABSOLUTE up front: GEPA's parallel metric builds chdir the process cwd
+        # (os.chdir is process-global), so a relative --instructions-out must be anchored to the invocation
+        # cwd here, not the cwd GEPA happens to leave behind when it returns.
+        out_path: Path = (instructions_out if instructions_out is not None else (state_dir / "optimized_instructions.yaml")).resolve()
         reflection_lm: object = agent_mod.make_dspy_lm(resolved_id, resolved_base, resolved_key, backend=backend)
+        # GEPA best practice: a FAST task LM for the many program evaluations + the strong model for the few
+        # reflection steps. --task-model selects the task LM; it defaults to the reflection LM when unset.
+        task_lm: object | None = (
+            agent_mod.make_dspy_lm(task_model, resolved_base, resolved_key, backend=backend, temperature=agent_mod.GEPA_TASK_TEMPERATURE)
+            if task_model
+            else None
+        )
         gepa_dataset: list[dict[str, object]] | None = agent_mod.load_gepa_dataset(dataset) if dataset is not None else None
         gepa_result: dict[str, object] = agent_mod.run_gepa(
-            seed_instructions=agent_mod.INSTRUCTIONS, reflection_lm=reflection_lm, dataset=gepa_dataset, max_metric_calls=max_metric_calls
+            seed_instructions=agent_mod.INSTRUCTIONS,
+            reflection_lm=reflection_lm,
+            task_lm=task_lm,
+            dataset=gepa_dataset,
+            max_metric_calls=max_metric_calls,
+            num_threads=gepa_threads,
         )
         # A failed GEPA compile falls back to the SEED instructions with stats["error"]; do NOT persist that
         # unoptimized prompt or report success -- fail loud with a non-zero status.
@@ -673,7 +697,6 @@ def agent(
         if gepa_error:
             print(f"tablassert agent: GEPA optimization failed: {gepa_error}", file=sys.stderr)
             raise SystemExit(1)
-        out_path: Path = instructions_out if instructions_out is not None else (state_dir / "optimized_instructions.yaml")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         opt_instructions: object = gepa_result.get("optimized_instructions", agent_mod.INSTRUCTIONS)
         opt_descriptions: object = gepa_result.get("optimized_descriptions")

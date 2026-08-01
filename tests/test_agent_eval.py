@@ -315,6 +315,109 @@ def test_run_gepa_default_example_path() -> None:
     assert result["optimized_instructions"] == "OPT"
 
 
+def test_gepa_metric_satisfies_dspy_five_arg_contract() -> None:
+    """Regression: dspy.GEPA.__init__ binds FIVE positional args, so gepa_metric must accept them.
+
+    Before the fix, ``gepa_metric(bundle)`` took ONE arg, so a real ``dspy.GEPA(metric=gepa_metric)``
+    raised ``TypeError: GEPA metric must accept five arguments`` and ``tablassert agent --optimize``
+    crashed (the offline suite passed only because it injects a ``gepa_cls`` stub that skips the check).
+    """
+    pytest.importorskip("dspy")
+    import inspect
+
+    inspect.signature(gepa_metric).bind(None, None, None, None, None)  # raises TypeError if <5 positional params
+
+
+def test_gepa_metric_dspy_call_validity_signal() -> None:
+    """The dspy 5-arg call shape (gold Example, pred Prediction) scores validity without a fullmap."""
+    dspy = pytest.importorskip("dspy")
+    ex = dspy.Example(table_summary="t", coverage_feedback="c").with_inputs("table_summary", "coverage_feedback")
+    good = gepa_metric(ex, dspy.Prediction(config_yaml=VALID_CFG), None, "propose", [])
+    assert good.score == pytest.approx(0.1)  # schema-valid, no fullmap -> validity-only floor (0.1)
+    assert isinstance(good.feedback, str)
+    bad = gepa_metric(ex, dspy.Prediction(config_yaml="statement: {}"), None, "propose", [])
+    assert bad.score == 0.0  # invalid config -> hard gate
+
+
+def test_gepa_bundle_from_dspy_head_samples_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_gepa_bundle_from_dspy measures REAL coverage via build_and_audit, head-sampling unless head:false."""
+    dspy = pytest.importorskip("dspy")
+    import tablassert.agent as agent_mod
+
+    calls: list[dict[str, object]] = []
+
+    def fake_build(config_yaml: str, *, fullmap: object, head: bool = False, workdir: object = None, **_: object) -> dict[str, object]:
+        calls.append({"head": head, "fullmap": fullmap, "workdir": workdir})
+        return {"coverage_pct": 0.7, "errors": [], "error_codes": [], "unresolved": []}
+
+    monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
+    pred = dspy.Prediction(config_yaml=VALID_CFG)
+    gold = dspy.Example(table_summary="t", coverage_feedback="c", fullmap="/tmp/fm", workdir="/tmp/wd").with_inputs(
+        "table_summary", "coverage_feedback"
+    )
+    bundle = agent_mod._gepa_bundle_from_dspy(gold, pred)
+    assert calls  # default: fast head-sample for optimization speed
+    assert calls[0]["head"] is True
+    assert str(calls[0]["workdir"]) == "/tmp/wd"  # workdir passed so relative source.local resolves
+    assert bundle["report"]["coverage_pct"] == 0.7
+
+    calls.clear()
+    gold_full = dspy.Example(table_summary="t", coverage_feedback="c", fullmap="/tmp/fm", head=False).with_inputs(
+        "table_summary", "coverage_feedback"
+    )
+    agent_mod._gepa_bundle_from_dspy(gold_full, pred)
+    assert calls  # per-example override -> full-fidelity build
+    assert calls[0]["head"] is False
+
+
+def test_run_gepa_configures_task_lm_over_reflection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """run_gepa configures dspy with the FAST task_lm for evals, falling back to reflection_lm."""
+    dspy = pytest.importorskip("dspy")
+    configured: list[object] = []
+    monkeypatch.setattr(dspy, "configure", lambda lm=None, **_: configured.append(lm))
+
+    class StubGEPA:
+        def __init__(self, metric: object = None, **kwargs: object) -> None:
+            self.gepa_stats: dict[str, object] = {}
+
+        def compile(self, program: object, *, trainset: object = None, **kwargs: object) -> object:
+            predictor = SimpleNamespace(signature=SimpleNamespace(instructions="OPT"))
+            return SimpleNamespace(named_predictors=lambda: [("propose", predictor)])
+
+    task = SimpleNamespace(name="task")
+    refl = SimpleNamespace(name="refl")
+    run_gepa(seed_instructions="SEED", gepa_cls=StubGEPA, reflection_lm=refl, task_lm=task, trainset=[])
+    assert configured  # task_lm wins for the program forward pass
+    assert configured[-1] is task
+
+    configured.clear()
+    run_gepa(seed_instructions="SEED", gepa_cls=StubGEPA, reflection_lm=refl, trainset=[])
+    assert configured  # falls back to reflection_lm
+    assert configured[-1] is refl
+
+
+def test_run_gepa_forwards_num_threads() -> None:
+    """num_threads is forwarded to GEPA only when set."""
+    pytest.importorskip("dspy")
+    created: dict[str, Any] = {}
+
+    class StubGEPA:
+        def __init__(self, metric: object = None, **kwargs: Any) -> None:
+            created["kwargs"] = kwargs
+            self.gepa_stats: dict[str, object] = {}
+
+        def compile(self, program: object, *, trainset: object = None, **kwargs: object) -> object:
+            predictor = SimpleNamespace(signature=SimpleNamespace(instructions="OPT"))
+            return SimpleNamespace(named_predictors=lambda: [("propose", predictor)])
+
+    run_gepa(seed_instructions="SEED", gepa_cls=StubGEPA, reflection_lm=SimpleNamespace(), trainset=[], num_threads=4)
+    assert created["kwargs"]["num_threads"] == 4
+
+    created.clear()
+    run_gepa(seed_instructions="SEED", gepa_cls=StubGEPA, reflection_lm=SimpleNamespace(), trainset=[])
+    assert "num_threads" not in created["kwargs"]
+
+
 # --------------------------------------------------------------------------- #
 # Offline integration: build the reference KGX from the fixture + score F1
 # --------------------------------------------------------------------------- #
