@@ -17,7 +17,7 @@ import pytest
 import tablassert.qc as qc
 from tablassert.errors import QcRuntimeMissingError
 
-HF_REPO: str = "pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb"
+HF_REPO: str = "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb"
 
 
 class FakeModel:

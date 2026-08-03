@@ -43,7 +43,7 @@ def get_biobert() -> object:
     """Lazy-load and memoize the BioBERT sentence-transformer (``functools.cache``).
 
     Loads from the local cache at ``MODEL`` when present; otherwise downloads
-    ``pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb`` and saves it for
+    ``pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb`` and saves it for
     future runs.
 
     Returns:
@@ -57,7 +57,7 @@ def get_biobert() -> object:
             model: object = sentence_transformers.SentenceTransformer(str(MODEL))  # pyright: ignore
         else:
             model = sentence_transformers.SentenceTransformer(  # pyright: ignore
-                "pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb"
+                "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb"
             )
             MODEL.mkdir(parents=True, exist_ok=True)
             model.save(MODEL)  # pyright: ignore
