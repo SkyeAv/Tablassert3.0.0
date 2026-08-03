@@ -1,6 +1,7 @@
 """Automated QC reviewer (LLM-as-judge): for each assayed PMC, feed the table summary + derived config +
 a KG edge sample to a strong LLM and collect a structured critique. Outputs a review report (JSON + markdown)
 that drives iterative prompt improvement."""
+
 import json
 import os
 import sys
@@ -58,7 +59,7 @@ Output STRICT JSON only (no prose outside the JSON), shape:
 
 
 def get_table_summary(config: dict) -> str:
-    from tablassert.agent import read_table  # noqa: PLC0415
+    from tablassert.agent import read_table
 
     # find the first source with a local file
     secs = config.get("sections") or [config.get("template") or config]
@@ -68,7 +69,7 @@ def get_table_summary(config: dict) -> str:
         if local and Path(local).is_file():
             try:
                 return read_table(local, sheet=src.get("sheet"), max_rows=12, max_cols=12)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 return f"(could not read table: {exc})"
     return "(no readable source file)"
 
@@ -84,7 +85,7 @@ def get_edges(pmc: str, k: int = 8) -> str:
                 try:
                     e = json.loads(line)
                     rows.append({kk: e.get(kk) for kk in ("subject", "predicate", "object", "relation") if kk in e})
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             if len(rows) >= k:
                 break
@@ -92,7 +93,7 @@ def get_edges(pmc: str, k: int = 8) -> str:
 
 
 def review_one(pmc: str, config_text: str, config: dict) -> dict:
-    import litellm  # noqa: PLC0415
+    import litellm
 
     table_summary = get_table_summary(config)[:6000]
     edges = get_edges(pmc)
@@ -115,12 +116,12 @@ def review_one(pmc: str, config_text: str, config: dict) -> dict:
         text = text.rsplit("```", 1)[0]
     try:
         return json.loads(text.strip())
-    except Exception:  # noqa: BLE001
+    except Exception:
         # fallback: find first { ... last }
         start, end = text.find("{"), text.rfind("}")
         try:
             return json.loads(text[start : end + 1])
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {"parse_error": True, "raw": text[:1500]}
 
 
@@ -128,7 +129,7 @@ def main() -> None:
     state = json.loads((STATE_DIR / "state.json").read_text())
     records = state.get("records", {})
     reviews: dict[str, dict] = {}
-    for pmc, rec in records.items():
+    for pmc in records:
         cfg_path = STATE_DIR / "configs" / f"{pmc}.yaml"
         if not cfg_path.is_file():
             cfg_path = STATE_DIR / "configs" / f"{pmc}.derived.yaml"
@@ -138,14 +139,14 @@ def main() -> None:
         config_text = cfg_path.read_text()
         try:
             config = yaml.safe_load(config_text)
-        except Exception:  # noqa: BLE001
+        except Exception:
             config = {}
         print(f"[{pmc}] reviewing...", flush=True)
         try:
             reviews[pmc] = review_one(pmc, config_text, config)
             ov = reviews[pmc].get("overall_quality", "?")
             print(f"[{pmc}] overall_quality={ov} top_issues={reviews[pmc].get('top_issues')}", flush=True)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             reviews[pmc] = {"error": str(exc)}
             print(f"[{pmc}] review error: {exc}", flush=True)
 
@@ -175,7 +176,7 @@ def main() -> None:
             lines.append(f"- **{d}** ({score}/3){flag}: {prob}" + (f"  → *{sugg}*" if sugg else ""))
         ti = rv.get("top_issues") or []
         if ti:
-            lines.append(f"- **top issues:** " + "; ".join(str(x) for x in ti))
+            lines.append("- **top issues:** " + "; ".join(str(x) for x in ti))
         pi = rv.get("prompt_improvement")
         if pi:
             prompt_improvements.append(f"- [{pmc}] {pi}")

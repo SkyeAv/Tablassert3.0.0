@@ -1,6 +1,8 @@
 """QC assay report: read the agent's state + derived configs + built KGX for a batch of PMCs and emit a
 markdown report for manual review (per-PMC config + predicate/encodings/provenance + coverage + KG sample
 + aggregate quality metrics)."""
+
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -24,7 +26,7 @@ def load_config(pmc: str) -> tuple[str, dict] | None:
         if p.is_file():
             try:
                 return p.read_text(), yaml.safe_load(p.read_text())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return p.read_text(), {}
     return None
 
@@ -48,10 +50,8 @@ def sample_edges(pmc: str, k: int = 5) -> list[dict]:
     with ep.open() as fh:
         for line in fh:
             if line.strip():
-                try:
+                with contextlib.suppress(Exception):
                     out.append(json.loads(line))
-                except Exception:  # noqa: BLE001
-                    pass
             if len(out) >= k:
                 break
     return out
@@ -76,7 +76,7 @@ def main() -> None:
     state = load_state()
     records = state.get("records", {})
     lines: list[str] = []
-    lines.append(f"# Tablassert agent QC assay report\n")
+    lines.append("# Tablassert agent QC assay report\n")
     lines.append(f"State dir: `{STATE_DIR}`  ·  PMCs assayed: {len(records)}\n")
 
     mapped = skipped = 0
@@ -98,7 +98,7 @@ def main() -> None:
             error_pmc.append((pmc, notes[:160]))
 
         loaded = load_config(pmc)
-        cfg_text, cfg = (loaded if loaded else ("", {}))
+        cfg_text, cfg = loaded if loaded else ("", {})
         sec = first_section(cfg) if cfg else {}
         stmt = sec.get("statement") or {}
         pred = stmt.get("predicate", "?")
@@ -141,13 +141,15 @@ def main() -> None:
     avg_cov = sum(coverages) / len(coverages) if coverages else 0.0
     agg = ["\n---\n# Aggregate quality metrics\n"]
     agg.append(f"- PMCs assayed: **{len(records)}**")
-    agg.append(f"- MAPPED: **{mapped}**  ·  SKIPPED: **{skipped}**  ·  MAPPED rate: **{mapped/len(records)*100:.0f}%**" if records else "- no records")
+    agg.append(
+        f"- MAPPED: **{mapped}**  ·  SKIPPED: **{skipped}**  ·  MAPPED rate: **{mapped / len(records) * 100:.0f}%**" if records else "- no records"
+    )
     agg.append(f"- mean best coverage: **{avg_cov:.3f}**")
-    agg.append(f"- predicate distribution: " + ", ".join(f"`{p}`×{c}" for p, c in sorted(predicate_counts.items(), key=lambda kv: -kv[1])))
+    agg.append("- predicate distribution: " + ", ".join(f"`{p}`\u00d7{c}" for p, c in sorted(predicate_counts.items(), key=lambda kv: -kv[1])))
     if generic_predicate_pmc:
         agg.append(f"- ⚠️ generic-fallback predicate used for: {', '.join(generic_predicate_pmc)}")
     if error_pmc:
-        agg.append(f"- SKIPPED reasons:")
+        agg.append("- SKIPPED reasons:")
         for pmc, note in error_pmc:
             agg.append(f"  - {pmc}: {note}")
     lines = agg + lines
