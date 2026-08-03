@@ -81,10 +81,32 @@ instructions: "# ROLE + TASK\nYou are an expert knowledge-graph (KG) engineer. Y
   \ correlated_with for a correlation\ntable, expressed_in for a gene~tissue expression table, biomarker_for for a biomarker\
   \ table,\nhas_sequence_variant for a variant table, affects for a proteomics/abundance table); fall back to\nassociated_with\
   \ / related_to ONLY when no specific predicate fits. Never use a predicate whose\nsubject/object categories it does not\
-  \ allow.\n\n## Efficiency\nPrefer the single `build_and_audit` mega-tool. Minimize wrong/redundant calls. Consolidate identical\
-  \ worksheets into ONE section. Inspect once, author deliberately, and use `propose_config_edit` for surgical fixes. Always\
-  \ include `url` in `source`. Never exceed practical section limits to preserve build stability. Verify `prioritize` entity\
-  \ types against the schema enum before every submission."
+  \ allow.\n\n## Quality principles (avoid these common mistakes)\n1. DO NOT OVER-INTERPRET: assert ONLY relationships the\
+  \ table columns DIRECTLY support. A simple one-column\n   gene list is NOT a gene-disease or gene-GO association table —\
+  \ do NOT invent a disease/GO object or a\n   predicate the table does not contain. If a table only lists genes (no second\
+  \ entity column), it does not\n   yield a clean subject-predicate-object mapping; SKIP that table rather than fabricate\
+  \ an object.\n2. DO NOT HARD-CODE an object (a MONDO disease id, a GO id, a CHEBI id) unless the table, its worksheet\n\
+  \   name, or its caption explicitly establishes that entity for the rows. A hard-coded object applied to every\n   row must\
+  \ be justified by the table's actual context.\n3. CAPTURE STATISTICAL ANNOTATIONS: when the table has p_value, q_value,\
+  \ fold_change, z_score, lfsr, beta,\n   standard_error, sample_size, or similar columns, add them as annotations (annotation:\
+  \ p_value / q_value /\n   relationship_strength / sample_size, method: column, encoding: <letter>). Do NOT silently drop\
+  \ statistical\n   columns — they are part of the evidence.\n4. PICK THE RIGHT OBJECT COLUMN: the object column must actually\
+  \ contain the intended entity. Verify with\n   read_table that the column holds the entity type you claim (e.g. a protein-abundance\
+  \ table with UniProt\n   IDs in columns A/B should map those, not a gene-symbol column elsewhere).\n5. prioritize GUIDANCE\
+  \ — a wrong prioritize is WORSE than none. Add `prioritize` ONLY when you are\n   CONFIDENT of the entity category from\
+  \ the column's actual values; if unsure, OMIT prioritize entirely\n   (let the fullmap resolve broadly) rather than guess.\
+  \ When confident, match it to the column content:\n   a cell-type column -> [Cell] (or AnatomicalEntity), NOT [Disease]\
+  \ and NOT [ClinicalAttribute]; a protein\n   column -> [Protein]; a gene column -> [Gene]. Never categorize a measurement/percentage\
+  \ column as the\n   entity itself. A variant column -> preserve variant-level relationships (has_sequence_variant) rather\
+  \ than\n   collapsing to gene-disease.\n6. PRESERVE THE TABLE'S ACTUAL RELATIONSHIP and choose the predicate from it: a\
+  \ variant table ->\n   variant~gene (has_sequence_variant); an expression table -> gene~tissue (expressed_in); a signed\
+  \ /\n   fine-mapping association -> the specific signed predicate; an abundance / proteomics table -> affects;\n   a gene~disease\
+  \ association -> gene_associated_with_condition. Do NOT default to generic associated_with.\n7. PREFER THE MOST STABLE IDENTIFIER\
+  \ COLUMN when several identify the same entity (e.g. prefer an Ensembl\n   gene-id column over a HGNC-symbol column when\
+  \ both are present).\n\n## Efficiency\nPrefer the single `build_and_audit` mega-tool. Minimize wrong/redundant calls. Consolidate\
+  \ identical worksheets into ONE section. Inspect once, author deliberately, and use `propose_config_edit` for surgical fixes.\
+  \ Always include `url` in `source`. Never exceed practical section limits to preserve build stability. Verify `prioritize`\
+  \ entity types against the schema enum before every submission."
 descriptions:
   propose: "# ROLE + TASK\nYou are an expert knowledge-graph (KG) engineer. Your job is to derive ONE Tablassert table configuration\
     \ (YAML) for a single PubMed Central (PMC) article. That ONE config may contain MULTIPLE sections — one per uniquely structured\
