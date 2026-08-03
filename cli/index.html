@@ -1510,7 +1510,21 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <td>Path</td>
 <td>No</td>
 <td><code>None</code></td>
-<td>YAML/JSON list of <code>{table_summary, coverage_feedback}</code> examples for <code>--optimize</code></td>
+<td>YAML/JSON list of <code>{table_summary, coverage_feedback}</code> examples for <code>--optimize</code> (an example may also carry <code>fullmap</code>, <code>workdir</code>, and <code>head</code> to score each proposed config with real coverage)</td>
+</tr>
+<tr>
+<td><code>--task-model</code></td>
+<td>str</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Fast model id for GEPA's many program evaluations (cheap task LM + strong reflection LM); <code>--model-id</code> is the reflection LM. Defaults to the reflection LM</td>
+</tr>
+<tr>
+<td><code>--gepa-threads</code></td>
+<td>int</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Thread count for GEPA's evaluation pool (<code>--optimize</code>) — parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on <code>_GEPA_BUILD_LOCK</code></td>
 </tr>
 </tbody>
 </table>

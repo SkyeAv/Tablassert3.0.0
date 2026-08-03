@@ -1938,21 +1938,38 @@ deterministic heuristic is used.</p>
 wrong-calls ↓) and its <strong>knee</strong> (best quality per unit cost).</p>
 <h3 id="real-run-prompt-optimization-optimize">Real-run prompt optimization (<code>--optimize</code>)<a class="headerlink" href="#real-run-prompt-optimization-optimize" title="Permanent link">&para;</a></h3>
 <p>GEPA prompt optimization is a first-class CLI path. <code>tablassert agent --optimize</code> (<code>-o</code>) runs
-<code>dspy.GEPA</code> with a real reflection LM (built from the same <code>--model-id</code>/<code>--api-base</code>/<code>--api-key</code>
-config) and <strong>persists the optimized instructions</strong> instead of running the supervisor:</p>
+<code>dspy.GEPA</code> and <strong>persists the optimized instructions</strong> instead of running the supervisor.</p>
+<p>Following GEPA best practice, the optimizer splits the models: a <strong>strong reflection LM</strong> (<code>--model-id</code>)
+proposes the few instruction edits, and an optional <strong>fast task LM</strong> (<code>--task-model</code>) runs the many
+candidate program evaluations. Pointing <code>--task-model</code> at a cheap model (e.g. a flash model) keeps the
+run fast while the strong model does the thinking; without <code>--task-model</code> the reflection LM is used for
+both. <code>--gepa-threads</code> parallelizes GEPA's candidate <strong>LM forward passes</strong> only — the coverage-scoring
+builds stay serialized on the process-wide <code>_GEPA_BUILD_LOCK</code> (<code>agent.py</code>, since <code>os.chdir</code> is
+process-global), so a higher thread count does not speed up the expensive build/coverage step.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
 </code></pre></div>
-<p><code>--dataset</code> is a YAML/JSON list of <code>{table_summary, coverage_feedback}</code> examples; <code>--max-metric-calls</code>
-bounds the GEPA metric budget. <code>save_optimized_instructions</code> / <code>load_optimized_instructions</code> persist and
-reload the prompt (a <code>{instructions, descriptions}</code> mapping). Without <code>--instructions-file</code> the built-in
-<code>INSTRUCTIONS</code> prompt is used. (A real optimization run needs a live model; the offline suite exercises
-this path via an injectable <code>gepa_cls</code> stub.)</p>
+<p><code>--dataset</code> is a YAML/JSON list of examples. Each example carries <code>table_summary</code> and
+<code>coverage_feedback</code> (the program inputs); it MAY also carry:</p>
+<ul>
+<li><code>fullmap</code> — a fullmap path. When present, the GEPA metric scores each proposed config with <strong>real
+  fullmap coverage</strong> (via a <code>build_and_audit</code> head-sample), so GEPA optimizes the genuine objective
+  rather than a validity-only proxy.</li>
+<li><code>workdir</code> — the directory a proposed config's relative <code>source.local</code> resolves against (LLMs mimic the
+  exemplar's <code>./downloads/...</code> paths), so coverage is measured on the actual table.</li>
+<li><code>head</code> — default <code>true</code>: score a fast 5-row preview; set <code>false</code> for full-fidelity coverage builds.</li>
+</ul>
+<p><code>--max-metric-calls</code> bounds the GEPA metric budget. <code>save_optimized_instructions</code> /
+<code>load_optimized_instructions</code> persist and reload the prompt (a <code>{instructions, descriptions}</code> mapping).
+Without <code>--instructions-file</code> the built-in <code>INSTRUCTIONS</code> prompt is used. (A real optimization run needs a
+live model; the offline suite exercises this path via an injectable <code>gepa_cls</code> stub.)</p>
 <h3 id="golden-fixture">Golden fixture<a class="headerlink" href="#golden-fixture" title="Permanent link">&para;</a></h3>
 <p><code>tests/agent_fixtures/PMC11708054/</code> is an offline replay pair: the ALAMV6 reference config, a small
 <strong>synthetic</strong> source table, and a trimmed reference config (CC-BY attribution to PMC11708054; the
