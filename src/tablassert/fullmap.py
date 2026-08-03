@@ -31,14 +31,25 @@ _LOCK_ATTEMPTS: int = 10
 _LOCK_DELAY: float = 0.5
 
 
+def is_lock_contention(error: BaseException) -> bool:
+    """Whether ``error`` is the transient redb ``Database already open`` lock contention.
+
+    Callers that wrap a lookup in their OWN retry loop (e.g. ``build_and_audit``'s coverage
+    retry) must NOT retry on this error: :func:`_call_with_lock_retry` already exhausted its
+    backoff budget before the error escaped, so re-running it only multiplies the wait while
+    (in GEPA) holding the process-wide build lock.
+    """
+    msg = str(error).lower()
+    return any(token in msg for token in _LOCK_RETRY_TOKENS)
+
+
 def _call_with_lock_retry(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """Call a redb-backed ``rs`` function, retrying on transient ``Database already open`` lock contention."""
     for attempt in range(_LOCK_ATTEMPTS):
         try:
             return fn(*args, **kwargs)
         except Exception as exc:  # redb raises a generic error carrying the lock message; match on text
-            msg = str(exc).lower()
-            if attempt < _LOCK_ATTEMPTS - 1 and any(token in msg for token in _LOCK_RETRY_TOKENS):
+            if attempt < _LOCK_ATTEMPTS - 1 and is_lock_contention(exc):
                 time.sleep(_LOCK_DELAY * (attempt + 1))  # linear backoff: 0.5s, 1.0s, 1.5s, ...
                 continue
             raise

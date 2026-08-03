@@ -22,7 +22,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.request import Request, urlopen
 
 import pydantic
@@ -32,7 +32,7 @@ from tablassert._lazy import LazyModule
 from tablassert.biolink import Categories
 from tablassert.enums import EncodingMethods
 from tablassert.errors import GraphValidationError, QcRuntimeMissingError, SectionValidationError, TablassertValidationError
-from tablassert.fullmap import distinct, fullmap_db_path, lookup_rows
+from tablassert.fullmap import distinct, fullmap_db_path, is_lock_contention, lookup_rows
 from tablassert.lib import Tcode
 from tablassert.log import cat
 from tablassert.models import NodeEncoding, Section
@@ -1209,7 +1209,9 @@ def build_and_audit(
                     continue
                 notes.append("coverage unmeasurable: could not reproduce the source frame (treated as 0.0, not a perfect score)")
             except Exception as exc:  # non-fatal: surface a note, keep the successful build (measured stays False)
-                if _cov_attempt < 2:
+                # Lock contention already burned _call_with_lock_retry's full backoff budget before escaping;
+                # retrying here would just re-burn it (amplified 3x) while holding the GEPA build lock.
+                if _cov_attempt < 2 and not is_lock_contention(exc):
                     gc.collect()
                     time.sleep(0.5 * (_cov_attempt + 1))
                     continue
@@ -2292,7 +2294,7 @@ def make_tools(
     name: str = "agent",
     version: str = "0.0.1",
     qc: bool = False,
-    derive_mode: str = "full",
+    derive_mode: DeriveMode = "full",
 ) -> list[object]:
     """Assemble the fullmap-bound smolagents tools the supervisor hands to the inner agent.
 
@@ -2515,7 +2517,7 @@ def run_supervisor(
     judge_threshold: float | None = None,
     local: dict[str, Path] | Path | None = None,
     instructions: str | None = None,
-    derive_mode: str = "full",
+    derive_mode: DeriveMode = "full",
 ) -> dict[str, object]:
     """Run the deterministic supervisor over a batch of PMC ids with checkpoint/resume.
 
@@ -3163,6 +3165,10 @@ def _as_list(value: object) -> list[Any]:
 # os.chdir is process-global, so the (parallel) GEPA metric builds serialize on this lock to avoid
 # corrupting the process cwd or overwriting one another's table.yaml/KGX (see _gepa_bundle_from_dspy).
 _GEPA_BUILD_LOCK = threading.Lock()
+
+# Valid derive_mode values for make_tools/run_supervisor (a typo like "derive-only" must be caught
+# statically instead of silently falling through to the "full" tool set).
+DeriveMode = Literal["full", "derive_only", "derive_coverage"]
 
 
 def _gepa_bundle_from_dspy(gold: Any, pred: Any) -> dict[str, Any]:

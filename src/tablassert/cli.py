@@ -596,7 +596,9 @@ def agent(
         task_model: Optional FAST model id for GEPA's many program evaluations (GEPA best practice: a cheap
             task LM + a strong reflection LM); ``--model-id`` is the strong reflection LM. Defaults to the
             reflection LM when unset.
-        gepa_threads: Optional thread count for GEPA's evaluation pool (parallelizes candidate scoring).
+        gepa_threads: Optional thread count for GEPA's evaluation pool. Parallelizes the candidate LM
+            forward passes only; the coverage-scoring builds stay serialized on the process-wide
+            ``_GEPA_BUILD_LOCK`` (``os.chdir`` is process-global), so more threads do not speed up builds.
     """
     from tablassert import agent as agent_mod
 
@@ -616,6 +618,12 @@ def agent(
     # semantic gate (-1 passes every score); fail loud BEFORE any model is built.
     if judge_threshold is not None and not 0 <= judge_threshold <= 1:
         print("tablassert agent: --judge-threshold must be a finite number between 0 and 1.", file=sys.stderr)
+        raise SystemExit(2)
+
+    # A non-positive thread count would only fail deep inside dspy/ThreadPoolExecutor AFTER the models are
+    # built; fail loud up front, matching the --judge-threshold pattern.
+    if gepa_threads is not None and gepa_threads < 1:
+        print("tablassert agent: --gepa-threads must be a positive integer.", file=sys.stderr)
         raise SystemExit(2)
 
     def build_model_factory() -> object:

@@ -20,15 +20,16 @@ State dir: `.tablassert/qc-assay`  ·  PMCs assayed: 10
 - **predicate:** `increases_amount_or_activity_of`
 - **subject:** method=value encoding=CHEBI:9168 prioritize=None taxon=None
 - **object:** method=column encoding=D prioritize=['Gene', 'Protein']
-- **source:** kind=excel sheet='Supp.Table 2A_cluster-1' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC8017771/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
+- **source:** kind=excel sheet='Supp.Table 2A_cluster-1' local=<state-dir>/downloads/PMC8017771/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC8017771', 'knowledge_level': 'statistical_association', 'agent_type': 'data_analysis_pipeline'}
+- **config sha256:** `fb96e79edf16`
 
 ### Derived config (`configs/PMC8017771.yaml`)
 
 ```yaml
 source:
   kind: excel
-  local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC8017771/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
+  local: <state-dir>/downloads/PMC8017771/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
   url: https://pmc-oa-opendata.s3.amazonaws.com/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
   sheet: "Supp.Table 2A_cluster-1"
   row_slice: [2, "auto"]
@@ -88,8 +89,9 @@ annotations:
 - **predicate:** `associated_with`  ⚠️ *generic fallback*
 - **subject:** method=column encoding=A prioritize=['Protein', 'Gene'] taxon=9606
 - **object:** method=value encoding=MONDO:0007739 prioritize=None
-- **source:** kind=excel sheet='Cap Score - Ion Level' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13161869/PMC13161869.1/ACN3-13-911-s001.xlsx
+- **source:** kind=excel sheet='Cap Score - Ion Level' local=<state-dir>/downloads/PMC13161869/PMC13161869.1/ACN3-13-911-s001.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC13161869'}
+- **config sha256:** `1aa5a8bf5ded`
 
 ### Derived config (`configs/PMC13161869.yaml`)
 
@@ -101,7 +103,7 @@ template:
 sections:
   - source:
       kind: excel
-      local: "/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13161869/PMC13161869.1/ACN3-13-911-s001.xlsx"
+      local: "<state-dir>/downloads/PMC13161869/PMC13161869.1/ACN3-13-911-s001.xlsx"
       url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC13161869.1/ACN3-13-911-s001.xlsx"
       sheet: "Cap Score - Ion Level"
       row_slice: [1, "auto"]
@@ -188,8 +190,9 @@ sections:
 - **predicate:** `associated_with`  ⚠️ *generic fallback*
 - **subject:** method=column encoding=A prioritize=['ClinicalMeasurement', 'PhenotypicFeature', 'ClinicalAttribute'] taxon=9606
 - **object:** method=column encoding=B prioritize=['Cell']
-- **source:** kind=excel sheet='Supp. Table 7' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC12900646/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx
+- **source:** kind=excel sheet='Supp. Table 7' local=<state-dir>/downloads/PMC12900646/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC12900646'}
+- **config sha256:** `560d11724293`
 
 ### Derived config (`configs/PMC12900646.yaml`)
 
@@ -201,7 +204,7 @@ template:
 sections:
   - source:
       kind: excel
-      local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC12900646/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx
+      local: <state-dir>/downloads/PMC12900646/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx
       url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx"
       sheet: "Supp. Table 7"
       row_slice: [7, "auto"]
@@ -253,7 +256,7 @@ sections:
           - {pattern: '^mDC$', replacement: 'myeloid dendritic cell'}
           - {pattern: '^Mega$', replacement: 'megakaryocyte'}
           - {pattern: '^Mono$', replacement: 'monocyte'}
-          - {
+          - {pattern: '^Neu$', replacement: 'neutrophil
 ```
 
 ### Sample edges (first 5)
@@ -274,15 +277,16 @@ sections:
 - **predicate:** `gene_associated_with_condition`
 - **subject:** method=column encoding=A prioritize=['Gene'] taxon=9606
 - **object:** method=value encoding=MONDO:0004988 prioritize=None
-- **source:** kind=excel sheet='Percentiles - 16p11.2' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC9187732/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
+- **source:** kind=excel sheet='Percentiles - 16p11.2' local=<state-dir>/downloads/PMC9187732/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC9187732'}
+- **config sha256:** `e8cb8eacc72d`
 
 ### Derived config (`configs/PMC9187732.yaml`)
 
 ```yaml
 source:
   kind: excel
-  local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC9187732/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
+  local: <state-dir>/downloads/PMC9187732/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
   url: https://pmc-oa-opendata.s3.amazonaws.com/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
   sheet: "Percentiles - 16p11.2"
   reindex:
@@ -329,8 +333,9 @@ provenance:
 - **predicate:** `actively_involved_in`
 - **subject:** method=column encoding=G prioritize=['Gene'] taxon=9606
 - **object:** method=column encoding=A prioritize=['BiologicalProcess']
-- **source:** kind=excel sheet='Supplementary Table 7' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13099431/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx
+- **source:** kind=excel sheet='Supplementary Table 7' local=<state-dir>/downloads/PMC13099431/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC13099431'}
+- **config sha256:** `076cdc335924`
 
 ### Derived config (`configs/PMC13099431.yaml`)
 
@@ -342,7 +347,7 @@ template:
 sections:
   - source:
       kind: excel
-      local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13099431/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx
+      local: <state-dir>/downloads/PMC13099431/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx
       url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx"
       sheet: "Supplementary Table 7"
       row_slice: [2, "auto"]
@@ -386,15 +391,16 @@ sections:
 - **predicate:** `actively_involved_in`
 - **subject:** method=column encoding=A prioritize=['Gene'] taxon=9606
 - **object:** method=value encoding=GO:0008380 prioritize=None
-- **source:** kind=excel sheet='vU1-8 KO v WT' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13172311/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
+- **source:** kind=excel sheet='vU1-8 KO v WT' local=<state-dir>/downloads/PMC13172311/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC13172311'}
+- **config sha256:** `af8d05069765`
 
 ### Derived config (`configs/PMC13172311.yaml`)
 
 ```yaml
 source:
   kind: excel
-  local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13172311/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
+  local: <state-dir>/downloads/PMC13172311/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
   url: https://pmc-oa-opendata.s3.amazonaws.com/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
   sheet: vU1-8 KO v WT
 statement:
@@ -438,8 +444,9 @@ provenance:
 - **predicate:** `in_taxon`
 - **subject:** method=column encoding=B prioritize=['Genome'] taxon=4530
 - **object:** method=value encoding=NCBITaxon:4530 prioritize=None
-- **source:** kind=excel sheet='Map' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC12906585/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx
+- **source:** kind=excel sheet='Map' local=<state-dir>/downloads/PMC12906585/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC12906585'}
+- **config sha256:** `d80ab3fe0ca0`
 
 ### Derived config (`configs/PMC12906585.yaml`)
 
@@ -451,7 +458,7 @@ template:
 sections:
   - source:
       kind: excel
-      local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC12906585/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx
+      local: <state-dir>/downloads/PMC12906585/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx
       url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx"
       sheet: Map
     statement:
@@ -500,8 +507,9 @@ sections:
 - **predicate:** `participates_in`
 - **subject:** method=column encoding=L prioritize=['Gene'] taxon=9606
 - **object:** method=column encoding=F prioritize=['Pathway', 'BiologicalProcess']
-- **source:** kind=excel sheet='SD15' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13172025/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx
+- **source:** kind=excel sheet='SD15' local=<state-dir>/downloads/PMC13172025/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC13172025'}
+- **config sha256:** `86448dd76087`
 
 ### Derived config (`configs/PMC13172025.yaml`)
 
@@ -513,7 +521,7 @@ template:
 sections:
   - source:
       kind: excel
-      local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC13172025/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx
+      local: <state-dir>/downloads/PMC13172025/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx
       url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx"
       sheet: "SD15"
       row_slice: [2, "auto"]
@@ -557,8 +565,9 @@ sections:
 - **predicate:** `expressed_in`
 - **subject:** method=column encoding=C prioritize=['Gene'] taxon=9606
 - **object:** method=column encoding=A prioritize=['AnatomicalEntity', 'GrossAnatomicalStructure']
-- **source:** kind=excel sheet='v68.lvedv.twas.alltissues' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC7206184/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx
+- **source:** kind=excel sheet='v68.lvedv.twas.alltissues' local=<state-dir>/downloads/PMC7206184/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC7206184', 'knowledge_level': 'statistical_association', 'agent_type': 'data_analysis_pipeline'}
+- **config sha256:** `d6785bc724be`
 
 ### Derived config (`configs/PMC7206184.yaml`)
 
@@ -572,7 +581,7 @@ template:
 sections:
   - source:
       kind: excel
-      local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC7206184/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx
+      local: <state-dir>/downloads/PMC7206184/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx
       url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx"
       sheet: "v68.lvedv.twas.alltissues"
       row_slice: [1, "auto"]
@@ -617,15 +626,16 @@ sections:
 - **predicate:** `gene_associated_with_condition`
 - **subject:** method=column encoding=H prioritize=['Gene'] taxon=9606
 - **object:** method=value encoding=MONDO:0004992 prioritize=None
-- **source:** kind=excel sheet='Table_S7' local=/home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC11947420/PMC11947420.1/mmc2.xlsx
+- **source:** kind=excel sheet='Table_S7' local=<state-dir>/downloads/PMC11947420/PMC11947420.1/mmc2.xlsx
 - **provenance:** {'repo': 'PMC', 'publication': 'PMC11947420'}
+- **config sha256:** `8a1c74d4efc6`
 
 ### Derived config (`configs/PMC11947420.yaml`)
 
 ```yaml
 source:
   kind: excel
-  local: /home/skyeav/Code/ISB/Tablassert/.tablassert/qc-assay/downloads/PMC11947420/PMC11947420.1/mmc2.xlsx
+  local: <state-dir>/downloads/PMC11947420/PMC11947420.1/mmc2.xlsx
   url: https://pmc-oa-opendata.s3.amazonaws.com/PMC11947420.1/mmc2.xlsx
   sheet: Table_S7
   reindex:
