@@ -61,7 +61,9 @@ PMC ids are passed positionally (also accepted as `--pmc-ids`). This page lists 
 | `--instructions-file` | Path | No | `None` | Load GEPA-optimized instructions from a prior `--optimize` run |
 | `--instructions-out` | Path | No | `None` | Where `--optimize` writes optimized instructions (default `<state-dir>/optimized_instructions.yaml`) |
 | `--max-metric-calls` | int | No | `8` | GEPA metric-call budget for `--optimize` |
-| `--dataset` | Path | No | `None` | YAML/JSON list of `{table_summary, coverage_feedback}` examples for `--optimize` |
+| `--dataset` | Path | No | `None` | YAML/JSON list of `{table_summary, coverage_feedback}` examples for `--optimize` (an example may also carry `fullmap`, `workdir`, and `head` to score each proposed config with real coverage) |
+| `--task-model` | str | No | `None` | Fast model id for GEPA's many program evaluations (cheap task LM + strong reflection LM); `--model-id` is the reflection LM. Defaults to the reflection LM |
+| `--gepa-threads` | int | No | `None` | Thread count for GEPA's evaluation pool (`--optimize`) — parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on `_GEPA_BUILD_LOCK` |
 
 ```bash
 tablassert agent PMC11708054 --fullmap ./fullmap

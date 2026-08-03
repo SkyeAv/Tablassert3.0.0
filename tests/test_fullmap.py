@@ -23,6 +23,7 @@ from tablassert.fullmap import (
     _remember_term,
     filter_and_rank,
     fullmap_db_path,
+    is_lock_contention,
     join_matches,
     lookup_rows,
     resolve,
@@ -895,3 +896,14 @@ def test_resolve_batch_on_phase_fires_per_column_in_order(fullmap_db: Path) -> N
 
     assert phases == ["resolve:subject", "resolve:object"]
     assert with_cb.to_dicts() == without_cb.to_dicts()
+
+
+@pytest.mark.parametrize("message", ["Database already open", "failed to acquire lock on fullmap", "Cannot Acquire lock"])
+def test_is_lock_contention_matches_redb_lock_errors(message: str) -> None:
+    assert is_lock_contention(RuntimeError(message))
+
+
+@pytest.mark.parametrize("message", ["file not found", "parquet schema mismatch", ""])
+def test_is_lock_contention_rejects_other_errors(message: str) -> None:
+    """Non-lock errors must NOT be classified as contention: outer retry loops rely on this to retry them."""
+    assert not is_lock_contention(RuntimeError(message))

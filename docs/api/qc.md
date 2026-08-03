@@ -115,7 +115,7 @@ return similarity >= 0.5
 
 ### BioBERT Model
 
-**Model:** `pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb`
+**Model:** `pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb`
 
 **Backend:** [sentence-transformers](https://www.sbert.net/) (PyTorch). Embeddings are compared with scikit-learn's `cosine_similarity`.
 
@@ -123,7 +123,7 @@ return similarity >= 0.5
 
 ### Model Caching
 
-`get_biobert()` loads the model from the local cache when present; otherwise it downloads `pritamdeka/BioBERT-mnli-snli-scitail-mednli-stsb` and saves it for future runs.
+`get_biobert()` loads the model from the local cache when present; otherwise it downloads `pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb` and saves it for future runs.
 
 **Cache location:** `.tablassert/biobert/` on disk (`qc.MODEL`); the loaded model object is also cached in memory for the lifetime of the process.
 

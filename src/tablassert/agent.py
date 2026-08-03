@@ -11,15 +11,18 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import gc
 import json
 import os
 import tempfile
+import threading
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.request import Request, urlopen
 
 import pydantic
@@ -29,7 +32,7 @@ from tablassert._lazy import LazyModule
 from tablassert.biolink import Categories
 from tablassert.enums import EncodingMethods
 from tablassert.errors import GraphValidationError, QcRuntimeMissingError, SectionValidationError, TablassertValidationError
-from tablassert.fullmap import distinct, fullmap_db_path, lookup_rows
+from tablassert.fullmap import distinct, fullmap_db_path, is_lock_contention, lookup_rows
 from tablassert.lib import Tcode
 from tablassert.log import cat
 from tablassert.models import NodeEncoding, Section
@@ -1133,7 +1136,12 @@ def build_and_audit(
         build error returns ``ok=False`` (never swallowed into success).
     """
     try:
-        root: Path = Path(workdir) if workdir is not None else Path(tempfile.mkdtemp(prefix="tablassert-agent-"))
+        # Resolve the workdir to ABSOLUTE: build_pipeline reads/writes its intermediate `.tablassert/store`
+        # parquets relative to the process cwd, and a RELATIVE workdir makes those resolve against the wrong
+        # base once we chdir(root) -> 'No such file or directory: .tablassert/store/<hash>.parquet' (the build
+        # then fails and coverage reads 0.0). An absolute root keeps the store path stable across the build's
+        # parallel phases. (mkdtemp already returns an absolute path.)
+        root: Path = Path(workdir).resolve() if workdir is not None else Path(tempfile.mkdtemp(prefix="tablassert-agent-"))
         root.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -1177,21 +1185,37 @@ def build_and_audit(
         coverage_pct: float = 0.0
         unresolved: list[str] = []
         measured: bool = False
-        try:
-            # Measure INSIDE the same chdir(root) the build used, so a RELATIVE source `local`
-            # resolves against root (the build's CWD) — measuring from the original CWD would fail
-            # the frame reproduction and report a false/unmeasurable coverage.
-            with contextlib.chdir(root):
-                cov: dict[str, object] = map_coverage(table_cfg, fullmap=fullmap, workdir=root)
-            overall: object = cov.get("overall")
-            coverage_pct = float(overall) if isinstance(overall, (int, float)) else 0.0
-            measured = bool(cov.get("measured"))
-            if cov.get("measured") is False:
+        # Retry the coverage measurement on TRANSIENT failure: build_pipeline (above) can momentarily hold
+        # the source-table/fullmap handle, so the first map_coverage may fail to reproduce the source frame
+        # (measured False) or raise. A brief gc + backoff lets the handle drop so coverage is measured truly,
+        # instead of reporting a false 0.0 that would wrongly SKIPPED an otherwise-mapped config.
+        for _cov_attempt in range(3):
+            try:
+                # Measure INSIDE the same chdir(root) the build used, so a RELATIVE source `local`
+                # resolves against root (the build's CWD) — measuring from the original CWD would fail
+                # the frame reproduction and report a false/unmeasurable coverage.
+                with contextlib.chdir(root):
+                    cov: dict[str, object] = map_coverage(table_cfg, fullmap=fullmap, workdir=root)
+                overall: object = cov.get("overall")
+                coverage_pct = float(overall) if isinstance(overall, (int, float)) else 0.0
+                measured = bool(cov.get("measured"))
+                if measured:
+                    raw_unresolved: object = cov.get("unresolved")
+                    unresolved = [str(term) for term in raw_unresolved] if isinstance(raw_unresolved, list) else []
+                    break
+                if _cov_attempt < 2:  # transient (frame not yet reproducible) -> gc + backoff + retry
+                    gc.collect()
+                    time.sleep(0.5 * (_cov_attempt + 1))
+                    continue
                 notes.append("coverage unmeasurable: could not reproduce the source frame (treated as 0.0, not a perfect score)")
-            raw_unresolved: object = cov.get("unresolved")
-            unresolved = [str(term) for term in raw_unresolved] if isinstance(raw_unresolved, list) else []
-        except Exception as exc:  # non-fatal: surface a note, keep the successful build (measured stays False)
-            notes.append(f"coverage unavailable: {exc}")
+            except Exception as exc:  # non-fatal: surface a note, keep the successful build (measured stays False)
+                # Lock contention already burned _call_with_lock_retry's full backoff budget before escaping;
+                # retrying here would just re-burn it (amplified 3x) while holding the GEPA build lock.
+                if _cov_attempt < 2 and not is_lock_contention(exc):
+                    gc.collect()
+                    time.sleep(0.5 * (_cov_attempt + 1))
+                    continue
+                notes.append(f"coverage unavailable: {exc}")
 
         return {
             "ok": True,
@@ -2067,6 +2091,7 @@ def build_agent(
     step_callbacks: list[Callable[[object, object], None]] | None = None,
     final_answer_checks: list[Callable[..., bool]] | None = None,
     verbosity_level: object | None = None,
+    execution_timeout: int | None = 600,
 ) -> object:
     """Assemble a smolagents ``CodeAgent`` wired with the Tablassert schema gate + step callback.
 
@@ -2079,6 +2104,11 @@ def build_agent(
     and passes them in, since they need a fullmap this factory does not have.
 
     ``verbosity_level`` (a smolagents ``LogLevel``) is forwarded only when not None.
+
+    ``execution_timeout`` (seconds, default 600; ``None`` disables) is the local executor's per-step
+    code timeout. The smolagents default is 30s, which KILLS a ``build_and_audit`` on a large table
+    (e.g. a 37k-row sheet takes ~60s) MID-BUILD -- stranding the fullmap redb lock and failing every
+    subsequent build -- so it is raised here to let large-table builds complete.
     """
     _require("smolagents")
     from smolagents import CodeAgent  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
@@ -2098,6 +2128,9 @@ def build_agent(
         "step_callbacks": callbacks,
         "final_answer_checks": checks,
         "executor_type": "local",
+        # Raise the local executor's 30s default so a large-table build_and_audit is not killed mid-build
+        # (which would also strand the fullmap redb lock and fail every later build in the loop).
+        "executor_kwargs": {"timeout_seconds": execution_timeout},
     }
     if verbosity_level is not None:
         agent_kwargs["verbosity_level"] = verbosity_level
@@ -2261,6 +2294,7 @@ def make_tools(
     name: str = "agent",
     version: str = "0.0.1",
     qc: bool = False,
+    derive_mode: DeriveMode = "full",
 ) -> list[object]:
     """Assemble the fullmap-bound smolagents tools the supervisor hands to the inner agent.
 
@@ -2270,11 +2304,26 @@ def make_tools(
     I/O); the smolagents import happens lazily inside each factory. ``table_path`` is accepted for
     API symmetry with the supervisor call site (the read_table tool reads whatever ``source`` the
     LLM supplies).
+
+    ``derive_mode`` controls which tools the inner agent gets:
+    - ``"full"`` (default): all tools (read_table, pmc_article_context, derive_config, build_and_audit,
+      map_coverage, propose_config_edit).
+    - ``"derive_only"``: ONLY ``[read_table, pmc_article_context, derive_config]`` — no fullmap tools. Many
+      derivations can run in PARALLEL (no fullmap lock); the configs are built later in a serial build pass.
+      Trade-off: the agent cannot check coverage while deriving, so it cannot tell which sheet/columns are
+      best (suboptimal for multi-sheet tables).
+    - ``"derive_coverage"``: ``[read_table, pmc_article_context, derive_config, map_coverage]`` — coverage
+      feedback WITHOUT the KGX build, so the agent can pick the best sheet/columns. map_coverage reads the
+      fullmap, so these derivations serialize on the fullmap lock across processes.
     """
 
     def get_fullmap() -> Path:
         return fullmap
 
+    if derive_mode == "derive_only":
+        return [make_read_table_tool(), make_pmc_article_context_tool(), make_derive_config_tool()]
+    if derive_mode == "derive_coverage":
+        return [make_read_table_tool(), make_pmc_article_context_tool(), make_derive_config_tool(), make_map_coverage_tool(get_fullmap)]
     return [
         make_read_table_tool(),
         make_pmc_article_context_tool(),
@@ -2468,6 +2517,7 @@ def run_supervisor(
     judge_threshold: float | None = None,
     local: dict[str, Path] | Path | None = None,
     instructions: str | None = None,
+    derive_mode: DeriveMode = "full",
 ) -> dict[str, object]:
     """Run the deterministic supervisor over a batch of PMC ids with checkpoint/resume.
 
@@ -2514,7 +2564,7 @@ def run_supervisor(
     all_metrics: list[dict[str, object]] = []
     for pmc_id in ids:
         rec: ConfigRecord = state.records[pmc_id]
-        if rec.status in {"DONE", "MAPPED", "SKIPPED", "BUILT_UNMEASURED"}:
+        if rec.status in {"DONE", "MAPPED", "SKIPPED", "BUILT_UNMEASURED", "DERIVED"}:
             continue  # resume: already terminal
         try:
             rec.status = "RUNNING"
@@ -2530,7 +2580,12 @@ def run_supervisor(
                     raise FileNotFoundError(f"--local directory has no files for {pmc_id}: {local_dir}")
             else:
                 files = fetch_pmc_article(pmc_id, pmc_download_dir(art_root, pmc_id))
-            tables: list[Path] = candidate_tables(files)
+            # Present ABSOLUTE paths: the agent copies source.local verbatim into its config, but
+            # build_and_audit resolves a RELATIVE source.local against the build workdir (not the invocation
+            # cwd), so a relative path here would fail the build with 'no workbook found'. Absolute paths
+            # resolve identically from any cwd. (path.parent.name / path.name used for the public URL are
+            # unaffected by resolve().)
+            tables: list[Path] = [path.resolve() for path in candidate_tables(files)]
             table_list: str
             if local_dir is not None:
                 # Local payload: no fabricated S3 link; the agent sets source.url to the original link if known.
@@ -2544,7 +2599,7 @@ def run_supervisor(
             metrics: dict[str, object] = {}
             agent: object = build_agent(
                 model=build_model_factory(),
-                tools=make_tools(fullmap=fullmap, table_path=tables[0], name=name, version=version),
+                tools=make_tools(fullmap=fullmap, table_path=tables[0], name=name, version=version, derive_mode=derive_mode),
                 max_steps=max_steps,
                 step_callbacks=[make_step_callback(metrics)],
                 verbosity_level=verbosity,
@@ -2578,6 +2633,14 @@ def run_supervisor(
             derived_path: Path = derived_config_path(state_dir, pmc_id)
             derived_path.write_text(config)
             rec.config_path = str(derived_path)
+
+            if derive_mode in {"derive_only", "derive_coverage"}:
+                # Derive mode: the config is schema-valid but NOT built here (the build tools were withheld
+                # so derivations run in parallel / cheaply). Mark DERIVED; a separate serial build pass builds
+                # these configs later.
+                rec.status = "DERIVED"
+                save_state(state_dir, state)
+                continue
 
             report: dict[str, object] = build_and_audit(config, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id))
             raw_cov: object = report.get("coverage_pct")
@@ -3099,14 +3162,77 @@ def _as_list(value: object) -> list[Any]:
     return [value] if value is not None else []
 
 
-def gepa_metric(bundle: dict[str, Any]) -> Any:
+# os.chdir is process-global, so the (parallel) GEPA metric builds serialize on this lock to avoid
+# corrupting the process cwd or overwriting one another's table.yaml/KGX (see _gepa_bundle_from_dspy).
+_GEPA_BUILD_LOCK = threading.Lock()
+
+# Valid derive_mode values for make_tools/run_supervisor (a typo like "derive-only" must be caught
+# statically instead of silently falling through to the "full" tool set).
+DeriveMode = Literal["full", "derive_only", "derive_coverage"]
+
+
+def _gepa_bundle_from_dspy(gold: Any, pred: Any) -> dict[str, Any]:
+    """Assemble a :func:`gepa_metric` bundle from a dspy ``(gold example, prediction)`` pair.
+
+    ``pred.config_yaml`` is the candidate config the optimized program proposed. When the gold
+    example carries a ``fullmap`` path, the candidate is scored with REAL fullmap coverage via
+    :func:`build_and_audit` (the agent's genuine objective); otherwise the score falls back to the
+    validity-only heuristic (an empty report). Never raises: a build failure yields an empty report
+    (scored validity-only) so one bad candidate cannot abort GEPA's compile.
+    """
+    config_yaml: str = str(getattr(pred, "config_yaml", "") or "")
+    if not config_yaml and isinstance(pred, dict):
+        config_yaml = str(pred.get("config_yaml", "") or "")
+    report: dict[str, Any] = {}
+    fullmap: Any = getattr(gold, "fullmap", None)
+    if fullmap is None and isinstance(gold, dict):
+        fullmap = gold.get("fullmap")
+    # Head-sample the build for SPEED by default (a random 5-row preview per section): GEPA only needs a
+    # monotonic ranking signal, and the validity gate needs no build at all. An example may set ``head:
+    # false`` to score full-fidelity coverage instead. A build failure yields an empty report (scored
+    # validity-only) so one bad candidate cannot abort GEPA's compile.
+    head_sample: Any = getattr(gold, "head", None)
+    if head_sample is None and isinstance(gold, dict):
+        head_sample = gold.get("head")
+    use_head: bool = True if head_sample is None else bool(head_sample)
+    # A workdir lets a proposed config's RELATIVE source.local (LLMs mimic the exemplar's ./downloads/...)
+    # resolve against the dataset's real download dir, so coverage is measured on the actual table.
+    workdir: Any = getattr(gold, "workdir", None)
+    if workdir is None and isinstance(gold, dict):
+        workdir = gold.get("workdir")
+    if config_yaml.strip() and fullmap:
+        try:
+            # os.chdir is PROCESS-GLOBAL: GEPA evaluates candidates on parallel threads, so serialize the
+            # build (which chdirs into its workdir) to keep concurrent evals from corrupting the process
+            # cwd or overwriting one another's table.yaml/KGX. The LLM forward passes still run in parallel.
+            with _GEPA_BUILD_LOCK:
+                built: object = build_and_audit(
+                    config_yaml, fullmap=Path(str(fullmap)), head=use_head, workdir=Path(str(workdir)) if workdir else None
+                )
+            report = built if isinstance(built, dict) else {}
+        except Exception:  # a bad candidate must not abort GEPA; score it validity-only
+            report = {}
+    return {"config_yaml": config_yaml, "report": report, "f1": {}, "metrics": {}}
+
+
+def gepa_metric(gold: Any, pred: Any = None, trace: Any = None, pred_name: Any = None, pred_trace: Any = None) -> Any:
     """The metric dspy.GEPA maximizes: ``dspy.Prediction(score=weighted_quality, feedback=<text>)``.
 
     GEPA consumes the TEXTUAL feedback (failing rows + error codes + unresolved terms + the
     wrong-call list) to propose instruction edits; ``score`` is :func:`quality_score` in [0,1].
+
+    Two call shapes are supported. dspy.GEPA binds FIVE positional args in ``__init__`` and calls
+    ``metric(gold, pred, trace, pred_name, pred_trace)`` (``gold`` = the Example, ``pred`` = the
+    program's Prediction); the offline harness and unit tests call ``gepa_metric(bundle)`` with a
+    single plain dict. A single dict ``gold`` carrying ``config_yaml`` is treated as a legacy bundle;
+    otherwise a bundle is assembled from ``(gold, pred)`` via :func:`_gepa_bundle_from_dspy` — which
+    measures REAL fullmap coverage when the example carries a ``fullmap`` path, so GEPA optimizes the
+    genuine coverage objective rather than a degenerate validity-only proxy.
     """
     _require("dspy")
     import dspy as _dspy  # pyright: ignore[reportMissingImports]
+
+    bundle: dict[str, Any] = gold if (pred is None and isinstance(gold, dict) and "config_yaml" in gold) else _gepa_bundle_from_dspy(gold, pred)
 
     config_yaml: str = str(bundle.get("config_yaml", ""))
     report: dict[str, Any] = bundle.get("report") or {}
@@ -3157,8 +3283,10 @@ def run_gepa(
     program: object | None = None,
     trainset: list[Any] | None = None,
     reflection_lm: object | None = None,
+    task_lm: object | None = None,
     gepa_cls: object | None = None,
     max_metric_calls: int | None = 8,
+    num_threads: int | None = None,
     dataset: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Optimize the agent's instructions as a BLACK BOX with dspy.GEPA (Pareto-native, textual feedback).
@@ -3169,15 +3297,27 @@ def run_gepa(
     proposer LM (a real dspy LM for the user's run). Returns ``{optimized_instructions,
     optimized_descriptions, stats, frontier}``. Never hits the network on the stub path and never
     raises (a failed real compile falls back to the seed instructions + a note in ``stats``).
+
+    LM split (GEPA best practice): GEPA evaluates candidate programs MANY times but reflects only a
+    few times. ``task_lm`` (when given) is the FAST model configured for those many program evaluations
+    (``dspy.configure``), while ``reflection_lm`` is the STRONG model GEPA uses for the few
+    instruction-proposal steps. When ``task_lm`` is None, ``reflection_lm`` is used for both. ``num_threads``
+    parallelizes GEPA's evaluation pool when set.
     """
     _require("dspy")
     import dspy as _dspy  # pyright: ignore[reportMissingImports]
 
     cls: Any = gepa_cls if gepa_cls is not None else _dspy.GEPA
+    gepa_kwargs: dict[str, Any] = {
+        "metric": gepa_metric,
+        "candidate_selection_strategy": "pareto",
+        "reflection_lm": reflection_lm,
+        "max_metric_calls": max_metric_calls,
+    }
+    if num_threads is not None:
+        gepa_kwargs["num_threads"] = num_threads
     try:
-        optimizer: Any = cls(
-            metric=gepa_metric, candidate_selection_strategy="pareto", reflection_lm=reflection_lm, max_metric_calls=max_metric_calls
-        )
+        optimizer: Any = cls(**gepa_kwargs)
     except TypeError:
         optimizer = cls(metric=gepa_metric)  # minimal fallback for a narrower optimizer signature
 
@@ -3189,11 +3329,18 @@ def run_gepa(
     else:
         examples = []
         for row in dataset or []:
-            examples.append(
-                _dspy.Example(table_summary=str(row.get("table_summary", "")), coverage_feedback=str(row.get("coverage_feedback", ""))).with_inputs(
-                    "table_summary", "coverage_feedback"
-                )
-            )
+            fields: dict[str, Any] = {"table_summary": str(row.get("table_summary", "")), "coverage_feedback": str(row.get("coverage_feedback", ""))}
+            # Carry the optional fullmap path (+ head flag) on the Example (NOT program inputs) so
+            # gepa_metric can score each proposed config with REAL coverage against the local fullmap.
+            row_fullmap: object = row.get("fullmap")
+            if row_fullmap:
+                fields["fullmap"] = str(row_fullmap)
+            if "head" in row:
+                fields["head"] = bool(row.get("head"))
+            row_workdir: object = row.get("workdir")
+            if row_workdir:
+                fields["workdir"] = str(row_workdir)
+            examples.append(_dspy.Example(**fields).with_inputs("table_summary", "coverage_feedback"))
         if not examples:
             examples = [
                 _dspy.Example(
@@ -3205,6 +3352,14 @@ def run_gepa(
     optimized_descriptions: dict[str, str] = {}
     stats: dict[str, Any] = {}
     try:
+        # The _ConfigProposer program's dspy.Predict needs a configured TASK LM for its (many) forward
+        # passes; GEPA uses reflection_lm only for the (few) instruction-proposal steps. Prefer a fast
+        # task_lm when supplied, else fall back to reflection_lm. Suppressed so an offline stub LM
+        # (e.g. SimpleNamespace) never breaks the wiring tests.
+        effective_task_lm: object | None = task_lm if task_lm is not None else reflection_lm
+        if effective_task_lm is not None:
+            with contextlib.suppress(Exception):
+                _dspy.configure(lm=effective_task_lm)
         compiled: Any = optimizer.compile(prog, trainset=examples)
         with contextlib.suppress(Exception):
             for name, predictor in compiled.named_predictors():
@@ -3262,19 +3417,44 @@ def load_gepa_dataset(path: Path) -> list[dict[str, Any]]:
     return []
 
 
-def make_dspy_lm(model_id: str | None, api_base: str | None, api_key: str | None, *, backend: str = "openai") -> object:
+# GEPA LM temperatures: the TASK LM (the many program evaluations) wants a low, reliable temperature so it
+# consistently emits schema-valid configs (schema validity is the metric's hard gate -- an invalid config
+# scores 0.0 and yields no gradient); the REFLECTION LM (the few instruction-proposal steps) wants GEPA's
+# recommended high temperature for diverse proposals. Measured for qwen3.6-flash: 0.3 -> 3/3 valid configs
+# vs 1/3 at both 0.0 and 1.0.
+GEPA_TASK_TEMPERATURE: float = 0.3
+GEPA_REFLECTION_TEMPERATURE: float = 1.0
+
+
+def make_dspy_lm(
+    model_id: str | None,
+    api_base: str | None,
+    api_key: str | None,
+    *,
+    backend: str = "openai",
+    temperature: float = GEPA_REFLECTION_TEMPERATURE,
+    max_tokens: int = 16000,
+    timeout: int = 600,
+) -> object:
     """Build a ``dspy.LM`` for GEPA reflection from the resolved model config (W6 real-run path).
 
     Used only on the (deferred) live ``--optimize`` path. ``dspy.LM`` speaks litellm-style model strings:
     ``backend="openai"`` prefixes ``openai/`` for an OpenAI-compatible endpoint (a bare model id), while
     ``backend="litellm"`` passes the model id through unchanged (it already carries a litellm provider
     prefix). Mirrors :func:`build_model`. Lazy-imports dspy.
+
+    ``temperature`` defaults to ``1.0`` (GEPA's recommended reflection temperature — reflection needs
+    diversity) and ``max_tokens`` to ``16000`` so a REASONING model (which spends tokens on internal
+    chain-of-thought before answering) is not truncated mid-output: a truncated ``config_yaml`` fails
+    dspy's output parsing and stalls the optimizer. ``timeout`` (seconds, default 600) bounds each model
+    request so a stalled connection cannot hang the optimizer indefinitely (dspy/litellm retries on
+    timeout). All are passed straight to ``dspy.LM`` and may be overridden by the caller.
     """
     _require("dspy")
     import dspy as _dspy  # pyright: ignore[reportMissingImports]
 
     model: str = str(model_id) if backend == "litellm" else f"openai/{model_id}"
-    return _dspy.LM(model=model, api_base=api_base, api_key=api_key)
+    return _dspy.LM(model=model, api_base=api_base, api_key=api_key, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
 
 
 def dominates(a: dict[str, Any], b: dict[str, Any]) -> bool:
