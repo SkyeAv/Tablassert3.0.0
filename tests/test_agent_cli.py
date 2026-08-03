@@ -231,7 +231,12 @@ def test_agent_gepa_threads_non_positive_exits_2(bad_threads: int, monkeypatch: 
     def fail_supervisor(*a: object, **k: object) -> object:
         raise AssertionError("run_supervisor must NOT run with an invalid --gepa-threads")
 
+    def fail_model_init(*a: object, **k: object) -> object:
+        raise AssertionError("make_dspy_lm must NOT run with an invalid --gepa-threads")
+
     monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
+    # also prove NO model construction happens before validation (not just no supervisor run)
+    monkeypatch.setattr("tablassert.agent.make_dspy_lm", fail_model_init)
 
     with pytest.raises(SystemExit) as exc_info:
         agent(["PMC1"], fullmap=Path("/tmp/fm"), gepa_threads=bad_threads)
@@ -295,7 +300,10 @@ def test_agent_optimize_forwards_backend_to_dspy_lm(monkeypatch: pytest.MonkeyPa
     out: Path = tmp_path / "opt.yaml"
     agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, backend="litellm", instructions_out=out)
 
-    args, kwargs = lm_calls[0]
+    # Without --task-model the CLI builds EXACTLY ONE LM (the reflection LM) — assert the count so a
+    # regression that reorders/adds LM constructions cannot hide behind lm_calls[0].
+    assert len(lm_calls) == 1
+    args, kwargs = lm_calls[0]  # the reflection LM
     assert args == ("m", "b", "k")
     assert kwargs == {"backend": "litellm"}
     assert out.is_file()  # a successful compile still persists
@@ -351,3 +359,5 @@ def test_make_dspy_lm_honors_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     # reasoning-model-safe defaults are passed through (a truncated config_yaml would stall GEPA)
     assert captured[0]["temperature"] == 1.0
     assert captured[0]["max_tokens"] == 16000
+    # default timeout bounds each request so a stalled connection cannot hang the optimizer
+    assert captured[0]["timeout"] == 600

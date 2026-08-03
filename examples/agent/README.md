@@ -23,6 +23,13 @@ These artifacts come from running the Tablassert `[agent]` GEPA prompt-optimizat
 - **`gepa-dataset.yaml`** — an example GEPA dataset (two open-access PMC gene tables). Each entry carries
   `table_summary` + `coverage_feedback` (the program inputs) and optionally `fullmap` / `workdir` /
   `head` so the GEPA metric scores each proposed config with **real** fullmap coverage.
+- **`QC_REPORT.md` / `QC_REVIEW.md`** — the assay report and the LLM-as-judge review produced by
+  `qc/qc_report.py` and `qc/qc_reviewer.py` from a shared agent state dir. Every per-PMC entry in both
+  carries the config's `sha256` so a future report/review/config drift is detectable.
+- **`qc/`** — the two QC scripts. `qc_report.py` is deterministic (no LLM); `qc_reviewer.py` calls the
+  judge LM (needs `QWEN_TOKEN_PLAN_URL` / `QWEN_TOKEN_PLAN_API_KEY`) and accepts
+  `<STATE_DIR> --rerender` to rebuild the markdown from an existing `qc_review.json` without
+  re-querying the judge.
 
 ## Reproducing the optimization
 
@@ -47,3 +54,22 @@ GEPA best practice (and what the flags above do): a **strong reflection LM** (`-
 few instruction edits, while a **fast task LM** (`--task-model`) runs the many candidate evaluations.
 `--max-metric-calls` bounds the budget; `--gepa-threads` parallelizes the candidate LM forward passes
 (the coverage-scoring builds stay serialized on the process-wide `_GEPA_BUILD_LOCK`).
+
+## QC state-directory requirement
+
+Configs generated from `gepa-dataset.yaml` point `source.local` at tables under the **GEPA run's state
+dir** (here `.tablassert/gepa/downloads/…`, since the dataset's `workdir` is `.tablassert/gepa`), but
+`qc/qc_reviewer.py` only reads a config's `source.local` when it resolves INSIDE its own
+`STATE_DIR/downloads` allowlist (an injection defense — see `get_table_summary`). So the QC scripts must
+be pointed at the SAME state dir that holds `downloads/`, or the tables must be staged there:
+
+```bash
+# assay + judge the GEPA run's own state dir (recommended: paths already line up)
+uv run python examples/agent/qc/qc_report.py .tablassert/gepa
+uv run python examples/agent/qc/qc_reviewer.py .tablassert/gepa
+```
+
+(The committed `QC_REPORT.md` / `QC_REVIEW.md` were generated from a dedicated `.tablassert/qc-assay`
+state dir whose `downloads/` holds the same open-access tables.) A config whose `source.local` falls
+outside the QC `downloads/` dir is reported as `(source.local is outside the QC downloads dir; not read)`
+rather than read or sent to the judge.

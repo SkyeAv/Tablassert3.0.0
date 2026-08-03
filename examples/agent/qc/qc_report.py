@@ -17,19 +17,20 @@ OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else STATE_DIR / "QC_REPORT.md"
 # predicates that are "specific" vs generic fallbacks (for a heuristic appropriateness flag)
 GENERIC_PREDICATES = {"associated_with", "related_to", "biolink:associated_with", "biolink:related_to"}
 
-# absolute-path roots that indicate a machine-specific local filesystem path (never a public URL)
-_LOCAL_ROOTS = r"(?:home|Users|tmp|root|var|mnt|srv|opt|private)"
 
+def redact_paths(text: str, state_dir: Path | None = None) -> str:
+    """Redact absolute local filesystem paths before they reach a QC artifact.
 
-def redact_paths(text: str) -> str:
-    """Redact absolute local filesystem paths before they reach the report.
-
-    Paths under ``STATE_DIR`` are normalized to ``<state-dir>/...``; any other absolute local path
-    becomes the stable ``<local-path>`` placeholder. Public URLs are untouched (the lookbehind
-    rejects a match preceded by word chars, e.g. the host of ``https://host/...``).
+    Paths under ``state_dir`` (default: this script's ``STATE_DIR``) are normalized to
+    ``<state-dir>/...``; any other absolute path becomes the stable ``<local-path>`` placeholder.
+    Public URLs are untouched: the lookbehind rejects a match preceded by a word char (e.g. the host
+    in ``https://host/...``), and bare ratios like ``2.00/3`` are preceded by a digit.
     """
-    out = text.replace(str(STATE_DIR.resolve()), "<state-dir>")
-    return re.sub(rf"(?<![\w@%+./-])/{_LOCAL_ROOTS}/[^\s'\"`)\]>]+", "<local-path>", out)
+    root = (state_dir if state_dir is not None else STATE_DIR).resolve()
+    out = text.replace(str(root), "<state-dir>")
+    # The lookbehind rejects a match preceded by a word char (a URL host, e.g. `https://host/...`), a
+    # digit (bare ratios like `2.00/3`), or `>` (the path suffix right after a `<state-dir>` placeholder).
+    return re.sub(r"(?<![\w@%+./:>-])/(?:[\w.@%-]+/)+[\w.@%-]+", "<local-path>", out)
 
 
 def load_state() -> dict:
@@ -145,7 +146,9 @@ def main() -> None:
             lines.append(f"- **notes:** {redact_paths(notes[:200])}")
         lines.append(f"\n### Derived config (`configs/{pmc}.yaml`)\n")
         lines.append("```yaml")
-        lines.append(redact_paths(cfg_text.strip())[:3000] if cfg_text else "(no config produced)")
+        # Generous cap (largest configs are ~3.5KB): a TRUNCATED yaml fence is unparseable and hides the
+        # tail of the config from reviewers.
+        lines.append(redact_paths(cfg_text.strip())[:8000] if cfg_text else "(no config produced)")
         lines.append("```")
         edges = sample_edges(pmc, 5)
         if edges:

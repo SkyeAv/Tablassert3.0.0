@@ -256,7 +256,14 @@ sections:
           - {pattern: '^mDC$', replacement: 'myeloid dendritic cell'}
           - {pattern: '^Mega$', replacement: 'megakaryocyte'}
           - {pattern: '^Mono$', replacement: 'monocyte'}
-          - {pattern: '^Neu$', replacement: 'neutrophil
+          - {pattern: '^Neu$', replacement: 'neutrophil'}
+          - {pattern: '^NK$', replacement: 'natural killer cell'}
+          - {pattern: '^ProB$', replacement: 'pro-B cell'}
+        prioritize: ['Cell']
+        taxon: 9606
+    annotations:
+      - {annotation: mvsusie_z_score, method: column, encoding: D}
+      - {annotation: mvsusie_lfsr, method: column, encoding: F}
 ```
 
 ### Sample edges (first 5)
