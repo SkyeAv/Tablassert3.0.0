@@ -2292,6 +2292,7 @@ def make_tools(
     name: str = "agent",
     version: str = "0.0.1",
     qc: bool = False,
+    derive_mode: str = "full",
 ) -> list[object]:
     """Assemble the fullmap-bound smolagents tools the supervisor hands to the inner agent.
 
@@ -2301,11 +2302,26 @@ def make_tools(
     I/O); the smolagents import happens lazily inside each factory. ``table_path`` is accepted for
     API symmetry with the supervisor call site (the read_table tool reads whatever ``source`` the
     LLM supplies).
+
+    ``derive_mode`` controls which tools the inner agent gets:
+    - ``"full"`` (default): all tools (read_table, pmc_article_context, derive_config, build_and_audit,
+      map_coverage, propose_config_edit).
+    - ``"derive_only"``: ONLY ``[read_table, pmc_article_context, derive_config]`` — no fullmap tools. Many
+      derivations can run in PARALLEL (no fullmap lock); the configs are built later in a serial build pass.
+      Trade-off: the agent cannot check coverage while deriving, so it cannot tell which sheet/columns are
+      best (suboptimal for multi-sheet tables).
+    - ``"derive_coverage"``: ``[read_table, pmc_article_context, derive_config, map_coverage]`` — coverage
+      feedback WITHOUT the KGX build, so the agent can pick the best sheet/columns. map_coverage reads the
+      fullmap, so these derivations serialize on the fullmap lock across processes.
     """
 
     def get_fullmap() -> Path:
         return fullmap
 
+    if derive_mode == "derive_only":
+        return [make_read_table_tool(), make_pmc_article_context_tool(), make_derive_config_tool()]
+    if derive_mode == "derive_coverage":
+        return [make_read_table_tool(), make_pmc_article_context_tool(), make_derive_config_tool(), make_map_coverage_tool(get_fullmap)]
     return [
         make_read_table_tool(),
         make_pmc_article_context_tool(),
@@ -2499,6 +2515,7 @@ def run_supervisor(
     judge_threshold: float | None = None,
     local: dict[str, Path] | Path | None = None,
     instructions: str | None = None,
+    derive_mode: str = "full",
 ) -> dict[str, object]:
     """Run the deterministic supervisor over a batch of PMC ids with checkpoint/resume.
 
@@ -2545,7 +2562,7 @@ def run_supervisor(
     all_metrics: list[dict[str, object]] = []
     for pmc_id in ids:
         rec: ConfigRecord = state.records[pmc_id]
-        if rec.status in {"DONE", "MAPPED", "SKIPPED", "BUILT_UNMEASURED"}:
+        if rec.status in {"DONE", "MAPPED", "SKIPPED", "BUILT_UNMEASURED", "DERIVED"}:
             continue  # resume: already terminal
         try:
             rec.status = "RUNNING"
@@ -2580,7 +2597,7 @@ def run_supervisor(
             metrics: dict[str, object] = {}
             agent: object = build_agent(
                 model=build_model_factory(),
-                tools=make_tools(fullmap=fullmap, table_path=tables[0], name=name, version=version),
+                tools=make_tools(fullmap=fullmap, table_path=tables[0], name=name, version=version, derive_mode=derive_mode),
                 max_steps=max_steps,
                 step_callbacks=[make_step_callback(metrics)],
                 verbosity_level=verbosity,
@@ -2614,6 +2631,14 @@ def run_supervisor(
             derived_path: Path = derived_config_path(state_dir, pmc_id)
             derived_path.write_text(config)
             rec.config_path = str(derived_path)
+
+            if derive_mode in {"derive_only", "derive_coverage"}:
+                # Derive mode: the config is schema-valid but NOT built here (the build tools were withheld
+                # so derivations run in parallel / cheaply). Mark DERIVED; a separate serial build pass builds
+                # these configs later.
+                rec.status = "DERIVED"
+                save_state(state_dir, state)
+                continue
 
             report: dict[str, object] = build_and_audit(config, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id))
             raw_cov: object = report.get("coverage_pct")
