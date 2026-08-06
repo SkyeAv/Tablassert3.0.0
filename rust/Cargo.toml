@@ -24,7 +24,7 @@ rustc-hash = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 uuid = { version = "1", features = ["v3"] }
-xxhash-rust = { version = "0.8", features = ["xxh32", "xxh64", "xxh3"] }
+xxhash-rust = { version = "0.8", features = ["xxh64", "xxh3"] }
 
 [dev-dependencies]
 bincode = "1"
