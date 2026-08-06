@@ -16,18 +16,20 @@ The loguru sink (`.tablassert/log/tablassert.log`, `log.LOGASSERT`) and the cach
 
 ## mkhash()
 
-Generates a compact **xxh32** digest (hex string, 8 characters) for arbitrary input, computed by the Rust extension (`tablassert.rs.xxh32`).
+Generates an **xxh64** digest (hex string, 16 characters) for arbitrary input, computed by the Rust extension (`tablassert.rs.xxh64`).
 
 ```python
 def mkhash(x: Any) -> str
 ```
 
-The input is converted to a string and UTF-8 encoded before hashing. Used for compact identifiers in the CLI — e.g., the 8-character section hash shown in the progress display and the per-section parquet store filename (`{hash}.parquet`).
+The input is converted to a string and UTF-8 encoded before hashing. The digest is the content-addressed identity for sections: the per-section parquet store filename (`{hash}.parquet` in `.tablassert/store/`) and the section label in validation errors derive from it. User-facing progress labels truncate it to 8 characters for display.
+
+The full 64-bit digest is used deliberately: a 32-bit hash would invite birthday collisions (~50% at ~77k sections) that could silently reuse another section's cached subgraph.
 
 ```python
 from tablassert.utils import mkhash
 
-mkhash({"source": "data.csv", "statement": {...}})  # e.g. "abc123de"
+mkhash("hello")  # "26c7827d889f6da3"
 ```
 
 **Deterministic:** the same input always produces the same digest.

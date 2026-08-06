@@ -1,7 +1,7 @@
 """tablassert: declarative knowledge-graph extraction from tabular data.
 
 The compiled Rust extension (``tablassert.rs``) provides the performance-critical
-primitives — ``fullmap``, ``dedup_ndjson``, ``xxh32``/``xxh64``, ``namespace_uuid`` — and is
+primitives — ``fullmap``, ``dedup_ndjson``, ``xxh64``, ``namespace_uuid`` — and is
 required by every entry point.  It is built by ``maturin`` (PyO3) and shipped inside
 the wheel as ``tablassert/rs.<abi>.so``.
 
@@ -26,5 +26,5 @@ except ImportError as exc:  # pragma: no cover - only on broken/extensionless in
         "maturin build. Fix with a Rust toolchain (cargo) available:\n"
         "    uv cache clean tablassert\n"
         "    uv tool install --force --reinstall <tablassert source>\n"
-        "then verify with:  python -c \"from tablassert import rs; print(rs.xxh32('x'))\""
+        "then verify with:  python -c \"from tablassert import rs; print(rs.xxh64('x'))\""
     ) from exc
