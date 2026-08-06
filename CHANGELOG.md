@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+- **Fullmap databases built by older releases must be rebuilt.** The Rust extension upgraded its embedded database engine from redb 2.6 to redb 4.1, and redb ≥ 3 dropped the old v2 file format. Existing `fullmap.redb` (and sibling `fullmap.s*.redb`) files fail to open with `fullmap DB is outdated or needs repair; rebuild with 'tablassert build-fullmap'`. Run `tablassert build-fullmap` once after upgrading (BABEL downloads stay cached, so the rebuild is cheap). The on-disk fullmap schema is now `tablassert.fullmap.v5` (the table layout is unchanged; the bump makes the redb-4 rebuild explicit and lets an older extension reject new files loudly).
+
+### Changed
+- **Fullmap reads no longer serialize across processes.** The lookup path (`lookup_fullmap_terms` and the `hydrate_*` helpers) now opens the fullmap redb files READ-ONLY with a SHARED file lock (redb ≥ 3 `ReadOnlyDatabase`) instead of an exclusive lock: concurrent readers — the agent supervisor, its code-executor subprocesses, and parallel `agent run` processes — no longer contend on the fullmap lock ("Database already open"); only a running `build-fullmap` rebuild can briefly block readers. Read-only opens also never touch the file mtime, making the mtime-keyed Python lookup caches fully stable. The redb 4.1 upgrade additionally speeds up multi-threaded shard reads (~15% on upstream benchmarks) and the fullmap build's redb write phase (~1.5x on upstream write benchmarks).
+
 ## 8.1.0 - 2026-08-03
 
 ### Breaking Changes

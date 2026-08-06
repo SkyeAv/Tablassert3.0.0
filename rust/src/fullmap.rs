@@ -3,7 +3,9 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList};
 use rayon::prelude::*;
-use redb::{Database, Durability, ReadableTable, TableDefinition};
+use redb::{
+    Database, Durability, ReadOnlyDatabase, ReadableDatabase, ReadableTable, TableDefinition,
+};
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -26,7 +28,8 @@ const CATEGORIES: TableDefinition<u16, &str> = TableDefinition::new("categories"
 const SOURCES: TableDefinition<u8, &[u8]> = TableDefinition::new("sources");
 const CURIES: TableDefinition<u32, &[u8]> = TableDefinition::new("curies");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
-const SCHEMA_VERSION: &str = "tablassert.fullmap.v4";
+const SCHEMA_VERSION: &str = "tablassert.fullmap.v5";
+const SCHEMA_VERSION_V4: &str = "tablassert.fullmap.v4";
 const SCHEMA_VERSION_V3: &str = "tablassert.fullmap.v3";
 const SCHEMA_VERSION_V2: &str = "tablassert.fullmap.v2";
 const SCHEMA_VERSION_V1: &str = "tablassert.fullmap.v1";
@@ -51,7 +54,7 @@ type MergeItem = (Reverse<u64>, Reverse<String>, usize, Vec<(u32, u8)>);
 /// A read-path fan-out job: the `(input_index, term)` bucket routed to one shard
 /// plus a clone of that shard's handle, so a worker thread owns both outright
 /// (no shared receiver or borrow).
-type ShardJob = (Vec<(usize, String)>, Arc<Database>);
+type ShardJob = (Vec<(usize, String)>, Arc<ReadOnlyDatabase>);
 /// Fast non-cryptographic hash map for the build-hot paths (per-worker term
 /// aggregation, dimension/CURIE interning).  `FxHasher` (rustc's own hasher) is
 /// a single multiply-XOR pass — ~3-5x faster than std's SipHash for these short
@@ -64,16 +67,18 @@ type FxHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
 /// ever allocated on the read path.
 type LineChunk = (u8, Vec<Vec<u8>>);
 
-/// Database cache keyed by canonical path only.
+/// Read-path database cache keyed by canonical path only.
 ///
-/// redb's `Database::open` updates the file mtime, so keying on `(path, mtime)`
-/// made every lookup after the first miss the cache and try to re-open the file,
-/// which fails because the first handle still holds redb's exclusive `flock`
-/// ("Database already open. Cannot acquire lock.").  Keying on the path alone is
-/// safe: within a process the DB is only rebuilt via `build_fullmap_db`, which
-/// evicts the cache explicitly, and redb's exclusive lock prevents an external
-/// rebuild while we hold a handle.
-static DB_CACHE: OnceLock<RwLock<HashMap<PathBuf, Arc<Database>>>> = OnceLock::new();
+/// Handles are `ReadOnlyDatabase` (redb ≥ 3), which take a SHARED file lock:
+/// any number of processes/threads may hold them concurrently, and they only
+/// conflict with a writer (`build-fullmap`'s exclusive lock).  Keying on the
+/// path alone is safe: within a process the DB is only rebuilt via
+/// `build_fullmap_db`, which evicts the cache explicitly; externally, redb's
+/// exclusive writer lock fails against our shared lock (and the rebuild also
+/// removes the files before recreating them), so no cached handle can outlive
+/// a rebuild on this path.  Read-only opens never write the file, so the
+/// mtime-keyed Python-side caches stay stable under lookups.
+static DB_CACHE: OnceLock<RwLock<HashMap<PathBuf, Arc<ReadOnlyDatabase>>>> = OnceLock::new();
 
 /// Number of shards for concurrent maps (power of two for mask routing).
 const SHARD_COUNT: usize = 64;
@@ -140,6 +145,25 @@ struct SourceRow {
 
 fn py_err<E: std::fmt::Display>(err: E) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
+}
+
+/// Open a fullmap file with a SHARED (read-only) lock and map open errors to
+/// actionable fullmap errors.
+///
+/// A read-only open can neither upgrade an outdated file format (redb ≥ 3
+/// dropped the v2 format that redb 2.x builds wrote) nor repair a crash-damaged
+/// file — by design — so `UpgradeRequired`/`RepairAborted` surface as the same
+/// rebuild hint `validate_schema` produces for an outdated schema tag, instead
+/// of a cryptic redb error.  Every other error passes through verbatim.
+fn open_read_only(path: &Path) -> PyResult<ReadOnlyDatabase> {
+    ReadOnlyDatabase::open(path).map_err(|err| match err {
+        redb::DatabaseError::UpgradeRequired(_) | redb::DatabaseError::RepairAborted => {
+            PyRuntimeError::new_err(
+                "fullmap DB is outdated or needs repair; rebuild with 'tablassert build-fullmap'",
+            )
+        }
+        other => py_err(other),
+    })
 }
 
 /// Narrow `value` to its cleaned fixed point — repeated trim + matching /
@@ -1885,7 +1909,9 @@ fn write_shard_records(
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<u64> {
     let mut write = database.begin_write().map_err(py_err)?;
-    write.set_durability(Durability::None);
+    // redb ≥ 3 returns `Result` (fails once the transaction has been used);
+    // this is the first call on a fresh transaction, so it cannot fail here.
+    write.set_durability(Durability::None).map_err(py_err)?;
     let mut table = write.open_table(RECORDS).map_err(py_err)?;
     let mut merge = MergeHeap::new(run_paths).map_err(py_err)?;
     // Pre-size the batch to the flush threshold so it never regrows (each
@@ -2053,7 +2079,7 @@ fn evict_cached_path(path: &Path) -> PyResult<()> {
     Ok(())
 }
 
-fn cache_database(path: &Path, database: Arc<Database>) -> PyResult<()> {
+fn cache_database(path: &Path, database: Arc<ReadOnlyDatabase>) -> PyResult<()> {
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let cache = DB_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
     cache.write().map_err(py_err)?.insert(canonical, database);
@@ -2271,8 +2297,10 @@ pub fn build_fullmap_db(
         )
     })?;
 
-    // Cache the freshly-built database for the read path.
-    let database = Arc::new(Database::open(&output).map_err(py_err)?);
+    // Cache the freshly-built database for the read path (shared read-only
+    // lock, so concurrent lookups — including from other processes — never
+    // contend with it).
+    let database = Arc::new(open_read_only(&output)?);
     cache_database(&output, database)?;
     Ok(())
 }
@@ -2281,7 +2309,7 @@ pub fn build_fullmap_db(
 // Read path
 // ---------------------------------------------------------------------------
 
-fn validate_schema(database: &Database) -> PyResult<()> {
+fn validate_schema(database: &ReadOnlyDatabase) -> PyResult<()> {
     let read = database.begin_read().map_err(py_err)?;
     let meta = read.open_table(META).map_err(py_err)?;
     let schema = meta
@@ -2290,7 +2318,7 @@ fn validate_schema(database: &Database) -> PyResult<()> {
         .map(|x| x.value().to_string());
     match schema.as_deref() {
         Some(SCHEMA_VERSION) => Ok(()),
-        Some(SCHEMA_VERSION_V3 | SCHEMA_VERSION_V2 | SCHEMA_VERSION_V1) => {
+        Some(SCHEMA_VERSION_V4 | SCHEMA_VERSION_V3 | SCHEMA_VERSION_V2 | SCHEMA_VERSION_V1) => {
             Err(PyRuntimeError::new_err(
                 "fullmap DB is outdated; rebuild with 'tablassert build-fullmap'",
             ))
@@ -2299,13 +2327,13 @@ fn validate_schema(database: &Database) -> PyResult<()> {
     }
 }
 
-fn open_cached(db: PathBuf) -> PyResult<Arc<Database>> {
+fn open_cached(db: PathBuf) -> PyResult<Arc<ReadOnlyDatabase>> {
     let canonical = std::fs::canonicalize(&db).unwrap_or(db);
     let cache = DB_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
     if let Some(database) = cache.read().map_err(py_err)?.get(&canonical) {
         return Ok(Arc::clone(database));
     }
-    let database = Arc::new(Database::open(&canonical).map_err(py_err)?);
+    let database = Arc::new(open_read_only(&canonical)?);
     validate_schema(&database)?;
     let cached = Arc::clone(&database);
     cache.write().map_err(py_err)?.insert(canonical, database);
@@ -2315,14 +2343,14 @@ fn open_cached(db: PathBuf) -> PyResult<Arc<Database>> {
 /// Open (and cache) one RECORDS shard by index, deriving its path from the
 /// primary DB path.  Shards hold only RECORDS (no META), so they are not
 /// schema-validated here — the primary's `validate_schema` gates the layout.
-fn open_cached_shard(primary: &Path, index: usize) -> PyResult<Arc<Database>> {
+fn open_cached_shard(primary: &Path, index: usize) -> PyResult<Arc<ReadOnlyDatabase>> {
     let path = shard_path(primary, index);
     let canonical = std::fs::canonicalize(&path).unwrap_or(path);
     let cache = DB_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
     if let Some(database) = cache.read().map_err(py_err)?.get(&canonical) {
         return Ok(Arc::clone(database));
     }
-    let database = Arc::new(Database::open(&canonical).map_err(py_err)?);
+    let database = Arc::new(open_read_only(&canonical)?);
     let cached = Arc::clone(&database);
     cache.write().map_err(py_err)?.insert(canonical, database);
     Ok(cached)
@@ -2333,7 +2361,7 @@ fn open_cached_shard(primary: &Path, index: usize) -> PyResult<Arc<Database>> {
 /// `SHARD_COUNT_SHARDS`; reading the value back keeps the read path compatible
 /// with databases built before the count was pinned, opening exactly the shards
 /// that exist and routing with the matching mask.
-fn shard_count_of(database: &Database) -> PyResult<usize> {
+fn shard_count_of(database: &ReadOnlyDatabase) -> PyResult<usize> {
     let read = database.begin_read().map_err(py_err)?;
     let meta = read.open_table(META).map_err(py_err)?;
     let count = meta
@@ -2353,7 +2381,7 @@ fn shard_count_of(database: &Database) -> PyResult<usize> {
 /// Open (and cache) all RECORDS shard handles for a primary DB path.  The shard
 /// count is read from the primary's META so the read path opens exactly the
 /// shards the build wrote.
-fn open_cached_shards(primary: &Path) -> PyResult<Vec<Arc<Database>>> {
+fn open_cached_shards(primary: &Path) -> PyResult<Vec<Arc<ReadOnlyDatabase>>> {
     let database = open_cached(primary.to_path_buf())?;
     let shard_count = shard_count_of(&database)?;
     (0..shard_count)
@@ -2361,7 +2389,7 @@ fn open_cached_shards(primary: &Path) -> PyResult<Vec<Arc<Database>>> {
         .collect()
 }
 
-fn lookup_pair_chunk(shards: &[Arc<Database>], terms: &[String]) -> PyResult<PairRecords> {
+fn lookup_pair_chunk(shards: &[Arc<ReadOnlyDatabase>], terms: &[String]) -> PyResult<PairRecords> {
     // One read transaction + RECORDS table per shard, opened once; each query
     // term is routed to its shard via `term_shard`.
     let reads: Vec<_> = shards
@@ -2395,7 +2423,7 @@ fn lookup_pair_chunk(shards: &[Arc<Database>], terms: &[String]) -> PyResult<Pai
 /// every shard's results back into input order.  Pure Rust (no `Python`), so it
 /// is safe to run on a worker thread inside a `py.detach` region.
 fn lookup_shard_bucket(
-    shard: &Database,
+    shard: &ReadOnlyDatabase,
     bucket: &[(usize, String)],
 ) -> PyResult<Vec<(usize, TermPairs)>> {
     let read = shard.begin_read().map_err(py_err)?;
@@ -2425,7 +2453,7 @@ fn lookup_shard_bucket(
 /// cap are read on the calling thread, which still overlaps with the spawned
 /// readers.  Pure Rust end-to-end (no `Python`).
 fn lookup_pair_terms_db(
-    shards: &[Arc<Database>],
+    shards: &[Arc<ReadOnlyDatabase>],
     terms: &[String],
     workers: usize,
 ) -> PyResult<PairRecords> {
@@ -2523,7 +2551,7 @@ fn lookup_pair_terms(
 }
 
 fn load_string_table(
-    database: &Database,
+    database: &ReadOnlyDatabase,
     table_definition: TableDefinition<u16, &str>,
 ) -> PyResult<HashMap<u16, String>> {
     let read = database.begin_read().map_err(py_err)?;
@@ -2536,7 +2564,7 @@ fn load_string_table(
     Ok(out)
 }
 
-fn load_sources(database: &Database) -> PyResult<HashMap<u8, String>> {
+fn load_sources(database: &ReadOnlyDatabase) -> PyResult<HashMap<u8, String>> {
     let read = database.begin_read().map_err(py_err)?;
     let table = read.open_table(SOURCES).map_err(py_err)?;
     let mut out = HashMap::new();
@@ -2548,7 +2576,7 @@ fn load_sources(database: &Database) -> PyResult<HashMap<u8, String>> {
     Ok(out)
 }
 
-fn hydrate_curie_rows(database: &Database, curie_ids: &[u32]) -> PyResult<Vec<CurieRow>> {
+fn hydrate_curie_rows(database: &ReadOnlyDatabase, curie_ids: &[u32]) -> PyResult<Vec<CurieRow>> {
     let read = database.begin_read().map_err(py_err)?;
     let table = read.open_table(CURIES).map_err(py_err)?;
     let mut out = Vec::with_capacity(curie_ids.len());
@@ -2876,7 +2904,7 @@ mod tests {
         assert_eq!(rows[0].1[0].source_version, FULLMAP_SOURCE_VERSION);
     }
 
-    /// The v4 layout keeps dims+CURIES+META in the primary and moves RECORDS
+    /// The sharded (v4+) layout keeps dims+CURIES+META in the primary and moves RECORDS
     /// into sibling shard files.  The primary must NOT carry a RECORDS table,
     /// META must advertise both the schema and the shard count, and every shard
     /// file must exist (even empty) holding a RECORDS table — this is the
@@ -2914,7 +2942,7 @@ mod tests {
         let _curies = read.open_table(CURIES).unwrap();
         assert!(
             read.open_table(RECORDS).is_err(),
-            "primary must not hold a RECORDS table in the v4 layout"
+            "primary must not hold a RECORDS table in the sharded (v4+) layout"
         );
         drop(read);
         drop(database);
@@ -2923,7 +2951,7 @@ mod tests {
         for index in 0..SHARD_COUNT_SHARDS {
             let shard = shard_path(&output, index);
             assert!(shard.exists(), "missing shard file {shard:?}");
-            let db = Database::open(&shard).unwrap();
+            let db = ReadOnlyDatabase::open(&shard).unwrap();
             let read = db.begin_read().unwrap();
             let _records = read.open_table(RECORDS).unwrap();
         }
@@ -2996,7 +3024,7 @@ mod tests {
             write.commit().unwrap();
             drop(database);
 
-            let database = Database::open(&output).unwrap();
+            let database = ReadOnlyDatabase::open(&output).unwrap();
             let count = shard_count_of(&database).unwrap();
             drop(database);
             count
@@ -3523,12 +3551,13 @@ mod tests {
         drop(read);
 
         // Exactly s0+s1 exist, each holding a RECORDS table; higher shard files
-        // up to the compile-time cap must NOT exist. (Direct opens are scoped so
-        // their flocks drop before the cached opens.)
+        // up to the compile-time cap must NOT exist. (Read-only opens take a
+        // SHARED lock, so they coexist even with the cached read-only opens
+        // that follow.)
         for index in 0..2 {
             let shard = shard_path(&output, index);
             assert!(shard.exists(), "missing shard file {shard:?}");
-            let db = Database::open(&shard).unwrap();
+            let db = ReadOnlyDatabase::open(&shard).unwrap();
             let read = db.begin_read().unwrap();
             let _records = read.open_table(RECORDS).unwrap();
         }
@@ -3718,6 +3747,127 @@ mod tests {
         assert!(err
             .to_string()
             .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
+    }
+
+    /// Two `ReadOnlyDatabase` handles on one file coexist (shared locks) and
+    /// both read — the in-process analogue of the cross-process reader
+    /// guarantee that motivated the redb 4 read-only switch.
+    #[test]
+    fn two_read_only_handles_coexist_on_one_file() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+        let database = Database::create(&output).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", SCHEMA_VERSION).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+
+        let first = ReadOnlyDatabase::open(&output).unwrap();
+        let second = ReadOnlyDatabase::open(&output).unwrap();
+        for db in [&first, &second] {
+            let read = db.begin_read().unwrap();
+            let meta = read.open_table(META).unwrap();
+            assert_eq!(meta.get("schema").unwrap().unwrap().value(), SCHEMA_VERSION);
+        }
+    }
+
+    /// A live writer holds the exclusive lock, so a read-only open fails with
+    /// `DatabaseAlreadyOpen` — and succeeds once the writer drops.  This is the
+    /// reader-vs-rebuild window that `_call_with_lock_retry` (Python side)
+    /// still covers after the shared-lock switch.
+    #[test]
+    fn writer_blocks_read_only_open_until_dropped() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+        let writer = Database::create(&output).unwrap();
+
+        let err = match ReadOnlyDatabase::open(&output) {
+            Ok(_) => panic!("expected read-only open to be blocked by the writer"),
+            Err(err) => err,
+        };
+        assert!(matches!(err, redb::DatabaseError::DatabaseAlreadyOpen));
+
+        drop(writer);
+        ReadOnlyDatabase::open(&output).unwrap();
+    }
+
+    /// A file in the old (v2) redb file format must map to the actionable
+    /// rebuild hint, not a cryptic redb error: redb ≥ 3 dropped the v2 format
+    /// that pre-upgrade builds wrote, and a rebuild is the only path forward.
+    /// Simulate the old format by patching the primary commit slot's
+    /// format-version byte (file offset 64) to 2 — exactly the condition redb
+    /// 4 detects as `UpgradeRequired`.
+    #[test]
+    fn read_only_open_maps_outdated_file_format_to_rebuild_hint() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+        let database = Database::create(&output).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", SCHEMA_VERSION).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+
+        patch_db_byte(&output, 64, |version| {
+            assert_eq!(version, 3, "expected the v3 file format version");
+            2 // v2 format version -> UpgradeRequired
+        });
+
+        let err = match open_read_only(&output) {
+            Ok(_) => panic!("expected open_read_only to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains(
+            "fullmap DB is outdated or needs repair; rebuild with 'tablassert build-fullmap'"
+        ));
+    }
+
+    /// A crash-damaged file (recovery required) cannot be repaired through a
+    /// read-only open — redb aborts the repair — so it must surface the same
+    /// rebuild hint.  Simulate the crash state by setting the RECOVERY_REQUIRED
+    /// flag (bit 2 of the god byte at file offset 9), as redb's own repair
+    /// tests do.
+    #[test]
+    fn read_only_open_maps_recovery_required_to_rebuild_hint() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+        let database = Database::create(&output).unwrap();
+        drop(database);
+
+        patch_db_byte(&output, 9, |god| god | 2);
+
+        let err = match open_read_only(&output) {
+            Ok(_) => panic!("expected open_read_only to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains(
+            "fullmap DB is outdated or needs repair; rebuild with 'tablassert build-fullmap'"
+        ));
+    }
+
+    /// Test helper: read one byte at `offset` in `path`, transform it through
+    /// `f`, and write the result back (no other bytes touched).
+    fn patch_db_byte(path: &Path, offset: u64, f: impl FnOnce(u8) -> u8) {
+        use std::io::{Read, Seek, SeekFrom, Write};
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        file.seek(SeekFrom::Start(offset)).unwrap();
+        let mut byte = [0u8; 1];
+        file.read_exact(&mut byte).unwrap();
+        file.seek(SeekFrom::Start(offset)).unwrap();
+        file.write_all(&[f(byte[0])]).unwrap();
     }
 
     /// `evict_cached_path` must drop the primary AND all default shard handles so

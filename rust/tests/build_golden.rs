@@ -22,7 +22,7 @@
 
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
@@ -37,7 +37,7 @@ const SOURCES: TableDefinition<u8, &[u8]> = TableDefinition::new("sources");
 const CURIES: TableDefinition<u32, &[u8]> = TableDefinition::new("curies");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
 
-const SCHEMA_VERSION: &str = "tablassert.fullmap.v4";
+const SCHEMA_VERSION: &str = "tablassert.fullmap.v5";
 const SHARD_COUNT: usize = 16;
 
 /// bincode layout MUST match `CurieRow` in `src/fullmap.rs` (field order + types).
