@@ -73,11 +73,13 @@ type LineChunk = (u8, Vec<Vec<u8>>);
 /// any number of processes/threads may hold them concurrently, and they only
 /// conflict with a writer (`build-fullmap`'s exclusive lock).  Keying on the
 /// path alone is safe: within a process the DB is only rebuilt via
-/// `build_fullmap_db`, which evicts the cache explicitly; externally, redb's
-/// exclusive writer lock fails against our shared lock (and the rebuild also
-/// removes the files before recreating them), so no cached handle can outlive
-/// a rebuild on this path.  Read-only opens never write the file, so the
-/// mtime-keyed Python-side caches stay stable under lookups.
+/// `build_fullmap_db`, which evicts the cache explicitly.  Cross-process, a
+/// rebuild removes the files and recreates them on fresh inodes — an `unlink`
+/// does not need the lock — so a stale cached handle in ANOTHER process keeps
+/// reading the unlinked old file as a consistent snapshot until that process
+/// reopens; it can never block the rebuild or observe a torn file.  Read-only
+/// opens never write the file, so the mtime-keyed Python-side caches stay
+/// stable under lookups.
 static DB_CACHE: OnceLock<RwLock<HashMap<PathBuf, Arc<ReadOnlyDatabase>>>> = OnceLock::new();
 
 /// Number of shards for concurrent maps (power of two for mask routing).
@@ -1909,8 +1911,9 @@ fn write_shard_records(
     progress: Option<&Arc<Progress>>,
 ) -> PyResult<u64> {
     let mut write = database.begin_write().map_err(py_err)?;
-    // redb ≥ 3 returns `Result` (fails once the transaction has been used);
-    // this is the first call on a fresh transaction, so it cannot fail here.
+    // redb ≥ 3 returns `Result`; it only fails if a persistent savepoint was
+    // modified in the transaction.  This crate never uses savepoints (and this
+    // is a fresh transaction), so the error is unreachable here.
     write.set_durability(Durability::None).map_err(py_err)?;
     let mut table = write.open_table(RECORDS).map_err(py_err)?;
     let mut merge = MergeHeap::new(run_paths).map_err(py_err)?;
@@ -2594,8 +2597,9 @@ fn lookup_terms(
     terms: Vec<String>,
     threads: Option<usize>,
 ) -> PyResult<Vec<(String, Vec<FullmapRecord>)>> {
-    // Open the primary ONCE for dims/CURIES hydration; pair lookups route to the
-    // shard files (a second open of any one file would fail on redb's flock).
+    // Open the primary ONCE (the cached shared-lock handle) for dims/CURIES
+    // hydration; pair lookups route to the shard files.  One handle per file is
+    // a cache choice, not a lock constraint — read-only opens coexist.
     let database = open_cached(db.clone())?;
     let prefix_map = load_string_table(&database, PREFIXES)?;
     let category_map = load_string_table(&database, CATEGORIES)?;
@@ -2910,7 +2914,7 @@ mod tests {
     /// file must exist (even empty) holding a RECORDS table — this is the
     /// on-disk contract the read path relies on.
     #[test]
-    fn build_fullmap_db_writes_schema_v4_sharded_layout() {
+    fn build_fullmap_db_writes_sharded_layout() {
         pyo3::Python::initialize();
         let dir = tempfile::tempdir().unwrap();
         let synonyms = dir.path().join("HGNC.ndjson");
@@ -3821,6 +3825,15 @@ mod tests {
             2 // v2 format version -> UpgradeRequired
         });
 
+        // Pin the RAW variant first (both UpgradeRequired and RepairAborted map
+        // to the same rebuild hint in open_read_only, so only this asserts the
+        // patch hit the format-version check and not some unrelated failure).
+        let raw = match ReadOnlyDatabase::open(&output) {
+            Ok(_) => panic!("expected ReadOnlyDatabase::open to fail"),
+            Err(err) => err,
+        };
+        assert!(matches!(raw, redb::DatabaseError::UpgradeRequired(2)));
+
         let err = match open_read_only(&output) {
             Ok(_) => panic!("expected open_read_only to fail"),
             Err(err) => err,
@@ -3844,6 +3857,15 @@ mod tests {
         drop(database);
 
         patch_db_byte(&output, 9, |god| god | 2);
+
+        // Pin the RAW variant (see the outdated-format test: both variants map
+        // to the same rebuild hint, so only this asserts the god-byte patch
+        // actually put the file into the recovery-required state).
+        let raw = match ReadOnlyDatabase::open(&output) {
+            Ok(_) => panic!("expected ReadOnlyDatabase::open to fail"),
+            Err(err) => err,
+        };
+        assert!(matches!(raw, redb::DatabaseError::RepairAborted));
 
         let err = match open_read_only(&output) {
             Ok(_) => panic!("expected open_read_only to fail"),
