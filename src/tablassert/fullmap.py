@@ -22,10 +22,11 @@ _SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], s
 # degraded-mode warning is logged once, not on every lookup against a stale extension.
 _LEGACY_COMPAT_WARNED: bool = False
 
-# redb opens the fullmap with an exclusive file lock. A concurrent or just-finishing holder (e.g. the
-# agent's inner code-executor thread completing a build) can momentarily strand that lock; a lookup that
-# lands in that window would otherwise raise ``Database already open`` and surface as a false 0.0 coverage.
-# Retry briefly on that contention so transient lock overlap does not corrupt a build/coverage result.
+# Fullmap readers open the redb DB with a SHARED lock (redb >= 3 ``ReadOnlyDatabase``), so concurrent
+# lookups -- even across processes -- never contend with each other. Only a WRITER (a ``build-fullmap``
+# rebuild, exclusive lock) conflicts with readers; a lookup that lands in that brief rebuild window would
+# otherwise raise ``Database already open`` and surface as a false 0.0 coverage. Retry briefly on that
+# contention so a transient reader-vs-writer overlap does not corrupt a build/coverage result.
 _LOCK_RETRY_TOKENS: tuple[str, ...] = ("already open", "acquire lock", "cannot acquire")
 _LOCK_ATTEMPTS: int = 10
 _LOCK_DELAY: float = 0.5
@@ -120,6 +121,11 @@ def _db_cache_key(db: Path) -> tuple[Path, float]:
 
     Returns:
         Canonical path and mtime seconds.
+
+    Note:
+        Since fullmap readers open read-only (shared lock, no file writes), only
+        a ``build-fullmap`` rebuild touches the mtime -- so this key is stable
+        across lookups and flips exactly when the DB is rebuilt.
     """
     resolved: Path = db.resolve()
     try:
