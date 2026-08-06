@@ -29,7 +29,7 @@ The full 64-bit digest is used deliberately: a 32-bit hash would invite birthday
 ```python
 from tablassert.utils import mkhash
 
-mkhash({"source": "data.csv", "statement": {...}})  # e.g. "26c7827d889f6da3"
+mkhash("hello")  # "26c7827d889f6da3"
 ```
 
 **Deterministic:** the same input always produces the same digest.
