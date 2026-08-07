@@ -1439,7 +1439,7 @@ they hold six tables (see <code>rust/src/fullmap.rs</code>):</p>
 </tr>
 <tr>
 <td><code>meta</code></td>
-<td>Schema version tag (<code>tablassert.fullmap.v4</code>), the shard count (<code>shards</code>), and the BABEL <code>source_version</code> used to build the file (primary file)</td>
+<td>Schema version tag (<code>tablassert.fullmap.v5</code>), the shard count (<code>shards</code>), and the BABEL <code>source_version</code> used to build the file (primary file)</td>
 </tr>
 </tbody>
 </table>
@@ -1449,8 +1449,14 @@ resolved primary path.</p>
 <code>shards</code> count to open exactly that many shard files, and fan the query terms out across the shards in
 parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or
 missing tag raises rather than silently reading incompatible data. Databases built under the older
-<code>v1</code>/<code>v2</code>/<code>v3</code> schemas are rejected — there is no automatic schema migration, so a schema bump (including
-the v3→v4 move to sharded files) requires rebuilding via <code>tablassert build-fullmap</code>.</p>
+<code>v1</code>/<code>v2</code>/<code>v3</code>/<code>v4</code> schemas are rejected — there is no automatic schema migration, so a schema bump
+(including the v3→v4 move to sharded files and the v4→v5 move to the redb 4 engine) requires rebuilding
+via <code>tablassert build-fullmap</code>.</p>
+<p>Readers open every fullmap file READ-ONLY with a SHARED file lock (redb ≥ 3 <code>ReadOnlyDatabase</code>), so any
+number of processes can run lookups against the same fullmap concurrently; only a <code>build-fullmap</code> rebuild
+(an exclusive-lock writer) briefly blocks readers. Each lookup pins one primary-plus-shards file
+generation — cached handles are validated against the file's <code>(dev, ino)</code> on every use — so a reader
+follows a rebuild on the next lookup.</p>
 <h2 id="usage-in-graph-config">Usage in Graph Config<a class="headerlink" href="#usage-in-graph-config" title="Permanent link">&para;</a></h2>
 <p>The <code>fullmap:</code> field in a graph configuration points at either the redb file directly or a base
 directory. Tablassert resolves it via <code>fullmap_db_path()</code>:</p>

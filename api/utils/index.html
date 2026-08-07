@@ -1395,13 +1395,14 @@
 <p>Intermediate parquet storage for compiled subgraphs (<code>.tablassert/store/</code>). Created on import.</p>
 <p>The loguru sink (<code>.tablassert/log/tablassert.log</code>, <code>log.LOGASSERT</code>) and the cached BioBERT model (<code>.tablassert/biobert/</code>, <code>qc.MODEL</code>) are likewise derived from <code>BASE</code>.</p>
 <h2 id="mkhash">mkhash()<a class="headerlink" href="#mkhash" title="Permanent link">&para;</a></h2>
-<p>Generates a compact <strong>xxh32</strong> digest (hex string, 8 characters) for arbitrary input, computed by the Rust extension (<code>tablassert.rs.xxh32</code>).</p>
+<p>Generates an <strong>xxh64</strong> digest (hex string, 16 characters) for arbitrary input, computed by the Rust extension (<code>tablassert.rs.xxh64</code>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">mkhash</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span>
 </code></pre></div>
-<p>The input is converted to a string and UTF-8 encoded before hashing. Used for compact identifiers in the CLI — e.g., the 8-character section hash shown in the progress display and the per-section parquet store filename (<code>{hash}.parquet</code>).</p>
+<p>The input is converted to a string and UTF-8 encoded before hashing. The digest is the content-addressed identity for sections: the per-section parquet store filename (<code>{hash}.parquet</code> in <code>.tablassert/store/</code>) and the section label in validation errors derive from it. User-facing progress labels truncate it to 8 characters for display.</p>
+<p>The full 64-bit digest is used deliberately: a 32-bit hash would invite birthday collisions (~50% at ~77k sections) that could silently reuse another section's cached subgraph.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">mkhash</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">mkhash</span><span class="p">({</span><span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="s2">&quot;data.csv&quot;</span><span class="p">,</span> <span class="s2">&quot;statement&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">}})</span>  <span class="c1"># e.g. &quot;abc123de&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">mkhash</span><span class="p">(</span><span class="s2">&quot;hello&quot;</span><span class="p">)</span>  <span class="c1"># &quot;26c7827d889f6da3&quot;</span>
 </code></pre></div>
 <p><strong>Deterministic:</strong> the same input always produces the same digest.</p>
 <hr />
