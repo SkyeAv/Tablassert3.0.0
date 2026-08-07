@@ -2316,10 +2316,12 @@ def make_tools(
     - ``"derive_coverage"``: ``[read_table, pmc_article_context, derive_config, map_coverage]`` — coverage
       feedback WITHOUT the KGX build, so the agent can pick the best sheet/columns. map_coverage reads the
       fullmap with a SHARED lock, so these derivations run concurrently across processes (only a concurrent
-      fullmap REBUILD blocks them).
+      fullmap REBUILD blocks them). A lookup pins one primary-plus-shards generation; readers follow a
+      rebuild on the next lookup.
     """
 
     def get_fullmap() -> Path:
+        """Return the bound fullmap redb path the tools read."""
         return fullmap
 
     if derive_mode == "derive_only":

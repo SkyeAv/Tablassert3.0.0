@@ -124,7 +124,9 @@ via `tablassert build-fullmap`.
 
 Readers open every fullmap file READ-ONLY with a SHARED file lock (redb ≥ 3 `ReadOnlyDatabase`), so any
 number of processes can run lookups against the same fullmap concurrently; only a `build-fullmap` rebuild
-(an exclusive-lock writer) briefly blocks readers.
+(an exclusive-lock writer) briefly blocks readers. Each lookup pins one primary-plus-shards file
+generation — cached handles are validated against the file's `(dev, ino)` on every use — so a reader
+follows a rebuild on the next lookup.
 
 ## Usage in Graph Config
 

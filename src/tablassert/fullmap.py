@@ -27,6 +27,8 @@ _LEGACY_COMPAT_WARNED: bool = False
 # rebuild, exclusive lock) conflicts with readers; a lookup that lands in that brief rebuild window would
 # otherwise raise ``Database already open`` and surface as a false 0.0 coverage. Retry briefly on that
 # contention so a transient reader-vs-writer overlap does not corrupt a build/coverage result.
+# Each lookup pins one primary-plus-shards file generation (cached handles are validated against the
+# file's inode on every use); a reader follows a rebuild on the NEXT lookup.
 _LOCK_RETRY_TOKENS: tuple[str, ...] = ("already open", "acquire lock", "cannot acquire")
 _LOCK_ATTEMPTS: int = 10
 _LOCK_DELAY: float = 0.5
@@ -125,7 +127,9 @@ def _db_cache_key(db: Path) -> tuple[Path, float]:
     Note:
         Since fullmap readers open read-only (shared lock, no file writes), only
         a ``build-fullmap`` rebuild touches the mtime -- so this key is stable
-        across lookups and flips exactly when the DB is rebuilt.
+        across lookups and flips exactly when the DB is rebuilt. This mirrors
+        the Rust-side generation boundary: a lookup pins one primary-plus-shards
+        generation, and readers follow a rebuild on the next lookup.
     """
     resolved: Path = db.resolve()
     try:
