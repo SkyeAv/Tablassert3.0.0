@@ -49,7 +49,7 @@ def is_lock_contention(error: BaseException) -> bool:
 
 
 def _call_with_lock_retry(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """Call a redb-backed ``rs`` function, retrying on transient ``Database already open`` lock contention."""
+    """Call a redb-backed ``rs`` function, retrying transient lock or ``changing generation`` contention."""
     for attempt in range(_LOCK_ATTEMPTS):
         try:
             return fn(*args, **kwargs)
