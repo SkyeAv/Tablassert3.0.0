@@ -111,9 +111,9 @@ edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically)
   "subject": "NCBITaxon:47715",
   "predicate": "biolink:correlated_with",
   "object": "CHEBI:41774",
-  "supporting_study_size": "9.000",
+  "supporting_study_size": "9",
   "p_value": "1.0000e-03",
-  "effect_size": "0.8500",
+  "effect_size": "0.85",
   "effect_type": "spearmans_rho",
   "supporting_text": [
     "assertion_method: Spearman correlation",

@@ -552,6 +552,7 @@ _EFFECT_TYPE_ALIASES: tuple[tuple[str, str], ...] = (
     ("Kendall", "kendalls_tau"),
     ("log2FC", "log2_fold_change"),
     ("log2 fold change", "log2_fold_change"),
+    ("logFC", "log2_fold_change"),  # limma/edgeR spelling; log-fold-change is base-2 by convention
     ("beta", "regression_coefficient"),
     ("regression coefficient", "regression_coefficient"),
     ("SMD", "standardized_mean_difference"),

@@ -1841,11 +1841,12 @@ def test_tcode_collect_coerces_effect_columns_before_clean_numeric(fixtures_path
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    study_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_size_columns")
     size_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_size_columns")
     type_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_type_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
-    assert size_idx < type_idx < clean_idx
+    assert study_idx < size_idx < type_idx < clean_idx
 
 
 def test_coerced_study_size_alias_survives_unknown_folding() -> None:
