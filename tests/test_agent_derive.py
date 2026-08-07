@@ -20,6 +20,9 @@ FIXTURES: Path = Path(__file__).parent / "fixtures"
 
 # The ALAMV6 table config from docs/configuration/advanced-example.md (template shape),
 # exercising the ``template`` branch of validate_section via to_sections + fastmerge.
+# Kept on the OLD annotation names (sample_size / relationship_strength) on purpose:
+# build-time coercion renames them to supporting_study_size / effect_size, so this
+# doubles as the legacy-config backward-compatibility case.
 ALAMV6_TEMPLATE: dict[str, Any] = {
     "template": {
         "source": {

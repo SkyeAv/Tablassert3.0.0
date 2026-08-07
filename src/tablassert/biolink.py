@@ -26,6 +26,9 @@ Source mapping
 - ``ALLOWED_EDGE_FIELDS``: the Biolink ``Association`` model fields (walked over
   the MRO) unioned with the qualifier slot names and a curated set of KGX /
   Tablassert edge columns that are not Biolink Association fields.
+- ``EffectTypes``: the 25 permissible ``effect_type`` values from Biolink PR
+  #1774 (merged), defined locally because the pinned ``biolink-model`` release
+  predates the PR; switch to the model's enum once it ships.
 
 The enums are built dynamically at runtime from the model. For static type
 checking, ``TYPE_CHECKING`` stub classes (declaring only the members referenced
@@ -50,7 +53,18 @@ import biolink_model.datamodel.pydanticmodel_v2 as _bm
 if TYPE_CHECKING:
     from linkml_runtime.utils.schemaview import SchemaView
 
-__all__ = ["ALLOWED_EDGE_FIELDS", "BIOLINK_VERSION", "AgentTypes", "Categories", "EdgeCategories", "KnowledgeLevels", "Predicates", "Qualifiers"]
+__all__ = [
+    "ALLOWED_EDGE_FIELDS",
+    "BIOLINK_VERSION",
+    "EFFECT_TYPE_VALUES",
+    "AgentTypes",
+    "Categories",
+    "EdgeCategories",
+    "EffectTypes",
+    "KnowledgeLevels",
+    "Predicates",
+    "Qualifiers",
+]
 
 
 def _screaming_snake(camel: str) -> str:
@@ -217,6 +231,39 @@ def _biolink_enum_values(enum_cls: type[Enum]) -> list[str]:
     return sorted(str(member.value) for member in enum_cls)
 
 
+# Permissible ``effect_type`` values, verbatim from the ``EffectTypeEnum`` permitted
+# values of Biolink PR #1774 (merged, but not in the pinned biolink-model 4.4.3
+# release; close_mappings intentionally ignored). Kept as a plain tuple so
+# ``coerce`` can consume it without touching the enum.
+EFFECT_TYPE_VALUES: tuple[str, ...] = (
+    "regression_coefficient",
+    "log2_fold_change",
+    "wald_ratio",
+    "inverse_variance_weighted",
+    "mr_egger",
+    "weighted_median",
+    "standardized_mean_difference",
+    "cohens_d",
+    "hedges_g",
+    "glasss_delta",
+    "strictly_standardized_mean_difference",
+    "correlation_coefficient",
+    "pearsons_r",
+    "spearmans_rho",
+    "kendalls_tau",
+    "polychoric_correlation",
+    "matthews_correlation_coefficient",
+    "goodman_kruskal_gamma",
+    "r2_linkage_disequilibrium",
+    "odds_ratio",
+    "relative_risk",
+    "hazard_ratio",
+    "eta_squared",
+    "omega_squared",
+    "root_mean_square_standardized_effect",
+)
+
+
 # Edge columns Tablassert / KGX emit that are neither Biolink ``Association`` model
 # fields nor qualifier slot names: synonym carryover from NamedThing, KGX provenance
 # and denormalized fields, supporting-study evidence slots, and Tablassert pipeline
@@ -227,6 +274,11 @@ def _biolink_enum_values(enum_cls: type[Enum]) -> list[str]:
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
         "broad_synonym",
+        # PR #1774 edge attributes; absent from biolink-model 4.4.3 Association.model_fields,
+        # so the union keeps them out of fold_unknown_to_supporting_text and they reach the
+        # final edges. Harmless once a future biolink-model ships them as real fields.
+        "effect_size",
+        "effect_type",
         "equivalent_identifiers",
         "evidence_direction",
         "evidence_type",
@@ -237,7 +289,6 @@ TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
         "provided_by",
         "related_synonym",
         "relation",
-        "relationship_strength",
         "source_record_urls",
         "statistical_significance_qualifier",
         "supporting_documents",
@@ -287,6 +338,10 @@ if TYPE_CHECKING:
         DATA_ANALYSIS_PIPELINE: AgentTypes
         MANUAL_AGENT: AgentTypes
 
+    class EffectTypes(str, Enum):
+        ODDS_RATIO: EffectTypes
+        SPEARMANS_RHO: EffectTypes
+
 else:
     Categories = _build_str_enum("Categories", _entity_category_names())
     EdgeCategories = _build_str_enum("EdgeCategories", _association_names())
@@ -294,6 +349,9 @@ else:
     Qualifiers = _build_str_enum("Qualifiers", _qualifier_values())
     KnowledgeLevels = _build_str_enum("KnowledgeLevels", _biolink_enum_values(cast("type[Enum]", _bm.KnowledgeLevelEnum)))
     AgentTypes = _build_str_enum("AgentTypes", _biolink_enum_values(cast("type[Enum]", _bm.AgentTypeEnum)))
+    # Defined locally until biolink-model ships PR #1774, then switch to
+    # _biolink_enum_values(_bm.EffectTypeEnum).
+    EffectTypes = _build_str_enum("EffectTypes", list(EFFECT_TYPE_VALUES))
 
 
 _schema_definition: Any = _schema().schema

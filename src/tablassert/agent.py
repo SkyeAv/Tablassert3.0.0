@@ -1926,9 +1926,12 @@ in particular NO `source` (each section owns its source). The `sections` list ha
 mappable table/worksheet; each section supplies its OWN `source` (the table's local path + that
 file's source.url, plus sheet/row_slice/delimiter as needed) and its OWN `statement`. Within each
 section choose column-letter encodings for entity columns and literal CURIEs for fixed values;
-pick a valid biolink predicate; add statistical annotations (p_value / sample_size /
-relationship_strength) when that table has those columns. A single-table article is still ONE
-config with ONE section.
+pick a valid biolink predicate; add statistical annotations (p_value / supporting_study_size /
+effect_size / effect_type) when that table has them — method: column for table-provided columns,
+method: value for a fixed valid value (e.g. effect_type: spearmans_rho when every row is a
+Spearman correlation). Emit effect_type ONLY alongside an effect_size annotation: the pipeline
+nulls an effect_type without a numeric effect_size. A single-table article is still ONE config
+with ONE section.
 
 ## ReAct workflow + planning
 Reason in an explicit ReAct loop (Thought -> Action -> Observation) and re-plan every few steps:
@@ -1972,7 +1975,9 @@ statement:
 provenance: {repo: PMID, publication: "12345678"}
 annotations:
   - {annotation: p_value, method: column, encoding: C}
-  - {annotation: sample_size, method: column, encoding: D}
+  - {annotation: supporting_study_size, method: column, encoding: D}
+  - {annotation: effect_size, method: column, encoding: E}
+  - {annotation: effect_type, method: value, encoding: odds_ratio}
 
 # (b) ALAMV6 — an excel organism~chemical correlation table (fixed chemical object)
 source: {kind: excel, local: ./ALAM.XLSX, sheet: "all correlations", row_slice: [2, auto]}

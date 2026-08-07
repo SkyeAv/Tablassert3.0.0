@@ -69,7 +69,7 @@ template:
     - annotation: p_value
       method: column
       encoding: C
-    - annotation: sample_size
+    - annotation: supporting_study_size
       method: column
       encoding: D
 ```
@@ -154,8 +154,8 @@ head -n 2 TUTORIAL_KG_1.0.0.edges.ndjson
 
 Example output (numeric annotation columns are emitted as controlled-notation strings — p-values in scientific notation):
 ```json
-{"id":"2cfea591-0f8f-33af-a7df-03da531d3359","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","sample_size":"450"}
-{"id":"7b1c9d02-5e8a-4f3b-9c1d-2a6e8f0b4d7c","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p_value":"1.0000e-04","sample_size":"1200"}
+{"id":"2cfea591-0f8f-33af-a7df-03da531d3359","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","supporting_study_size":"450"}
+{"id":"7b1c9d02-5e8a-4f3b-9c1d-2a6e8f0b4d7c","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p_value":"1.0000e-04","supporting_study_size":"1200"}
 ```
 
 **RIG file:**
