@@ -28,14 +28,16 @@ _LEGACY_COMPAT_WARNED: bool = False
 # otherwise raise ``Database already open`` and surface as a false 0.0 coverage. Retry briefly on that
 # contention so a transient reader-vs-writer overlap does not corrupt a build/coverage result.
 # Each lookup pins one primary-plus-shards file generation (cached handles are validated against the
-# file's inode on every use); a reader follows a rebuild on the NEXT lookup.
-_LOCK_RETRY_TOKENS: tuple[str, ...] = ("already open", "acquire lock", "cannot acquire")
+# file's (dev, ino) on every use); a reader follows a rebuild on the NEXT lookup. "changing generation"
+# is the Rust-side exhaustion token raised when no consistent bundle can be pinned mid-rebuild.
+_LOCK_RETRY_TOKENS: tuple[str, ...] = ("already open", "acquire lock", "cannot acquire", "changing generation")
 _LOCK_ATTEMPTS: int = 10
 _LOCK_DELAY: float = 0.5
 
 
 def is_lock_contention(error: BaseException) -> bool:
-    """Whether ``error`` is the transient redb ``Database already open`` lock contention.
+    """Whether ``error`` is transient fullmap contention (a redb lock error or the mid-rebuild
+    "changing generation" bundle-pinning exhaustion), safe to retry via :func:`_call_with_lock_retry`.
 
     Callers that wrap a lookup in their OWN retry loop (e.g. ``build_and_audit``'s coverage
     retry) must NOT retry on this error: :func:`_call_with_lock_retry` already exhausted its

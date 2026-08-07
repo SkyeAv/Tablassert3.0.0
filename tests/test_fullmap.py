@@ -898,7 +898,15 @@ def test_resolve_batch_on_phase_fires_per_column_in_order(fullmap_db: Path) -> N
     assert with_cb.to_dicts() == without_cb.to_dicts()
 
 
-@pytest.mark.parametrize("message", ["Database already open", "failed to acquire lock on fullmap", "Cannot Acquire lock"])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Database already open",
+        "failed to acquire lock on fullmap",
+        "Cannot Acquire lock",
+        "fullmap at /data/fullmap.redb kept changing generation; could not pin one primary-plus-shards bundle after 5 attempts",
+    ],
+)
 def test_is_lock_contention_matches_redb_lock_errors(message: str) -> None:
     assert is_lock_contention(RuntimeError(message))
 
