@@ -1,5 +1,6 @@
 //! Count rows in each table of one or more fullmap redb files.
 //! Usage: cargo run --release --example count_tables -- <db1> [db2 ...]
+use redb::ReadableDatabase;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 
@@ -11,7 +12,7 @@ const CURIES: TableDefinition<u32, &[u8]> = TableDefinition::new("curies");
 
 fn main() {
     for arg in std::env::args().skip(1) {
-        let db = redb::Database::open(&arg).expect("open db");
+        let db = redb::ReadOnlyDatabase::open(&arg).expect("open db");
         let read = db.begin_read().expect("begin read");
         let records = read
             .open_table(RECORDS)

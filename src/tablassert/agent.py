@@ -2107,8 +2107,9 @@ def build_agent(
 
     ``execution_timeout`` (seconds, default 600; ``None`` disables) is the local executor's per-step
     code timeout. The smolagents default is 30s, which KILLS a ``build_and_audit`` on a large table
-    (e.g. a 37k-row sheet takes ~60s) MID-BUILD -- stranding the fullmap redb lock and failing every
-    subsequent build -- so it is raised here to let large-table builds complete.
+    (e.g. a 37k-row sheet takes ~60s) MID-BUILD so it is raised here to let large-table builds complete.
+    (Readers only hold a SHARED fullmap lock now, so a killed executor no longer strands an exclusive
+    lock -- but a mid-build kill still wastes the partial work.)
     """
     _require("smolagents")
     from smolagents import CodeAgent  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
@@ -2129,7 +2130,7 @@ def build_agent(
         "final_answer_checks": checks,
         "executor_type": "local",
         # Raise the local executor's 30s default so a large-table build_and_audit is not killed mid-build
-        # (which would also strand the fullmap redb lock and fail every later build in the loop).
+        # (which would waste the partial build and churn the coverage loop).
         "executor_kwargs": {"timeout_seconds": execution_timeout},
     }
     if verbosity_level is not None:
@@ -2314,10 +2315,13 @@ def make_tools(
       best (suboptimal for multi-sheet tables).
     - ``"derive_coverage"``: ``[read_table, pmc_article_context, derive_config, map_coverage]`` — coverage
       feedback WITHOUT the KGX build, so the agent can pick the best sheet/columns. map_coverage reads the
-      fullmap, so these derivations serialize on the fullmap lock across processes.
+      fullmap with a SHARED lock, so these derivations run concurrently across processes (only a concurrent
+      fullmap REBUILD blocks them). A lookup pins one primary-plus-shards generation; readers follow a
+      rebuild on the next lookup.
     """
 
     def get_fullmap() -> Path:
+        """Return the bound fullmap redb path the tools read."""
         return fullmap
 
     if derive_mode == "derive_only":

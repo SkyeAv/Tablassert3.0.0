@@ -22,17 +22,22 @@ _SOURCE_CACHE: dict[tuple[Path, float], tuple[list[str], list[str], list[str], s
 # degraded-mode warning is logged once, not on every lookup against a stale extension.
 _LEGACY_COMPAT_WARNED: bool = False
 
-# redb opens the fullmap with an exclusive file lock. A concurrent or just-finishing holder (e.g. the
-# agent's inner code-executor thread completing a build) can momentarily strand that lock; a lookup that
-# lands in that window would otherwise raise ``Database already open`` and surface as a false 0.0 coverage.
-# Retry briefly on that contention so transient lock overlap does not corrupt a build/coverage result.
-_LOCK_RETRY_TOKENS: tuple[str, ...] = ("already open", "acquire lock", "cannot acquire")
+# Fullmap readers open the redb DB with a SHARED lock (redb >= 3 ``ReadOnlyDatabase``), so concurrent
+# lookups -- even across processes -- never contend with each other. Only a WRITER (a ``build-fullmap``
+# rebuild, exclusive lock) conflicts with readers; a lookup that lands in that brief rebuild window would
+# otherwise raise ``Database already open`` and surface as a false 0.0 coverage. Retry briefly on that
+# contention so a transient reader-vs-writer overlap does not corrupt a build/coverage result.
+# Each lookup pins one primary-plus-shards file generation (cached handles are validated against the
+# file's (dev, ino) on every use); a reader follows a rebuild on the NEXT lookup. "changing generation"
+# is the Rust-side exhaustion token raised when no consistent bundle can be pinned mid-rebuild.
+_LOCK_RETRY_TOKENS: tuple[str, ...] = ("already open", "acquire lock", "cannot acquire", "changing generation")
 _LOCK_ATTEMPTS: int = 10
 _LOCK_DELAY: float = 0.5
 
 
 def is_lock_contention(error: BaseException) -> bool:
-    """Whether ``error`` is the transient redb ``Database already open`` lock contention.
+    """Whether ``error`` is transient fullmap contention (a redb lock error or the mid-rebuild
+    "changing generation" bundle-pinning exhaustion), safe to retry via :func:`_call_with_lock_retry`.
 
     Callers that wrap a lookup in their OWN retry loop (e.g. ``build_and_audit``'s coverage
     retry) must NOT retry on this error: :func:`_call_with_lock_retry` already exhausted its
@@ -44,7 +49,7 @@ def is_lock_contention(error: BaseException) -> bool:
 
 
 def _call_with_lock_retry(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """Call a redb-backed ``rs`` function, retrying on transient ``Database already open`` lock contention."""
+    """Call a redb-backed ``rs`` function, retrying transient lock or ``changing generation`` contention."""
     for attempt in range(_LOCK_ATTEMPTS):
         try:
             return fn(*args, **kwargs)
@@ -120,6 +125,13 @@ def _db_cache_key(db: Path) -> tuple[Path, float]:
 
     Returns:
         Canonical path and mtime seconds.
+
+    Note:
+        Since fullmap readers open read-only (shared lock, no file writes), only
+        a ``build-fullmap`` rebuild touches the mtime -- so this key is stable
+        across lookups and flips exactly when the DB is rebuilt. This mirrors
+        the Rust-side generation boundary: a lookup pins one primary-plus-shards
+        generation, and readers follow a rebuild on the next lookup.
     """
     resolved: Path = db.resolve()
     try:

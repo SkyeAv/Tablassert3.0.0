@@ -7,8 +7,9 @@
 //! the build through the PUBLIC `build_fullmap_db` re-exported at the crate root,
 //! then inspect the resulting redb files DIRECTLY:
 //!
-//! * RECORDS live in the 16 sibling shard files (`fullmap.s{0..15}.redb`), which
-//!   the build does NOT cache, so they open cleanly with `Database::open`.
+//! * RECORDS plus META.build_id live in the 16 sibling shard files
+//!   (`fullmap.s{0..15}.redb`), which the build does NOT cache, so they open
+//!   cleanly with `Database::open`.
 //! * dims/CURIES/META live in the primary (`fullmap.redb`), which `build_fullmap_db`
 //!   caches and holds under redb's exclusive flock.  To read it directly we COPY
 //!   the committed primary file to a fresh inode (no lock) and open the copy.
@@ -22,7 +23,7 @@
 
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
@@ -37,7 +38,7 @@ const SOURCES: TableDefinition<u8, &[u8]> = TableDefinition::new("sources");
 const CURIES: TableDefinition<u32, &[u8]> = TableDefinition::new("curies");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
 
-const SCHEMA_VERSION: &str = "tablassert.fullmap.v4";
+const SCHEMA_VERSION: &str = "tablassert.fullmap.v5";
 const SHARD_COUNT: usize = 16;
 
 /// bincode layout MUST match `CurieRow` in `src/fullmap.rs` (field order + types).
@@ -419,7 +420,7 @@ fn dimension_tables_are_complete_and_consistent() {
 }
 
 // ---------------------------------------------------------------------------
-// (e) SCHEMA PIN — META advertises the v4 schema and 16 shards.
+// (e) SCHEMA PIN — META advertises the v5 schema, build_id, and 16 shards.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -431,15 +432,23 @@ fn schema_and_shard_count_are_pinned() {
     let meta = read.open_table(META).unwrap();
     assert_eq!(meta.get("schema").unwrap().unwrap().value(), SCHEMA_VERSION);
     assert_eq!(meta.get("shards").unwrap().unwrap().value(), "16");
+    let build_id = meta.get("build_id").unwrap().unwrap().value().to_string();
+    build_id.parse::<u64>().unwrap();
     drop(meta);
     drop(read);
     drop(db);
 
-    // Exactly 16 shard files exist on disk (s0..s15), and no s16.
+    // Exactly 16 shard files exist on disk (s0..s15), each carries the same
+    // build_id, and no s16 exists.
     for index in 0..SHARD_COUNT {
-        assert!(
-            shard_path(&output, index).exists(),
-            "missing shard file {index}"
+        let shard = shard_path(&output, index);
+        assert!(shard.exists(), "missing shard file {index}");
+        let shard_db = Database::open(shard).unwrap();
+        let shard_read = shard_db.begin_read().unwrap();
+        let shard_meta = shard_read.open_table(META).unwrap();
+        assert_eq!(
+            shard_meta.get("build_id").unwrap().unwrap().value(),
+            build_id
         );
     }
     assert!(

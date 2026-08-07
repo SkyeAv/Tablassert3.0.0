@@ -109,7 +109,7 @@ they hold six tables (see `rust/src/fullmap.rs`):
 | `categories` | Compact `u16` id → Biolink category string (primary file) |
 | `sources` | Compact `u8` id → source metadata (name/version) (primary file) |
 | `curies` | Compact `u32` id → CURIE record (CURIE, preferred name, category, taxon, source) (primary file) |
-| `meta` | Schema version tag (`tablassert.fullmap.v4`), the shard count (`shards`), and the BABEL `source_version` used to build the file (primary file) |
+| `meta` | Schema version tag (`tablassert.fullmap.v5`), the shard count (`shards`), and the BABEL `source_version` used to build the file (primary file) |
 
 The shard files must remain alongside the primary file — lookups discover them as siblings of the
 resolved primary path.
@@ -118,8 +118,15 @@ Lookups (`lookup_fullmap_terms`) check the primary's `meta` schema tag before re
 `shards` count to open exactly that many shard files, and fan the query terms out across the shards in
 parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or
 missing tag raises rather than silently reading incompatible data. Databases built under the older
-`v1`/`v2`/`v3` schemas are rejected — there is no automatic schema migration, so a schema bump (including
-the v3→v4 move to sharded files) requires rebuilding via `tablassert build-fullmap`.
+`v1`/`v2`/`v3`/`v4` schemas are rejected — there is no automatic schema migration, so a schema bump
+(including the v3→v4 move to sharded files and the v4→v5 move to the redb 4 engine) requires rebuilding
+via `tablassert build-fullmap`.
+
+Readers open every fullmap file READ-ONLY with a SHARED file lock (redb ≥ 3 `ReadOnlyDatabase`), so any
+number of processes can run lookups against the same fullmap concurrently; only a `build-fullmap` rebuild
+(an exclusive-lock writer) briefly blocks readers. Each lookup pins one primary-plus-shards file
+generation — cached handles are validated against the file's `(dev, ino)` on every use — so a reader
+follows a rebuild on the next lookup.
 
 ## Usage in Graph Config
 
