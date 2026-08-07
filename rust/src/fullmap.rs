@@ -3884,6 +3884,186 @@ mod tests {
         }
     }
 
+    /// Write a minimal primary-shaped DB at `path` whose META carries `marker`
+    /// alongside the current schema tag, so tests can tell generations apart.
+    /// The writer is dropped before returning, so the file is unlocked.
+    fn write_marker_db(path: &Path, marker: &str) {
+        let database = Database::create(path).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write.open_table(META).unwrap();
+            meta.insert("schema", SCHEMA_VERSION).unwrap();
+            meta.insert("marker", marker).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+    }
+
+    fn marker_of(database: &ReadOnlyDatabase) -> String {
+        let read = database.begin_read().unwrap();
+        let meta = read.open_table(META).unwrap();
+        meta.get("marker").unwrap().unwrap().value().to_string()
+    }
+
+    /// Write a shard-shaped DB (RECORDS only) holding one record `1 -> payload`.
+    fn write_shard_db(path: &Path, payload: &[u8]) {
+        let database = Database::create(path).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut records = write.open_table(RECORDS).unwrap();
+            records.insert(1u64, payload).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+    }
+
+    fn shard_payload(database: &ReadOnlyDatabase) -> Vec<u8> {
+        let read = database.begin_read().unwrap();
+        let table = read.open_table(RECORDS).unwrap();
+        table.get(1u64).unwrap().unwrap().value().to_vec()
+    }
+
+    /// Rename the full sharded build at `src` (primary + every shard) over the
+    /// same-named files at `dst` — the multi-file generation swap a rebuild
+    /// performs, atomic per file and deterministic (no sleeps/races).
+    fn swap_build_over(src: &Path, dst: &Path) {
+        std::fs::rename(src, dst).unwrap();
+        for index in 0..SHARD_COUNT_SHARDS {
+            std::fs::rename(shard_path(src, index), shard_path(dst, index)).unwrap();
+        }
+    }
+
+    /// While the path is absent (mid-rebuild window), a cached hit keeps
+    /// serving the old snapshot instead of erroring — the cross-process reader
+    /// guarantee from before generation pinning.  The lookup after the
+    /// replacement appears follows the new generation (covered above).
+    #[test]
+    fn cached_handle_serves_old_snapshot_while_path_absent() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+        write_marker_db(&output, "gen1");
+        let handle = open_cached(output.clone()).unwrap();
+        assert_eq!(marker_of(&handle), "gen1");
+
+        std::fs::remove_file(&output).unwrap();
+        let again = open_cached(output).unwrap();
+        assert_eq!(
+            marker_of(&again),
+            "gen1",
+            "an absent path must serve the cached old snapshot, not error"
+        );
+    }
+
+    /// A rebuild replaces the file at a path on a FRESH inode (unlink +
+    /// recreate); the cache must follow the path: after renaming a new primary
+    /// over a cached one, the next `open_cached` returns the replacement's
+    /// content even though the stale handle is still alive.
+    #[test]
+    fn cached_primary_follows_replacement_generation() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+        write_marker_db(&output, "gen1");
+        let stale = open_cached(output.clone()).unwrap();
+        assert_eq!(marker_of(&stale), "gen1");
+
+        // Stage the replacement at a sibling path, then rename over — one
+        // atomic, deterministic generation swap (fresh inode).
+        let staging = dir.path().join("fullmap.next.redb");
+        write_marker_db(&staging, "gen2");
+        std::fs::rename(&staging, &output).unwrap();
+
+        let fresh = open_cached(output).unwrap();
+        assert_eq!(
+            marker_of(&fresh),
+            "gen2",
+            "the next open must see the replacement generation"
+        );
+        assert_eq!(
+            marker_of(&stale),
+            "gen1",
+            "the evicted handle still reads its own old snapshot"
+        );
+    }
+
+    /// Same generation-follow guarantee for shard handles: replacing a shard
+    /// file under a cached handle makes the next `open_cached_shard` read the
+    /// replacement's records.
+    #[test]
+    fn cached_shard_follows_replacement_generation() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let primary = dir.path().join("fullmap.redb");
+        let shard = shard_path(&primary, 3);
+        write_shard_db(&shard, b"gen1");
+        let stale = open_cached_shard(&primary, 3).unwrap();
+        assert_eq!(shard_payload(&stale), b"gen1");
+
+        let staging = dir.path().join("fullmap.s3.next.redb");
+        write_shard_db(&staging, b"gen2");
+        std::fs::rename(&staging, &shard).unwrap();
+
+        let fresh = open_cached_shard(&primary, 3).unwrap();
+        assert_eq!(
+            shard_payload(&fresh),
+            b"gen2",
+            "the next shard open must see the replacement generation"
+        );
+    }
+
+    /// Rebuild-at-same-path: after replacing the whole cached bundle, the next
+    /// lookup reads ONLY the new generation — the old term is gone, the new
+    /// term resolves, and its hydrated CURIE row comes from the NEW primary.
+    /// A mixed-generation lookup would resurrect the old term or hydrate the
+    /// new records against the old primary's CURIES and surface the wrong
+    /// curie/preferred_name.
+    #[test]
+    fn lookup_after_rebuild_reads_one_consistent_generation() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("fullmap.redb");
+
+        // Generation 1: indexes BRCA1 under HGNC:1100; warm the cache with a lookup.
+        let synonyms1 = dir.path().join("gen1.ndjson");
+        let mut file = File::create(&synonyms1).unwrap();
+        writeln!(
+            file,
+            r#"{{"curie":"HGNC:1100","preferred_name":"BRCA1","names":["BRCA1"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+        )
+        .unwrap();
+        build_test(output.clone(), Vec::new(), vec![synonyms1], 1, 4_000_000).unwrap();
+        let rows = lookup_terms(output.clone(), vec!["brca1".to_string()], Some(1)).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1[0].curie, "HGNC:1100");
+
+        // Generation 2 (built elsewhere, then renamed over): indexes TP53.
+        let dir2 = tempfile::tempdir().unwrap();
+        let built = dir2.path().join("fullmap.redb");
+        let synonyms2 = dir2.path().join("gen2.ndjson");
+        let mut file = File::create(&synonyms2).unwrap();
+        writeln!(
+            file,
+            r#"{{"curie":"NCBIGene:7157","preferred_name":"TP53","names":["TP53"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+        )
+        .unwrap();
+        build_test(built.clone(), Vec::new(), vec![synonyms2], 1, 4_000_000).unwrap();
+        swap_build_over(&built, &output);
+
+        // Old-generation term must be gone (stale shards would resurrect it).
+        let rows = lookup_terms(output.clone(), vec!["brca1".to_string()], Some(1)).unwrap();
+        assert!(
+            rows.is_empty(),
+            "stale shard generation resurrected an old term: {rows:?}"
+        );
+        // New term resolves against the NEW primary's dims/CURIES (a stale
+        // primary would hydrate the wrong curie/preferred_name).
+        let rows = lookup_terms(output, vec!["tp53".to_string()], Some(1)).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1[0].curie, "NCBIGene:7157");
+        assert_eq!(rows[0].1[0].preferred_name, "TP53");
+    }
+
     /// A live writer holds the exclusive lock, so a read-only open fails with
     /// `DatabaseAlreadyOpen` — and succeeds once the writer drops.  This is the
     /// reader-vs-rebuild window that `_call_with_lock_retry` (Python side)
