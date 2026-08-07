@@ -214,7 +214,8 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     renames: dict[str, str] = {}
     for target, candidates in buckets.items():
         reference: str = target.replace("_", " ")
-        chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+        # An existing canonical column always wins; fuzzy ranking only picks among aliases.
+        chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
         if chosen != target:
             renames[chosen] = target
 
@@ -357,7 +358,8 @@ def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     target: str = "supporting_study_size"
     reference: str = target.replace("_", " ")
-    chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+    # An existing canonical column always wins; fuzzy ranking only picks among aliases.
+    chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
     if chosen == target:
         return lf
     return lf.rename({chosen: target})
@@ -525,7 +527,8 @@ def coerce_effect_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     target: str = "effect_size"
     reference: str = target.replace("_", " ")
-    chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+    # An existing canonical column always wins; fuzzy ranking only picks among aliases.
+    chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
     if chosen == target:
         return lf
     return lf.rename({chosen: target})
@@ -668,7 +671,8 @@ def coerce_effect_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     target: str = "effect_type"
     reference: str = target.replace("_", " ")
-    chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+    # An existing canonical column always wins; fuzzy ranking only picks among aliases.
+    chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
     lf = lf.rename({chosen: target}) if chosen != target else lf
 
     mapped: pl.Expr = pl.col(target).cast(pl.String).map_elements(_map_effect_type_value, return_dtype=pl.String)

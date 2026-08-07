@@ -1927,8 +1927,11 @@ mappable table/worksheet; each section supplies its OWN `source` (the table's lo
 file's source.url, plus sheet/row_slice/delimiter as needed) and its OWN `statement`. Within each
 section choose column-letter encodings for entity columns and literal CURIEs for fixed values;
 pick a valid biolink predicate; add statistical annotations (p_value / supporting_study_size /
-effect_size / effect_type) when that table has those columns. A single-table article is still ONE
-config with ONE section.
+effect_size / effect_type) when that table has them — method: column for table-provided columns,
+method: value for a fixed valid value (e.g. effect_type: spearmans_rho when every row is a
+Spearman correlation). Emit effect_type ONLY alongside an effect_size annotation: the pipeline
+nulls an effect_type without a numeric effect_size. A single-table article is still ONE config
+with ONE section.
 
 ## ReAct workflow + planning
 Reason in an explicit ReAct loop (Thought -> Action -> Observation) and re-plan every few steps:

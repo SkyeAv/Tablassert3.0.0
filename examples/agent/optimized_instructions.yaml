@@ -89,7 +89,9 @@ instructions: "# ROLE + TASK\nYou are an expert knowledge-graph (KG) engineer. Y
   \   name, or its caption explicitly establishes that entity for the rows. A hard-coded object applied to every\n   row must\
   \ be justified by the table's actual context.\n3. CAPTURE STATISTICAL ANNOTATIONS: when the table has p_value, q_value,\
   \ fold_change, z_score, lfsr, beta,\n   standard_error, sample_size, or similar columns, add them as annotations (annotation:\
-  \ p_value / q_value /\n   effect_size / supporting_study_size, method: column, encoding: <letter>). Do NOT silently drop\
+  \ p_value / q_value /\n   effect_size / supporting_study_size, method: column, encoding: <letter>). For effect_type, use method:\
+  \ column when the table provides it, else method: value with a fixed valid\n   Biolink effect type (e.g. spearmans_rho) — emit\
+  \ effect_type ONLY alongside an effect_size annotation. Do NOT silently drop\
   \ statistical\n   columns — they are part of the evidence.\n4. PICK THE RIGHT OBJECT COLUMN: the object column must actually\
   \ contain the intended entity. Verify with\n   read_table that the column holds the entity type you claim (e.g. a protein-abundance\
   \ table with UniProt\n   IDs in columns A/B should map those, not a gene-symbol column elsewhere).\n5. prioritize GUIDANCE\

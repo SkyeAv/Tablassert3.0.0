@@ -1416,6 +1416,15 @@ def test_coerce_pvalue_columns_noop_when_already_canonical() -> None:
     assert result["p_value"].to_list() == [0.01]
 
 
+def test_coerce_pvalue_columns_keeps_existing_canonical_over_alias() -> None:
+    """An existing canonical column wins over a higher-scoring spaced alias (no duplicate rename)."""
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01], "p value": [0.02]}).lazy()
+    result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert result.columns == ["p_value", "p value"]
+    assert result["p_value"].to_list() == [0.01]
+    assert result["p value"].to_list() == [0.02]
+
+
 def test_study_size_target_matches_common_spellings() -> None:
     """study_size_target matches common study size spellings."""
     names: list[str] = ["n", "N", "sample_size", "sample size", "sample-size", "sample.size", "samplesize", "study size", "cohort size"]
@@ -1546,6 +1555,15 @@ def test_coerce_study_size_columns_noop_when_already_canonical() -> None:
     assert result.columns == ["supporting_study_size", "sample_size"]
     assert result["supporting_study_size"].to_list() == [1200]
     assert result["sample_size"].to_list() == [999]
+
+
+def test_coerce_study_size_columns_keeps_existing_canonical_over_alias() -> None:
+    """An existing canonical column wins over a higher-scoring spaced alias (no duplicate rename)."""
+    lf: pl.LazyFrame = pl.DataFrame({"supporting_study_size": [1200], "supporting study size": [999]}).lazy()
+    result: pl.DataFrame = coerce_study_size_columns(lf).collect()
+    assert result.columns == ["supporting_study_size", "supporting study size"]
+    assert result["supporting_study_size"].to_list() == [1200]
+    assert result["supporting study size"].to_list() == [999]
 
 
 # --- Effect-size / effect-type coercion (Biolink PR #1774) --------------------------------------
@@ -1680,6 +1698,15 @@ def test_coerce_effect_size_columns_noop_when_already_canonical() -> None:
     assert result["effect_size"].to_list() == [0.85]
 
 
+def test_coerce_effect_size_columns_keeps_existing_canonical_over_alias() -> None:
+    """An existing canonical column wins over a higher-scoring spaced alias (no duplicate rename)."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.85], "effect size": [0.99]}).lazy()
+    result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
+    assert result.columns == ["effect_size", "effect size"]
+    assert result["effect_size"].to_list() == [0.85]
+    assert result["effect size"].to_list() == [0.99]
+
+
 def test_coerce_effect_type_columns_renames_and_maps_alias_values() -> None:
     """coerce_effect_type_columns renames the column and maps alias values to canonical enum values."""
     lf: pl.LazyFrame = pl.DataFrame({"effect size": [0.85, 1.2, 0.4], "effect type": ["Spearman", "odds ratio", "beta"]}).lazy()
@@ -1750,6 +1777,16 @@ def test_coerce_effect_type_columns_picks_best_candidate() -> None:
     result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
     assert result["effect_type"].to_list() == ["pearsons_r", "regression_coefficient"]
     assert result["effect size type"].to_list() == ["Spearman", "OR"]
+
+
+def test_coerce_effect_type_columns_keeps_existing_canonical_over_alias() -> None:
+    """An existing canonical column wins over a higher-scoring spaced alias (no duplicate rename)."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"effect_size": [0.85, 0.2], "effect_type": ["odds_ratio", "cohens_d"], "effect type": ["pearson r", "beta"]}
+    ).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result["effect_type"].to_list() == ["odds_ratio", "cohens_d"]
+    assert result["effect type"].to_list() == ["pearson r", "beta"]
 
 
 def test_coerce_effect_type_columns_noop_without_candidates() -> None:
