@@ -10,7 +10,8 @@ import polars as pl
 import tablassert.cli as cli
 import tablassert.lib as lib
 from tablassert import rs
-from tablassert.biolink import ALLOWED_EDGE_FIELDS, Categories
+from tablassert.biolink import ALLOWED_EDGE_FIELDS, EFFECT_TYPE_VALUES, Categories
+from tablassert.coerce import _EFFECT_TYPE_ALIASES, _map_effect_type_value
 from tablassert.enums import Repositories
 from tablassert.fullmap import ResolveSpec
 from tablassert.ingests import from_yaml
@@ -18,11 +19,15 @@ from tablassert.lib import (
     HEAD_ROWS,
     Tcode,
     clean_numeric,
+    coerce_effect_size_columns,
+    coerce_effect_type_columns,
     coerce_pvalue_columns,
     coerce_study_size_columns,
     drop_not_significant,
     edge_category,
     edge_tables,
+    effect_size_target,
+    effect_type_target,
     fold_unknown_to_supporting_text,
     format_numeric,
     head,
@@ -818,13 +823,15 @@ def test_numeric_columns_matches_p_value_substring() -> None:
 
 
 def test_numeric_columns_matches_exact_names() -> None:
-    """numeric_columns matches exact relationship strength and study size names."""
-    names: list[str] = ["relationship_strength", "sample_size", "supporting_study_size", "cohort"]
+    """numeric_columns matches exact effect size and study size names."""
+    names: list[str] = ["effect_size", "supporting_study_size", "cohort", "sample_size", "relationship_strength"]
     result: list[str] = numeric_columns(names)
-    assert "relationship_strength" in result
-    assert "sample_size" in result
+    assert "effect_size" in result
     assert "supporting_study_size" in result
     assert "cohort" not in result
+    # Old names are superseded: coercion renames them before clean_numeric/format_numeric run.
+    assert "sample_size" not in result
+    assert "relationship_strength" not in result
 
 
 def test_numeric_columns_case_insensitive() -> None:
@@ -846,12 +853,10 @@ def test_clean_numeric_parses_numeric_and_scientific() -> None:
 
 def test_clean_numeric_nulls_non_numeric() -> None:
     """clean_numeric drops non numeric entries to null."""
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"p_value": ["1e-8", "N/A", "", "<0.001", "abc"], "relationship_strength": ["0.85", "n/a", "NULL", "x", "y"]}
-    ).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "N/A", "", "<0.001", "abc"], "effect_size": ["0.85", "n/a", "NULL", "x", "y"]}).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
     assert result["p_value"].to_list() == [1e-8, None, None, None, None]
-    assert result["relationship_strength"].to_list() == [0.85, None, None, None, None]
+    assert result["effect_size"].to_list() == [0.85, None, None, None, None]
 
 
 def test_clean_numeric_leaves_non_matching_untouched() -> None:
@@ -892,10 +897,10 @@ def test_format_numeric_p_value_scientific() -> None:
 
 
 def test_format_numeric_decimal_general() -> None:
-    """format_numeric renders relationship strength and study size in decimal general format."""
-    lf: pl.LazyFrame = pl.DataFrame({"relationship_strength": ["0.85", "0.42", "0.1234"], "supporting_study_size": ["450", "1200", "7"]}).lazy()
+    """format_numeric renders effect size and study size in decimal general format."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": ["0.85", "0.42", "0.1234"], "supporting_study_size": ["450", "1200", "7"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["relationship_strength"].to_list() == ["0.85", "0.42", "0.1234"]
+    assert result["effect_size"].to_list() == ["0.85", "0.42", "0.1234"]
     assert result["supporting_study_size"].to_list() == ["450", "1200", "7"]
 
 
@@ -908,9 +913,9 @@ def test_format_numeric_preserves_nulls() -> None:
 
 def test_format_numeric_cleans_float_noise() -> None:
     """format_numeric cleans floating point noise to four significant figures."""
-    lf: pl.LazyFrame = pl.DataFrame({"relationship_strength": ["0.85000000001", "0.41999999999"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": ["0.85000000001", "0.41999999999"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["relationship_strength"].to_list() == ["0.85", "0.42"]
+    assert result["effect_size"].to_list() == ["0.85", "0.42"]
 
 
 def test_format_numeric_noop_without_numeric_columns() -> None:
@@ -923,13 +928,13 @@ def test_format_numeric_noop_without_numeric_columns() -> None:
 
 def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
     """cleaned and formatted null numeric values are stripped from NDJSON rows."""
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "p_value": ["1e-8", "N/A"], "relationship_strength": ["0.85", "0.42"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "p_value": ["1e-8", "N/A"], "effect_size": ["0.85", "0.42"]}).lazy()
     formatted: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     rows: list[dict[str, Any]] = [strip_nulls(r) for r in formatted.iter_rows(named=True)]
-    assert rows[0] == {"subject": "BRCA1", "p_value": "1.0000e-08", "relationship_strength": "0.85"}
+    assert rows[0] == {"subject": "BRCA1", "p_value": "1.0000e-08", "effect_size": "0.85"}
     assert "p_value" not in rows[1]
     assert rows[1]["subject"] == "TP53"
-    assert rows[1]["relationship_strength"] == "0.42"
+    assert rows[1]["effect_size"] == "0.42"
 
 
 def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1543,6 +1548,257 @@ def test_coerce_study_size_columns_noop_when_already_canonical() -> None:
     assert result["sample_size"].to_list() == [999]
 
 
+# --- Effect-size / effect-type coercion (Biolink PR #1774) --------------------------------------
+
+
+def test_effect_size_target_matches_common_spellings() -> None:
+    """effect_size_target matches common effect size spellings including the old name."""
+    names: list[str] = [
+        "effect size",
+        "effectsize",
+        "effect_size",
+        "ES",
+        "es",
+        "relationship_strength",
+        "relationship strength",
+        "beta",
+        "beta coefficient",
+        "log2FC",
+        "log2 fold change",
+        "odds ratio",
+        "OR",
+        "hazard ratio",
+        "HR",
+        "risk ratio",
+        "correlation",
+        "rho",
+        "r",
+    ]
+    for n in names:
+        assert effect_size_target(n) == "effect_size", n
+
+
+def test_effect_size_target_matches_qualified_statistic_names() -> None:
+    """effect_size_target matches qualified numeric-statistic column names."""
+    names: list[str] = [
+        "spearman rho",
+        "Spearman's rho",
+        "spearman_rho",
+        "pearson_r",
+        "kendall_tau",
+        "correlation coefficient",
+        "adjusted odds ratio",
+        "effect size estimate",
+        "log2_FC",
+    ]
+    for n in names:
+        assert effect_size_target(n) == "effect_size", n
+
+
+def test_effect_size_target_excludes_false_positives() -> None:
+    """effect_size_target excludes identifiers, unrelated columns, and effect-type labels."""
+    names: list[str] = [
+        "correlation_id",
+        "subject",
+        "gene",
+        "p_value",
+        "sample_id",
+        "beta_actin",
+        "or_value",
+        "hr_status",
+        "order",
+        "effect type",
+        "effect metric",
+        "statistic type",
+        "metric",
+    ]
+    for n in names:
+        assert effect_size_target(n) is None, n
+
+
+def test_effect_type_target_matches_common_spellings() -> None:
+    """effect_type_target matches effect-type/metric label spellings."""
+    names: list[str] = [
+        "effect type",
+        "effect_type",
+        "effect metric",
+        "statistic type",
+        "statistical type",
+        "metric type",
+        "metric",
+        "effect size type",
+    ]
+    for n in names:
+        assert effect_type_target(n) == "effect_type", n
+
+
+def test_effect_type_target_excludes_unrelated_columns() -> None:
+    """effect_type_target excludes effect-size names and unrelated columns."""
+    names: list[str] = ["effect_size", "effect size", "metric_value", "subject", "effect", "correlation"]
+    for n in names:
+        assert effect_type_target(n) is None, n
+
+
+def test_coerce_effect_size_columns_renames_relationship_strength() -> None:
+    """coerce_effect_size_columns renames the old relationship_strength name forward to effect_size."""
+    lf: pl.LazyFrame = pl.DataFrame({"relationship_strength": [0.85, 0.42]}).lazy()
+    result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
+    assert "effect_size" in result.columns
+    assert "relationship_strength" not in result.columns
+    assert result["effect_size"].to_list() == [0.85, 0.42]
+
+
+def test_coerce_effect_size_columns_renames_effect_size_like_column() -> None:
+    """coerce_effect_size_columns renames an effect-size-like column."""
+    lf: pl.LazyFrame = pl.DataFrame({"spearman rho": [0.85]}).lazy()
+    result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
+    assert result.columns == ["effect_size"]
+    assert result["effect_size"].to_list() == [0.85]
+
+
+def test_coerce_effect_size_columns_picks_best_candidate() -> None:
+    """coerce_effect_size_columns picks the best candidate and leaves others untouched."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect size estimate": [0.1], "effect size": [0.85], "beta": [0.3]}).lazy()
+    result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
+    assert result["effect_size"].to_list() == [0.85]
+    assert result["effect size estimate"].to_list() == [0.1]
+    assert result["beta"].to_list() == [0.3]
+
+
+def test_coerce_effect_size_columns_noop_without_candidates() -> None:
+    """coerce_effect_size_columns is a noop without effect-size-like columns."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1"], "cohort": ["adult"]}).lazy()
+    result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
+    assert result.columns == ["subject", "cohort"]
+
+
+def test_coerce_effect_size_columns_noop_when_already_canonical() -> None:
+    """coerce_effect_size_columns is a noop when already canonically named."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.85], "beta": [0.3]}).lazy()
+    result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
+    assert result.columns == ["effect_size", "beta"]
+    assert result["effect_size"].to_list() == [0.85]
+
+
+def test_coerce_effect_type_columns_renames_and_maps_alias_values() -> None:
+    """coerce_effect_type_columns renames the column and maps alias values to canonical enum values."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect size": [0.85, 1.2, 0.4], "effect type": ["Spearman", "odds ratio", "beta"]}).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(coerce_effect_size_columns(lf)).collect()
+    assert "effect_type" in result.columns
+    assert "effect type" not in result.columns
+    assert result["effect_type"].to_list() == ["spearmans_rho", "odds_ratio", "regression_coefficient"]
+
+
+def test_coerce_effect_type_columns_maps_canonical_and_case_variants() -> None:
+    """coerce_effect_type_columns passes canonical values through case/separator-insensitively."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.5, 0.6, 0.7], "effect_type": ["COHENS_D", "Hedges' g", "eta-squared"]}).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result["effect_type"].to_list() == ["cohens_d", "hedges_g", "eta_squared"]
+
+
+def test_coerce_effect_type_columns_fuzzy_fallback_and_unmatched_null() -> None:
+    """coerce_effect_type_columns fuzzy-matches close spellings and nulls values matching nothing."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"effect_size": [0.5, 0.6, 0.7], "effect_type": ["spearmans", "pearsons", "totally unrelated garbage xyz"]}
+    ).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result["effect_type"].to_list() == ["spearmans_rho", "pearsons_r", None]
+
+
+def test_map_effect_type_value_direct() -> None:
+    """_map_effect_type_value handles null input directly (map_elements skips nulls itself)."""
+    assert _map_effect_type_value(None) is None
+    assert _map_effect_type_value("   ") is None
+    assert _map_effect_type_value("Cohen's d") == "cohens_d"
+    assert _map_effect_type_value("spearmans") == "spearmans_rho"
+    assert _map_effect_type_value("totally unrelated garbage xyz") is None
+
+
+def test_effect_type_aliases_only_map_to_permissible_values() -> None:
+    """Drift guard: every alias canonical is a permissible value, and canonical values round-trip."""
+    assert {canonical for _, canonical in _EFFECT_TYPE_ALIASES} <= set(EFFECT_TYPE_VALUES)
+    for value in EFFECT_TYPE_VALUES:
+        assert _map_effect_type_value(value) == value
+
+
+def test_coerce_effect_type_columns_nulls_blank_and_null_values() -> None:
+    """coerce_effect_type_columns maps null and blank values to null."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.1, 0.2], "effect_type": [None, "  "]}).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result["effect_type"].to_list() == [None, None]
+
+
+def test_coerce_effect_type_columns_nulls_where_effect_size_null() -> None:
+    """effect_type is nulled on rows whose effect_size is null or non-numeric (Biolink class rule)."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect size": ["0.85", None, "n/a"], "effect type": ["Spearman", "OR", "beta"]}).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(coerce_effect_size_columns(lf)).collect()
+    assert result["effect_size"].to_list() == ["0.85", None, "n/a"]
+    assert result["effect_type"].to_list() == ["spearmans_rho", None, None]
+
+
+def test_coerce_effect_type_columns_nulls_entirely_without_effect_size() -> None:
+    """effect_type is nulled entirely when no effect_size column is present (Biolink class rule)."""
+    lf: pl.LazyFrame = pl.DataFrame({"metric": ["OR", "pearson r"]}).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result.columns == ["effect_type"]
+    assert result["effect_type"].to_list() == [None, None]
+
+
+def test_coerce_effect_type_columns_picks_best_candidate() -> None:
+    """coerce_effect_type_columns picks the best candidate column and leaves others untouched."""
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.85, 0.2], "effect size type": ["Spearman", "OR"], "effect type": ["pearson r", "beta"]}).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result["effect_type"].to_list() == ["pearsons_r", "regression_coefficient"]
+    assert result["effect size type"].to_list() == ["Spearman", "OR"]
+
+
+def test_coerce_effect_type_columns_noop_without_candidates() -> None:
+    """coerce_effect_type_columns is a noop without effect-type-like columns."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1"], "effect_size": [0.85]}).lazy()
+    result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result.columns == ["subject", "effect_size"]
+
+
+def test_coerced_effect_size_alias_survives_unknown_folding() -> None:
+    """The old relationship_strength name becomes a top-level effect_size field before unknown folding."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "relationship_strength": ["0.85"], "miscellaneous_notes": ["note"]}
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(coerce_effect_size_columns(lf)).collect()
+    assert out["effect_size"].to_list() == ["0.85"]
+    assert "relationship_strength" not in out.columns
+    assert out["supporting_text"].to_list() == [["miscellaneous_notes: note"]]
+
+
+def test_unpicked_relationship_strength_folds_into_supporting_text() -> None:
+    """When a better effect-size candidate wins the fuzzy pick, the superseded old name folds."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "effect size": ["0.85"], "relationship_strength": ["0.42"]}
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(coerce_effect_size_columns(lf)).collect()
+    assert out["effect_size"].to_list() == ["0.85"]
+    assert "relationship_strength" not in out.columns
+    assert out["supporting_text"].to_list() == [["relationship_strength: 0.42"]]
+
+
+def test_coerced_effect_type_survives_unknown_folding() -> None:
+    """Coerced effect_type values stay top-level edge fields after unknown folding."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["B"],
+            "predicate": ["related_to"],
+            "effect_size": ["0.85"],
+            "effect type": ["Spearman"],
+            "miscellaneous_notes": ["note"],
+        }
+    ).lazy()
+    out: pl.DataFrame = fold_unknown_to_supporting_text(coerce_effect_type_columns(lf)).collect()
+    assert out["effect_size"].to_list() == ["0.85"]
+    assert out["effect_type"].to_list() == ["spearmans_rho"]
+    assert out["supporting_text"].to_list() == [["miscellaneous_notes: note"]]
+
+
 # tcode coerces P value columns after annotations and before clean_numeric
 # so downstream numeric_columns/sig/format_numeric see already canonical p_value/adjusted_p_value names
 def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) -> None:
@@ -1573,6 +1829,23 @@ def test_tcode_collect_coerces_study_size_before_clean_numeric(fixtures_path: Pa
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
     assert coerce_idx < clean_idx
+
+
+# tcode coerces effect size and effect type columns after annotations and before clean_numeric
+# so downstream numeric_columns/format_numeric see already canonical effect_size names
+def test_tcode_collect_coerces_effect_columns_before_clean_numeric(fixtures_path: Path) -> None:
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    size_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_size_columns")
+    type_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_type_columns")
+    clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
+
+    assert size_idx < type_idx < clean_idx
 
 
 def test_coerced_study_size_alias_survives_unknown_folding() -> None:

@@ -127,9 +127,12 @@ template:
     - annotation: p_value
       method: column
       encoding: C
-    - annotation: relationship_strength
+    - annotation: effect_size
       method: column
       encoding: B
+    - annotation: effect_type
+      method: value
+      encoding: spearmans_rho
     - annotation: assertion_method
       method: value
       encoding: "Spearman correlation"
@@ -241,7 +244,7 @@ template:
     - annotation: p_value
       method: column
       encoding: C
-    - annotation: sample_size
+    - annotation: supporting_study_size
       method: column
       encoding: D
 ```

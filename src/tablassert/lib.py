@@ -13,7 +13,17 @@ from pydantic import Field, NonNegativeInt
 from tablassert import rs
 from tablassert._lazy import LazyModule
 from tablassert.biolink import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories
-from tablassert.coerce import coerce_pvalue_columns, coerce_study_size_columns, pvalue_target, sig, study_size_target
+from tablassert.coerce import (
+    coerce_effect_size_columns,
+    coerce_effect_type_columns,
+    coerce_pvalue_columns,
+    coerce_study_size_columns,
+    effect_size_target,
+    effect_type_target,
+    pvalue_target,
+    sig,
+    study_size_target,
+)
 from tablassert.enums import EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
@@ -43,10 +53,14 @@ logger = cat("PIPELINE")
 __all__ = [
     "as_list",
     "clean_values",
+    "coerce_effect_size_columns",
+    "coerce_effect_type_columns",
     "coerce_pvalue_columns",
     "coerce_study_size_columns",
     "compile_rig",
     "curie_prefix",
+    "effect_size_target",
+    "effect_type_target",
     "infores",
     "normalize_biolink_category",
     "pvalue_target",
@@ -268,8 +282,11 @@ def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Literal[Tokens.VAL
 def numeric_columns(names: list[str]) -> list[str]:
     """Return column names that should be coerced and formatted as numbers.
 
-    P-value columns by substring plus the exact ``relationship_strength`` and
-    study-size fields.
+    P-value columns by substring plus the exact ``effect_size`` and
+    study-size fields. The old ``sample_size`` / ``relationship_strength``
+    names are absent on purpose: the column coercions rename them to
+    ``supporting_study_size`` / ``effect_size`` before ``clean_numeric`` /
+    ``format_numeric`` run.
 
     Args:
         names: Schema column names to filter.
@@ -277,15 +294,15 @@ def numeric_columns(names: list[str]) -> list[str]:
     Returns:
         Subset of ``names`` destined for numeric coercion/formatting.
     """
-    # P-value columns by substring plus exact strength and study-size fields.
-    exact: set[str] = {"relationship_strength", "sample_size", "supporting_study_size"}
+    # P-value columns by substring plus exact effect-size and study-size fields.
+    exact: set[str] = {"effect_size", "supporting_study_size"}
     return [c for c in names if ("p_value" in c.lower()) or (c in exact)]
 
 
 def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Coerce numeric annotation columns to Float64, dropping non-numeric values to null.
 
-    Only touches p-value, relationship-strength and sample-size columns.
+    Only touches p-value, effect-size and study-size columns.
 
     Args:
         lf: Source LazyFrame.
@@ -293,7 +310,7 @@ def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     Returns:
         LazyFrame with the matched columns cast to Float64 (no-op if none match).
     """
-    # Only touches p-value, relationship-strength and sample-size columns.
+    # Only touches p-value, effect-size and study-size columns.
     cols: list[str] = numeric_columns(lf.collect_schema().names())
     if not cols:
         return lf
@@ -672,6 +689,8 @@ class Tcode(Section):
             [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
             (coerce_pvalue_columns, ()),
             (coerce_study_size_columns, ()),
+            (coerce_effect_size_columns, ()),
+            (coerce_effect_type_columns, ()),
             (clean_numeric, ()),
             # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
             (sig, ()),
@@ -764,6 +783,8 @@ PHASE_OF: dict[Callable, str] = {
     head: "filter",
     coerce_pvalue_columns: "clean",
     coerce_study_size_columns: "clean",
+    coerce_effect_size_columns: "clean",
+    coerce_effect_type_columns: "clean",
     clean_numeric: "clean",
     level_one: "resolve",
     level_two: "resolve",

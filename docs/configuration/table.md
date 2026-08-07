@@ -410,14 +410,14 @@ Optional edge attributes (statistical metadata, notes, etc.).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `annotation` | String | Yes | Attribute name (e.g., `"p_value"`, `"sample_size"`). Lowercased and trimmed of leading/trailing whitespace at parse time; underscores are preserved (use snake_case). |
+| `annotation` | String | Yes | Attribute name (e.g., `"p_value"`, `"effect_size"`). Lowercased and trimmed of leading/trailing whitespace at parse time; underscores are preserved (use snake_case). |
 | (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
 **Example:**
 ```yaml
 annotations:
-  - {annotation: p_value, method: column, encoding: C}        # Read from column C
-  - {annotation: sample_size, method: value, encoding: 450}   # Literal value for all edges
+  - {annotation: p_value, method: column, encoding: C}                # Read from column C
+  - {annotation: supporting_study_size, method: value, encoding: 450}  # Literal value for all edges
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
@@ -430,7 +430,7 @@ annotations:
 
 Annotation names fall into two groups at build time:
 
-- **Biolink-native slots** — names matching a [Biolink Association](https://biolink.github.io/biolink-model/) slot (e.g. `p_value`, `sample_size`, `knowledge_level`, `primary_knowledge_source`, `adjusted_p_value`, `supporting_text`, `publications`, the qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim.
+- **Allowed edge fields** — names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `primary_knowledge_source`, `supporting_text`, `publications`, `supporting_study_size`, `effect_size`, `effect_type`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim.
 - **Tablassert pipeline fields** — `upstream_resource_ids`, `source_record_urls`.
 
 Any other annotation name is treated as **supporting context**. At the end of `compile_graph`, tablassert sweeps the edge columns: for each non-allow-listed name it emits `"name: value"` entries into the edge's `supporting_text` (a `list[str]`), then drops the original column. Behavior worth knowing:

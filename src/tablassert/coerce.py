@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from functools import cache, lru_cache
+from typing import TYPE_CHECKING, Any
 
 from tablassert._lazy import LazyModule
 
@@ -360,3 +361,321 @@ def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     if chosen == target:
         return lf
     return lf.rename({chosen: target})
+
+
+# --- Effect-type name fragments ----------------------------------------------
+# Labels naming WHICH statistic an effect size is expressed in. Whole-name matches
+# cover bare labels ("metric", "effect type"); token matches cover qualified forms
+# ("effect size type"). "_" is a word char for \b, so identifier-like names such as
+# "metric_value" fall through.
+EFFECT_TYPE_EXACT_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    ^
+    (?:
+        effect {_SEP} type
+        | effect {_SEP} metric
+        | statistic(?:al)? {_SEP} type
+        | metric {_SEP} type
+        | metric
+    )
+    $
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+EFFECT_TYPE_TOKEN_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b
+    (?:
+        effect {_SEP} type
+        | effect {_SEP} metric
+        | effect {_SEP} size {_SEP} type
+        | statistic(?:al)? {_SEP} type
+        | metric {_SEP} type
+    )
+    \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# --- Effect-size fragments -----------------------------------------------------
+# Numeric effect/statistic column labels. Whole-name matches cover bare statistic
+# tokens ("ES", "OR", "HR", "beta", "rho", "r", plus the old ``relationship_strength``
+# name); token matches require a multi-word statistic label, and word-boundary
+# anchoring keeps identifier columns out ("correlation_id" fails the trailing \b
+# because "_" is a word char).
+EFFECT_SIZE_EXACT_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    ^
+    (?:
+        effect {_SEP} size
+        | relationship {_SEP} strength
+        | es
+        | beta
+        | beta {_SEP} coefficients?
+        | log2 {_SEP} fc
+        | log2 {_SEP} fold {_SEP} change
+        | odds {_SEP} ratio
+        | or
+        | hazard {_SEP} ratio
+        | hr
+        | risk {_SEP} ratio
+        | correlation
+        | rho
+        | r
+    )
+    $
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+EFFECT_SIZE_TOKEN_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    \b
+    (?:
+        effect {_SEP} size
+        | relationship {_SEP} strength
+        | beta {_SEP} coefficients?
+        | log2 {_SEP} fc
+        | log2 {_SEP} fold {_SEP} change
+        | odds {_SEP} ratio
+        | hazard {_SEP} ratio
+        | risk {_SEP} ratio
+        | correlation {_SEP} coefficients?
+        | correlation
+        | spearman(?:s)? {_SEP} rho
+        | pearson(?:s)? {_SEP} r
+        | kendall(?:s)? {_SEP} tau
+        | rho
+    )
+    \b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# Token matches are \b-anchored like the p-value/study-size patterns: the explicit
+# multi-token alternatives span separators ("spearman rho", "spearman_rho"), while
+# unknown underscore-glued forms deliberately fall through.
+
+
+def effect_type_target(name: str) -> str | None:
+    """Map effect-type-like column names to the canonical ``effect_type`` slot.
+
+    Args:
+        name: Raw source column name.
+
+    Returns:
+        ``"effect_type"`` when the name looks like an effect-type/metric label
+        ("effect type", "effect metric", "statistic type", "metric type", bare
+        "metric"), else ``None``.
+    """
+    if EFFECT_TYPE_EXACT_PATTERN.search(name):
+        return "effect_type"
+    if EFFECT_TYPE_TOKEN_PATTERN.search(name):
+        return "effect_type"
+    return None
+
+
+def effect_size_target(name: str) -> str | None:
+    """Map effect-size-like column names to the canonical ``effect_size`` slot.
+
+    Args:
+        name: Raw source column name.
+
+    Returns:
+        ``"effect_size"`` when the name matches any of the effect-size
+        patterns, else ``None``.
+
+    Notes:
+        Effect-type/metric labels are categorical, not the numeric size, so
+        they are excluded here and belong to ``effect_type_target`` (mirroring
+        the significance-flag exclusion in ``pvalue_target``). The old
+        ``relationship_strength`` name is a candidate, so it is renamed
+        forward to ``effect_size``.
+    """
+    if effect_type_target(name):
+        return None
+    if EFFECT_SIZE_EXACT_PATTERN.search(name):
+        return "effect_size"
+    if EFFECT_SIZE_TOKEN_PATTERN.search(name):
+        return "effect_size"
+    return None
+
+
+def coerce_effect_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Rename effect-size-like columns to Biolink KGX-compliant ``effect_size`` (Biolink PR #1774).
+
+    Picks a single best fuzzy match and leaves other candidate columns
+    untouched.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        LazyFrame with the chosen column renamed (no-op if no match).
+
+    Notes:
+        The old ``relationship_strength`` name is among the candidates, so
+        existing configs are renamed forward to ``effect_size``.
+    """
+    # Picks a single best fuzzy match and leaves other candidate columns untouched.
+    from rapidfuzz import fuzz
+
+    names: list[str] = lf.collect_schema().names()
+    candidates: list[str] = [n for n in names if effect_size_target(n)]
+    if not candidates:
+        return lf
+
+    target: str = "effect_size"
+    reference: str = target.replace("_", " ")
+    chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+    if chosen == target:
+        return lf
+    return lf.rename({chosen: target})
+
+
+# --- Effect-type value coercion ------------------------------------------------
+# Raw value aliases -> canonical EffectTypes values (Biolink PR #1774). Keys are
+# matched case/separator-insensitively: both sides are lower-cased with every
+# separator/apostrophe stripped ("Cohen's d" -> "cohensd").
+_EFFECT_TYPE_ALIASES: tuple[tuple[str, str], ...] = (
+    ("Cohen's d", "cohens_d"),
+    ("odds ratio", "odds_ratio"),
+    ("OR", "odds_ratio"),
+    ("hazard ratio", "hazard_ratio"),
+    ("HR", "hazard_ratio"),
+    ("risk ratio", "relative_risk"),
+    ("RR", "relative_risk"),
+    ("relative risk", "relative_risk"),
+    ("Spearman", "spearmans_rho"),
+    ("spearman rho", "spearmans_rho"),
+    ("spearman's rho", "spearmans_rho"),
+    ("Pearson", "pearsons_r"),
+    ("pearson r", "pearsons_r"),
+    ("Kendall", "kendalls_tau"),
+    ("log2FC", "log2_fold_change"),
+    ("log2 fold change", "log2_fold_change"),
+    ("beta", "regression_coefficient"),
+    ("regression coefficient", "regression_coefficient"),
+    ("SMD", "standardized_mean_difference"),
+    ("eta squared", "eta_squared"),
+    ("eta2", "eta_squared"),
+    ("omega squared", "omega_squared"),
+    ("MCC", "matthews_correlation_coefficient"),
+    ("matthews", "matthews_correlation_coefficient"),
+    ("wald", "wald_ratio"),
+    ("IVW", "inverse_variance_weighted"),
+    ("MR-Egger", "mr_egger"),
+    ("weighted median", "weighted_median"),
+    ("Glass", "glasss_delta"),
+    ("polychoric", "polychoric_correlation"),
+    ("Goodman-Kruskal", "goodman_kruskal_gamma"),
+    ("r2", "r2_linkage_disequilibrium"),
+    ("LD r2", "r2_linkage_disequilibrium"),
+    ("Hedges", "hedges_g"),
+    ("SSMD", "strictly_standardized_mean_difference"),
+    ("correlation coefficient", "correlation_coefficient"),
+)
+# Minimum fuzz.ratio for a raw value to count as a fuzzy hit against the canonical
+# values; anything lower is dropped to null (the biolink range is the enum).
+_EFFECT_TYPE_FUZZY_SCORE: float = 80.0
+
+
+def _normalize_effect_type(value: str) -> str:
+    """Lower-case and strip separators/apostrophes for case/separator-insensitive matching."""
+    # \u2019 is the right single quote (curly apostrophe) so both apostrophe styles normalize alike.
+    return re.sub(r"[\s_.\-'\u2019]+", "", value.lower())
+
+
+@cache
+def _effect_type_vocab() -> tuple[dict[str, str], tuple[str, ...]]:
+    """Normalized alias table and canonical values for the 25 ``EffectTypes`` values (cached).
+
+    Returns:
+        Tuple of ``(alias table, canonical values)``: normalized-key ->
+        canonical-value map covering every permissible value plus the common
+        spellings/abbreviations, and the 25 canonical values verbatim.
+    """
+    from tablassert.biolink import EFFECT_TYPE_VALUES
+
+    table: dict[str, str] = {_normalize_effect_type(value): value for value in EFFECT_TYPE_VALUES}
+    for raw, canonical in _EFFECT_TYPE_ALIASES:
+        table[_normalize_effect_type(raw)] = canonical
+    return table, EFFECT_TYPE_VALUES
+
+
+@lru_cache(maxsize=4096)
+def _map_effect_type_value(raw: Any) -> str | None:
+    """Map one raw ``effect_type`` value to a canonical value, or null when nothing matches.
+
+    Args:
+        raw: Raw cell value (possibly null).
+
+    Returns:
+        The canonical ``EffectTypes`` value on an exact/alias hit or a fuzzy
+        hit scoring at least ``_EFFECT_TYPE_FUZZY_SCORE``; ``None`` otherwise.
+    """
+    if raw is None:
+        return None
+    text: str = str(raw).strip()
+    if not text:
+        return None
+    table, values = _effect_type_vocab()
+    key: str = _normalize_effect_type(text)
+    hit: str | None = table.get(key)
+    if hit is not None:
+        return hit
+    # Fuzzy fallback against the 25 canonical values only.
+    from rapidfuzz import fuzz
+
+    best: str = max(values, key=lambda v: fuzz.ratio(key, v))
+    if fuzz.ratio(key, best) >= _EFFECT_TYPE_FUZZY_SCORE:
+        return best
+    return None
+
+
+def coerce_effect_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Rename effect-type-like columns to ``effect_type`` and coerce their values (Biolink PR #1774).
+
+    Picks a single best fuzzy column match, then maps every value to one of the
+    25 permissible ``EffectTypes`` enum values.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        LazyFrame with the chosen column renamed to ``effect_type`` and its
+        values coerced (no-op if no effect-type-like column is present).
+
+    Notes:
+        Values are matched case/separator-insensitively against an exact/alias
+        table first, then by rapidfuzz fallback against the 25 canonical
+        values. The Biolink range of ``effect_type`` is the enum, so values
+        matching nothing are dropped to null rather than carried through.
+
+    Warnings:
+        Biolink class rule (PR #1774): ``effect_type`` may only be populated
+        when ``effect_size`` is populated. After value coercion, ``effect_type``
+        is nulled on every row where ``effect_size`` is null, and nulled
+        entirely when no ``effect_size`` column is present (the same shape of
+        class rule ``sig`` documents for the significance qualifier).
+    """
+    # Picks a single best fuzzy match and leaves other candidate columns untouched.
+    from rapidfuzz import fuzz
+
+    names: list[str] = lf.collect_schema().names()
+    candidates: list[str] = [n for n in names if effect_type_target(n)]
+    if not candidates:
+        return lf
+
+    target: str = "effect_type"
+    reference: str = target.replace("_", " ")
+    chosen: str = max(candidates, key=lambda c: fuzz.ratio(c, reference))
+    lf = lf.rename({chosen: target}) if chosen != target else lf
+
+    mapped: pl.Expr = pl.col(target).cast(pl.String).map_elements(_map_effect_type_value, return_dtype=pl.String)
+    lf = lf.with_columns(mapped.alias(target))
+
+    # Biolink class rule: effect_type may only be populated when effect_size is populated.
+    if "effect_size" in lf.collect_schema().names():
+        populated: pl.Expr = pl.col("effect_size").cast(pl.Float64, strict=False).is_not_null()
+        guarded: pl.Expr = pl.when(populated).then(pl.col(target)).otherwise(pl.lit(None, dtype=pl.String))
+        return lf.with_columns(guarded.alias(target))
+    return lf.with_columns(pl.lit(None, dtype=pl.String).alias(target))

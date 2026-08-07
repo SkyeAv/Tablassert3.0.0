@@ -52,10 +52,11 @@ template:
   # Statistical metadata as edge annotations (method: value = constant,
   # method: column = per-row)
   annotations:
-    - {annotation: sample_size, method: value, encoding: 9}
+    - {annotation: supporting_study_size, method: value, encoding: 9}
     - {annotation: p_value, method: column, encoding: C}
     - {annotation: multiple_testing_correction_method, method: value, encoding: Benjamini Hochberg}
-    - {annotation: relationship_strength, method: column, encoding: B}   # Spearman rho
+    - {annotation: effect_size, method: column, encoding: B}   # Spearman rho value
+    - {annotation: effect_type, method: value, encoding: spearmans_rho}
     - {annotation: assertion_method, method: value, encoding: Spearman correlation}
 
     # Freetext catch-all for context that doesn't map to a structured annotation
@@ -97,7 +98,8 @@ whole table or `method: column` to pull per-row notes from the source (see
 {"id":"CHEBI:41774","name":"13C-tamoxifen","category":["biolink:ChemicalEntity"]}
 ```
 
-**Edges:** Allow-listed annotation columns (`sample_size`, `p_value`, `relationship_strength`) stay as
+**Edges:** Allow-listed annotation columns (`supporting_study_size`, `p_value`, `effect_size`,
+`effect_type`) stay as
 top-level edge fields (numeric annotations as controlled-notation strings). Any non-Biolink-slot name —
 here `assertion_method`, `multiple_testing_correction_method`, `miscellaneous_notes` — folds into the
 edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically), alongside the built-in
@@ -109,9 +111,10 @@ edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically)
   "subject": "NCBITaxon:47715",
   "predicate": "biolink:correlated_with",
   "object": "CHEBI:41774",
-  "sample_size": "9.000",
+  "supporting_study_size": "9.000",
   "p_value": "1.0000e-03",
-  "relationship_strength": "0.8500",
+  "effect_size": "0.8500",
+  "effect_type": "spearmans_rho",
   "supporting_text": [
     "assertion_method: Spearman correlation",
     "extracted_from_row_number: 3",
@@ -198,7 +201,7 @@ template:
 
   annotations:
     - {annotation: p_value, method: column, encoding: E}
-    - {annotation: relationship_strength, method: column, encoding: C}
+    - {annotation: effect_size, method: column, encoding: C}
 ```
 
 Each column-mapped node gets its own `prioritize` list to guide disambiguation. `remove` strips each
@@ -252,7 +255,7 @@ sections:
     source:
       row_slice: [2, auto]
     annotations:
-      - {annotation: relationship_strength, method: column, encoding: B}
+      - {annotation: effect_size, method: column, encoding: B}
 
   - statement:
       object:
@@ -261,7 +264,7 @@ sections:
     source:
       row_slice: [2, auto]
     annotations:
-      - {annotation: relationship_strength, method: column, encoding: C}
+      - {annotation: effect_size, method: column, encoding: C}
 
   # ... (one section per metabolite column; pattern repeats)
 ```

@@ -17,7 +17,18 @@ from typing import TYPE_CHECKING, Any
 import biolink_model.datamodel.pydanticmodel_v2 as bm
 import pytest
 
-from tablassert.biolink import ALLOWED_EDGE_FIELDS, BIOLINK_VERSION, AgentTypes, Categories, EdgeCategories, KnowledgeLevels, Predicates, Qualifiers
+from tablassert.biolink import (
+    ALLOWED_EDGE_FIELDS,
+    BIOLINK_VERSION,
+    EFFECT_TYPE_VALUES,
+    AgentTypes,
+    Categories,
+    EdgeCategories,
+    EffectTypes,
+    KnowledgeLevels,
+    Predicates,
+    Qualifiers,
+)
 
 if TYPE_CHECKING:
     from linkml_runtime.utils.schemaview import SchemaView
@@ -64,7 +75,9 @@ def _biolink_association_names() -> set[str]:
 # --- enum shape ---------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("enum", [Categories, EdgeCategories, Predicates, Qualifiers, KnowledgeLevels, AgentTypes], ids=lambda e: e.__name__)
+@pytest.mark.parametrize(
+    "enum", [Categories, EdgeCategories, Predicates, Qualifiers, KnowledgeLevels, AgentTypes, EffectTypes], ids=lambda e: e.__name__
+)
 def test_is_str_enum(enum: type) -> None:
     """Every derived vocabulary is a ``str``/``Enum`` subclass (usable as a Pydantic field type)."""
     assert issubclass(enum, str)
@@ -114,6 +127,14 @@ def test_agent_types_has_manual_agent() -> None:
     assert AgentTypes.MANUAL_AGENT == "manual_agent"
 
 
+def test_effect_types_has_spearmans_rho() -> None:
+    assert EffectTypes.SPEARMANS_RHO == "spearmans_rho"
+
+
+def test_effect_types_has_odds_ratio() -> None:
+    assert EffectTypes.ODDS_RATIO == "odds_ratio"
+
+
 # --- provenance ---------------------------------------------------------------------------------
 
 
@@ -135,6 +156,45 @@ def test_knowledge_levels_match_biolink() -> None:
 def test_agent_types_match_biolink() -> None:
     """AgentTypes is exactly the Biolink ``AgentTypeEnum`` value set."""
     assert {e.value for e in AgentTypes} == {e.value for e in bm.AgentTypeEnum}
+
+
+def test_effect_types_match_pr1774() -> None:
+    """EffectTypes is exactly the 25 permissible ``effect_type`` values from Biolink PR #1774.
+
+    Defined locally because the pinned biolink-model 4.4.3 predates the PR
+    (close_mappings intentionally ignored); once biolink-model ships the enum,
+    this becomes a drift guard against ``bm.EffectTypeEnum`` instead.
+    """
+    expected: set[str] = {
+        "regression_coefficient",
+        "log2_fold_change",
+        "wald_ratio",
+        "inverse_variance_weighted",
+        "mr_egger",
+        "weighted_median",
+        "standardized_mean_difference",
+        "cohens_d",
+        "hedges_g",
+        "glasss_delta",
+        "strictly_standardized_mean_difference",
+        "correlation_coefficient",
+        "pearsons_r",
+        "spearmans_rho",
+        "kendalls_tau",
+        "polychoric_correlation",
+        "matthews_correlation_coefficient",
+        "goodman_kruskal_gamma",
+        "r2_linkage_disequilibrium",
+        "odds_ratio",
+        "relative_risk",
+        "hazard_ratio",
+        "eta_squared",
+        "omega_squared",
+        "root_mean_square_standardized_effect",
+    }
+    assert len(expected) == 25
+    assert {e.value for e in EffectTypes} == expected
+    assert set(EFFECT_TYPE_VALUES) == expected
 
 
 def test_categories_match_biolink() -> None:
@@ -234,6 +294,12 @@ def test_allowed_edge_fields_covers_required_columns() -> None:
 def test_allowed_edge_fields_includes_new_qualifiers() -> None:
     """New 4.4.3 qualifier slots are allowed edge columns."""
     assert "process_qualifier" in ALLOWED_EDGE_FIELDS
+
+
+def test_allowed_edge_fields_includes_effect_annotations() -> None:
+    """PR #1774 ``effect_size`` / ``effect_type`` are allowed edge columns (reach the final edges)."""
+    assert "effect_size" in ALLOWED_EDGE_FIELDS
+    assert "effect_type" in ALLOWED_EDGE_FIELDS
 
 
 def test_allowed_edge_fields_is_superset_of_qualifiers() -> None:
