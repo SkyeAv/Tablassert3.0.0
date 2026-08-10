@@ -13,12 +13,26 @@ extension-module = ["pyo3/extension-module"]
 
 [dependencies]
 bincode = "1"
-flate2 = "1"
+# `zlib-rs` backend: the fastest api-compatible DEFLATE decompressor (pure
+# Rust, runtime SIMD multiversioning — no C toolchain needed for wheels).
+# The fullmap build's producer threads decompress ~30-40 GB of BABEL `.gz`;
+# the default miniz_oxide backend is the slowest option.  See the flate2
+# README ("if you want maximum performance... use zlib-rs").
+flate2 = { version = "1", features = ["zlib-rs"], default-features = false }
 memmap2 = "0.9"
 mimalloc = { version = "0.1", default-features = false }
 pyo3 = "0.29"
 rayon = "1"
-redb = "4"
+# Pinned to cberner/redb master (the 4.2.0-to-be, rev a35e7cc 2026-08-10) for
+# two Phase-4 wins not yet published on crates.io (latest stable is 4.1.0):
+#   1. automatic ascending-key insert optimization (~half the pages -> ~half-
+#      size shard files + faster reads; our shard inserts are hash-ascending);
+#   2. the experimental cursor API (~3x faster sorted bulk inserts), used by
+#      `write_shard_records` via `experimental_cursor`.
+# The file format is still v3, so this is a drop-in engine swap (no schema
+# bump, existing DBs keep opening).  Swap back to `redb = "4.2"` once 4.2.0
+# publishes and re-verify the changelog.
+redb = { git = "https://github.com/cberner/redb.git", rev = "a35e7cc86f191d08a444d5973469b34673d586fc", features = ["experimental_cursor"] }
 rlimit = "0.10"
 rustc-hash = "1"
 serde = { version = "1", features = ["derive"] }
@@ -28,8 +42,8 @@ xxhash-rust = { version = "0.8", features = ["xxh64", "xxh3"] }
 
 [dev-dependencies]
 bincode = "1"
-flate2 = "1"
-redb = "4"
+flate2 = { version = "1", features = ["zlib-rs"], default-features = false }
+redb = { git = "https://github.com/cberner/redb.git", rev = "a35e7cc86f191d08a444d5973469b34673d586fc", features = ["experimental_cursor"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"

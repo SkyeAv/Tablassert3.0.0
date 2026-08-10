@@ -73,7 +73,10 @@ The build is a parallel, **memory-bounded** pipeline executed by the Rust extens
       `shard_count` independent k-way merges — one thread per shard, each merging only its own shard's
       runs and inserting the merged term groups inline into that shard's redb file (one database per
       shard, since redb allows a single writer per file) in hash-sorted batches for near-sequential B-tree
-      appends. Because every term's postings already live in its own shard's runs, each merge groups a
+      appends (each batch is appended through redb's end-of-table cursor API, the faster ascending
+      bulk-load path; the engine's ascending-key page optimization also lets a key-order-loaded shard
+      occupy about half as many pages, so current builds write ~50% smaller shard files at the same
+      schema). Because every term's postings already live in its own shard's runs, each merge groups a
       term completely with no cross-shard coordination; as the merge+insert is the bottleneck,
       `shard_count` writers deliver ~N× single-threaded write throughput.
 
