@@ -2,17 +2,90 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tablassert.svg)](https://pypi.org/project/tablassert/)
 [![Python](https://img.shields.io/pypi/pyversions/tablassert.svg)](https://pypi.org/project/tablassert/)
+[![CI](https://github.com/SkyeAv/Tablassert/actions/workflows/ci.yml/badge.svg)](https://github.com/SkyeAv/Tablassert/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/tablassert.svg)](https://github.com/SkyeAv/Tablassert/blob/main/LICENSE)
 [![Docs](https://img.shields.io/github/deployments/SkyeAv/Tablassert/github-pages?label=docs)](https://skyeav.github.io/Tablassert/)
 
-Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution built in and optional quality control.
+> Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON —
+> declaratively, with entity resolution built in and optional quality control.
+
+Tablassert turns biomedical spreadsheets (Excel, CSV, TSV) into knowledge graphs ready for NCATS
+Translator. Declare how your columns map to subject–predicate–object statements in YAML; Tablassert
+resolves free text to standard CURIEs, attaches provenance and statistical annotations, and emits
+KGX-compliant nodes and edges.
+
+**[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorial,
+configuration reference, and API docs.
+
+## Quick Start
 
 ```bash
 pip install tablassert
-tablassert build-kg config.yaml
 ```
 
-**[Full Documentation](https://skyeav.github.io/Tablassert/)** — installation guides, tutorials, configuration reference, and API docs.
+Given a CSV of gene–disease associations with p-values and sample sizes, declare the mapping in a
+table config (`table.yaml`):
+
+```yaml
+template:
+  source:
+    kind: text
+    local: ./gene-disease.csv
+    url: https://example.com/data.csv
+    row_slice: [1, auto]
+    delimiter: ","
+  statement:
+    subject: { method: column, encoding: A, prioritize: [Gene] }
+    predicate: associated_with
+    object: { method: column, encoding: B, prioritize: [Disease] }
+  provenance: { repo: PMID, publication: "12345678" }
+  annotations:
+    - { annotation: p_value, method: column, encoding: C }
+    - { annotation: supporting_study_size, method: column, encoding: D }
+```
+
+Wrap it in a graph config (`graph.yaml`) pointing at your fullmap entity-resolution database:
+
+```yaml
+name: MY_KG
+version: 1.0.0
+description: Gene–disease associations extracted from tabular sources.
+tables:
+  - ./table.yaml
+fullmap: /path/to/fullmap
+```
+
+Build the knowledge graph:
+
+```bash
+tablassert build-kg graph.yaml
+```
+
+Output is one JSON object per line — nodes with Biolink categories, edges with annotations:
+
+```json
+{"id":"HGNC:11998","name":"TP53","category":["biolink:Gene"],"taxon":"NCBITaxon:9606"}
+{"id":"MONDO:0008903","name":"lung cancer","category":["biolink:Disease"]}
+```
+
+```json
+{"subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","supporting_study_size":"450"}
+```
+
+See the [Tutorial](https://skyeav.github.io/Tablassert/tutorial/) for the full walkthrough.
+
+## Key Features
+
+- **Declarative YAML configuration** — define data transformations without writing code
+- **Built-in entity resolution** — map free text to genes, diseases, and chemicals with standard
+  CURIEs, taxonomic filtering, and provenance, backed by an embedded redb database
+- **Optional quality control** — a three-stage audit (exact → fuzzy → BioBERT embeddings) flags
+  low-confidence mappings
+- **KGX compliance** — emits NCATS Translator-compatible node/edge NDJSON with Biolink categories
+  and predicates
+- **Autonomous agent** — `tablassert agent` derives, builds, and refines configs for whole papers
+- **Performance & reproducibility** — lazy Polars pipelines and a deterministic UV-based
+  development environment
 
 ## Installation
 
@@ -20,32 +93,47 @@ tablassert build-kg config.yaml
 pip install tablassert
 ```
 
-The base install builds knowledge graphs from CSV/TSV/Excel sources. Optional extras (`rt`, `qc`,
-`agent`) add CPU-compatible Polars, the three-stage QC audit, and the autonomous agent — see the
-[Installation guide](https://skyeav.github.io/Tablassert/installation/) for the full matrix. QC is opt-in
-at build time (`build-kg --qc`); see the [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for the
-complete flag reference.
+Or with uv: `uv tool install tablassert`. The base install builds knowledge graphs from
+CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 
-## Quick Demo
+| Extra | Adds | Install |
+| ----- | ---- | ------- |
+| `rt` | CPU-compatible Polars runtime | `pip install "tablassert[rt]"` |
+| `qc` | three-stage QC audit (exact → fuzzy → BioBERT embeddings) | `pip install "tablassert[qc]"` |
+| `agent` | autonomous agent (smolagents, litellm, dspy, PDF context) | `pip install "tablassert[agent]"` |
+
+QC is opt-in at build time (`build-kg --qc`). See the
+[Installation guide](https://skyeav.github.io/Tablassert/installation/) for the full matrix and the
+[CLI Reference](https://skyeav.github.io/Tablassert/cli/) for every flag.
+
+## Entity Resolution API
 
 ```python
 from pathlib import Path
 from tablassert.lib import resolve_many
 
-results = resolve_many(col="gene", entities=["TP53", "BRCA1"], fullmap=Path("/path/to/fullmap"), taxon="9606")
+results = resolve_many(
+    col="gene",
+    entities=["TP53", "BRCA1"],
+    fullmap=Path("/path/to/fullmap"),
+    taxon="9606",
+)
 # [{"original_gene": "TP53", "gene": "HGNC:11998", "gene_name": "TP53", ...}, ...]
 ```
 
-Point `resolve_many()` at a fullmap database to resolve any iterable of entity strings to CURIEs — no
-LazyFrame setup or NLP preprocessing required. See the
-[Batch Resolution API](https://skyeav.github.io/Tablassert/api/lib/) for the full reference; for
-YAML-configured pipeline builds use `tablassert build-kg config.yaml`.
+Point `resolve_many()` at a fullmap database to resolve any iterable of entity strings to CURIEs —
+no LazyFrame setup or NLP preprocessing required. See the
+[Batch Resolution API](https://skyeav.github.io/Tablassert/api/lib/) for the full reference.
 
-## Key Features
+## Documentation
 
-Declarative YAML configs, built-in entity resolution, optional three-stage QC, and KGX-compliant NDJSON
-output — with lazy Polars pipelines over an embedded redb resolution database. See the
-[documentation](https://skyeav.github.io/Tablassert/) for the full feature overview and use-case gallery.
+- **[Installation](https://skyeav.github.io/Tablassert/installation/)** — install methods, extras, and development setup
+- **[Tutorial](https://skyeav.github.io/Tablassert/tutorial/)** — step-by-step example with synthetic data
+- **[CLI Reference](https://skyeav.github.io/Tablassert/cli/)** — complete command-line flag reference
+- **[Use Case Gallery](https://skyeav.github.io/Tablassert/examples/)** — real-world configuration patterns
+- **[Configuration](https://skyeav.github.io/Tablassert/configuration/graph/)** — graph and table configuration reference
+- **[Agent](https://skyeav.github.io/Tablassert/agent/)** — the autonomous agent pipeline
+- **[API Reference](https://skyeav.github.io/Tablassert/api/fullmap/)** — core functions documentation
 
 ## Developing
 
@@ -55,7 +143,17 @@ uv run maturin develop --manifest-path rust/Cargo.toml
 make check
 ```
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development loop, quality gates, and pull request guidelines.
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development loop, quality gates, and pull
+request guidelines.
+
+## Citation
+
+If you use Tablassert, please cite it as described in [CITATION.cff](CITATION.cff). The approach is
+described in:
+
+> Skye Lane Goetz, Alex K. Glen, and Gwênlyn Glusman. “MicrobiomeKG: bridging microbiome research
+> and host health through knowledge graphs.” *Frontiers in Systems Biology* 5 (2025).
+> [doi:10.3389/fsysb.2025.1544432](https://doi.org/10.3389/fsysb.2025.1544432)
 
 ## License
 
@@ -63,8 +161,6 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development loop, qualit
 
 ## Contributors
 
-[Skye Lane Goetz](mailto:sgoetz@isbscience.org) — Institute for Systems Biology
-
-[Gwênlyn Glusman](mailto:gglusman@isbscience.org) — Institute for Systems Biology
-
-Jared C. Roach — Institute for Systems Biology
+- [Skye Lane Goetz](mailto:sgoetz@isbscience.org) — Institute for Systems Biology
+- [Gwênlyn Glusman](mailto:gglusman@isbscience.org) — Institute for Systems Biology
+- Jared C. Roach — Institute for Systems Biology
