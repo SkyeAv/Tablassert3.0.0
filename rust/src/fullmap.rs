@@ -1998,6 +1998,10 @@ fn write_shard_records(
     drop(meta);
     let mut table = write.open_table(RECORDS).map_err(py_err)?;
     let mut merge = MergeHeap::new(run_paths).map_err(py_err)?;
+    // Last hash inserted into this shard, carried ACROSS batch flushes so a
+    // duplicate xxh64 hash straddling a batch boundary is caught (the cursor
+    // requires strictly ascending keys; see `flush_shard_batch`).
+    let mut last_hash: Option<u64> = None;
     // Pre-size the batch to the flush threshold so it never regrows (each
     // doubling copied up to ~80 MB of accumulated records at the default 2M
     // batch).  insert_batch == 0 (unbounded) yields a zero-capacity Vec.
@@ -2018,12 +2022,12 @@ fn write_shard_records(
         bincode::serialize_into(&mut enc_buf, &(term.as_str(), &pairs)).map_err(py_err)?;
         batch.push((hash, enc_buf.clone()));
         if insert_batch > 0 && batch.len() >= insert_batch {
-            let flushed = flush_shard_batch(&mut table, &mut batch)?;
+            let flushed = flush_shard_batch(&mut table, &mut batch, &mut last_hash)?;
             written += flushed;
             report_shard_progress(progress, global_written, total, shard_index, flushed);
         }
     }
-    let flushed = flush_shard_batch(&mut table, &mut batch)?;
+    let flushed = flush_shard_batch(&mut table, &mut batch, &mut last_hash)?;
     written += flushed;
     report_shard_progress(progress, global_written, total, shard_index, flushed);
     drop(table);
@@ -2048,9 +2052,14 @@ fn write_shard_records(
 /// colliding; ~6% odds per full build at ~1.5 B terms) closes the cursor,
 /// falls back to one plain `insert()` (preserving the pre-cursor overwrite
 /// semantics for that record), and reopens the cursor at the end of the table.
+///
+/// `last` carries the highest hash inserted so far ACROSS batch flushes
+/// (owned by `write_shard_records`), so a collision straddling a batch
+/// boundary is caught too — not just duplicates within one batch.
 fn flush_shard_batch(
     table: &mut redb::Table<u64, &[u8]>,
     batch: &mut Vec<(u64, Vec<u8>)>,
+    last: &mut Option<u64>,
 ) -> PyResult<u64> {
     if batch.is_empty() {
         return Ok(0);
@@ -2059,7 +2068,6 @@ fn flush_shard_batch(
     let mut cursor = table
         .upper_bound_mut(std::ops::Bound::<u64>::Unbounded)
         .map_err(py_err)?;
-    let mut last: Option<u64> = None;
     for (hash, enc) in batch.iter() {
         if last.is_some_and(|h| *hash <= h) {
             // Duplicate hash (an xxh64 collision between distinct terms): the
@@ -2075,7 +2083,7 @@ fn flush_shard_batch(
                 .insert_before(*hash, enc.as_slice())
                 .map_err(py_err)?;
         }
-        last = Some(*hash);
+        *last = Some(*hash);
     }
     cursor.close().map_err(py_err)?;
     let flushed = batch.len() as u64;
@@ -5358,7 +5366,8 @@ mod tests {
     /// hash (an xxh64 collision between distinct terms) must fall back to a
     /// plain `insert()` — preserving the historical overwrite semantics (the
     /// later value wins) — and the cursor is reopened so the following
-    /// ascending entries keep using the fast path.
+    /// ascending entries keep using the fast path.  `last` is threaded across
+    /// batch flushes, so a collision straddling a BATCH BOUNDARY is caught too.
     #[test]
     fn flush_shard_batch_cursor_falls_back_on_duplicate_hash() {
         let dir = tempfile::tempdir().unwrap();
@@ -5368,32 +5377,54 @@ mod tests {
             let write = database.begin_write().unwrap();
             {
                 let mut table = write.open_table(RECORDS).unwrap();
-                // Ascending except for the repeated 5 (the collision case).
-                let mut batch: Vec<(u64, Vec<u8>)> = vec![
+                let mut last: Option<u64> = None;
+
+                // Batch 1: ascending except for the repeated 5 (intra-batch
+                // collision).  The second 5 hits the fallback.
+                let mut b1: Vec<(u64, Vec<u8>)> = vec![
                     (5, b"first".to_vec()),
                     (5, b"second".to_vec()),
-                    (7, b"after".to_vec()),
+                    (7, b"seven".to_vec()),
                 ];
-                let flushed = flush_shard_batch(&mut table, &mut batch).unwrap();
-                assert_eq!(flushed, 3);
-                assert!(batch.is_empty());
+                assert_eq!(
+                    flush_shard_batch(&mut table, &mut b1, &mut last).unwrap(),
+                    3
+                );
+                assert!(b1.is_empty());
+                assert_eq!(last, Some(7));
+
+                // Batch 2: starts with 7 AGAIN — a collision straddling the
+                // batch boundary.  Without cross-batch `last` tracking this
+                // would raise `UnorderedKey` from the cursor.
+                let mut b2: Vec<(u64, Vec<u8>)> =
+                    vec![(7, b"seven-b".to_vec()), (9, b"nine".to_vec())];
+                assert_eq!(
+                    flush_shard_batch(&mut table, &mut b2, &mut last).unwrap(),
+                    2
+                );
+                assert_eq!(last, Some(9));
             }
             write.commit().unwrap();
         }
         let database = open_read_only(&path).unwrap();
         let read = database.begin_read().unwrap();
         let table = read.open_table(RECORDS).unwrap();
-        // Overwrite preserved: the later duplicate value wins.
+        // Intra-batch overwrite preserved: the later duplicate value wins.
         assert_eq!(
             table.get_owned(5u64).unwrap().unwrap().value().to_vec(),
             b"second"
         );
-        // The entry after the fallback still landed via the reopened cursor.
+        // Cross-batch overwrite preserved: batch-2's 7 overwrote batch-1's 7.
         assert_eq!(
             table.get_owned(7u64).unwrap().unwrap().value().to_vec(),
-            b"after"
+            b"seven-b"
+        );
+        // The entry after each fallback still landed via the reopened cursor.
+        assert_eq!(
+            table.get_owned(9u64).unwrap().unwrap().value().to_vec(),
+            b"nine"
         );
         assert!(table.get_owned(6u64).unwrap().is_none());
-        assert_eq!(table.len().unwrap(), 2);
+        assert_eq!(table.len().unwrap(), 3);
     }
 }
