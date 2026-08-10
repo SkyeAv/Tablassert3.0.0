@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 8.2.0 - 2026-08-10
+
 ### Breaking Changes
 - **`dspy` moved out of the `[agent]` extra into a new `[optimize]` extra.** `dspy` is used ONLY by the GEPA prompt-optimization path (`agent --optimize`); ordinary agent runs never import it. Installs that use `--optimize` must now install `pip install "tablassert[agent,optimize]"` (or add `tablassert[optimize]`); the missing-package error now points at `tablassert[optimize]` accordingly. Installs that never run `--optimize` get a lighter `[agent]` install (no `dspy`).
 - **Fullmap databases built by older releases must be rebuilt.** The Rust extension upgraded its embedded database engine from redb 2.6 to redb 4.1, and redb ≥ 3 dropped the old v2 file format. Existing `fullmap.redb` (and sibling `fullmap.s*.redb`) files fail to open with `fullmap DB is outdated or needs repair; rebuild with 'tablassert build-fullmap'`. Run `tablassert build-fullmap` once after upgrading. BABEL downloads stay cached, but the command rebuilds the fullmap files. The on-disk fullmap schema is now `tablassert.fullmap.v5` (the table layout is unchanged; the bump makes the redb-4 rebuild explicit and lets an older extension reject new files loudly).
