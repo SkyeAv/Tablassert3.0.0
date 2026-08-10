@@ -1,22 +1,17 @@
-use serde_json::{Map, Number, Value};
+use serde_json::{Map, Value};
 
 fn is_bad_token(text: &str) -> bool {
     let lowered: String = text.trim().to_ascii_lowercase();
     matches!(lowered.as_str(), "" | "na" | "nan" | "null" | "none")
 }
 
-fn is_zero_number(number: &Number) -> bool {
-    number.as_i64().is_some_and(|x| x == 0)
-        || number.as_u64().is_some_and(|x| x == 0)
-        || number.as_f64().is_some_and(|x| x == 0.0)
-}
-
-// ? Mirrors Python truthiness (`if v`) for JSON values
-fn is_truthy(value: &Value) -> bool {
+// ? Drops absent values only. Deliberately NOT Python truthiness: `0` and `false` are
+// ? meaningful Biolink values (a p_value of 0, `number_of_cases: 0`, `negated: false`),
+// ? and treating them as absent silently deletes the key from the emitted record.
+fn is_present(value: &Value) -> bool {
     match value {
         Value::Null => false,
-        Value::Bool(flag) => *flag,
-        Value::Number(number) => !is_zero_number(number),
+        Value::Bool(_) | Value::Number(_) => true,
         Value::String(text) => !text.is_empty(),
         Value::Array(items) => !items.is_empty(),
         Value::Object(entries) => !entries.is_empty(),
@@ -32,7 +27,7 @@ fn passes_bad_check(value: &Value) -> bool {
 }
 
 fn keep(value: &Value) -> bool {
-    is_truthy(value) && passes_bad_check(value)
+    is_present(value) && passes_bad_check(value)
 }
 
 // ? Python value transform: lists recurse only into dict items and keep scalars verbatim;
@@ -80,14 +75,13 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn strip_nulls_removes_falsey_and_null_like_values() {
+    fn strip_nulls_removes_absent_and_null_like_values() {
         let value = json!({
             "keep": "BRCA1",
             "empty": "",
             "blank": "  ",
             "na": "NA",
-            "zero": 0,
-            "false": false,
+            "null": null,
             "empty_array": [],
             "empty_object": {},
             "nested": {"drop": "null", "keep": true}
@@ -95,6 +89,20 @@ mod tests {
 
         let result = strip_nulls(&value);
         assert_eq!(result, json!({"keep": "BRCA1", "nested": {"keep": true}}));
+    }
+
+    #[test]
+    fn strip_nulls_keeps_zero_and_false() {
+        // ! `0` and `false` are meaningful Biolink values (a p_value of 0,
+        // ! `number_of_cases: 0`, `negated: false`). Treating them as absent - as
+        // ! Python truthiness would - silently deletes the key from the record.
+        let value = json!({"p_value": 0, "number_of_cases": 0, "negated": false, "rate": 0.0});
+
+        let result = strip_nulls(&value);
+        assert_eq!(
+            result,
+            json!({"p_value": 0, "number_of_cases": 0, "negated": false, "rate": 0.0})
+        );
     }
 
     #[test]

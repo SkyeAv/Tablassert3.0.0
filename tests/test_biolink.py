@@ -21,6 +21,7 @@ from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
     BIOLINK_VERSION,
     EFFECT_TYPE_VALUES,
+    UNSATISFIABLE_EDGE_FIELDS,
     AgentTypes,
     Categories,
     EdgeCategories,
@@ -28,6 +29,8 @@ from tablassert.biolink import (
     KnowledgeLevels,
     Predicates,
     Qualifiers,
+    numeric_slot_kind,
+    resolve_association_class,
 )
 
 if TYPE_CHECKING:
@@ -284,16 +287,24 @@ def test_allowed_edge_fields_covers_required_columns() -> None:
         "qualified_predicate",
         "primary_knowledge_source",
         "publications",
-        "source_record_urls",
-        "upstream_resource_ids",
+        "sources",
+        "has_supporting_studies",
     ]
     for col in required:
         assert col in ALLOWED_EDGE_FIELDS, col
 
 
-def test_allowed_edge_fields_includes_new_qualifiers() -> None:
-    """New 4.4.3 qualifier slots are allowed edge columns."""
-    assert "process_qualifier" in ALLOWED_EDGE_FIELDS
+def test_retrieval_source_slots_are_not_edge_columns() -> None:
+    """``upstream_resource_ids`` / ``source_record_urls`` belong to ``RetrievalSource``.
+
+    Both have ``domain: retrieval source`` in the model, so emitting them flat on an
+    association is an ``extra_forbidden`` error. They must reach output only nested
+    inside a ``sources`` entry.
+    """
+    for slot in ("upstream_resource_ids", "source_record_urls"):
+        assert slot not in ALLOWED_EDGE_FIELDS, slot
+        assert slot in bm.RetrievalSource.model_fields, slot
+        assert slot not in bm.Association.model_fields, slot
 
 
 def test_allowed_edge_fields_includes_effect_annotations() -> None:
@@ -302,6 +313,59 @@ def test_allowed_edge_fields_includes_effect_annotations() -> None:
     assert "effect_type" in ALLOWED_EDGE_FIELDS
 
 
-def test_allowed_edge_fields_is_superset_of_qualifiers() -> None:
-    """Every qualifier slot name is an allowed edge column."""
-    assert {q.value for q in Qualifiers} <= set(ALLOWED_EDGE_FIELDS)
+def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
+    """Slots declared only by ``Association`` *subclasses* are still allowed columns.
+
+    Deriving the allow-list from the base ``Association`` MRO alone silently demotes
+    evidence slots such as ``clinical_approval_status`` into ``supporting_text``.
+    """
+    for slot in ("clinical_approval_status", "number_of_cases", "FDA_regulatory_approvals"):
+        assert slot not in bm.Association.model_fields, slot
+        assert slot in ALLOWED_EDGE_FIELDS, slot
+
+
+def test_allowed_edge_fields_excludes_unattached_qualifiers() -> None:
+    """Qualifier slots attached to no Pydantic class are not emittable.
+
+    ``Qualifiers`` is walked from the LinkML *slot* hierarchy, which includes abstract
+    grouping slots (``process_qualifier``, ``aspect_qualifier``) that no class declares.
+    Emitting one produces a record that can never validate.
+    """
+    assert "process_qualifier" in {q.value for q in Qualifiers}
+    assert "process_qualifier" in UNSATISFIABLE_EDGE_FIELDS
+    assert "process_qualifier" not in ALLOWED_EDGE_FIELDS
+
+
+def test_allowed_edge_fields_covers_every_satisfiable_qualifier() -> None:
+    """Every qualifier slot with a real home is an allowed edge column."""
+    satisfiable: set[str] = {q.value for q in Qualifiers} - set(UNSATISFIABLE_EDGE_FIELDS)
+    assert satisfiable <= set(ALLOWED_EDGE_FIELDS)
+
+
+def test_unsatisfiable_fields_are_derived_not_hardcoded() -> None:
+    """``UNSATISFIABLE_EDGE_FIELDS`` must reflect the *installed* model.
+
+    ``biolink/biolink-model#1770`` attaches the ``supporting_study_*`` slots to root
+    ``association``; when that ships they become ordinary edge columns. Nothing may
+    hardcode either state, so assert the set is exactly "declared but unattached".
+    """
+    owned: set[str] = set()
+    for cls in vars(bm).values():
+        if inspect.isclass(cls) and cls.__module__ == bm.__name__:
+            owned |= set(getattr(cls, "model_fields", {}))
+    for field in UNSATISFIABLE_EDGE_FIELDS:
+        assert field not in owned, field
+
+
+def test_resolve_association_class_reconciles_predicate() -> None:
+    """A category whose predicate enum forbids the predicate is demoted, not emitted."""
+    # GeneToDiseaseAssociation permits only contributes_to / associated_with / affects.
+    assert resolve_association_class("biolink:GeneToDiseaseAssociation", "biolink:associated_with") is bm.GeneToDiseaseAssociation
+    assert resolve_association_class("biolink:GeneToDiseaseAssociation", "biolink:gene_associated_with_condition") is bm.Association
+
+
+def test_numeric_slot_kind_matches_model_ranges() -> None:
+    """P-values are floats in Biolink, so they must not be emitted as strings."""
+    assert numeric_slot_kind("p_value") == "float"
+    assert numeric_slot_kind("adjusted_p_value") == "float"
+    assert numeric_slot_kind("subject") is None

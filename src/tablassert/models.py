@@ -8,7 +8,16 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, PositiveInt, field_validator, model_validator
 
 from tablassert._lazy import LazyModule
-from tablassert.biolink import AgentTypes, Categories, KnowledgeLevels, Predicates, Qualifiers
+from tablassert.biolink import (
+    BIOLINK_VERSION,
+    ENUM_RANGED_QUALIFIERS,
+    UNSATISFIABLE_EDGE_FIELDS,
+    AgentTypes,
+    Categories,
+    KnowledgeLevels,
+    Predicates,
+    Qualifiers,
+)
 from tablassert.enums import Comparisons, EncodingMethods, Files, FillMethods, Functions, Repositories, Tokens
 from tablassert.errors import TablassertErrorCodes, TablassertValidationError
 
@@ -253,6 +262,20 @@ class Qualifier(NodeEncoding):
         examples=[Qualifiers.OBJECT_DIRECTION_QUALIFIER, Qualifiers.SUBJECT_CONTEXT_QUALIFIER],
     )
 
+    @property
+    def vocabulary(self: Self) -> frozenset[str] | None:
+        """Closed value set for this qualifier, or ``None`` when it is CURIE-ranged."""
+        return ENUM_RANGED_QUALIFIERS.get(str(self.qualifier))
+
+    @property
+    def resolved(self: Self) -> bool:
+        """Whether this qualifier's values go through fullmap entity resolution.
+
+        Only CURIE-ranged qualifiers are resolved. Enum-ranged ones carry a literal
+        token from a closed Biolink vocabulary and must be passed through verbatim.
+        """
+        return self.vocabulary is None
+
     @model_validator(mode="after")
     def reject_auto_derived_qualifiers(self: Self) -> Self:
         """Reject qualifiers that Tablassert derives from resolved node metadata.
@@ -265,6 +288,46 @@ class Qualifier(NodeEncoding):
             raise TablassertValidationError(
                 "species_context_qualifier is auto-derived from resolved subject/object taxon; remove it from qualifiers.",
                 code="qualifier-auto-derived",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def reject_unusable_qualifiers(self: Self) -> Self:
+        """Reject qualifier slots that no Biolink Pydantic class can hold.
+
+        ``Qualifiers`` is derived from the LinkML *slot* hierarchy, which is strictly
+        broader than the set of slots actually attached to a class. Emitting one of
+        these produces an edge that can never validate, so fail at config time with a
+        pointer rather than silently at ingest time.
+        """
+        if str(self.qualifier) in UNSATISFIABLE_EDGE_FIELDS:
+            raise TablassertValidationError(
+                f"{self.qualifier} is declared in the Biolink schema but attached to no association class "
+                f"in biolink-model {BIOLINK_VERSION}, so it cannot be emitted on an edge. "
+                "Use a concrete subtype of it, or record the value as an annotation.",
+                code="qualifier-unsatisfiable",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def enum_ranged_values_are_literals(self: Self) -> Self:
+        """Validate literal values for enum-ranged qualifiers against their vocabulary.
+
+        Qualifiers inherit :class:`NodeEncoding` and are therefore entity-resolved
+        through the fullmap by default. That is right for CURIE-ranged qualifiers
+        (``anatomical_context_qualifier`` -> ``UBERON:0001557``) and wrong for
+        enum-ranged ones: ``object_direction_qualifier`` wants the token ``increased``,
+        not the resolved CURIE ``UMLS:C0205217``.
+        """
+        vocabulary: frozenset[str] | None = self.vocabulary
+        if vocabulary is None or self.method != EncodingMethods.VALUE:
+            return self
+        literal: str = str(self.encoding).strip()
+        if literal not in vocabulary:
+            preview: str = ", ".join(sorted(vocabulary)[:8])
+            raise TablassertValidationError(
+                f"{self.qualifier} has a closed Biolink vocabulary; got {literal!r}. Permitted values include: {preview}...",
+                code="qualifier-bad-value",
             )
         return self
 
@@ -363,6 +426,25 @@ class Provenance(TablaBase):
 
 class Annotation(Encoding):
     annotation: str = Field(..., description="Output column name that receives this encoded annotation.", examples=["p_value", "cohort"])
+    delimiter: str | None = Field(
+        None,
+        description=(
+            "Split the encoded cell on this separator to emit a real JSON array instead of a scalar. "
+            "Required for multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals`, "
+            "whose consumers iterate the value."
+        ),
+        examples=["|", ";", ","],
+    )
+
+    @field_validator("delimiter", mode="after")
+    @classmethod
+    def non_empty_delimiter(cls, delimiter: str | None) -> str | None:
+        # An empty separator splits into individual characters, which is never intended
+        # and is exactly the failure mode a scalar-vs-list mismatch already causes
+        # downstream (`publications.extend("PMID:1")` iterating characters).
+        if delimiter is not None and not delimiter:
+            raise TablassertValidationError("`delimiter` must be a non-empty separator.", code="annotation-bad-delimiter")
+        return delimiter
 
     @field_validator("annotation", mode="after")
     @classmethod

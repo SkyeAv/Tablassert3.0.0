@@ -494,6 +494,37 @@ def validate(
         run(3, validate_pipeline, configuration_file)
 
 
+@APP.command(name="validate-kgx")
+def validate_kgx_command(
+    nodes: Annotated[Path, cyclopts.Parameter(name=["--nodes", "-n"])],
+    edges: Annotated[Path, cyclopts.Parameter(name=["--edges", "-e"])],
+    limit: Annotated[int, cyclopts.Parameter(name=["--limit"])] = 20,
+) -> None:
+    """Validate built KGX NDJSON against the Biolink Model.
+
+    Constructs every node and edge as the Biolink Pydantic class named by its own
+    ``category`` -- the same classes ``NCATSTranslator/translator-ingests`` builds --
+    and reports failures grouped by field and error type. Exits non-zero when any
+    record fails, so a build can be gated in CI.
+    """
+    from tablassert.biolink import validate_kgx
+
+    report: dict[str, Any] = validate_kgx(nodes, edges, limit=limit)
+    print(f"biolink-model {report['biolink_version']}", file=sys.stderr)
+    for label in ("nodes", "edges"):
+        section: dict[str, Any] = report[label]
+        print(f"{label}: {section['valid']}/{section['total']} valid ({section['failures']} failures)", file=sys.stderr)
+        for problem, count in section["problems"].items():
+            print(f"  {count:>9}  {problem}", file=sys.stderr)
+        for example in section["examples"][:3]:
+            print(f"  e.g. {example['id']}: {', '.join(example['errors'])}", file=sys.stderr)
+        logger.info(f"validate-kgx {label}: {section['valid']}/{section['total']} valid")
+    if not report["ok"]:
+        print("KGX output is not Biolink-compliant.", file=sys.stderr)
+        raise SystemExit(1)
+    print("KGX output is Biolink-compliant.", file=sys.stderr)
+
+
 @APP.command(name="agent")
 def agent(
     pmc_ids: Annotated[list[str], cyclopts.Parameter(allow_leading_hyphen=False)],

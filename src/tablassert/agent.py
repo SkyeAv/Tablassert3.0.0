@@ -2,9 +2,14 @@
 
 This module hosts a smolagents ``CodeAgent`` pipeline that autonomously builds
 and audits KGX knowledge graphs from PubMed Central articles. It is part of the
-OPTIONAL ``[agent]`` extra, so ``smolagents`` and ``dspy`` are imported LAZILY
-(via :class:`tablassert._lazy.LazyModule`) and the base package never requires
-them at import time. Install the extra with ``pip install tablassert[agent]``.
+OPTIONAL ``[agent]`` extra, so ``smolagents`` is imported LAZILY (via
+:class:`tablassert._lazy.LazyModule`) and the base package never requires it at
+import time. Install the extra with ``pip install tablassert[agent]``.
+
+``dspy`` powers ONLY the GEPA prompt-optimization path (``agent --optimize``)
+and lives in its own OPTIONAL ``[optimize]`` extra
+(``pip install tablassert[optimize]``); it is likewise lazy-imported and never
+required by ordinary agent runs.
 """
 
 from __future__ import annotations
@@ -50,6 +55,10 @@ else:
     smolagents = LazyModule("smolagents")
 
 AGENT_EXTRA: str = "pip install tablassert[agent]"
+OPTIMIZE_EXTRA: str = "pip install tablassert[optimize]"
+
+# Package -> install hint for the extra that actually ships it (default: [agent]).
+_EXTRA_HINT: dict[str, str] = {"dspy": OPTIMIZE_EXTRA}
 
 logger = cat("AGENT")
 
@@ -59,7 +68,7 @@ def _require(name: str) -> None:
     try:
         import_module(name)
     except ImportError as exc:
-        raise ImportError(f"tablassert agent features require the '{name}' package. Install with {AGENT_EXTRA}.") from exc
+        raise ImportError(f"tablassert agent features require the '{name}' package. Install with {_EXTRA_HINT.get(name, AGENT_EXTRA)}.") from exc
 
 
 def is_lazy() -> bool:

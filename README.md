@@ -100,7 +100,8 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | ----- | ---- | ------- |
 | `rt` | CPU-compatible Polars runtime | `pip install "tablassert[rt]"` |
 | `qc` | three-stage QC audit (exact → fuzzy → BioBERT embeddings) | `pip install "tablassert[qc]"` |
-| `agent` | autonomous agent (smolagents, litellm, dspy, PDF context) | `pip install "tablassert[agent]"` |
+| `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
+| `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |
 
 QC is opt-in at build time (`build-kg --qc`). See the
 [Installation guide](https://skyeav.github.io/Tablassert/installation/) for the full matrix and the

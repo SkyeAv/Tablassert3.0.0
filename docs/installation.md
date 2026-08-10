@@ -62,7 +62,8 @@ pip install tablassert
 |---|---|---|
 | `rt` | Runtime-compatible Polars build | `polars[rtcompat]` |
 | `qc` | QC runtime (exact → fuzzy → BioBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
-| `agent` | Autonomous PMC → KG agent (`tablassert agent`) | `smolagents`, `dspy`, `litellm` |
+| `agent` | Autonomous PMC → KG agent (`tablassert agent`) | `smolagents`, `litellm` |
+| `optimize` | GEPA prompt optimization (`tablassert agent --optimize`) | `dspy` |
 
 ```bash
 # Install with runtime-compatible Polars
