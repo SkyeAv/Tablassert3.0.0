@@ -1583,10 +1583,14 @@ ReAct loop) and <a href="https://dspy.ai">DSPy</a> GEPA for prompt optimization.
 <p class="admonition-title">Optional extra</p>
 <p>The base <code>tablassert</code> package does <strong>not</strong> require any of this. <code>smolagents</code> and <code>dspy</code> are imported
 <strong>lazily</strong> in <code>tablassert.agent</code>, so the base install and its test suite are unaffected. Install the
-extra with <code>pip install tablassert[agent]</code>.</p>
+extra with <code>pip install tablassert[agent]</code>. GEPA prompt optimization (<code>--optimize</code>) additionally needs
+the <code>[optimize]</code> extra (<code>dspy</code>): <code>pip install tablassert[optimize]</code>.</p>
 </div>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>tablassert<span class="o">[</span>agent<span class="o">]</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># GEPA prompt optimization (--optimize) additionally needs dspy:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[agent,optimize]&quot;</span>
 </code></pre></div>
 <p>The extra pins:</p>
 <table>
@@ -1604,11 +1608,6 @@ extra with <code>pip install tablassert[agent]</code>.</p>
 <td><code>CodeAgent</code> ReAct loop, <code>OpenAIModel</code>/<code>LiteLLMModel</code>, tools</td>
 </tr>
 <tr>
-<td><code>dspy</code></td>
-<td><code>==3.2.1</code></td>
-<td><code>dspy.GEPA</code> black-box prompt optimization</td>
-</tr>
-<tr>
 <td><code>litellm</code></td>
 <td>(any)</td>
 <td>optional fallback / rate-limiting model backend</td>
@@ -1617,6 +1616,23 @@ extra with <code>pip install tablassert[agent]</code>.</p>
 <td><code>pdfminer.six</code></td>
 <td>(any)</td>
 <td>extract a <code>.pdf</code> main text into data-fenced context (<code>pmc_article_context</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>[optimize]</code> extra (only needed for <code>agent --optimize</code>) pins:</p>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Version</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dspy</code></td>
+<td><code>==3.2.1</code></td>
+<td><code>dspy.GEPA</code> black-box prompt optimization</td>
 </tr>
 </tbody>
 </table>

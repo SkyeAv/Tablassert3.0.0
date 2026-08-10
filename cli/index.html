@@ -729,6 +729,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#validate-kgx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate-kgx
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#typical-workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1284,6 +1295,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#validate-kgx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate-kgx
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#typical-workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1359,6 +1381,10 @@ for the live surface.</p>
 <td><a href="#validate"><code>validate</code></a></td>
 <td>Validate a graph or table configuration without executing it</td>
 </tr>
+<tr>
+<td><a href="#validate-kgx"><code>validate-kgx</code></a></td>
+<td>Validate built KGX NDJSON against the Biolink Model</td>
+</tr>
 </tbody>
 </table>
 <h2 id="app-flags">App flags<a class="headerlink" href="#app-flags" title="Permanent link">&para;</a></h2>
@@ -1390,7 +1416,8 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <h2 id="agent">agent<a class="headerlink" href="#agent" title="Permanent link">&para;</a></h2>
 <p>Use this to autonomously turn one or more PMC articles into audited, improved KG configs and graphs
 (fetch → derive config → build + audit → improve until coverage maps). Requires the <code>[agent]</code> extra
-(<code>pip install tablassert[agent]</code>).</p>
+(<code>pip install tablassert[agent]</code>); <code>--optimize</code> additionally needs the <code>[optimize]</code> extra
+(<code>pip install tablassert[optimize]</code>, pulls <code>dspy</code>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>--fullmap<span class="w"> </span>PATH<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>PMC-IDS...
 </code></pre></div>
 <p>PMC ids are passed positionally (also accepted as <code>--pmc-ids</code>). This page lists the flags; see
@@ -1768,11 +1795,64 @@ no longer sniffed from the YAML).</p>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
 </code></pre></div>
 <hr />
+<h2 id="validate-kgx">validate-kgx<a class="headerlink" href="#validate-kgx" title="Permanent link">&para;</a></h2>
+<p>Use this to check that a completed build is actually Biolink-compliant. Where
+<a href="#validate"><code>validate</code></a> checks your <em>configuration</em>, <code>validate-kgx</code> checks the <em>output</em>: every node
+and edge is constructed as the Biolink Pydantic class named by its own <code>category</code> — the same classes
+<a href="https://github.com/NCATSTranslator/translator-ingests"><code>NCATSTranslator/translator-ingests</code></a> builds
+when it ingests your files.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--nodes</code>, <code>-n</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>—</td>
+<td>Built <code>*.nodes.ndjson</code> file to validate</td>
+</tr>
+<tr>
+<td><code>--edges</code>, <code>-e</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>—</td>
+<td>Built <code>*.edges.ndjson</code> file to validate</td>
+</tr>
+<tr>
+<td><code>--limit</code></td>
+<td>int</td>
+<td>No</td>
+<td><code>20</code></td>
+<td>Maximum example failures to retain per file</td>
+</tr>
+</tbody>
+</table>
+<p>Failures are grouped by field and error type, so a systematic modelling problem shows up as one line
+rather than a million:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>biolink-model 4.4.3
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>nodes: 424141/424141 valid (0 failures)
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>edges: 2000085/2000085 valid (0 failures)
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>KGX output is Biolink-compliant.
+</code></pre></div>
+<p>Exits non-zero when any record fails, so it can gate a release in CI.</p>
+<hr />
 <h2 id="typical-workflow">Typical workflow<a class="headerlink" href="#typical-workflow" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Author a table config, then a graph config that references it.</li>
 <li><code>tablassert validate graph.yaml --schema graph</code> — fail fast on schema errors.</li>
 <li><code>tablassert build-kg graph.yaml</code> — produce KGX NDJSON + RIG (add <code>--qc</code> to audit mappings).</li>
+<li><code>tablassert validate-kgx -n MY_KG_1.0.0.nodes.ndjson -e MY_KG_1.0.0.edges.ndjson</code> — confirm the
+   output validates against the Biolink Model before shipping it downstream.</li>
 </ol>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
