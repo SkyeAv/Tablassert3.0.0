@@ -277,7 +277,7 @@ def test_supervisor_writes_configs_to_configs_folder(tmp_path: Path, fullmap_db:
     # BOTH configs live in the ONE dedicated configs/ folder, and the record points there.
     assert best.is_file(), "the BEST config must be written to configs/<pmc>.yaml"
     assert derived.is_file(), "the derived config must be written to configs/<pmc>.derived.yaml"
-    assert rec.best_config_path == str(best), "best_config_path must point into configs/"
+    assert Path(str(rec.best_config_path)).resolve() == best.resolve(), "best_config_path must point into configs/"
     assert rec.config_path == str(best), "config_path must point at the BEST config in configs/"
     # state.json stays at the state-dir ROOT, never inside configs/.
     assert (state_dir / "state.json").is_file(), "state.json must persist at the state-dir root"

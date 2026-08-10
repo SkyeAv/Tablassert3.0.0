@@ -717,6 +717,37 @@ def agent(
     )
 
 
+@APP.command(name="rebuild-agent-graph")
+def rebuild_agent_graph(
+    state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir", "-sd"])] = Path(".tablassert") / "agent",
+    *,
+    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])],
+) -> None:
+    """Rebuild the shared agent graph registry from the supervisor checkpoint.
+
+    Reconstructs ``<state-dir>/graph.yaml`` from ``<state-dir>/state.json``: every MAPPED /
+    BUILT_UNMEASURED record whose best config still exists on disk becomes a ``tables`` entry
+    (sorted by pmc id); stale entries (deleted configs, non-registered statuses) are pruned.
+    Parallel ``tablassert agent`` runs maintain the registry incrementally; this command
+    reconstructs it deterministically. Concurrency-safe: the same exclusive ``graph.yaml.lock``
+    flock + atomic write the agent registration uses.
+
+    Args:
+        state_dir: Agent state directory holding ``state.json`` + ``configs/``.
+        fullmap: Fullmap redb file or base directory recorded in the registry (first-wins: an
+            existing registry fullmap that differs is kept with a warning).
+    """
+    import yaml
+
+    from tablassert.graph_registry import rebuild_graph
+
+    graph_path: Path = rebuild_graph(state_dir, fullmap)
+    data: object = yaml.safe_load(graph_path.read_text(encoding="utf-8"))
+    tables: object = data.get("tables", []) if isinstance(data, dict) else []
+    count: int = len(tables) if isinstance(tables, list) else 0
+    print(f"tablassert rebuild-agent-graph: wrote {graph_path} with {count} table config(s).")
+
+
 def build_fullmap_pipeline(
     output: Path, progress: PipelineProgress, cache: Path = Path("./fullmap/downloads"), version: str = BABEL_VERSION, threads: int | None = None
 ) -> None:

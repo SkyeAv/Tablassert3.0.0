@@ -33,6 +33,7 @@ from tablassert.biolink import Categories
 from tablassert.enums import EncodingMethods
 from tablassert.errors import GraphValidationError, QcRuntimeMissingError, SectionValidationError, TablassertValidationError
 from tablassert.fullmap import distinct, fullmap_db_path, is_lock_contention, lookup_rows
+from tablassert.graph_registry import REGISTERED_STATUSES, register_build
 from tablassert.lib import Tcode
 from tablassert.log import cat
 from tablassert.models import NodeEncoding, Section
@@ -2768,7 +2769,9 @@ def run_supervisor(
 
             best_path: Path = best_config_path(state_dir, pmc_id)
             best_path.write_text(current_config)
-            rec.best_config_path = str(best_path)
+            # Persist the ABSOLUTE path: a relative --state-dir would otherwise store a CWD-relative
+            # entry that rebuild_graph (which may run from a different CWD) could not locate.
+            rec.best_config_path = str(best_path.resolve())
             rec.config_path = str(best_path)
             if current_cov >= map_threshold:
                 # Optional semantic gate (W1): when a real judge model is configured, MAPPED additionally
@@ -2804,6 +2807,18 @@ def run_supervisor(
                     f"SKIPPED: could not reach map_threshold={map_threshold} after {max_improve_iters} "
                     f"improve iters (best coverage {current_cov:.3f})"
                 )
+            # Shared graph registry: successful builds upsert into <state_dir>/graph.yaml so concurrent
+            # agents over one --state-dir converge on a single aggregate config. SKIPPED never registers,
+            # and registration must NEVER flip a successful status: on any error log + note and keep the
+            # status. A re-run that SKIPS an already-MAPPED pmc keeps its registry entry: resume skips
+            # terminal records entirely, and rebuild-agent-graph prunes stale entries from state.json.
+            if rec.status in REGISTERED_STATUSES:
+                try:
+                    register_build(state_dir, pmc_id, best_path, fullmap)
+                except Exception as reg_exc:  # a registry failure is a note, never a status change
+                    logger.error("graph registry update failed for {pmc}: {error}", pmc=pmc_id, error=reg_exc)
+                    note: str = f"graph registry update failed (status kept {rec.status}): {reg_exc}"
+                    rec.notes = f"{rec.notes}; {note}" if rec.notes else note
             save_state(state_dir, state)
         except Exception as exc:  # one bad pmc never aborts the batch
             rec.status = "SKIPPED"
