@@ -2035,8 +2035,19 @@ fn write_shard_records(
 }
 
 /// Sort the shard's pending batch by hash and insert it into the shard's RECORDS
-/// table, returning the number of records flushed.  Hash-sorted inserts give
-/// near-sequential B-tree appends; clearing the buffer keeps memory bounded.
+/// table through an end-of-table CURSOR, returning the number of records
+/// flushed.  Hash-sorted inserts are near-sequential B-tree appends; the redb
+/// `experimental_cursor` API (`upper_bound_mut` + `insert_before`) is ~3x
+/// faster than per-key `insert()` for exactly this ascending bulk-load pattern
+/// (and pairs with redb's ascending-insert page optimization for ~half-size
+/// shard files).  Clearing the buffer keeps memory bounded.
+///
+/// The cursor requires STRICTLY ascending keys and never overwrites
+/// (`StorageError::UnorderedKey` on a duplicate), while `Table::insert`
+/// replaces an existing key — so a duplicate xxh64 hash (two DISTINCT terms
+/// colliding; ~6% odds per full build at ~1.5 B terms) closes the cursor,
+/// falls back to one plain `insert()` (preserving the pre-cursor overwrite
+/// semantics for that record), and reopens the cursor at the end of the table.
 fn flush_shard_batch(
     table: &mut redb::Table<u64, &[u8]>,
     batch: &mut Vec<(u64, Vec<u8>)>,
@@ -2045,9 +2056,28 @@ fn flush_shard_batch(
         return Ok(0);
     }
     batch.sort_unstable_by_key(|(hash, _)| *hash);
+    let mut cursor = table
+        .upper_bound_mut(std::ops::Bound::<u64>::Unbounded)
+        .map_err(py_err)?;
+    let mut last: Option<u64> = None;
     for (hash, enc) in batch.iter() {
-        table.insert(*hash, enc.as_slice()).map_err(py_err)?;
+        if last.is_some_and(|h| *hash <= h) {
+            // Duplicate hash (an xxh64 collision between distinct terms): the
+            // cursor cannot express the historical overwrite, so fall back to a
+            // plain insert for this one record.
+            cursor.close().map_err(py_err)?;
+            table.insert(*hash, enc.as_slice()).map_err(py_err)?;
+            cursor = table
+                .upper_bound_mut(std::ops::Bound::<u64>::Unbounded)
+                .map_err(py_err)?;
+        } else {
+            cursor
+                .insert_before(*hash, enc.as_slice())
+                .map_err(py_err)?;
+        }
+        last = Some(*hash);
     }
+    cursor.close().map_err(py_err)?;
     let flushed = batch.len() as u64;
     batch.clear();
     Ok(flushed)
@@ -3006,6 +3036,7 @@ pub fn fullmap_source_version() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use redb::ReadableTableMetadata;
     use std::io::Write;
 
     /// Test helper: build with explicit tunables (no Python token / env needed).
@@ -4050,7 +4081,14 @@ mod tests {
     fn marker_of(database: &ReadOnlyDatabase) -> String {
         let read = database.begin_read().unwrap();
         let meta = read.open_table(META).unwrap();
-        meta.get("marker").unwrap().unwrap().value().to_string()
+        // redb 4.2-to-be (experimental-api-5, implied by experimental_cursor)
+        // removed the 'static-guard inherent `ReadOnlyTable::get()`; `get_owned()`
+        // is its reference-counted replacement (keeps the transaction alive).
+        meta.get_owned("marker")
+            .unwrap()
+            .unwrap()
+            .value()
+            .to_string()
     }
 
     /// Write a shard-shaped DB holding one record `1 -> marker` plus META.build_id.
@@ -4072,7 +4110,8 @@ mod tests {
     fn shard_payload(database: &ReadOnlyDatabase) -> Vec<u8> {
         let read = database.begin_read().unwrap();
         let table = read.open_table(RECORDS).unwrap();
-        table.get(1u64).unwrap().unwrap().value().to_vec()
+        // Same `get_owned()` note as `marker_of` above.
+        table.get_owned(1u64).unwrap().unwrap().value().to_vec()
     }
 
     /// Rename the full sharded build at `src` (primary + every shard) over the
@@ -5311,5 +5350,50 @@ mod tests {
         drop(database);
         let err = lookup_terms(garbage, vec!["brca1".to_string()], Some(1)).unwrap_err();
         assert!(err.to_string().contains("unsupported fullmap redb schema"));
+    }
+
+    /// `flush_shard_batch` inserts a hash-sorted batch through the redb
+    /// end-of-table cursor (the faster ascending bulk-load path).  The cursor
+    /// requires STRICTLY ascending keys and never overwrites, so a duplicate
+    /// hash (an xxh64 collision between distinct terms) must fall back to a
+    /// plain `insert()` — preserving the historical overwrite semantics (the
+    /// later value wins) — and the cursor is reopened so the following
+    /// ascending entries keep using the fast path.
+    #[test]
+    fn flush_shard_batch_cursor_falls_back_on_duplicate_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shard.redb");
+        {
+            let database = Database::create(&path).unwrap();
+            let write = database.begin_write().unwrap();
+            {
+                let mut table = write.open_table(RECORDS).unwrap();
+                // Ascending except for the repeated 5 (the collision case).
+                let mut batch: Vec<(u64, Vec<u8>)> = vec![
+                    (5, b"first".to_vec()),
+                    (5, b"second".to_vec()),
+                    (7, b"after".to_vec()),
+                ];
+                let flushed = flush_shard_batch(&mut table, &mut batch).unwrap();
+                assert_eq!(flushed, 3);
+                assert!(batch.is_empty());
+            }
+            write.commit().unwrap();
+        }
+        let database = open_read_only(&path).unwrap();
+        let read = database.begin_read().unwrap();
+        let table = read.open_table(RECORDS).unwrap();
+        // Overwrite preserved: the later duplicate value wins.
+        assert_eq!(
+            table.get_owned(5u64).unwrap().unwrap().value().to_vec(),
+            b"second"
+        );
+        // The entry after the fallback still landed via the reopened cursor.
+        assert_eq!(
+            table.get_owned(7u64).unwrap().unwrap().value().to_vec(),
+            b"after"
+        );
+        assert!(table.get_owned(6u64).unwrap().is_none());
+        assert_eq!(table.len().unwrap(), 2);
     }
 }
