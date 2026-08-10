@@ -13,9 +13,11 @@ import types
 from pathlib import Path
 
 import pytest
+import yaml
+from cyclopts.exceptions import MissingArgumentError  # pyright: ignore[reportMissingImports]
 
 from tablassert.agent import ENV_API_BASE, ENV_API_KEY, ENV_MODEL_ID, load_optimized_instructions, save_optimized_instructions
-from tablassert.cli import APP, agent
+from tablassert.cli import APP, agent, rebuild_agent_graph
 
 
 def test_agent_command_registered() -> None:
@@ -361,3 +363,60 @@ def test_make_dspy_lm_honors_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured[0]["max_tokens"] == 16000
     # default timeout bounds each request so a stalled connection cannot hang the optimizer
     assert captured[0]["timeout"] == 600
+
+
+# --------------------------------------------------------------------------- #
+# rebuild-agent-graph: the shared-registry reconstruction command (wiring only)
+# --------------------------------------------------------------------------- #
+
+
+def test_rebuild_agent_graph_command_registered() -> None:
+    """The ``rebuild-agent-graph`` subcommand is registered as a flat peer of ``build-kg``."""
+    assert "rebuild-agent-graph" in APP.resolved_commands()
+
+
+def test_rebuild_agent_graph_flags_parse(tmp_path: Path) -> None:
+    """``--state-dir``/``-sd`` + required ``--fullmap``/``-f`` bind; the state-dir default is pinned."""
+
+    def parse(argv: list[str]) -> dict[str, object]:
+        fn, bound, _ = APP.parse_args(argv, exit_on_error=False)
+        assert fn is rebuild_agent_graph
+        bound.apply_defaults()  # bound.arguments only carries explicitly-parsed tokens
+        return dict(bound.arguments)
+
+    arguments = parse(["rebuild-agent-graph", "--state-dir", str(tmp_path), "--fullmap", "/tmp/fm.redb"])
+    assert arguments["state_dir"] == tmp_path
+    assert arguments["fullmap"] == Path("/tmp/fm.redb")
+
+    alias_arguments = parse(["rebuild-agent-graph", "-sd", str(tmp_path), "-f", "/tmp/fm.redb"])
+    assert alias_arguments["state_dir"] == tmp_path
+    assert alias_arguments["fullmap"] == Path("/tmp/fm.redb")
+
+    default_arguments = parse(["rebuild-agent-graph", "-f", "/tmp/fm.redb"])
+    assert default_arguments["state_dir"] == Path(".tablassert") / "agent"
+
+    with pytest.raises(MissingArgumentError):
+        APP.parse_args(["rebuild-agent-graph", "--state-dir", str(tmp_path)], exit_on_error=False)
+
+
+def test_rebuild_agent_graph_rebuilds_and_reports(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The command rebuilds the registry from ``state.json`` and prints the path + entry count."""
+    from tablassert.agent import ConfigRecord, SupervisorState, save_state
+
+    config: Path = tmp_path / "configs" / "PMC1.yaml"
+    config.parent.mkdir()
+    config.write_text("sections: []\n")
+    save_state(
+        tmp_path, SupervisorState(pmc_ids=["PMC1"], records={"PMC1": ConfigRecord(pmc_id="PMC1", status="MAPPED", best_config_path=str(config))})
+    )
+    fullmap: Path = tmp_path / "fullmap.redb"
+    fullmap.touch()
+
+    rebuild_agent_graph(state_dir=tmp_path, fullmap=fullmap)
+
+    out: str = capsys.readouterr().out
+    assert str(tmp_path / "graph.yaml") in out
+    assert "1 table config" in out
+    data: object = yaml.safe_load((tmp_path / "graph.yaml").read_text())
+    assert isinstance(data, dict)
+    assert data["tables"] == [str(config.resolve())]

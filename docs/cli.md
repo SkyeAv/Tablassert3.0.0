@@ -1,8 +1,9 @@
 # CLI Reference
 
 Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The `tablassert` app
-exposes **four subcommands** — `agent`, `build-fullmap`, `build-kg`, `validate` — plus an app-level
-`--version` flag. Run `tablassert --help` (or `<command> --help`) for the live surface.
+exposes **five subcommands** — `agent`, `build-fullmap`, `build-kg`, `rebuild-agent-graph`,
+`validate` — plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
+for the live surface.
 
 ## Command index
 
@@ -11,6 +12,7 @@ exposes **four subcommands** — `agent`, `build-fullmap`, `build-kg`, `validate
 | [`agent`](#agent) | Autonomously derive, build, audit, and improve KG configs from PMC articles |
 | [`build-fullmap`](#build-fullmap) | Build the embedded fullmap redb used for entity resolution |
 | [`build-kg`](#build-kg) | Build a KGX NDJSON knowledge graph from a YAML configuration |
+| [`rebuild-agent-graph`](#rebuild-agent-graph) | Rebuild the shared agent graph registry from the supervisor checkpoint |
 | [`validate`](#validate) | Validate a graph or table configuration without executing it |
 
 ## App flags
@@ -134,6 +136,37 @@ Output is written to the current directory as `{name}_{version}.nodes.ndjson`,
     stage prints a green `✓ Stage N · NAME · elapsed` line above the live block. During Building
     Subgraphs the detail line also shows the per-section phase (`load`, `filter`, `clean`, `encode`,
     `resolve`, `qc`, `edge`, `provenance`, `significance`, `finalize`, `write`).
+
+---
+
+## rebuild-agent-graph
+
+Use this to rebuild the SHARED agent graph registry (`<state-dir>/graph.yaml`) from the supervisor
+checkpoint (`<state-dir>/state.json`) — e.g. to prune stale entries after deleting configs, or to
+recover a hand-edited/damaged registry. Parallel `tablassert agent` runs maintain the registry
+incrementally (see [Agent — Parallel agents and the shared graph registry](agent.md#parallel-agents-and-the-shared-graph-registry));
+this command reconstructs it deterministically from `state.json`.
+
+```bash
+tablassert rebuild-agent-graph [ARGS]
+```
+
+| Option | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--state-dir`, `-sd` | Path | No | `.tablassert/agent` | Agent state directory holding `state.json` + `configs/` |
+| `--fullmap`, `-f` | Path | Yes | — | Fullmap redb file or base directory recorded in the registry |
+
+Every `MAPPED` / `BUILT_UNMEASURED` record whose best config still exists on disk becomes a
+`tables` entry (absolute path, sorted by pmc id); every other entry — `SKIPPED` records, deleted
+configs, stale leftovers — is pruned. The registry `fullmap` is **first-wins**: an existing value
+that differs from `--fullmap` is kept (with a warning). The write is concurrency-safe (exclusive
+`graph.yaml.lock` flock + atomic replace), so the command never corrupts the registry; run it
+while agents are quiescent for a complete snapshot.
+
+```bash
+tablassert rebuild-agent-graph --state-dir .tablassert/agent --fullmap ./fullmap
+tablassert build-kg -f .tablassert/agent/graph.yaml
+```
 
 ---
 

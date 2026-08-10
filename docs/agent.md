@@ -194,6 +194,8 @@ the fetched downloads, and the build outputs **all co-locate** under it:
 ```text
 .tablassert/agent/                       # = state_dir (the workspace root)
   state.json                             # supervisor checkpoint (atomic; unchanged location)
+  graph.yaml                             # SHARED aggregate graph registry (flock-serialized, atomic)
+  graph.yaml.lock                        # sidecar lock file for graph.yaml (exclusive flock)
   configs/<pmc_id>.yaml                  # best / accepted config (ALL configs in ONE folder)
   configs/<pmc_id>.derived.yaml          # initial agent-derived config
   downloads/<pmc_id>/<prefix>/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
@@ -203,6 +205,8 @@ the fetched downloads, and the build outputs **all co-locate** under it:
 | Path | Contents | Lifecycle |
 | --- | --- | --- |
 | `state.json` | supervisor checkpoint: `{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path}` per record | written **atomically** (tmp write + `os.replace`) after each config and each improve iteration; git-ignored |
+| `graph.yaml` | SHARED aggregate graph registry: one `tables` entry per successful (`MAPPED` / `BUILT_UNMEASURED`) build | maintained under an exclusive `graph.yaml.lock` flock; atomic writes; see [Parallel agents and the shared graph registry](#parallel-agents-and-the-shared-graph-registry) |
+| `graph.yaml.lock` | sidecar lock file serializing registry read-modify-write | created on first registration; never deleted |
 | `configs/<pmc_id>.yaml` | the best / accepted config for the article | the reuse entry point (below) |
 | `configs/<pmc_id>.derived.yaml` | the agent's initial derived config | kept for provenance |
 | `downloads/<pmc_id>/<prefix>/` | fetched PMC payload (main text + metadata + tables) | **stable** — persists across runs |
@@ -219,13 +223,54 @@ ready-to-build `graph.yaml` (wrapping `table.yaml` with the resolved fullmap) in
 
 ```bash
 cd .tablassert/agent/builds/PMC11708054
-tablassert build-kg graph.yaml
+tablassert build-kg -f graph.yaml
 ```
 
 !!! warning "Not relocatable"
     `source.local` in the best config is an **absolute** path into `downloads/<pmc_id>/`. The workspace is
     therefore **not relocatable** — moving or renaming the `.tablassert/agent` folder breaks that reference
     (re-run the agent, or fix `source.local`, after any move).
+
+### Parallel agents and the shared graph registry
+
+Several `tablassert agent` processes can run CONCURRENTLY against the SAME shared `--state-dir` and
+each successful build self-registers into ONE aggregate graph config that a single `build-kg` then
+builds as a whole:
+
+```bash
+# fan out over DISJOINT pmc sets, all pointed at one shared state dir
+tablassert agent PMC1 PMC2 --fullmap ./fullmap --state-dir ./shared &
+tablassert agent PMC3 PMC4 --fullmap ./fullmap --state-dir ./shared &
+wait
+
+# one build of the whole registered graph
+tablassert build-kg -f ./shared/graph.yaml
+```
+
+Use **disjoint pmc sets**: each process owns its own ids. The shared registry itself is fully
+cross-process safe, but the per-process checkpoint (`state.json`) read-modify cycle is not
+cross-process locked, so two processes must not own the same pmc id.
+
+**How the registry works.** Every build that ends `MAPPED` or `BUILT_UNMEASURED` (both are
+successful builds) UPSERTS its best config into `<state-dir>/graph.yaml`:
+
+- **Concurrency-safe** — each registration takes an EXCLUSIVE `flock` on the
+  `<state-dir>/graph.yaml.lock` sidecar around the read-modify-write, then persists atomically
+  (tmp file + `os.replace`, the same pattern as `state.json`). No registration can lose or tear
+  another process's entry.
+- **Upsert by pmc id** — a re-run REPLACES the prior entry for the same pmc id (matched by config
+  basename stem); other entries keep their insertion order. Entries are ABSOLUTE paths, so
+  `build-kg` works from any CWD.
+- **`fullmap` is first-wins** — the first fullmap recorded stays; a later run passing a different
+  fullmap keeps the existing value and logs a warning.
+- **Self-healing** — a corrupt registry (bad YAML, not a mapping, or failing `Graph.model_validate`)
+  is renamed `graph.yaml.corrupt-<UTC timestamp>` and rebuilt fresh with a warning, so unattended
+  parallel runs never wedge on a damaged file.
+- **Registered statuses** — only `MAPPED` and `BUILT_UNMEASURED` register; `SKIPPED` never does. A
+  re-run that SKIPS an already-MAPPED pmc keeps the existing entry (resume skips terminal records
+  entirely, so nothing rewrites them). `tablassert rebuild-agent-graph --state-dir ./shared
+  --fullmap ./fullmap` reconstructs the registry from `state.json` and prunes stale entries
+  (deleted configs, non-registered statuses).
 
 ## The tools
 

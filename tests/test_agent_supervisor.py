@@ -21,6 +21,7 @@ import yaml
 
 from tablassert import rs
 from tablassert.agent import ConfigRecord, SupervisorState, load_state, make_fake_model, run_supervisor, save_state
+from tablassert.models import Graph
 
 pytest.importorskip("smolagents")
 
@@ -995,3 +996,195 @@ def test_supervisor_local_payload_no_table_skipped(tmp_path: Path, fullmap_db: P
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "SKIPPED"
+
+
+# --------------------------------------------------------------------------- #
+# Shared graph registry wiring: successful builds self-register into graph.yaml
+# --------------------------------------------------------------------------- #
+
+
+def _read_registered(state_dir: Path) -> Graph:
+    """Load ``<state_dir>/graph.yaml`` and validate it as a Graph (asserts it exists)."""
+    graph_path: Path = state_dir / "graph.yaml"
+    assert graph_path.is_file(), "the shared registry must exist after a successful build"
+    data: object = yaml.safe_load(graph_path.read_text())
+    assert isinstance(data, dict)
+    return Graph.model_validate(data)
+
+
+def test_supervisor_mapped_registers_in_graph_yaml(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A MAPPED build self-registers: one ABSOLUTE tables entry + the resolved fullmap, first-wins."""
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
+    state_dir: Path = tmp_path / "state"
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        workdir=tmp_path / "w",
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "MAPPED"
+    graph: Graph = _read_registered(state_dir)
+    assert len(graph.tables) == 1
+    assert graph.tables[0] == Path(str(rec.best_config_path)).resolve()
+    assert graph.tables[0].is_absolute()
+    assert graph.fullmap == fullmap_db.resolve()
+
+
+def test_supervisor_built_unmeasured_registers(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """BUILT_UNMEASURED is a successful build, so it self-registers exactly like MAPPED."""
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "d.tsv", "brca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table))
+    state_dir: Path = tmp_path / "state"
+
+    monkeypatch.setattr(
+        agent_mod,
+        "build_and_audit",
+        lambda *a, **k: {
+            "ok": True,
+            "coverage_pct": 0.0,
+            "measured": False,
+            "qc_pass_rate": None,
+            "errors": [],
+            "error_codes": [],
+            "kgx_path": None,
+            "edges_path": None,
+            "node_count": 1,
+            "edge_count": 1,
+            "unresolved": [],
+        },
+    )
+    monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []})
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "no safe edit"))
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        workdir=tmp_path / "w",
+    )
+    assert result["records"]["PMC1"].status == "BUILT_UNMEASURED"  # pyright: ignore[reportIndexIssue]
+    graph: Graph = _read_registered(state_dir)
+    assert len(graph.tables) == 1
+    assert graph.tables[0].name == "PMC1.yaml"
+
+
+def test_supervisor_skipped_does_not_register(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A SKIPPED build never touches the registry: no ``graph.yaml`` is created."""
+    table: Path = _write_table(tmp_path, "bad.tsv", "brca1\tzzznotreal\nbrca1\tzzznotreal\n")
+    _patch_fetch(monkeypatch, table)
+    bad_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
+    state_dir: Path = tmp_path / "state"
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=bad_yaml),
+        map_threshold=1.0,
+        max_improve_iters=0,
+        state_dir=state_dir,
+        workdir=tmp_path / "w",
+    )
+    assert result["records"]["PMC1"].status == "SKIPPED"  # pyright: ignore[reportIndexIssue]
+    assert not (state_dir / "graph.yaml").exists(), "SKIPPED must never register"
+
+
+def test_supervisor_registration_failure_keeps_status(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failing registry write NEVER flips a successful status: MAPPED is kept + noted."""
+    import tablassert.agent as agent_mod
+
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
+    state_dir: Path = tmp_path / "state"
+
+    def boom(state_dir_: Path, pmc_id: str, config_path: Path, fullmap_: Path) -> Path:  # pyright: ignore[reportUnusedParameter]
+        raise RuntimeError("registry lock poisoned")
+
+    monkeypatch.setattr(agent_mod, "register_build", boom)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        workdir=tmp_path / "w",
+    )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "MAPPED", "registration failure must never flip a successful status"
+    assert "graph registry update failed" in rec.notes
+    assert "registry lock poisoned" in rec.notes
+    # The failure is persisted in the checkpoint too (the note survives a reload).
+    reloaded: SupervisorState | None = load_state(state_dir)
+    assert reloaded is not None
+    assert "graph registry update failed" in reloaded.records["PMC1"].notes
+
+
+def test_supervisor_relative_state_dir_rebuilds_from_any_cwd(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A RELATIVE --state-dir stores an ABSOLUTE best_config_path, so rebuild works from any CWD.
+
+    Regression: ``rebuild_graph`` checks ``Path(best_config_path).is_file()`` against ITS OWN cwd;
+    a CWD-relative checkpoint entry would silently prune every entry when the rebuild runs elsewhere.
+    """
+    import contextlib
+
+    from tablassert.graph_registry import rebuild_graph
+
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
+
+    with contextlib.chdir(tmp_path):
+        result = run_supervisor(
+            ["PMC1"],
+            fullmap=fullmap_db,
+            build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+            map_threshold=0.8,
+            state_dir=Path("rel-state"),  # RELATIVE state dir (the CLI default is relative too)
+            workdir=tmp_path / "w",
+        )
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "MAPPED"
+    assert Path(str(rec.best_config_path)).is_absolute(), "the checkpoint must persist an absolute config path"
+
+    elsewhere: Path = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    with contextlib.chdir(elsewhere):
+        rebuild_graph(tmp_path / "rel-state", fullmap_db)
+
+    data: object = yaml.safe_load((tmp_path / "rel-state" / "graph.yaml").read_text())
+    assert isinstance(data, dict)
+    tables: object = data["tables"]
+    assert isinstance(tables, list), "the entry must survive a cross-CWD rebuild"
+    assert len(tables) == 1, "the entry must survive a cross-CWD rebuild"
+
+
+def test_supervisor_resume_skip_keeps_registry_entry(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A re-run that SKIPS an already-MAPPED pmc (resume skips terminal records) keeps its entry."""
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
+    state_dir: Path = tmp_path / "state"
+
+    def factory() -> object:
+        return make_fake_model(final_yaml=good_yaml)
+
+    first = run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w")
+    assert first["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+    before: Graph = _read_registered(state_dir)
+
+    second = run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w")
+    assert second["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+    after: Graph = _read_registered(state_dir)
+    assert after.tables == before.tables, "the resume-skipped record keeps its existing registry entry"

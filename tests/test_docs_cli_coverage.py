@@ -25,12 +25,14 @@ COMMAND_NAME_DOCS: dict[str, tuple[str, ...]] = {
     "agent": ("agent.md",),
     "build-fullmap": ("cli.md", "fullmap.md"),
     "build-kg": ("cli.md",),
+    "rebuild-agent-graph": ("cli.md",),
     "validate": ("cli.md",),
 }
 COMMAND_FLAG_DOCS: dict[str, tuple[str, ...]] = {
     "agent": ("agent.md", "cli.md"),
     "build-fullmap": ("cli.md", "fullmap.md"),
     "build-kg": ("cli.md",),
+    "rebuild-agent-graph": ("cli.md",),
     "validate": ("cli.md",),
 }
 
