@@ -10,7 +10,7 @@ import polars as pl
 import tablassert.cli as cli
 import tablassert.lib as lib
 from tablassert import rs
-from tablassert.biolink import ALLOWED_EDGE_FIELDS, EFFECT_TYPE_VALUES, Categories
+from tablassert.biolink import ALLOWED_EDGE_FIELDS, EFFECT_TYPE_VALUES, UNSATISFIABLE_EDGE_FIELDS, Categories, validate_kgx
 from tablassert.coerce import _EFFECT_TYPE_ALIASES, _map_effect_type_value
 from tablassert.enums import Repositories
 from tablassert.fullmap import ResolveSpec
@@ -38,6 +38,7 @@ from tablassert.lib import (
     parse_edge_name,
     publications,
     pvalue_target,
+    retrieval_sources,
     strip_nulls,
     study_size_target,
 )
@@ -454,17 +455,28 @@ def test_upstream_resource_ids_pubmed() -> None:
     assert lib.upstream_resource_ids(Repositories.PUBMED) == ["infores:pubmed"]
 
 
-def test_tcode_collect_adds_upstream_resource_ids(fixtures_path: Path) -> None:
-    """tcode collect adds upstream resource IDs from provenance repository."""
+def test_tcode_collect_nests_upstream_resource_ids_in_sources(fixtures_path: Path) -> None:
+    """Upstream resource IDs reach output inside ``sources``, never flat on the edge.
+
+    ``upstream_resource_ids`` has ``domain: retrieval source`` in Biolink, so a
+    top-level column would fail validation with ``extra_forbidden``.
+    """
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG"}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if len(op[1]) > 0 and op[1][0] == "upstream_resource_ids"]
-    assert ops[0][1] == ("upstream_resource_ids", ["infores:pubmed-central"])
+    assert [op for op in collected if len(op[1]) > 0 and op[1][0] == "upstream_resource_ids"] == []
+
+    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0] is retrieval_sources]
+    assert len(source_ops) == 1
+    out: pl.DataFrame = source_ops[0][0](pl.LazyFrame({"subject": ["A"]}), *source_ops[0][1]).collect()
+    sources: list[dict[str, Any]] = out["sources"].to_list()[0]
+    primary: dict[str, Any] = next(s for s in sources if s["resource_role"] == "primary_knowledge_source")
+    assert primary["upstream_resource_ids"] == ["infores:pubmed-central"]
+    assert {s["resource_id"] for s in sources if s["resource_role"] == "supporting_data_source"} == {"infores:pubmed-central"}
 
 
 def test_normalize_category_list_with_biolink_prefix() -> None:
@@ -526,7 +538,7 @@ def test_tcode_collect_emits_primary_knowledge_source_when_named(fixtures_path: 
     ]
 
     assert len(pks_ops) == 1
-    assert pks_ops[0][1] == ("primary_knowledge_source", ["infores:multiomics-kg"])
+    assert pks_ops[0][1] == ("primary_knowledge_source", "infores:multiomics-kg")
 
 
 def test_tcode_collect_omits_primary_knowledge_source_when_unnamed(fixtures_path: Path) -> None:
@@ -565,8 +577,11 @@ def test_tcode_collect_manual_provenance_overrides_auto_sources(fixtures_path: P
     values: dict[str, object] = {str(op[1][0]): op[1][1] for op in collected if op[0].__name__ == "value" and len(op[1]) >= 2}
     pub_ops = [op for op in collected if op[0] is publications]
 
-    assert values["primary_knowledge_source"] == ["infores:graph-source"]
-    assert values["upstream_resource_ids"] == ["infores:upstream-source"]
+    assert values["primary_knowledge_source"] == "infores:graph-source"
+    # Manual upstream infores reach output nested in `sources`, not flat on the edge.
+    assert "upstream_resource_ids" not in values
+    source_args: tuple[Any, ...] = next(op[1] for op in collected if op[0] is retrieval_sources)
+    assert source_args[1] == ["infores:upstream-source"]
     assert values["knowledge_level"] == "knowledge_assertion"
     assert values["agent_type"] == "manual_agent"
     assert pub_ops[0][1] == (["PMCID:PMC9999999"],)
@@ -583,28 +598,27 @@ def test_tcode_collect_uses_graph_infores_when_no_section_override(fixtures_path
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     pks_ops = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "primary_knowledge_source"]
 
-    assert pks_ops[0][1] == ("primary_knowledge_source", ["infores:custom-graph"])
+    assert pks_ops[0][1] == ("primary_knowledge_source", "infores:custom-graph")
 
 
-def test_tcode_collect_emits_source_record_urls_list(fixtures_path: Path) -> None:
-    """tcode emits source record URLs as a list column."""
+def test_tcode_collect_nests_source_record_urls_in_sources(fixtures_path: Path) -> None:
+    """Source record URLs hang off the primary ``RetrievalSource``, not the edge."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG"}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "source_record_urls"]
+    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0] is retrieval_sources]
     url_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "url"]
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"]}).lazy()
-    result: pl.DataFrame = source_ops[0][0](lf, *source_ops[0][1]).collect()
+    result: pl.DataFrame = source_ops[0][0](pl.LazyFrame({"subject": ["A"]}), *source_ops[0][1]).collect()
 
     assert len(source_ops) == 1
     assert url_ops == []
-    assert "source_record_urls" in result.columns
-    assert "url" not in result.columns
-    assert result["source_record_urls"].to_list() == [["https://example.com/test.tsv"]]
+    assert "source_record_urls" not in result.columns
+    primary: dict[str, Any] = next(s for s in result["sources"].to_list()[0] if s["resource_role"] == "primary_knowledge_source")
+    assert primary["source_record_urls"] == ["https://example.com/test.tsv"]
 
 
 def test_tcode_original_value_before_regex_for_columns(fixtures_path: Path) -> None:
@@ -887,13 +901,18 @@ def test_clean_numeric_idempotent_on_float64() -> None:
     assert twice.schema["p_value"] == pl.Float64
 
 
-def test_format_numeric_p_value_scientific() -> None:
-    """format_numeric renders P value columns in scientific notation."""
+def test_format_numeric_emits_p_values_as_numbers() -> None:
+    """P-value columns are emitted as real JSON numbers, not formatted strings.
+
+    Biolink types ``p_value`` / ``adjusted_p_value`` as ``float``; writing
+    ``"1.0000e-08"`` yields a file strict consumers reject even though Pydantic's lax
+    mode happens to coerce it back.
+    """
     lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "0.001"], "adjusted_p_value": ["0.0001", "0.1", "0.2"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["p_value"].to_list() == ["1.0000e-08", "5.0000e-02", "1.0000e-03"]
-    assert result["adjusted_p_value"].to_list() == ["1.0000e-04", "1.0000e-01", "2.0000e-01"]
-    assert result.schema["p_value"] == pl.String
+    assert result["p_value"].to_list() == [1e-08, 0.05, 0.001]
+    assert result["adjusted_p_value"].to_list() == [0.0001, 0.1, 0.2]
+    assert result.schema["p_value"] == pl.Float64
 
 
 def test_format_numeric_decimal_general() -> None:
@@ -908,7 +927,7 @@ def test_format_numeric_preserves_nulls() -> None:
     """format_numeric preserves nulls as null."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "N/A", "0.05"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["p_value"].to_list() == ["1.0000e-08", None, "5.0000e-02"]
+    assert result["p_value"].to_list() == [1e-08, None, 0.05]
 
 
 def test_format_numeric_cleans_float_noise() -> None:
@@ -931,7 +950,7 @@ def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "p_value": ["1e-8", "N/A"], "effect_size": ["0.85", "0.42"]}).lazy()
     formatted: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     rows: list[dict[str, Any]] = [strip_nulls(r) for r in formatted.iter_rows(named=True)]
-    assert rows[0] == {"subject": "BRCA1", "p_value": "1.0000e-08", "effect_size": "0.85"}
+    assert rows[0] == {"subject": "BRCA1", "p_value": 1e-08, "effect_size": "0.85"}
     assert "p_value" not in rows[1]
     assert rows[1]["subject"] == "TP53"
     assert rows[1]["effect_size"] == "0.42"
@@ -973,7 +992,8 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
     assert all('"id"' in line for line in edges)
     flat: str = "\n".join(edges)
     assert '"p_value":"1.0000e-08"' in flat
-    assert '"upstream_resource_ids":["infores:pubmed-central"]' in flat
+    # Retrieval provenance is nested under `sources`, never flat on the edge.
+    assert '"upstream_resource_ids":["infores:pubmed-central"]' not in flat
     # internal pre-resolution snapshot is stripped from final edges
     assert "_pre_resolution" not in flat
     assert len(nodes) >= 1
@@ -1892,9 +1912,14 @@ def test_coerced_study_size_alias_survives_unknown_folding() -> None:
         {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "sample_size": [12000], "miscellaneous_notes": ["note"]}
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(coerce_study_size_columns(lf)).collect()
-    assert out["supporting_study_size"].to_list() == [12000]
     assert "sample_size" not in out.columns
-    assert out["supporting_text"].to_list() == [["miscellaneous_notes: note"]]
+    if "supporting_study_size" in UNSATISFIABLE_EDGE_FIELDS:
+        # Unattached in the installed model: folded rather than emitted unvalidatably.
+        assert "supporting_study_size" not in out.columns
+        assert "supporting_study_size: 12000" in out["supporting_text"].to_list()[0]
+    else:
+        assert out["supporting_study_size"].to_list() == [12000]
+    assert "miscellaneous_notes: note" in out["supporting_text"].to_list()[0]
 
 
 def test_publications_wraps_curie_as_list() -> None:
@@ -1921,14 +1946,14 @@ def test_fold_unknown_noop_when_all_allowed() -> None:
             "object": ["B"],
             "predicate": ["related_to"],
             "p_value": [0.01],
-            "severity_qualifier": ["severe"],
+            "disease_context_qualifier": ["MONDO:0005148"],
             "publications": [["PMID:1"]],
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
     # nothing folded, no supporting_text column created
     assert "supporting_text" not in out.columns
-    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "severity_qualifier", "publications"}
+    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "disease_context_qualifier", "publications"}
 
 
 def test_fold_unknown_single_column() -> None:
@@ -2010,7 +2035,6 @@ def test_fold_unknown_preserves_qualifier_columns() -> None:
             "object": ["B"],
             "predicate": ["related_to"],
             "disease_context_qualifier": ["MONDO:0005148"],
-            "severity_qualifier": ["severe"],
             "anatomical_context_qualifier": ["UBERON:0000061"],
         }
     ).lazy()
@@ -2018,12 +2042,27 @@ def test_fold_unknown_preserves_qualifier_columns() -> None:
     # no supporting_text column materialized because nothing was foldable
     assert "supporting_text" not in out.columns
     assert "disease_context_qualifier" in out.columns
-    assert "severity_qualifier" in out.columns
     assert "anatomical_context_qualifier" in out.columns
 
 
-def test_fold_unknown_preserves_supporting_study_metadata_slots() -> None:
-    """PR #1770 supporting study metadata slots survive as top level edge fields, not folded."""
+SUPPORTING_STUDY_SLOTS: tuple[str, ...] = (
+    "supporting_study_method_types",
+    "supporting_study_method_description",
+    "supporting_study_size",
+    "supporting_study_cohort",
+    "supporting_study_date_range",
+    "supporting_study_context",
+)
+
+
+def test_fold_unknown_tracks_supporting_study_slots_of_installed_model() -> None:
+    """The ``supporting_study_*`` slots are folded iff the installed model can hold them.
+
+    ``biolink/biolink-model#1770`` attaches these six to root ``association``. Until it
+    ships they are declared in the LinkML schema but on no Pydantic class, so emitting
+    them flat produces an unvalidatable edge. The behaviour must be derived from the
+    installed model rather than pinned to either state.
+    """
     lf: pl.LazyFrame = pl.DataFrame(
         {
             "subject": ["A"],
@@ -2040,39 +2079,23 @@ def test_fold_unknown_preserves_supporting_study_metadata_slots() -> None:
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
-    # only the genuinely unknown column is folded into supporting_text
-    assert out["supporting_text"].to_list() == [["miscellaneous_notes: see smith et al"]]
-    # every PR #1770 supporting study slot survives as a top level edge field
-    for col in (
-        "has_supporting_studies",
-        "supporting_study_method_types",
-        "supporting_study_method_description",
-        "supporting_study_size",
-        "supporting_study_cohort",
-        "supporting_study_date_range",
-        "supporting_study_context",
-    ):
-        assert col in out.columns
+    # `has_supporting_studies` is a real Association slot in every supported version.
+    assert "has_supporting_studies" in out.columns
+    for col in SUPPORTING_STUDY_SLOTS:
+        assert (col in out.columns) is (col not in UNSATISFIABLE_EDGE_FIELDS), col
+    assert "miscellaneous_notes: see smith et al" in out["supporting_text"].to_list()[0]
 
 
 def test_allowed_edge_fields_covers_tablassert_pipeline_columns() -> None:
     """ALLOWED_EDGE_FIELDS covers intentional tablassert output columns."""
-    for col in ("publications", "upstream_resource_ids", "source_record_urls", "p_value", "supporting_text"):
+    for col in ("publications", "sources", "p_value", "supporting_text", "has_supporting_studies"):
         assert col in ALLOWED_EDGE_FIELDS
 
 
-def test_allowed_edge_fields_covers_supporting_study_metadata_slots() -> None:
-    """PR #1770 supporting study metadata slots are recognized biolist edge fields, not folded."""
-    for col in (
-        "has_supporting_studies",
-        "supporting_study_method_types",
-        "supporting_study_method_description",
-        "supporting_study_size",
-        "supporting_study_cohort",
-        "supporting_study_date_range",
-        "supporting_study_context",
-    ):
-        assert col in ALLOWED_EDGE_FIELDS
+def test_allowed_edge_fields_tracks_supporting_study_slots_of_installed_model() -> None:
+    """``supporting_study_*`` membership follows the installed biolink-model exactly."""
+    for col in SUPPORTING_STUDY_SLOTS:
+        assert (col in ALLOWED_EDGE_FIELDS) is (col not in UNSATISFIABLE_EDGE_FIELDS), col
 
 
 def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatch: Any, tmp_path: Path) -> None:
@@ -2143,7 +2166,7 @@ def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Pa
     assert result["object_name"] == "TP53"
     assert result["predicate"] == "biolink:related_to"
     assert result["publications"] == ["PMCID:PMC0000000"]
-    assert result["primary_knowledge_source"] == ["infores:test-kg"]
+    assert result["primary_knowledge_source"] == "infores:test-kg"
 
 
 def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch: Any, tmp_path: Path) -> None:
@@ -2181,9 +2204,12 @@ def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch
     assert result["original_subject"] == "BRCA-1 [alias]"
     assert result["object"] == "HGNC:11998"
     assert result["original_object"] == "TP 53"
-    assert result["p_value"] == "1.0000e-08"
-    assert result["supporting_study_size"] == "1200"
-    assert result["statistical_significance_qualifier"] == "biolink:very_strongly_significant"
+    assert result["p_value"] == 1e-08
+    # Both slots are unattached in biolink-model 4.4.3, so they are preserved on the
+    # inlined StudyResult instead of being emitted unvalidatably on the edge.
+    described: str = result["has_supporting_studies"][next(iter(result["has_supporting_studies"]))]["has_study_results"][0]["description"]
+    assert "supporting_study_size=1200" in described
+    assert "statistical_significance_qualifier=biolink:very_strongly_significant" in described
     assert result["miscellaneous_notes"] == "kept note"
     assert result["publications"] == ["PMID:12345"]
 
@@ -2218,7 +2244,10 @@ def test_compile_subgraph_e2e_release_drops_rows_before_fullmap_lookup(monkeypat
     assert result.height == 1
     assert result["subject"].to_list() == ["HGNC:1"]
     assert result["object"].to_list() == ["MONDO:1"]
-    assert result["statistical_significance_qualifier"].to_list() == ["biolink:strongly_significant"]
+    described = result["has_supporting_studies"].to_list()[0]
+    assert (
+        "statistical_significance_qualifier=biolink:strongly_significant" in (described[next(iter(described))]["has_study_results"][0]["description"])
+    )
     assert "droppedgene" not in looked_up
     assert "droppeddisease" not in looked_up
 
@@ -2283,13 +2312,25 @@ def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypat
     tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "QUAL_KG"})  # pyright: ignore
 
     subgraph: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
-    assert pl.read_parquet(subgraph)["species_context_qualifier"].to_list() == ["NCBITaxon:9606"]
+    # `biolink:Association` has no species_context_qualifier slot, so the value is
+    # nulled on the edge and preserved on the inlined StudyResult instead.
+    frame: pl.DataFrame = pl.read_parquet(subgraph)
+    assert frame["species_context_qualifier"].to_list() == [None]
+    assert (
+        "species_context_qualifier=NCBITaxon:9606"
+        in frame["has_supporting_studies"].to_list()[0][next(iter(frame["has_supporting_studies"].to_list()[0]))]["has_study_results"][0][
+            "description"
+        ]
+    )
 
     lib.compile_graph([subgraph], "qual", "1.0.0")
     edges: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.edges.ndjson").read_text().splitlines()]
     nodes: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.nodes.ndjson").read_text().splitlines()]
 
-    assert edges[0]["species_context_qualifier"] == "NCBITaxon:9606"
+    # Nulled on the edge (no such slot on biolink:Association) and kept on the study.
+    assert "species_context_qualifier" not in edges[0]
+    study: dict[str, Any] = edges[0]["has_supporting_studies"]
+    assert "species_context_qualifier=NCBITaxon:9606" in study[next(iter(study))]["has_study_results"][0]["description"]
     assert all("species_context_qualifier_pre_resolution" not in edge for edge in edges)
     assert {node["id"] for node in nodes} == {"HGNC:1100", "MONDO:0000001"}
     assert "NCBITaxon:9606" not in {node["id"] for node in nodes}
@@ -2321,7 +2362,7 @@ def test_node_output_reflects_disease_taxon(monkeypatch: Any, tmp_path: Path) ->
     nodes: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "disease_taxon_1.0.0.nodes.ndjson").read_text().splitlines()]
 
     disease_node: dict[str, Any] = next(node for node in nodes if node["id"] == "MONDO:50")
-    assert disease_node["taxon"] == "NCBITaxon:9606"
+    assert disease_node["in_taxon"] == ["NCBITaxon:9606"]
 
 
 def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, tmp_path: Path) -> None:
@@ -2376,12 +2417,20 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
     assert len(edge_rows) == 1
     assert edge_rows[0]["subject"] == "HGNC:1100"
     assert edge_rows[0]["object"] == "HGNC:11998"
-    assert edge_rows[0]["upstream_resource_ids"] == ["infores:pubmed-central"]
-    assert edge_rows[0]["primary_knowledge_source"] == ["infores:pipeline-kg"]
+    primary_source: dict[str, Any] = next(x for x in edge_rows[0]["sources"] if x["resource_role"] == "primary_knowledge_source")
+    assert primary_source["upstream_resource_ids"] == ["infores:pubmed-central"]
+    assert edge_rows[0]["primary_knowledge_source"] == "infores:pipeline-kg"
     assert {row["id"] for row in node_rows} == {"HGNC:1100", "HGNC:11998"}
     assert rig["name"] == "PIPELINE_KG v0.1.0"
     edge_type: dict[str, Any] = rig["target_info"]["edge_type_info"][0]  # pyright: ignore
     assert edge_type["primary_knowledge_sources"] == ["infores:pipeline-kg", "infores:pubmed-central"]
+
+    # The gate: every emitted record must construct as its own Biolink class. Without
+    # this, a build can (and previously did) ship files where no record validated.
+    report: dict[str, Any] = validate_kgx(tmp_path / "PIPELINE_KG_0.1.0.nodes.ndjson", tmp_path / "PIPELINE_KG_0.1.0.edges.ndjson")
+    assert report["ok"], report
+    assert report["edges"]["valid"] == report["edges"]["total"] == 1
+    assert report["nodes"]["valid"] == report["nodes"]["total"] == 2
 
 
 def test_build_pipeline_head_mode_isolates_store_and_caps_rows(monkeypatch: Any, tmp_path: Path) -> None:

@@ -12,7 +12,19 @@ from pydantic import Field, NonNegativeInt
 
 from tablassert import rs
 from tablassert._lazy import LazyModule
-from tablassert.biolink import ALLOWED_EDGE_FIELDS, Categories, EdgeCategories
+from tablassert.biolink import (
+    ALLOWED_EDGE_FIELDS,
+    ENUM_RANGED_QUALIFIERS,
+    UNSATISFIABLE_EDGE_FIELDS,
+    Categories,
+    EdgeCategories,
+    association_class,
+    class_fields,
+    is_multivalued,
+    numeric_slot_kind,
+    resolve_association_class,
+    resolve_node_category,
+)
 from tablassert.coerce import (
     coerce_effect_size_columns,
     coerce_effect_type_columns,
@@ -27,7 +39,7 @@ from tablassert.coerce import (
 from tablassert.enums import EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
-from tablassert.models import Encoding, NodeEncoding, Section
+from tablassert.models import Encoding, NodeEncoding, Qualifier, Section
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
 from tablassert.rig import (
@@ -154,12 +166,21 @@ def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
     return CATEGORY_ROLE, EDGE_LOOKUP
 
 
-def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
+def edge_category(lf: pl.LazyFrame, predicate: str | None = None) -> pl.LazyFrame:
     """Add the derived ``category`` column using native polars replace operations.
+
+    The ``(subject role, object role)`` lookup alone routinely produces a category
+    that contradicts the predicate: ``GeneToDiseaseAssociation`` restricts its
+    ``predicate`` slot to ``contributes_to|associated_with|affects``, so a
+    ``biolink:gene_associated_with_condition`` edge labelled with that category can
+    never validate. When ``predicate`` is supplied the raw category is post-resolved
+    by :func:`biolink.resolve_association_class`, which walks up the association
+    hierarchy only as far as the predicate requires.
 
     Args:
         lf: Source LazyFrame with ``subject category`` and ``object category``
             columns (biolink-prefixed).
+        predicate: Section predicate CURIE used to reconcile the derived category.
 
     Returns:
         LazyFrame with a new list-typed ``category`` column containing the
@@ -169,16 +190,83 @@ def edge_category(lf: pl.LazyFrame) -> pl.LazyFrame:
     cat_role: dict[str, str]
     edge_lookup: dict[str, str]
     cat_role, edge_lookup = edge_tables()
+    default: str = f"biolink:{EdgeCategories.ASSOCIATION.value}"
+    if predicate:
+        # The predicate is a section constant, so the reconciliation collapses to a
+        # small raw-category -> resolved-category remap resolved once at plan time.
+        edge_lookup = {k: f"biolink:{resolve_association_class(v, predicate).__name__}" for k, v in edge_lookup.items()}
+        default = f"biolink:{resolve_association_class(default, predicate).__name__}"
     names: list[str] = lf.collect_schema().names()
     subject_col: str = "subject_category" if "subject_category" in names else "subject category"
     object_col: str = "object_category" if "object_category" in names else "object category"
     sr: pl.Expr = pl.col(subject_col).str.replace("biolink:", "").replace(cat_role).fill_null("")
     or_: pl.Expr = pl.col(object_col).str.replace("biolink:", "").replace(cat_role).fill_null("")
-    return lf.with_columns(
-        pl.concat_list(
-            pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=f"biolink:{EdgeCategories.ASSOCIATION.value}")
-        ).alias("category")
-    )
+    return lf.with_columns(pl.concat_list(pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=default)).alias("category"))
+
+
+def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Null out edge columns the row's own association class does not declare.
+
+    ``ALLOWED_EDGE_FIELDS`` is a per-*family* allow-list: it says a column is a slot
+    of *some* association class. Whether the specific class chosen for a given row
+    accepts it is a separate question, and getting it wrong is the single largest
+    source of ``extra_forbidden`` failures (``species_context_qualifier`` and friends
+    on a class that has no such slot).
+
+    Categories vary per row within a section, so this masks per row rather than
+    dropping columns: values are nulled where the row's class rejects them, and the
+    Rust null-stripper then removes the key entirely. Scalars are wrapped where the
+    class declares the slot multivalued.
+
+    Args:
+        lf: Edges LazyFrame carrying a resolved ``category`` column.
+
+    Returns:
+        LazyFrame whose every remaining value is legal for its own row's class.
+    """
+    schema: pl.Schema = lf.collect_schema()
+    names: list[str] = schema.names()
+    if "category" not in names:
+        return lf
+
+    core: frozenset[str] = frozenset({"category", "subject", "object", "predicate", "id"})
+    candidates: list[str] = [c for c in names if c not in core]
+    if not candidates:
+        return lf
+
+    categories: list[str] = [f"biolink:{c.value}" for c in EdgeCategories]
+    first: pl.Expr = pl.col("category").list.first()
+    updates: list[pl.Expr] = []
+    rescued: list[pl.Expr] = []
+    for col in candidates:
+        text: pl.Expr = (
+            pl.col(col).list.eval(pl.element().cast(pl.String)).list.join(", ") if isinstance(schema[col], pl.List) else pl.col(col).cast(pl.String)
+        )
+        accepts: dict[str, bool] = {cat: col in class_fields(association_class(cat)) for cat in categories}
+        # A closed-vocabulary slot additionally constrains the *value*. A qualifier
+        # encoded from a column carries whatever the sheet holds, so the token can only
+        # be checked here -- config-time validation sees no data.
+        vocabulary: frozenset[str] | None = ENUM_RANGED_QUALIFIERS.get(col)
+        ok: pl.Expr = first.replace_strict(accepts, default=False) if not all(accepts.values()) else pl.lit(True)
+        if vocabulary is not None:
+            ok = ok & text.is_in(list(vocabulary))
+        if all(accepts.values()) and vocabulary is None:
+            keep: pl.Expr = pl.col(col)
+        elif not any(accepts.values()):
+            continue  # Handled upstream by the allow-list / study routing.
+        else:
+            keep = pl.when(ok).then(pl.col(col)).otherwise(None)
+            # Preserve what the class refuses rather than deleting it outright; the
+            # value is real evidence, it just has no slot on this association class.
+            rescued.append(pl.when(ok | text.is_null()).then(None).otherwise(pl.concat_str([pl.lit(f"{col}="), text])))
+        # Biolink makes the same slot multivalued on some classes and scalar on others.
+        listed: dict[str, bool] = {cat: is_multivalued(association_class(cat), col) for cat in categories}
+        if any(listed.values()) and not isinstance(schema[col], pl.List):
+            keep = pl.when(first.replace_strict(listed, default=False)).then(pl.concat_list(keep)).otherwise(keep)
+        updates.append(keep.alias(col))
+    if rescued:
+        updates.append(pl.concat_list(rescued).list.drop_nulls().alias(PRUNED_COLUMN))
+    return lf.with_columns(updates) if updates else lf
 
 
 def value(lf: pl.LazyFrame, col: str, x: object) -> pl.LazyFrame:
@@ -211,17 +299,126 @@ def derive_species_context(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.with_columns(pl.coalesce(pl.col("subject_taxon"), pl.col("object_taxon")).alias("species_context_qualifier"))
 
 
-def source_record_urls(lf: pl.LazyFrame, url: str) -> pl.LazyFrame:
-    """Add Biolink/Translator ``source_record_urls`` as a single-element list column.
+def _retrieval_source(resource_id: str, resource_role: str, upstream: list[str] | None = None, urls: list[str] | None = None) -> pl.Expr:
+    """Build one ``RetrievalSource`` struct expression.
+
+    Every entry declares the same four fields so that :func:`retrieval_sources` can
+    ``concat_list`` them into a single ``list[struct]`` column; absent list fields are
+    typed nulls, which the Rust null-stripper removes from the emitted JSON.
+    """
+    empty: pl.Expr = pl.lit(None, dtype=pl.List(pl.String))
+    return pl.struct(
+        # RetrievalSource.id is required; translator-ingests sets it to the resource_id.
+        pl.lit(resource_id).alias("id"),
+        pl.lit(resource_id).alias("resource_id"),
+        pl.lit(resource_role).alias("resource_role"),
+        (pl.concat_list([pl.lit(x) for x in upstream]) if upstream else empty).alias("upstream_resource_ids"),
+        (pl.concat_list([pl.lit(x) for x in urls]) if urls else empty).alias("source_record_urls"),
+    )
+
+
+PRUNED_COLUMN: str = "_pruned_by_class"
+"""Internal handoff column: values `prune_to_class` removed, for the study to absorb.
+
+Never reaches output -- :func:`inline_supporting_study` folds it into the
+``StudyResult`` description and drops it.
+"""
+
+
+def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None) -> pl.LazyFrame:
+    """Attach table provenance and homeless statistics as an inlined Biolink ``Study``.
+
+    Follows the COHD/ICEES pattern in ``translator-ingests``: the edge carries
+    ``has_supporting_studies`` (``dict[str, Study]``, ``inlined: true`` on
+    ``Association``) and each ``Study`` carries ``has_study_results``. The Study is
+    deliberately *not* written to the nodes file, matching those ingests.
+
+    Two kinds of column are routed here rather than left on the edge:
+
+    * the sheet name and source row number, which previously became
+      ``"sheet_name: Table_S7"`` strings inside ``supporting_text`` -- a slot whose
+      Biolink meaning is a supporting sentence, not a key/value dump;
+    * any column in :data:`biolink.UNSATISFIABLE_EDGE_FIELDS`, i.e. declared in the
+      LinkML schema but attached to no Pydantic class under the *installed*
+      biolink-model. With ``biolink/biolink-model#1770`` applied the
+      ``supporting_study_*`` slots become real ``Association`` fields and are left
+      flat on the edge instead; nothing here is hardcoded to either state.
+
+    ``study_id`` is a per-section constant, so it can key a static struct field.
+
+    Args:
+        lf: Edges LazyFrame after annotation and provenance ops.
+        study_id: Stable study identifier (``"<publication>#<sheet>"``).
+        sheet: Worksheet name, when the source is a spreadsheet.
+
+    Returns:
+        LazyFrame with ``has_supporting_studies`` appended and the routed columns dropped.
+    """
+    names: list[str] = lf.collect_schema().names()
+    routed: list[str] = sorted(c for c in names if c in UNSATISFIABLE_EDGE_FIELDS)
+    row: str = "extracted_from_row_number"
+    has_row: bool = row in names
+
+    result_id: pl.Expr = pl.concat_str([pl.lit(f"{study_id}#row"), pl.col(row).cast(pl.String)]) if has_row else pl.lit(f"{study_id}#result")
+    label: str = f"{sheet} row " if sheet else "row "
+    result_name: pl.Expr = pl.concat_str([pl.lit(label), pl.col(row).cast(pl.String)]) if has_row else pl.lit(sheet or study_id)
+
+    # Statistics with no Association slot are preserved as a readable summary rather
+    # than silently dropped; `StudyResult.has_attribute` is `list[str]` (not inlined),
+    # so typed Attributes would require emitting Attribute rows into the nodes file.
+    fields: list[pl.Expr] = [result_id.alias("id"), result_name.alias("name")]
+    pruned: bool = PRUNED_COLUMN in names
+    if routed or pruned:
+        parts: list[pl.Expr] = []
+        for col in routed:
+            text: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars()
+            blank: pl.Expr = text.is_null() | (text.str.len_chars() == 0)
+            parts.append(pl.when(blank).then(pl.lit(None, dtype=pl.String)).otherwise(pl.concat_str([pl.lit(f"{col}="), text])))
+        # Qualifiers the resolved association class refuses (see `prune_to_class`) are
+        # appended to the routed statistics. Build from whichever sources exist: an
+        # empty list literal would be a zero-length series and fail to broadcast.
+        summary: pl.Expr
+        if parts and pruned:
+            summary = pl.concat_list(parts).list.drop_nulls().list.concat(pl.col(PRUNED_COLUMN))
+        elif parts:
+            summary = pl.concat_list(parts)
+        else:
+            summary = pl.col(PRUNED_COLUMN)
+        fields.append(summary.list.drop_nulls().list.join("; ").alias("description"))
+
+    study: pl.Expr = pl.struct(
+        pl.lit(study_id).alias("id"), pl.lit(sheet or study_id).alias("name"), pl.concat_list(pl.struct(fields)).alias("has_study_results")
+    )
+    out: pl.LazyFrame = lf.with_columns(pl.struct(study.alias(study_id)).alias("has_supporting_studies"))
+    drop: list[str] = [*routed, *([row] if has_row else []), *(["sheet_name"] if "sheet_name" in names else []), *([PRUNED_COLUMN] if pruned else [])]
+    return out.drop(drop)
+
+
+def retrieval_sources(lf: pl.LazyFrame, primary: str, upstream: list[str], urls: list[str]) -> pl.LazyFrame:
+    """Add the Biolink ``sources`` retrieval-provenance column.
+
+    ``upstream_resource_ids`` and ``source_record_urls`` have ``domain: retrieval
+    source`` in the Biolink Model, so they are properties of an entry in ``sources``
+    -- not of the association. Emitting them flat on the edge makes every record fail
+    validation with ``extra_forbidden``.
+
+    Mirrors ``build_association_knowledge_sources()`` from
+    ``translator-ingests/util/biolink.py``: the primary knowledge source carries the
+    source record URLs and lists the upstream resources, and each upstream resource
+    additionally appears as its own ``supporting_data_source`` entry.
 
     Args:
         lf: Source LazyFrame.
-        url: Source record URL to record for every row.
+        primary: Infores CURIE of the primary knowledge source.
+        upstream: Infores CURIEs of upstream/supporting data sources.
+        urls: Source record URLs for the primary entry.
 
     Returns:
-        LazyFrame with the new list column appended.
+        LazyFrame with a ``sources`` ``list[struct]`` column appended.
     """
-    return lf.with_columns(pl.concat_list(pl.lit(url)).alias("source_record_urls"))
+    entries: list[pl.Expr] = [_retrieval_source(primary, "primary_knowledge_source", upstream, urls)]
+    entries.extend(_retrieval_source(x, "supporting_data_source") for x in upstream)
+    return lf.with_columns(pl.concat_list(entries).alias("sources"))
 
 
 def publications(lf: pl.LazyFrame, curies: str | list[str]) -> pl.LazyFrame:
@@ -318,32 +515,66 @@ def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """Format numeric annotation columns as strings with controlled notation.
+    """Normalize numeric annotation columns for output.
 
-    P-value columns use scientific notation (``{:.4e}``); all others use
-    decimal general format (``{:.4g}``). Null values stay null.
+    Columns that map to a numeric Biolink slot are emitted as real JSON numbers:
+    ``p_value`` and ``adjusted_p_value`` are typed ``float`` in the model (and
+    ``supporting_study_size`` ``integer`` once ``biolink/biolink-model#1770`` lands),
+    so writing ``"6.5200e-06"`` produces a file that strict consumers reject even
+    though Pydantic's lax mode happens to coerce it.
+
+    Columns with no numeric Biolink slot keep the controlled string notation --
+    p-value-like names use scientific (``{:.4e}``), others decimal general
+    (``{:.4g}``) -- because they end up in human-readable text (the inlined
+    ``StudyResult`` description or ``supporting_text``). Null values stay null.
 
     Args:
         lf: Source LazyFrame.
 
     Returns:
         New LazyFrame (eagerly collected then re-lazied) with matched columns
-        formatted as strings.
+        typed or formatted.
 
     Notes:
         Collection point: the column is formatted in one batch so notation is
         controlled across all rows at once.
     """
     # Collection point: batch formatting for notation control.
-    # P-value columns use scientific notation; others use decimal general format.
     df: pl.DataFrame = lf.collect()
-    cols: list[str] = numeric_columns(df.columns)
-    for c in cols:
+    for c in numeric_columns(df.columns):
+        kind: str | None = numeric_slot_kind(c)
+        if kind == "float":
+            df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
+            continue
+        if kind == "int":
+            df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).round().cast(pl.Int64, strict=False).alias(c))
+            continue
         df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
         fmt: str = "{:.4e}" if "p_value" in c.lower() else "{:.4g}"
         formatted: list[str | None] = [None if v is None else fmt.format(v) for v in df[c].to_list()]
         df = df.with_columns(pl.Series(c, formatted))
     return df.lazy()
+
+
+def split_list(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
+    """Split a delimited cell into a real JSON array.
+
+    Tablassert annotations are scalar by construction, so a multivalued Biolink slot
+    such as ``has_evidence`` or ``FDA_regulatory_approvals`` would otherwise be emitted
+    as a single joined string. Consumers that iterate it then walk characters rather
+    than values (``publications.extend(record["has_evidence"])``).
+
+    Args:
+        lf: Source LazyFrame.
+        col: Annotation column to split.
+        delimiter: Separator to split on.
+
+    Returns:
+        LazyFrame with ``col`` converted to a ``list[str]`` column, blanks dropped.
+    """
+    text: pl.Expr = pl.col(col).cast(pl.String)
+    split: pl.Expr = text.str.split(delimiter).list.eval(pl.element().str.strip_chars()).list.drop_nulls()
+    return lf.with_columns(pl.when(text.is_null()).then(None).otherwise(split.list.eval(pl.element().filter(pl.element() != ""))).alias(col))
 
 
 def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
@@ -686,7 +917,13 @@ class Tcode(Section):
             else None,
             # --head preview: randomly sample min(HEAD_ROWS, height) rows before any encoding/resolve.
             (head, (HEAD_ROWS,)) if self.head else None,
-            [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
+            [
+                op
+                for x in self.annotations
+                for op in [*self.encoding(x, x.annotation.lower()), *([(split_list, (x.annotation.lower(), x.delimiter))] if x.delimiter else [])]
+            ]
+            if self.annotations
+            else None,
             (coerce_pvalue_columns, ()),
             (coerce_study_size_columns, ()),
             (coerce_effect_size_columns, ()),
@@ -709,16 +946,24 @@ class Tcode(Section):
             when QC is enabled.
         """
         # Subject/object/qualifiers share one resolve_batch call instead of one per column.
+        # Enum-ranged qualifiers are excluded from resolution: their range is a closed
+        # Biolink vocabulary, so sending them through the fullmap would turn the required
+        # token `increased` into the CURIE `UMLS:C0205217`, which the slot rejects.
+        qualifiers: list[Qualifier] = self.statement.qualifiers or []
         node_columns: list[tuple[NodeEncoding, str]] = [
             (self.statement.subject, "subject"),
             (self.statement.object, "object"),
-            *[(x, x.qualifier) for x in (self.statement.qualifiers or [])],
+            *[(x, x.qualifier) for x in qualifiers if x.resolved],
         ]
+        literals: list[Qualifier] = [x for x in qualifiers if not x.resolved]
         specs: list[ResolveSpec] = [
             ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid, x.exclude_prefixes, x.exclude_regex) for x, col in node_columns
         ]
         return [
             [self.node_prep(x, col) for x, col in node_columns],
+            # Encode only: no pre-resolution snapshot and no NLP normalization, both of
+            # which exist to feed entity resolution these columns never undergo.
+            [self.encoding(x, x.qualifier) for x in literals],
             (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
             [(fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) for _, col in node_columns] if self.qc else None,
         ]
@@ -736,17 +981,25 @@ class Tcode(Section):
         knowledge_level = override.knowledge_level if override else self.provenance.knowledge_level
         agent_type = override.agent_type if override else self.provenance.agent_type
         publication_values = override.publications if override else [publication_curie(self.provenance.repo, self.provenance.publication or "")]
+        # The study is the table itself: one publication, one worksheet. Both are
+        # section constants, so the study id can key a static struct field.
+        sheet: str | None = self.source.sheet if self.source.kind == Files.EXCEL else None  # pyright: ignore
+        publication: str = publication_values[0] if publication_values else (self.config.name or "study")
+        study_id: str = f"{publication}#{sheet}" if sheet else publication
         return [
             (derive_species_context, ()),
             (value, ("predicate", "biolink:" + self.statement.predicate)),
-            (edge_category, ()),
-            (value, ("upstream_resource_ids", upstream_ids)),
+            (edge_category, ("biolink:" + self.statement.predicate,)),
             (value, ("knowledge_level", knowledge_level)),
             (value, ("agent_type", agent_type)),
-            (value, ("primary_knowledge_source", [primary_knowledge_source])) if primary_knowledge_source else None,
+            # Biolink `primary_knowledge_source` is a scalar; `sources` carries the
+            # structured retrieval provenance (roles, upstream ids, record urls).
+            (value, ("primary_knowledge_source", primary_knowledge_source)) if primary_knowledge_source else None,
+            (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(self.source.url)])) if primary_knowledge_source else None,
             (publications, (publication_values,)) if publication_values else None,
-            (source_record_urls, (str(self.source.url),)),
-            (value, ("sheet_name", self.source.sheet)) if self.source.kind == Files.EXCEL else None,  # pyright: ignore
+            # Prune first so class-rejected values are handed to the study rather than lost.
+            (prune_to_class, ()),
+            (inline_supporting_study, (study_id, sheet)),
             (trim, ()),
             (format_numeric, ()),
             (to_store, (self.store, self.config.name)),
@@ -795,7 +1048,10 @@ PHASE_OF: dict[Callable, str] = {
     derive_species_context: "edge",
     edge_category: "edge",
     publications: "provenance",
-    source_record_urls: "provenance",
+    retrieval_sources: "provenance",
+    inline_supporting_study: "provenance",
+    prune_to_class: "finalize",
+    split_list: "encode",
     sig: "significance",
     drop_not_significant: "significance",
     trim: "finalize",
@@ -808,9 +1064,7 @@ PHASE_AWARE: frozenset[Callable] = frozenset({resolve_batch, fullmap_audit})
 
 UNKNOWN_PHASE: str = "transform"
 
-_VALUE_PROVENANCE_COLS: frozenset[str] = frozenset(
-    {"upstream_resource_ids", "knowledge_level", "agent_type", "primary_knowledge_source", "sheet_name"}
-)
+_VALUE_PROVENANCE_COLS: frozenset[str] = frozenset({"knowledge_level", "agent_type", "primary_knowledge_source", "sheet_name"})
 
 
 def _phase_of(fn: Callable, args: tuple[Any, ...]) -> str:
@@ -863,8 +1117,15 @@ def compile_subgraph(tcode: list[tuple[Callable, tuple[Any]]], *, on_phase: Call
     return acc  # pyright: ignore
 
 
-def normalize(edges: pl.LazyFrame, col: str, names: list[str] | None = None) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+def normalize(edges: pl.LazyFrame, col: str, names: list[str] | None = None, infores_id: str | None = None) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Normalize disparate node columns into a unified format and remove them from edges.
+
+    Emits Biolink ``NamedThing`` slots only. The fullmap's ``<col>_source`` (a file
+    name such as ``gene.txt``) and ``<col>_source_version`` are build provenance, not
+    node properties -- ``source``/``source_version`` are ``extra_forbidden`` on every
+    Biolink node class, and the version belongs at graph level (the RIG), matching
+    ``translator-ingests/util/metadata.py``. The taxon is emitted as ``in_taxon`` plus
+    ``in_taxon_label``, the slots ``translator-ingests`` uses.
 
     Args:
         edges: Source edges LazyFrame containing ``<col>``, ``<col>_name``,
@@ -872,14 +1133,18 @@ def normalize(edges: pl.LazyFrame, col: str, names: list[str] | None = None) -> 
             ``<col>_source_version`` columns.
         col: Base node column name (e.g. ``"subject"``).
         names: Output column names for the produced nodes frame.
+        infores_id: Graph-level infores CURIE recorded as ``provided_by``.
 
     Returns:
         Tuple of ``(partial_nodes, modified_edges)`` as LazyFrames.
     """
     if names is None:
-        names = ["id", "name", "category", "taxon", "source", "source_version"]
-    cols: list[str] = [col, f"{col}_name", f"{col}_category", f"{col}_taxon", f"{col}_source", f"{col}_source_version"]
-    nodes: pl.LazyFrame = edges.select(cols).unique().rename(dict(zip(cols, names, strict=True)))
+        names = ["id", "name", "category", "in_taxon", "in_taxon_label"]
+    cols: list[str] = [col, f"{col}_name", f"{col}_category", f"{col}_taxon", f"{col}_taxon_label"]
+    available: list[str] = edges.collect_schema().names()
+    # `<col>_taxon_label` is not produced by every fullmap revision.
+    pairs: list[tuple[str, str]] = [(c, n) for c, n in zip(cols, names, strict=True) if c in available]
+    nodes: pl.LazyFrame = edges.select([c for c, _ in pairs]).unique().rename(dict(pairs))
     # Ensures category has biolink: prefix.
     nodes = nodes.with_columns(
         pl.when(pl.col("category").str.starts_with("biolink:"))
@@ -887,9 +1152,26 @@ def normalize(edges: pl.LazyFrame, col: str, names: list[str] | None = None) -> 
         .otherwise(pl.lit("biolink:") + pl.col("category"))
         .alias("category")
     )
+    # Entity resolution can land on a class that cannot be emitted as a KGX node --
+    # `Publication` requires `publication_type`, `ClinicalAttribute` requires
+    # `has_attribute_type`, and mixins like `GenomicEntity` reject their own name in the
+    # `category` literal. Demote those to the nearest emittable ancestor.
+    # `replace` (not `replace_strict`) so nulls and unrecognized spellings pass through
+    # untouched -- only categories that genuinely need demoting are rewritten.
+    emittable: dict[str, str] = {
+        curie: resolved for c in Categories for curie in (f"biolink:{c.value}",) if (resolved := resolve_node_category(curie)) != curie
+    }
+    nodes = nodes.with_columns(pl.col("category").replace(emittable).alias("category"))
     # Exports category within a list (null categories stay null for strip_nulls).
     nodes = nodes.with_columns(pl.when(pl.col("category").is_not_null()).then(pl.concat_list(pl.col("category"))).alias("category"))
-    edges_out: pl.LazyFrame = edges.drop(cols[1:])
+    if "in_taxon" in nodes.collect_schema().names():
+        # `in_taxon` is multivalued on Biolink `thing with taxon`.
+        nodes = nodes.with_columns(pl.when(pl.col("in_taxon").is_not_null()).then(pl.concat_list(pl.col("in_taxon"))).alias("in_taxon"))
+    if infores_id:
+        nodes = nodes.with_columns(pl.concat_list(pl.lit(infores_id)).alias("provided_by"))
+    # Drop every derived node column from the edges, including the ones not emitted.
+    drop: list[str] = [c for c in (*cols[1:], f"{col}_source", f"{col}_source_version") if c in available]
+    edges_out: pl.LazyFrame = edges.drop(drop)
     return nodes, edges_out
 
 
@@ -974,7 +1256,11 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     parts: list[pl.Expr] = []
     for col in unknown:
-        s: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars()
+        # List-typed columns cannot be cast to String directly; join their elements so
+        # a folded `sources`-style column degrades readably instead of raising.
+        s: pl.Expr = (
+            pl.col(col).list.eval(pl.element().cast(pl.String)).list.join(", ") if isinstance(schema[col], pl.List) else pl.col(col).cast(pl.String)
+        ).str.strip_chars()
         blank: pl.Expr = s.is_null() | (s.str.len_chars() == 0)
         entry: pl.Expr = pl.when(blank).then(pl.lit(None, dtype=pl.String)).otherwise(pl.concat_str([pl.lit(f"{col}: "), s]))
         parts.append(entry)
@@ -997,6 +1283,7 @@ def _collect_subframes(
     ui_explanation: str | None,
     on_phase: Callable[[str], None] | None = None,
     on_subgraph: Callable[[], None] | None = None,
+    infores_id: str | None = None,
 ) -> tuple[list[pl.LazyFrame], list[pl.LazyFrame], list[dict[str, object]]]:
     """Scan and normalize subgraph parquets into node/edge subframes.
 
@@ -1034,7 +1321,7 @@ def _collect_subframes(
         originals: list[str] = [c.removesuffix("_pre_resolution") for c in lf.collect_schema().names() if c.endswith("_pre_resolution")]
         node_cols: list[str] = [c for c in originals if c in ("subject", "object")]
         for col in node_cols:
-            partial, lf = normalize(lf, col)
+            partial, lf = normalize(lf, col, infores_id=infores_id)
             subnodes.append(partial)
         # Drop internal pre-resolution snapshot columns from final edges.
         lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
@@ -1172,7 +1459,7 @@ def compile_graph(
     subnodes: list[pl.LazyFrame]
     subedges: list[pl.LazyFrame]
     edge_type_info: list[dict[str, object]]
-    subnodes, subedges, edge_type_info = _collect_subframes(subgraphs, e, ui_explanation, on_phase, on_subgraph)
+    subnodes, subedges, edge_type_info = _collect_subframes(subgraphs, e, ui_explanation, on_phase, on_subgraph, infores_id)
     _write_ndjson(subnodes, subedges, edge_type_info, n, e, name, version, description, contributions, ui_explanation, tables, infores_id, on_phase)
 
 

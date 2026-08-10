@@ -12,6 +12,7 @@ exposes **four subcommands** — `agent`, `build-fullmap`, `build-kg`, `validate
 | [`build-fullmap`](#build-fullmap) | Build the embedded fullmap redb used for entity resolution |
 | [`build-kg`](#build-kg) | Build a KGX NDJSON knowledge graph from a YAML configuration |
 | [`validate`](#validate) | Validate a graph or table configuration without executing it |
+| [`validate-kgx`](#validate-kgx) | Validate built KGX NDJSON against the Biolink Model |
 
 ## App flags
 
@@ -32,7 +33,8 @@ These are flags on the root `tablassert` command, **not** subcommands.
 
 Use this to autonomously turn one or more PMC articles into audited, improved KG configs and graphs
 (fetch → derive config → build + audit → improve until coverage maps). Requires the `[agent]` extra
-(`pip install tablassert[agent]`).
+(`pip install tablassert[agent]`); `--optimize` additionally needs the `[optimize]` extra
+(`pip install tablassert[optimize]`, pulls `dspy`).
 
 ```bash
 tablassert agent --fullmap PATH [OPTIONS] PMC-IDS...
@@ -163,11 +165,45 @@ tablassert validate graph.yaml --schema graph
 
 ---
 
+## validate-kgx
+
+Use this to check that a completed build is actually Biolink-compliant. Where
+[`validate`](#validate) checks your *configuration*, `validate-kgx` checks the *output*: every node
+and edge is constructed as the Biolink Pydantic class named by its own `category` — the same classes
+[`NCATSTranslator/translator-ingests`](https://github.com/NCATSTranslator/translator-ingests) builds
+when it ingests your files.
+
+```bash
+tablassert validate-kgx --nodes MY_KG_1.0.0.nodes.ndjson --edges MY_KG_1.0.0.edges.ndjson
+```
+
+| Option | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--nodes`, `-n` | Path | Yes | — | Built `*.nodes.ndjson` file to validate |
+| `--edges`, `-e` | Path | Yes | — | Built `*.edges.ndjson` file to validate |
+| `--limit` | int | No | `20` | Maximum example failures to retain per file |
+
+Failures are grouped by field and error type, so a systematic modelling problem shows up as one line
+rather than a million:
+
+```text
+biolink-model 4.4.3
+nodes: 424141/424141 valid (0 failures)
+edges: 2000085/2000085 valid (0 failures)
+KGX output is Biolink-compliant.
+```
+
+Exits non-zero when any record fails, so it can gate a release in CI.
+
+---
+
 ## Typical workflow
 
 1. Author a table config, then a graph config that references it.
 2. `tablassert validate graph.yaml --schema graph` — fail fast on schema errors.
 3. `tablassert build-kg graph.yaml` — produce KGX NDJSON + RIG (add `--qc` to audit mappings).
+4. `tablassert validate-kgx -n MY_KG_1.0.0.nodes.ndjson -e MY_KG_1.0.0.edges.ndjson` — confirm the
+   output validates against the Biolink Model before shipping it downstream.
 
 ## Next Steps
 

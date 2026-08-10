@@ -42,21 +42,27 @@ or validate actually runs -- never on ``tablassert --help``.
 from __future__ import annotations
 
 import inspect
+import json
 import re
+from collections import Counter
 from enum import Enum
 from functools import cache
 from importlib.resources import files
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args, get_origin
 
 import biolink_model.datamodel.pydanticmodel_v2 as _bm
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from linkml_runtime.utils.schemaview import SchemaView
 
 __all__ = [
     "ALLOWED_EDGE_FIELDS",
     "BIOLINK_VERSION",
     "EFFECT_TYPE_VALUES",
+    "ENUM_RANGED_QUALIFIERS",
+    "UNSATISFIABLE_EDGE_FIELDS",
     "AgentTypes",
     "Categories",
     "EdgeCategories",
@@ -64,6 +70,16 @@ __all__ = [
     "KnowledgeLevels",
     "Predicates",
     "Qualifiers",
+    "association_class",
+    "class_fields",
+    "is_multivalued",
+    "node_class",
+    "numeric_slot_kind",
+    "resolve_association_class",
+    "resolve_node_category",
+    "resolve_node_class",
+    "validate_kgx",
+    "validate_record",
 ]
 
 
@@ -216,13 +232,33 @@ def _qualifier_values() -> list[str]:
     return sorted({_snake(q) for q in (_slot_descendants("qualifier") | {"qualifier"})})
 
 
+@cache
+def _association_classes() -> tuple[type[Any], ...]:
+    """Every Biolink ``Association`` Pydantic class, including ``Association`` itself.
+
+    Association subclasses declare slots the base class does not (for example
+    ``clinical_approval_status`` on ``EntityToDiseaseAssociation``). Callers that
+    reason about "any field a Tablassert edge might legitimately carry" must
+    consider the whole family, not just the base MRO.
+
+    Returns:
+        Tuple of association classes defined in ``pydanticmodel_v2``.
+    """
+    return tuple(cls for cls in vars(_bm).values() if inspect.isclass(cls) and cls.__module__ == _bm.__name__ and issubclass(cls, _bm.Association))
+
+
 def _association_model_fields() -> set[str]:
-    """All field names on the Biolink ``Association`` Pydantic class, including inherited ones."""
+    """All field names declared by *any* Biolink ``Association`` class.
+
+    Unions ``model_fields`` across the entire association family rather than only
+    walking ``Association.__mro__``. Walking the base MRO alone silently excludes
+    subclass-only evidence slots -- ``clinical_approval_status``,
+    ``number_of_cases``, ``FDA_regulatory_approvals`` -- which then get demoted
+    into ``supporting_text`` by :func:`lib.fold_unknown_to_supporting_text`.
+    """
     fields: set[str] = set()
-    for klass in _bm.Association.__mro__:
-        model_fields: Any = getattr(klass, "model_fields", None)
-        if model_fields:
-            fields |= set(model_fields.keys())
+    for klass in _association_classes():
+        fields |= set(klass.model_fields.keys())
     return fields
 
 
@@ -264,13 +300,124 @@ EFFECT_TYPE_VALUES: tuple[str, ...] = (
 )
 
 
-# Edge columns Tablassert / KGX emit that are neither Biolink ``Association`` model
-# fields nor qualifier slot names: synonym carryover from NamedThing, KGX provenance
-# and denormalized fields, supporting-study evidence slots, and Tablassert pipeline
-# fields (``source_record_urls``, ``upstream_resource_ids``). Kept curated and unioned
-# with the derived Biolink fields so ``ALLOWED_EDGE_FIELDS`` is always a superset of
-# what the pipeline may emit (so ``lib.fold_unknown_to_supporting_text`` never starts
-# folding legitimate edge columns into ``supporting_text``).
+def _annotation_choices(annotation: Any) -> frozenset[str] | None:
+    """Return the closed value set of a Pydantic field annotation, or ``None`` if open.
+
+    Biolink constrains some slots with a generated ``Enum`` (``DirectionQualifierEnum``)
+    and others with a ``Literal[...]``. Both are closed vocabularies; a bare ``str``
+    annotation is open. ``Optional[...]`` / ``list[...]`` wrappers are unwrapped.
+
+    Args:
+        annotation: A Pydantic ``FieldInfo.annotation``.
+
+    Returns:
+        Frozenset of permitted string values, or ``None`` when unconstrained.
+    """
+    if annotation is None or annotation is str:
+        return None
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return frozenset(str(member.value) for member in annotation)
+    origin: Any = get_origin(annotation)
+    if origin is Literal:
+        return frozenset(str(arg) for arg in get_args(annotation))
+    args: tuple[Any, ...] = get_args(annotation)
+    if args:
+        # Optional[X] / list[X] / Union[...]: a closed set anywhere makes the slot closed.
+        choices: set[str] = set()
+        found: bool = False
+        for arg in args:
+            if arg is type(None):
+                continue
+            nested: frozenset[str] | None = _annotation_choices(arg)
+            if nested is not None:
+                choices |= nested
+                found = True
+        if found:
+            return frozenset(choices)
+    return None
+
+
+@cache
+def _field_owners() -> dict[str, frozenset[str]]:
+    """Map every Pydantic field name to the set of Biolink classes that declare it.
+
+    Used to distinguish slots that exist in the LinkML YAML but were never attached
+    to a class (and so can never be serialized) from ones with a real home.
+    """
+    owners: dict[str, set[str]] = {}
+    for cls in vars(_bm).values():
+        if not (inspect.isclass(cls) and cls.__module__ == _bm.__name__):
+            continue
+        for field in getattr(cls, "model_fields", {}):
+            owners.setdefault(field, set()).add(cls.__name__)
+    return {field: frozenset(names) for field, names in owners.items()}
+
+
+def _predicate_accepts(cls: type[Any], predicate: str) -> bool:
+    """Whether an association class permits ``predicate`` on its ``predicate`` slot."""
+    field: Any = cls.model_fields.get("predicate")
+    if field is None:
+        return False
+    choices: frozenset[str] | None = _annotation_choices(field.annotation)
+    return choices is None or predicate in choices
+
+
+@cache
+def association_class(category: str) -> type[Any]:
+    """Resolve a ``biolink:X`` edge category CURIE to its Pydantic class.
+
+    Falls back to ``Association`` for unknown or malformed categories.
+    """
+    name: str = category.removeprefix("biolink:")
+    cls: Any = getattr(_bm, name, None)
+    if inspect.isclass(cls) and issubclass(cls, _bm.Association):
+        return cls
+    return _bm.Association
+
+
+@cache
+def resolve_association_class(category: str, predicate: str) -> type[Any]:
+    """Pick the most specific association class that actually permits ``predicate``.
+
+    Tablassert derives a candidate edge category from the (subject role, object role)
+    pair without consulting the predicate, which routinely produces contradictions --
+    ``GeneToDiseaseAssociation`` restricts ``predicate`` to
+    ``contributes_to|associated_with|affects``, so a
+    ``biolink:gene_associated_with_condition`` edge labelled with that category can
+    never validate.
+
+    Walks the candidate's MRO most-specific-first and returns the first association
+    ancestor whose ``predicate`` slot accepts the value, so specificity is only ever
+    given up as far as correctness requires. ``Association`` (open ``predicate``) is
+    the guaranteed floor.
+
+    Args:
+        category: Candidate edge category CURIE (``"biolink:GeneToDiseaseAssociation"``).
+        predicate: Predicate CURIE (``"biolink:gene_associated_with_condition"``).
+
+    Returns:
+        The resolved association class.
+    """
+    for ancestor in association_class(category).__mro__:
+        if inspect.isclass(ancestor) and issubclass(ancestor, _bm.Association) and _predicate_accepts(ancestor, predicate):
+            return ancestor
+    return _bm.Association
+
+
+# Edge columns Tablassert emits that are not fields of any Biolink ``Association``
+# class: synonym carryover from NamedThing and KGX denormalized fields. Unioned with
+# the derived Biolink fields so ``ALLOWED_EDGE_FIELDS`` stays a superset of what the
+# pipeline may legitimately emit (so ``lib.fold_unknown_to_supporting_text`` never
+# folds a real edge column into ``supporting_text``).
+#
+# Deliberately NOT listed here, because none of them can be serialized onto an edge:
+#   - ``source_record_urls`` / ``upstream_resource_ids`` -- ``domain: retrieval source``,
+#     so they belong inside a ``sources`` entry, not on the association.
+#   - ``supporting_study_*``, ``statistical_significance_qualifier``,
+#     ``relationship_strength`` -- declared in the LinkML YAML but attached to zero
+#     Pydantic classes (see ``UNSATISFIABLE_EDGE_FIELDS``); they are routed onto the
+#     inlined ``Study`` / ``StudyResult`` instead.
+#   - ``taxon`` -- a node property; edges carry ``species_context_qualifier``.
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
         "broad_synonym",
@@ -289,18 +436,8 @@ TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
         "provided_by",
         "related_synonym",
         "relation",
-        "source_record_urls",
-        "statistical_significance_qualifier",
         "supporting_documents",
-        "supporting_study_cohort",
-        "supporting_study_context",
-        "supporting_study_date_range",
-        "supporting_study_method_description",
-        "supporting_study_method_types",
-        "supporting_study_size",
         "synonym",
-        "taxon",
-        "upstream_resource_ids",
         "xref",
     ]
 )
@@ -314,6 +451,7 @@ if TYPE_CHECKING:
     class Categories(str, Enum):
         DISEASE: Categories
         GENE: Categories
+        NAMED_THING: Categories
         PHENOTYPIC_FEATURE: Categories
         PROTEIN: Categories
 
@@ -358,11 +496,254 @@ _schema_definition: Any = _schema().schema
 BIOLINK_VERSION: str = str(_schema_definition.version) if _schema_definition is not None else "unknown"
 """Version of the Biolink Model these values were derived from (e.g. ``"4.4.3"``)."""
 
-ALLOWED_EDGE_FIELDS: frozenset[str] = frozenset(_association_model_fields()) | {q.value for q in Qualifiers} | TABLASERT_EDGE_EXTRAS
+UNSATISFIABLE_EDGE_FIELDS: frozenset[str] = frozenset(q.value for q in Qualifiers if q.value not in _field_owners()) | frozenset(
+    field
+    for field in (
+        "relationship_strength",
+        "sample_size",
+        "statistical_significance_qualifier",
+        "supporting_study_cohort",
+        "supporting_study_context",
+        "supporting_study_date_range",
+        "supporting_study_method_description",
+        "supporting_study_method_types",
+        "supporting_study_size",
+    )
+    if field not in _field_owners()
+)
+"""Slot names that exist in the Biolink LinkML schema but on no Pydantic class.
+
+``Qualifiers`` is derived from the LinkML *slot* hierarchy, which is strictly broader
+than the set of slots actually attached to a class. Emitting one of these produces a
+record that can never validate, so configs referencing them are rejected up front and
+their values are routed onto the inlined ``StudyResult`` instead.
+"""
+
+
+ENUM_RANGED_QUALIFIERS: dict[str, frozenset[str]] = {
+    qualifier.value: choices
+    for qualifier in Qualifiers
+    for owners in (_field_owners().get(qualifier.value, frozenset()),)
+    if owners
+    for choices in (
+        frozenset().union(
+            *(
+                _annotation_choices(getattr(_bm, owner).model_fields[qualifier.value].annotation) or frozenset()
+                for owner in owners
+                if hasattr(_bm, owner)
+            )
+        ),
+    )
+    if choices
+}
+"""Qualifier slots whose range is a closed vocabulary rather than a CURIE.
+
+``Qualifier`` config entries inherit ``NodeEncoding`` and are therefore entity-resolved
+through the fullmap by default. That is correct for CURIE-ranged qualifiers
+(``anatomical_context_qualifier`` -> ``UBERON:0001557``) but wrong for enum-ranged ones:
+``object_direction_qualifier`` wants the token ``increased``, not ``UMLS:C0205217``.
+Values for these slots are validated against the vocabulary and passed through
+unresolved.
+"""
+
+
+ALLOWED_EDGE_FIELDS: frozenset[str] = (
+    frozenset(_association_model_fields()) | {q.value for q in Qualifiers} | TABLASERT_EDGE_EXTRAS
+) - UNSATISFIABLE_EDGE_FIELDS
 """Authoritative biolink-compliant edge column allow-list.
 
 Any column on an edge frame that is not in this set is folded into the
 ``supporting_text`` ``list[str]`` field by ``lib.fold_unknown_to_supporting_text()``
-as a ``"column: value"`` string. Composed of the derived Biolink ``Association``
-fields, the derived qualifier slot names, and the curated ``TABLASERT_EDGE_EXTRAS``.
+as a ``"column: value"`` string. Composed of the fields declared by *any* Biolink
+association class, the derived qualifier slot names, and the curated
+``TABLASERT_EDGE_EXTRAS`` -- less the slots that no Pydantic class can hold.
+
+Note this is a per-*family* allow-list: a field being permitted here does not mean the
+specific association class chosen for a given edge accepts it. Per-record pruning
+against the resolved class is done by ``lib.prune_to_class()``.
 """
+
+
+@cache
+def node_class(category: str) -> type[Any]:
+    """Resolve a ``biolink:X`` node category CURIE to its Pydantic class.
+
+    Mirrors ``bmt.pydantic.get_node_class`` (used by ``translator-ingests``) without
+    taking on the ``bmt`` dependency: Tablassert already knows the exact category it
+    assigned, so a direct lookup is sufficient. Falls back to ``NamedThing``.
+    """
+    name: str = category.removeprefix("biolink:")
+    cls: Any = getattr(_bm, name, None)
+    if inspect.isclass(cls) and issubclass(cls, _bm.NamedThing):
+        return cls
+    return _bm.NamedThing
+
+
+def class_fields(cls: type[Any]) -> frozenset[str]:
+    """Field names a Pydantic class accepts (cached per class by the caller)."""
+    return frozenset(cls.model_fields.keys())
+
+
+def is_multivalued(cls: type[Any], field: str) -> bool:
+    """Whether ``cls`` declares ``field`` as a list-valued slot.
+
+    Biolink makes the same qualifier multivalued on some association classes and
+    scalar on others, so a value carried across a class change may need wrapping.
+    """
+    info: Any = cls.model_fields.get(field)
+    if info is None:
+        return False
+    annotation: Any = info.annotation
+    if get_origin(annotation) is list:
+        return True
+    return any(get_origin(arg) is list for arg in get_args(annotation))
+
+
+def validate_record(record: dict[str, Any], *, edge: bool) -> list[str]:
+    """Validate one KGX record against the Biolink class named by its ``category``.
+
+    Args:
+        record: A decoded NDJSON node or edge record.
+        edge: ``True`` to dispatch on the association family, ``False`` for nodes.
+
+    Returns:
+        A list of ``"field: error-type"`` strings; empty when the record validates.
+    """
+    from pydantic import ValidationError
+
+    categories: Any = record.get("category") or []
+    category: str = categories[0] if isinstance(categories, list) and categories else str(categories or "")
+    cls: type[Any] = association_class(category) if edge else node_class(category)
+    try:
+        cls(**record)
+    except ValidationError as error:
+        return [f"{'.'.join(str(part) for part in item['loc']) or '?'}: {item['type']}" for item in error.errors()]
+    return []
+
+
+def _scalar_types(annotation: Any) -> set[type]:
+    """Unwrap ``Optional`` / ``list`` / ``Union`` down to the concrete scalar types."""
+    if isinstance(annotation, type):
+        return {annotation}
+    out: set[type] = set()
+    for arg in get_args(annotation):
+        if arg is type(None):
+            continue
+        out |= _scalar_types(arg)
+    return out
+
+
+@cache
+def numeric_slot_kind(field: str) -> str | None:
+    """Return ``"int"`` / ``"float"`` when a Biolink association slot has a numeric range.
+
+    Tablassert stringifies its numeric annotation columns for notation control, but
+    Biolink types ``p_value`` and ``adjusted_p_value`` as ``float`` and (with
+    ``biolink/biolink-model#1770``) ``supporting_study_size`` as ``int``. Those must be
+    emitted as real JSON numbers. Derived from the installed model so the answer
+    tracks whatever version is pinned.
+
+    Args:
+        field: Edge column name.
+
+    Returns:
+        ``"int"``, ``"float"``, or ``None`` when the slot is not numeric (or unknown).
+    """
+    kinds: set[type] = set()
+    for cls in _association_classes():
+        info: Any = cls.model_fields.get(field)
+        if info is not None:
+            kinds |= _scalar_types(info.annotation)
+    if float in kinds:
+        return "float"
+    if int in kinds and bool not in kinds:
+        return "int"
+    return None
+
+
+def validate_kgx(nodes_path: Path, edges_path: Path, limit: int = 20) -> dict[str, Any]:
+    """Validate emitted KGX NDJSON files against the Biolink Pydantic model.
+
+    Tablassert derives its *vocabulary* from the model but historically never
+    instantiated a Biolink class against an emitted record, so a build could -- and did
+    -- ship files where no record validated. This closes that loop: every node and edge
+    is constructed as the class named by its own ``category``.
+
+    Args:
+        nodes_path: Path to ``<name>_<version>.nodes.ndjson``.
+        edges_path: Path to ``<name>_<version>.edges.ndjson``.
+        limit: Maximum number of example failures to retain per file.
+
+    Returns:
+        Mapping with per-file ``total`` / ``valid`` / ``failures`` counts, a
+        ``problems`` histogram keyed by ``"field: error-type"``, up to ``limit``
+        ``examples``, and a top-level ``ok`` flag.
+    """
+    report: dict[str, Any] = {"biolink_version": BIOLINK_VERSION, "ok": True}
+    for label, path, edge in (("nodes", nodes_path, False), ("edges", edges_path, True)):
+        total: int = 0
+        valid: int = 0
+        problems: Counter[str] = Counter()
+        examples: list[dict[str, Any]] = []
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    total += 1
+                    record: dict[str, Any] = json.loads(line)
+                    errors: list[str] = validate_record(record, edge=edge)
+                    if not errors:
+                        valid += 1
+                        continue
+                    problems.update(errors)
+                    if len(examples) < limit:
+                        examples.append({"id": record.get("id"), "errors": errors})
+        report[label] = {"total": total, "valid": valid, "failures": total - valid, "problems": dict(problems.most_common()), "examples": examples}
+        if total != valid:
+            report["ok"] = False
+    return report
+
+
+# Node slots Tablassert can always populate from a fullmap hit. A class requiring
+# anything outside this set cannot be emitted, because there is no source for the value.
+FILLABLE_NODE_FIELDS: frozenset[str] = frozenset({"id", "name", "category", "provided_by", "in_taxon", "in_taxon_label"})
+
+
+@cache
+def resolve_node_class(category: str) -> type[Any]:
+    """Pick the most specific node class Tablassert can actually emit for ``category``.
+
+    Entity resolution can land on a class that is unusable as a KGX node: ``Publication``
+    requires ``publication_type`` and ``ClinicalAttribute`` requires
+    ``has_attribute_type`` -- neither of which a fullmap hit provides -- while mixins
+    such as ``GenomicEntity`` reject their own name in the ``category`` literal.
+
+    Walks the MRO most-specific-first and returns the first class whose required fields
+    are all fillable and whose ``category`` vocabulary admits its own name, so
+    specificity is only given up as far as correctness requires. ``NamedThing`` is the
+    guaranteed floor.
+
+    Args:
+        category: Candidate node category CURIE (``"biolink:Publication"``).
+
+    Returns:
+        The resolved node class; emit ``category`` from its own default.
+    """
+    for ancestor in node_class(category).__mro__:
+        if not (inspect.isclass(ancestor) and issubclass(ancestor, _bm.NamedThing)):
+            continue
+        required: set[str] = {name for name, info in ancestor.model_fields.items() if info.is_required()}
+        if not required <= FILLABLE_NODE_FIELDS:
+            continue
+        choices: frozenset[str] | None = _annotation_choices(ancestor.model_fields["category"].annotation)
+        if choices is not None and f"biolink:{ancestor.__name__}" not in choices:
+            continue
+        return ancestor
+    return _bm.NamedThing
+
+
+@cache
+def resolve_node_category(category: str) -> str:
+    """Resolve a node category CURIE to one that can actually be emitted."""
+    return f"biolink:{resolve_node_class(category).__name__}"

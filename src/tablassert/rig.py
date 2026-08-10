@@ -41,15 +41,21 @@ def strip_nulls(r: object, bad: set[str] | None = None) -> dict:
         bad: Lowercased strings treated as null-equivalent.
 
     Returns:
-        Dict with falsy and ``bad``-valued keys removed; recurses into
+        Dict with absent and ``bad``-valued keys removed; recurses into
         nested dicts and lists.
+
+    Notes:
+        Drops absent values only, not falsy ones. ``0`` and ``False`` are meaningful
+        Biolink values (a ``p_value`` of 0, ``number_of_cases: 0``,
+        ``negated: False``), so treating them as null would silently delete the key.
+        Kept in step with the Rust port in ``rust/src/json.rs``.
     """
     if bad is None:
         bad = {"na", "nan", "null", "none", ""}
     return {
         k: [strip_nulls(i) if isinstance(i, dict) else i for i in v] if isinstance(v, list) else strip_nulls(v) if isinstance(v, dict) else v
         for k, v in r.items()  # pyright: ignore
-        if v and str(v).strip().lower() not in bad
+        if not (v is None or (isinstance(v, str | list | dict | tuple | set) and len(v) == 0)) and str(v).strip().lower() not in bad
     }
 
 
@@ -149,6 +155,7 @@ def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: str |
             "primary_knowledge_sources",
             "resource_id",
             "upstream_resource_ids",
+            "sources",
         ]
         if c in names
     ]
@@ -158,11 +165,19 @@ def rig_edge_type_info(lf: pl.LazyFrame, edges_path: Path, ui_explanation: str |
     rows: list[dict[str, Any]] = lf.select(wanted).unique().collect().to_dicts()
     info: list[dict[str, object]] = []
     for row in rows:
+        # Retrieval provenance now lives in the nested `sources` list (Biolink
+        # RetrievalSource); the flat columns are still read for legacy parquet inputs.
+        nested: list[str] = []
+        for entry in as_list(row.get("sources")):
+            if isinstance(entry, dict):
+                nested.append(str(entry.get("resource_id") or ""))
+                nested.extend(str(x) for x in as_list(entry.get("upstream_resource_ids")))
         primary_sources: list[str] = clean_values(
             as_list(row.get("primary_knowledge_source"))
             + as_list(row.get("primary_knowledge_sources"))
             + as_list(row.get("resource_id"))
             + as_list(row.get("upstream_resource_ids"))
+            + nested
         )
         edge_type: dict[str, object] = strip_nulls(
             {

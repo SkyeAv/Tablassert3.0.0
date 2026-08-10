@@ -23,7 +23,10 @@ TablassertErrorCodes = Literal[
     "provenance-bad-pmc-id",
     "provenance-missing-publication",
     "provenance-publication-and-override",
+    "annotation-bad-delimiter",
     "qualifier-auto-derived",
+    "qualifier-bad-value",
+    "qualifier-unsatisfiable",
 ]
 
 
