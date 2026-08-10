@@ -84,9 +84,11 @@ qc = [
 ]
 agent = [
     "smolagents>=1.26.0",
-    "dspy>=3.2.1",
     "litellm>=1.93.0",
     "pdfminer.six>=20221105",
+]
+optimize = [
+    "dspy>=3.2.1",
 ]
 
 [dependency-groups]

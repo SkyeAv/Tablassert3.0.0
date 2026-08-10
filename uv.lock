@@ -4114,10 +4114,12 @@ dependencies = [
 
 [package.optional-dependencies]
 agent = [
-    { name = "dspy" },
     { name = "litellm" },
     { name = "pdfminer-six" },
     { name = "smolagents" },
+]
+optimize = [
+    { name = "dspy" },
 ]
 qc = [
     { name = "scikit-learn" },
@@ -4144,7 +4146,7 @@ dev = [
 requires-dist = [
     { name = "biolink-model", specifier = ">=4.4.3" },
     { name = "cyclopts", specifier = ">=1.0.0" },
-    { name = "dspy", marker = "extra == 'agent'", specifier = ">=3.2.1" },
+    { name = "dspy", marker = "extra == 'optimize'", specifier = ">=3.2.1" },
     { name = "fastexcel", specifier = ">=0.20.2" },
     { name = "litellm", marker = "extra == 'agent'", specifier = ">=1.93.0" },
     { name = "loguru", specifier = ">=0.7.3" },
@@ -4159,7 +4161,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'qc'", specifier = ">=5.3.0" },
     { name = "smolagents", marker = "extra == 'agent'", specifier = ">=1.26.0" },
 ]
-provides-extras = ["rt", "qc", "agent"]
+provides-extras = ["rt", "qc", "agent", "optimize"]
 
 [package.metadata.requires-dev]
 dev = [

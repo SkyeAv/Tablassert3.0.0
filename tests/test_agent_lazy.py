@@ -43,6 +43,25 @@ def test_require_raises_actionable_when_extra_absent() -> None:
     assert "smolagents" in message
 
 
+def test_require_dspy_points_at_optimize_extra() -> None:
+    """``_require("dspy")`` names the ``[optimize]`` extra, not ``[agent]``.
+
+    Why: ``dspy`` powers only the GEPA ``--optimize`` path and lives in its own
+    ``[optimize]`` extra; the actionable error must tell users to install that
+    extra (not ``[agent]``, which no longer ships ``dspy``).
+    """
+    assert agent_mod.OPTIMIZE_EXTRA == "pip install tablassert[optimize]"
+    if importlib.util.find_spec("dspy") is not None:
+        agent_mod._require("dspy")
+        return
+
+    with pytest.raises(ImportError, match=r"tablassert\[optimize\]") as excinfo:
+        agent_mod._require("dspy")
+    message: str = str(excinfo.value)
+    assert "tablassert[optimize]" in message
+    assert "dspy" in message
+
+
 def test_lazy_proxy_does_not_eagerly_import() -> None:
     """Importing ``tablassert.agent`` never forces ``smolagents`` to load.
 

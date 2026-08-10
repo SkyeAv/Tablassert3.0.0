@@ -12,12 +12,16 @@ ReAct loop) and [DSPy](https://dspy.ai) GEPA for prompt optimization.
 !!! warning "Optional extra"
     The base `tablassert` package does **not** require any of this. `smolagents` and `dspy` are imported
     **lazily** in `tablassert.agent`, so the base install and its test suite are unaffected. Install the
-    extra with `pip install tablassert[agent]`.
+    extra with `pip install tablassert[agent]`. GEPA prompt optimization (`--optimize`) additionally needs
+    the `[optimize]` extra (`dspy`): `pip install tablassert[optimize]`.
 
 ## Installation
 
 ```bash
 pip install tablassert[agent]
+
+# GEPA prompt optimization (--optimize) additionally needs dspy:
+pip install "tablassert[agent,optimize]"
 ```
 
 The extra pins:
@@ -25,9 +29,14 @@ The extra pins:
 | Package | Version | Role |
 | --- | --- | --- |
 | `smolagents` | `==1.26.0` | `CodeAgent` ReAct loop, `OpenAIModel`/`LiteLLMModel`, tools |
-| `dspy` | `==3.2.1` | `dspy.GEPA` black-box prompt optimization |
 | `litellm` | (any) | optional fallback / rate-limiting model backend |
 | `pdfminer.six` | (any) | extract a `.pdf` main text into data-fenced context (`pmc_article_context`) |
+
+The `[optimize]` extra (only needed for `agent --optimize`) pins:
+
+| Package | Version | Role |
+| --- | --- | --- |
+| `dspy` | `==3.2.1` | `dspy.GEPA` black-box prompt optimization |
 
 ## PMC-AWS data source
 
