@@ -42,7 +42,7 @@ def _section_cfg(subject: dict[str, Any], object_: dict[str, Any], predicate: st
     """A schema-valid Section config YAML with the given subject/object encodings."""
     return yaml.safe_dump(
         {
-            "source": {"kind": "text", "local": "./t.tsv", "url": "https://e.com/t.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": "./t.tsv", "url": ["https://e.com/t.tsv"], "delimiter": "\t"},
             "statement": {"subject": subject, "predicate": predicate, "object": object_},
             "provenance": {"repo": "PMC", "publication": "PMC0000000"},
         }
@@ -129,7 +129,7 @@ def test_reflexion_with_fullmap_rescores_and_promotes(tmp_path: Path) -> None:
     table.write_text("g__brca1\tmapk1\ng__brca1\tmapk1\n")
     cfg = yaml.safe_dump(
         {
-            "source": {"kind": "text", "local": str(table), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": str(table), "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
             "statement": {
                 "subject": {"method": "column", "encoding": "A"},
                 "predicate": "associated_with",

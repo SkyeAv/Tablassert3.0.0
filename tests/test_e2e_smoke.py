@@ -72,7 +72,7 @@ def test_build_pipeline_against_real_redb(tmp_path: Path, monkeypatch: pytest.Mo
     table: Path = tmp_path / "table.yaml"
     table_config: dict[str, Any] = {
         "template": {
-            "source": {"kind": "text", "local": str(data), "url": "https://example.com/data.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
             "statement": {
                 "subject": {"method": "column", "encoding": "A"},
                 "predicate": "associated_with",
@@ -122,7 +122,7 @@ def test_validate_command_happy_path(tmp_path: Path) -> None:
     config: Path = tmp_path / "table.yaml"
     table_config: dict[str, Any] = {
         "template": {
-            "source": {"kind": "text", "local": "./test.tsv", "url": "https://example.com/test.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": "./test.tsv", "url": ["https://example.com/test.tsv"], "delimiter": "\t"},
             "statement": {"subject": {"method": "value", "encoding": "BRCA1"}, "object": {"method": "value", "encoding": "TP53"}},
             "provenance": {"repo": "PMC", "publication": "PMC0000000"},
         }

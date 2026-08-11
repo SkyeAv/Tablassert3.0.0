@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+- **`source.url` is now a list of URLs (`url: list[HttpUrl]`).** A table-config section may declare one or more remote source URLs, all recorded as provenance (emitted in the edge `source_record_urls` list and the RIG). The legacy scalar form `url: https://example.com/x.tsv` is no longer accepted — wrap it in a list. Update existing configs from `url: https://...` to a sequence:
+
+  ```yaml
+  source:
+    url:
+      - https://example.com/data.tsv
+  ```
+
 ### Added
 - **`tablassert build-fullmap --aria2c` / `-a`** opt-in downloader acceleration. When requested, the BABEL download stage uses the installed `aria2c` executable with segmented HTTP downloads plus resume/retry flags (`--continue=true`, `--max-tries`, `--retry-wait`) while keeping the existing Python downloader as the default. Missing or failing `aria2c` fails loud instead of silently falling back, and aria2 `.aria2` control files are preserved so interrupted downloads can resume on rerun.
 

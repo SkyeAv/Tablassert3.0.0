@@ -28,7 +28,7 @@ ALAMV6_TEMPLATE: dict[str, Any] = {
         "source": {
             "kind": "excel",
             "local": "./DATALAKE/ALAM.XLSX",
-            "url": "https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx",
+            "url": ["https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx"],
             "row_slice": [2, "auto"],
             "sheet": "all correlations",
         },
@@ -57,7 +57,7 @@ ALAMV6_TEMPLATE: dict[str, Any] = {
 def _minimal_section() -> dict[str, Any]:
     """A valid bare merged section dict (mirrors tests/fixtures/minimal_section.yaml)."""
     return {
-        "source": {"url": "https://example.com/test.tsv", "local": "./test.tsv", "kind": "text", "delimiter": "\t"},
+        "source": {"url": ["https://example.com/test.tsv"], "local": "./test.tsv", "kind": "text", "delimiter": "\t"},
         "statement": {"subject": {"method": "value", "encoding": "BRCA1"}, "object": {"method": "value", "encoding": "TP53"}},
         "provenance": {"repo": "PMC", "publication": "PMC0000000"},
     }

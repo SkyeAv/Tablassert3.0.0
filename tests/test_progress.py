@@ -125,7 +125,7 @@ TRIGGERS: dict[str, Callable[[], object]] = {
     "comparison-bad-comparator-type": lambda: Reindex(column="A", comparison=Comparisons.EQ, comparator=5),
     "comparison-nonnumeric-comparator": lambda: Reindex(column="A", comparison=Comparisons.GT, comparator="x"),
     "config-rows-and-row-slice-conflict": lambda: Text(
-        local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[1], row_slice=[1, 5]
+        local=Path("./t.tsv"), url=["https://example.com/t.tsv"], kind="text", rows=[1], row_slice=[1, 5]
     ),  # pyright: ignore
     "regex-bad-pattern": lambda: Regex(pattern="(", replacement=" "),
     "regex-bad-replacement": lambda: Regex(pattern="ok", replacement="("),

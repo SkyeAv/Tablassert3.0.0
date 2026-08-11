@@ -83,14 +83,14 @@ def test_graph_rejects_qc_and_log_keys() -> None:
 
 def test_excel_source_valid() -> None:
     """valid minimal excel section."""
-    source: Excel = Excel(local=Path("./test.xlsx"), url="https://example.com/test.xlsx", kind="excel", sheet="Sheet1")  # pyright: ignore
+    source: Excel = Excel(local=Path("./test.xlsx"), url=["https://example.com/test.xlsx"], kind="excel", sheet="Sheet1")  # pyright: ignore
     assert source.kind == "excel"
     assert source.sheet == "Sheet1"
 
 
 def test_text_source_valid() -> None:
     """valid text source."""
-    source: Text = Text(local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", delimiter="\t")  # pyright: ignore
+    source: Text = Text(local=Path("./test.tsv"), url=["https://example.com/test.tsv"], kind="text", delimiter="\t")  # pyright: ignore
     assert source.kind == "text"
     assert source.delimiter == "\t"
 
@@ -364,7 +364,7 @@ def test_section_rejects_extra_fields() -> None:
     """section rejects extra fields."""
     with pytest.raises(ValidationError):
         Section(
-            source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+            source={"local": "./t.tsv", "url": ["https://example.com/t.tsv"], "kind": "text"},
             statement={"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},
             provenance={"repo": "PMC", "publication": "PMC000"},
             unknown_field="bad",  # pyright: ignore
@@ -374,15 +374,33 @@ def test_section_rejects_extra_fields() -> None:
 def test_section_with_row_slice() -> None:
     """section with row slice."""
     source: Text = Text(  # pyright: ignore
-        local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", row_slice=[2, "auto"]
+        local=Path("./test.tsv"), url=["https://example.com/test.tsv"], kind="text", row_slice=[2, "auto"]
     )
     assert source.row_slice == [2, "auto"]
 
 
 def test_section_with_rows() -> None:
     """section with rows."""
-    source: Text = Text(local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", rows=[1, 2, 5])  # pyright: ignore
+    source: Text = Text(local=Path("./test.tsv"), url=["https://example.com/test.tsv"], kind="text", rows=[1, 2, 5])  # pyright: ignore
     assert source.rows == [1, 2, 5]
+
+
+def test_source_url_accepts_multiple() -> None:
+    """a source records every URL in order (multiple URLs per section)."""
+    source: Text = Text(local=Path("./t.tsv"), url=["https://a.example.com/x", "https://b.example.com/y"], kind="text")  # pyright: ignore
+    assert [str(u).rstrip("/") for u in source.url] == ["https://a.example.com/x", "https://b.example.com/y"]
+
+
+def test_source_url_rejects_scalar() -> None:
+    """`url` is a list; a legacy scalar URL is rejected."""
+    with pytest.raises(ValidationError):
+        Text.model_validate({"local": "./t.tsv", "url": "https://example.com/x.tsv", "kind": "text"})  # pyright: ignore
+
+
+def test_source_url_rejects_empty() -> None:
+    """an empty `url` list is rejected (at least one URL is required)."""
+    with pytest.raises(ValidationError):
+        Text(local=Path("./t.tsv"), url=[], kind="text")  # pyright: ignore
 
 
 def test_section_rows_and_row_slice_accept_zero() -> None:
@@ -394,23 +412,23 @@ def test_section_rows_and_row_slice_accept_zero() -> None:
     ``rows``/``row_slice`` starting at the first row (index 0) must validate, while a
     genuinely negative index is still rejected.
     """
-    rows_source: Text = Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[0, 2, 5])  # pyright: ignore
+    rows_source: Text = Text(local=Path("./t.tsv"), url=["https://example.com/t.tsv"], kind="text", rows=[0, 2, 5])  # pyright: ignore
     assert rows_source.rows == [0, 2, 5]
 
-    slice_source: Text = Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", row_slice=[0, 50])  # pyright: ignore
+    slice_source: Text = Text(local=Path("./t.tsv"), url=["https://example.com/t.tsv"], kind="text", row_slice=[0, 50])  # pyright: ignore
     assert slice_source.row_slice == [0, 50]
 
     with pytest.raises(ValidationError):
-        Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[-1, 2])  # pyright: ignore
+        Text(local=Path("./t.tsv"), url=["https://example.com/t.tsv"], kind="text", rows=[-1, 2])  # pyright: ignore
 
     with pytest.raises(ValidationError):
-        Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", row_slice=[-1, 50])  # pyright: ignore
+        Text(local=Path("./t.tsv"), url=["https://example.com/t.tsv"], kind="text", row_slice=[-1, 50])  # pyright: ignore
 
 
 def test_section_with_reindex() -> None:
     """section with reindex."""
     source: Text = Text(  # pyright: ignore
-        local=Path("./test.tsv"), url="https://example.com/test.tsv", kind="text", reindex=[{"column": "A", "comparison": "ne", "comparator": ""}]
+        local=Path("./test.tsv"), url=["https://example.com/test.tsv"], kind="text", reindex=[{"column": "A", "comparison": "ne", "comparator": ""}]
     )
     assert len(source.reindex) == 1  # pyright: ignore
     assert source.reindex[0].column == "A"  # pyright: ignore
@@ -419,7 +437,7 @@ def test_section_with_reindex() -> None:
 def test_section_with_qualifiers() -> None:
     """section with qualifiers."""
     section: Section = Section(  # pyright: ignore
-        source={"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+        source={"local": "./t.tsv", "url": ["https://example.com/t.tsv"], "kind": "text"},
         statement={
             "subject": {"method": "value", "encoding": "A"},
             "object": {"method": "value", "encoding": "B"},
@@ -433,7 +451,7 @@ def test_section_with_qualifiers() -> None:
 def test_section_with_annotations() -> None:
     """section with annotations."""
     data: dict[str, Any] = {
-        "source": {"local": "./t.tsv", "url": "https://example.com/t.tsv", "kind": "text"},
+        "source": {"local": "./t.tsv", "url": ["https://example.com/t.tsv"], "kind": "text"},
         "statement": {"subject": {"method": "value", "encoding": "A"}, "object": {"method": "value", "encoding": "B"}},
         "provenance": {"repo": "PMC", "publication": "PMC000"},
         "annotations": [
@@ -471,7 +489,7 @@ def test_source_with_both_rows_and_row_slice_rejected() -> None:
     Catches an ambiguous row-selection config at config time instead of deep inside a multi-hour build.
     """
     with pytest.raises(ValidationError) as exc_info:
-        Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", rows=[1], row_slice=[1, 5])  # pyright: ignore
+        Text(local=Path("./t.tsv"), url=["https://example.com/t.tsv"], kind="text", rows=[1], row_slice=[1, 5])  # pyright: ignore
     assert "config-rows-and-row-slice-conflict" in str(exc_info.value)
 
 
@@ -560,7 +578,7 @@ def test_deprecated_key_in_registry_warns_but_still_validates(monkeypatch: pytes
     """
     monkeypatch.setitem(models.DEPRECATED_KEYS, "delimiter", "delimiter is deprecated; use 'sep' instead")
     with pytest.warns(UserWarning, match="sep"):
-        source: Text = Text(local=Path("./t.tsv"), url="https://example.com/t.tsv", kind="text", delimiter="\t")  # pyright: ignore
+        source: Text = Text(local=Path("./t.tsv"), url=["https://example.com/t.tsv"], kind="text", delimiter="\t")  # pyright: ignore
     assert source.delimiter == "\t"
 
 

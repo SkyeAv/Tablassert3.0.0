@@ -48,7 +48,7 @@ SECOND_FIXTURE_DIR: Path = Path(__file__).parent / "agent_fixtures" / "GENE_DISE
 # A genuinely valid minimal Section config (used wherever a schema-valid YAML string is needed).
 VALID_CFG: str = yaml.safe_dump(
     {
-        "source": {"kind": "text", "local": "./t.tsv", "url": "https://e.com/t.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": "./t.tsv", "url": ["https://e.com/t.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "value", "encoding": "BRCA1"},
             "predicate": "associated_with",
@@ -181,7 +181,7 @@ def test_debias_helpers_pure() -> None:
 def test_reflexion_improve_offline_schema_valid() -> None:
     """reflexion_improve returns a schema-valid config + non-empty reflections and never raises."""
     cfg = {
-        "source": {"kind": "text", "local": "./t.tsv", "url": "https://e.com/t.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": "./t.tsv", "url": ["https://e.com/t.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "correlated_with",
@@ -559,7 +559,7 @@ def test_judge_provenance_smarter() -> None:
     def cfg(provenance: dict[str, Any]) -> str:
         return yaml.safe_dump(
             {
-                "source": {"kind": "text", "local": "./t.tsv", "url": "https://e.com/t.tsv", "delimiter": "\t"},
+                "source": {"kind": "text", "local": "./t.tsv", "url": ["https://e.com/t.tsv"], "delimiter": "\t"},
                 "statement": {
                     "subject": {"method": "value", "encoding": "A"},
                     "predicate": "associated_with",

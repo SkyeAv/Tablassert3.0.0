@@ -68,7 +68,7 @@ def _write_table(tmp_path: Path, name: str, text: str) -> Path:
 def _section(local: Path, *, subject: str = "A", obj: str = "B") -> dict[str, Any]:
     """One section: column subject/object, its OWN source (local + url), associated_with."""
     return {
-        "source": {"kind": "text", "local": str(local), "url": f"https://example.com/{local.name}", "delimiter": "\t"},
+        "source": {"kind": "text", "local": str(local), "url": [f"https://example.com/{local.name}"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": subject},
             "predicate": "associated_with",

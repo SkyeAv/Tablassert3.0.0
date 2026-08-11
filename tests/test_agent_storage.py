@@ -189,7 +189,7 @@ def test_supervisor_downloads_to_stable_dir(tmp_path: Path, fullmap_db: Path, mo
 
     good_yaml: str = yaml.safe_dump(
         {
-            "source": {"kind": "text", "local": str(expected_outdir / "good.tsv"), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": str(expected_outdir / "good.tsv"), "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
             "statement": {
                 "subject": {"method": "column", "encoding": "A"},
                 "predicate": "associated_with",
@@ -247,7 +247,7 @@ def test_supervisor_writes_configs_to_configs_folder(tmp_path: Path, fullmap_db:
 
     good_yaml: str = yaml.safe_dump(
         {
-            "source": {"kind": "text", "local": str(download_dir / "good.tsv"), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": str(download_dir / "good.tsv"), "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
             "statement": {
                 "subject": {"method": "column", "encoding": "A"},
                 "predicate": "associated_with",
@@ -319,7 +319,7 @@ def test_supervisor_builds_to_stable_builds_dir(tmp_path: Path, fullmap_db: Path
 
     good_yaml: str = yaml.safe_dump(
         {
-            "source": {"kind": "text", "local": str(download_dir / "good.tsv"), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": str(download_dir / "good.tsv"), "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
             "statement": {
                 "subject": {"method": "column", "encoding": "A"},
                 "predicate": "associated_with",
@@ -386,7 +386,7 @@ def test_supervisor_best_config_pipeline_reuse(tmp_path: Path, fullmap_db: Path,
 
     good_yaml: str = yaml.safe_dump(
         {
-            "source": {"kind": "text", "local": str(stable_table), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": str(stable_table), "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
             "statement": {
                 "subject": {"method": "column", "encoding": "A"},
                 "predicate": "associated_with",

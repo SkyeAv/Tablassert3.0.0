@@ -58,7 +58,7 @@ def _valid_table_config() -> dict[str, Any]:
     """Minimal valid table config (value-encoded; validation never reads the source file)."""
     return {
         "template": {
-            "source": {"kind": "text", "local": "./test.tsv", "url": "https://example.com/test.tsv", "delimiter": "\t"},
+            "source": {"kind": "text", "local": "./test.tsv", "url": ["https://example.com/test.tsv"], "delimiter": "\t"},
             "statement": {"subject": {"method": "value", "encoding": "BRCA1"}, "object": {"method": "value", "encoding": "TP53"}},
             "provenance": {"repo": "PMC", "publication": "PMC0000000"},
         }

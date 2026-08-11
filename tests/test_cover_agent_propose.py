@@ -94,7 +94,7 @@ def _write_table(tmp_path: Path, name: str, text: str) -> Path:
 def _column_cfg(table: Path) -> dict[str, Any]:
     """A valid merged Section config: subject=column A, object=column B, PMC provenance."""
     return {
-        "source": {"kind": "text", "local": str(table), "url": "https://e.com/d.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": str(table), "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",
@@ -192,7 +192,7 @@ def test_propose_edit_fails_validation(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr("tablassert.agent.validate_section", lambda *args, **kwargs: False)
     config: dict[str, Any] = {
-        "source": {"kind": "text", "local": "./d.tsv", "url": "https://e.com/d.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": "./d.tsv", "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",

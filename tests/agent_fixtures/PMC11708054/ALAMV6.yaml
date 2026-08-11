@@ -7,7 +7,8 @@ template:
   source:
     kind: excel
     local: ./DATALAKE/ALAM.XLSX
-    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx
+    url:
+      - https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx
     row_slice:
       - 2
       - auto

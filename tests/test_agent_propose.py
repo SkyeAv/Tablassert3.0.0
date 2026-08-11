@@ -39,7 +39,7 @@ def _alamv6_section() -> dict[str, Any]:
         "source": {
             "kind": "excel",
             "local": "./DATALAKE/ALAM.XLSX",
-            "url": "https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx",
+            "url": ["https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx"],
             "row_slice": [2, "auto"],
             "sheet": "all correlations",
         },
@@ -179,7 +179,7 @@ def test_propose_tool() -> None:
 def _taxonomic_noise_section() -> dict[str, Any]:
     """A bare section whose subject has BOTH taxonomic and noise unresolved terms."""
     return {
-        "source": {"kind": "text", "local": "./d.tsv", "url": "https://e.com/d.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": "./d.tsv", "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",
