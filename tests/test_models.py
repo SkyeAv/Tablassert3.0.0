@@ -176,15 +176,15 @@ def test_encoding_list_rejects_scalar_string_ops() -> None:
     """method: list is a literal list and rejects every scalar string op at once."""
     with pytest.raises(ValidationError, match="incompatible with the scalar string ops"):
         Encoding(  # pyright: ignore
-            method="list",
+            method="list",  # pyright: ignore
             encoding=["a"],
-            regex=[{"pattern": "x", "replacement": "y"}],
-            fill="zero",
+            regex=[{"pattern": "x", "replacement": "y"}],  # pyright: ignore
+            fill="zero",  # pyright: ignore
             explode_by="|",
             remove=["z"],
             prefix="p",
             suffix="s",
-            transformations=[{"function": "pow", "arguments": ["values", 2]}],
+            transformations=[{"function": "pow", "arguments": ["values", 2]}],  # pyright: ignore
         )
 
 
