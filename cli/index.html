@@ -1525,6 +1525,13 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <td>Semantic judge normalized-score threshold for MAPPED (<code>0.5</code> when unset)</td>
 </tr>
 <tr>
+<td><code>--biolink-threshold</code></td>
+<td>float</td>
+<td>No</td>
+<td><code>0.0</code></td>
+<td>Minimum Biolink pass rate of the built KGX for MAPPED; <code>0.0</code> reports the rate without gating</td>
+</tr>
+<tr>
 <td><code>--local</code>, <code>-l</code></td>
 <td>list[str]</td>
 <td>No</td>
@@ -1853,7 +1860,16 @@ rather than a million:</p>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>edges: 2000085/2000085 valid (0 failures)
 <a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>KGX output is Biolink-compliant.
 </code></pre></div>
-<p>Exits non-zero when any record fails, so it can gate a release in CI.</p>
+<p>Exits non-zero when any record fails, so it can gate a release in CI. A missing or misspelled path is
+reported as <code>file not found</code> and also exits non-zero — a file that was never read must never count as
+a pass.</p>
+<p>Edges carrying <code>effect_size</code> / <code>effect_type</code> are reported invalid until a <code>biolink-model</code> release
+ships <a href="https://github.com/biolink/biolink-model/pull/1774">#1774</a>, because 4.4.3 declares neither on
+<code>Association</code>. Those are counted separately as <em>pending</em> rather than treated as defects:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
+</code></pre></div>
+<p>The strict count is what <code>ok</code> and the exit code use; the pending count is what
+<a href="#agent"><code>tablassert agent</code></a> optimizes against, so a deliberate gap never reads as a modelling error.</p>
 <hr />
 <h2 id="typical-workflow">Typical workflow<a class="headerlink" href="#typical-workflow" title="Permanent link">&para;</a></h2>
 <ol>

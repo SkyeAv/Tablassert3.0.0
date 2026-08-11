@@ -790,6 +790,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#biolink-validity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Biolink validity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#multi-section-configs-one-per-paper" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1414,6 +1425,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#biolink-validity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Biolink validity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#multi-section-configs-one-per-paper" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1576,7 +1598,9 @@
 The optional <code>[agent]</code> extra makes it autonomous — point it at <strong>PubMed Central (PMC)</strong> article IDs and it
 <strong>derives the config for you</strong>, then builds, audits, and iteratively improves the graph until the entity
 resolution <em>maps</em> (coverage threshold). The outcome is an <strong>NCATS Translator-compliant KGX knowledge
-graph</strong> per article, with the whole loop scored on <strong>quality / cost / wrong tool calls</strong>.</p>
+graph</strong> per article — a claim the loop verifies rather than asserts, by constructing every emitted
+record as its own Biolink class (see <a href="#biolink-validity">Biolink validity</a>) — with the whole loop
+scored on <strong>quality / cost / wrong tool calls</strong>.</p>
 <p>Under the hood it is built on <a href="https://github.com/huggingface/smolagents">smolagents</a> <code>CodeAgent</code> (a
 ReAct loop) and <a href="https://dspy.ai">DSPy</a> GEPA for prompt optimization.</p>
 <div class="admonition warning">
@@ -1760,7 +1784,7 @@ non-zero <strong>before</strong> any model call.</p>
 </code></pre></div>
 <p>Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>, <code>--max-improve-iters</code>/<code>-mi</code>,
 <code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
-<code>--judge-model</code>, <code>--judge-threshold</code>, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
+<code>--judge-model</code>, <code>--judge-threshold</code>, <code>--biolink-threshold</code>, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
 (<code>--instructions-file</code>, <code>--instructions-out</code>, <code>--max-metric-calls</code>, <code>--dataset</code>).
 The <a href="../cli/#agent">CLI reference — <code>agent</code></a> is the authoritative flag table; the list here is a compact
 reminder.</p>
@@ -1773,9 +1797,11 @@ control flow over agentic decisions. For each PMC id it:</p>
 <li>Runs the <strong>inner <code>CodeAgent</code></strong> to <em>derive</em> an initial table config (<code>pmc_article_context</code> → <code>read_table</code>
    → <code>derive_config</code>, every section gated by the Section JSON schema). The agent maps <strong>each</strong> mappable
    table/worksheet as its own section — <strong>one config per paper</strong> (see below).</li>
-<li><strong>Builds + audits</strong> in one deterministic mega-tool (<code>build_and_audit</code>: validate → build → QC → coverage).</li>
+<li><strong>Builds + audits</strong> in one deterministic mega-tool (<code>build_and_audit</code>: validate → build → QC → coverage
+   → <strong>Biolink validity</strong>).</li>
 <li><strong>Improves</strong> while coverage <code>&lt; map_threshold</code> and budget remains: <code>propose_config_edit</code> → rebuild →
-   <strong>accept iff strictly better</strong> (monotonic — regressions are rejected).</li>
+   <strong>accept iff no worse on coverage <em>or</em> Biolink validity and strictly better on one</strong> (monotonic —
+   regressions on either axis are rejected, so a coverage win can no longer be bought with invalid KGX).</li>
 <li><strong>Records</strong> metrics, <strong>checkpoints</strong>, and moves to the next config.</li>
 </ol>
 <p>A config that won't map after <code>--max-improve-iters</code> is marked <code>SKIPPED: &lt;reason&gt;</code> and the supervisor
@@ -1795,6 +1821,76 @@ endpoint; neither is required):</p>
 <li><strong><code>--judge-model</code> / <code>--judge-threshold</code></strong> — a semantic judge scores the built output; when
   <code>--judge-model</code> is set, <code>MAPPED</code> additionally requires the normalized score to clear
   <code>--judge-threshold</code> (<code>0.5</code> when unset). Without <code>--judge-model</code> the coverage gate alone decides.</li>
+<li><strong><code>--biolink-threshold</code></strong> — <code>MAPPED</code> additionally requires the built KGX's Biolink pass rate to
+  clear it. Defaults to <code>0.0</code> (report only): the rate is always measured and recorded, and raising
+  the threshold turns that measurement into a terminal gate. See
+  <a href="#biolink-validity">Biolink validity</a> below.</li>
+</ul>
+<h3 id="biolink-validity">Biolink validity<a class="headerlink" href="#biolink-validity" title="Permanent link">&para;</a></h3>
+<p>Coverage answers <em>did the terms resolve?</em> It says nothing about whether the resulting records are
+consumable. The agent therefore validates <strong>its own output</strong>: after each build, <code>build_and_audit</code>
+constructs every emitted node and edge as the Biolink Pydantic class named by its own <code>category</code> —
+the same check <a href="../cli/#validate-kgx"><code>tablassert validate-kgx</code></a> runs, and the same classes
+<code>translator-ingests</code> builds. Four fields land in the audit report:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>biolink_valid_pct</code></td>
+<td>Pass rate excluding known-pending fields. <strong>This is the scored number.</strong></td>
+</tr>
+<tr>
+<td><code>biolink_valid_pct_strict</code></td>
+<td>Pass rate with no exemptions, so the pending gap stays visible</td>
+</tr>
+<tr>
+<td><code>biolink_problems</code></td>
+<td>Top <code>"field: error-type"</code> failures with counts, for self-correction</td>
+</tr>
+<tr>
+<td><code>demoted_edge_pct</code></td>
+<td>Fraction of edges that fell back to bare <code>biolink:Association</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>demoted_edge_pct</code> is the predicate signal.</strong> Tablassert derives an edge's association class from
+the (subject category, object category) pair, then <code>resolve_association_class</code> gives up as much of
+that class as the predicate requires. A predicate the class forbids is <strong>never an error</strong> — it
+silently demotes the edge and discards every qualifier and evidence slot that class declared. So
+<code>gene_associated_with_condition</code> on a gene~disease table builds cleanly, maps perfectly, and produces
+<code>biolink:Association</code> edges. Nothing but this number tells you.</p>
+<p>The prompt now carries a <strong>generated legal-predicate table</strong> for the category pairs the agent meets in
+practice, rendered at import from the installed <code>biolink-model</code> (via <code>lib.predicate_options</code>) so it
+cannot drift from the model the build validates against:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>- Gene ~ Disease -&gt; GeneToDiseaseAssociation: affects, associated_with, contributes_to
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>- SequenceVariant ~ Gene -&gt; VariantToGeneAssociation: condition_associated_with_gene, …
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>- any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>effect_size</code> / <code>effect_type</code> are exempt</p>
+<p>Tablassert emits both deliberately, pending
+<a href="https://github.com/biolink/biolink-model/pull/1774">biolink-model#1774</a> — 4.4.3 declares neither
+on <code>Association</code>, so a strict check rejects every edge carrying them. <code>biolink_valid_pct</code> exempts
+them (and the other curated KGX carryovers) so the agent is scored on <strong>its own</strong> decisions.
+The exempt set is <em>derived</em> — <code>TABLASERT_EDGE_EXTRAS - &lt;fields any association declares&gt;</code> — so it
+empties itself when the model catches up, with no code change.</p>
+</div>
+<p>Two related silent behaviours the agent's prompt now names, since neither raises:</p>
+<ul>
+<li>An annotation like <code>supporting_study_size</code> or <code>sample_size</code> is declared in the LinkML schema but
+  attached to <strong>no</strong> Pydantic class, so its value is routed onto the inlined <code>StudyResult</code> rather than
+  emitted on the edge. Names that are not association slots at all (<code>q_value</code>, <code>fold_change</code>, …) are
+  folded into <code>supporting_text</code>. Authoring either now emits a <code>BiolinkRelocationWarning</code> naming where
+  the value actually went — a warning, not an error: nothing is lost, and every existing config
+  keeps building.</li>
+<li>Enum-ranged qualifiers take a literal token (<code>object_direction_qualifier: increased</code>), never a
+  CURIE, and are deliberately <strong>not</strong> entity-resolved. <code>map_coverage</code> skips them for the same reason
+  the build does, so they no longer depress a config's coverage score for working correctly.</li>
 </ul>
 <h3 id="multi-section-configs-one-per-paper">Multi-section configs (one per paper)<a class="headerlink" href="#multi-section-configs-one-per-paper" title="Permanent link">&para;</a></h3>
 <p>The agent authors <strong>one table config per paper</strong> that may contain <strong>multiple sections</strong> — one per
@@ -1818,14 +1914,14 @@ all sections, with <code>section_coverages</code> recorded for visibility.</p>
 <p><code>tablassert agent</code> uses a <strong>single stable workspace root</strong> — <code>state_dir</code> (default <code>.tablassert/agent</code>,
 override with <code>--state-dir</code>). The CLI never sets a separate artifact root, so the checkpoint, the configs,
 the fetched downloads, and the build outputs <strong>all co-locate</strong> under it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>.tablassert/agent/                       # = state_dir (the workspace root)
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  state.json                             # supervisor checkpoint (atomic; unchanged location)
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  graph.yaml                             # SHARED aggregate graph registry (flock-serialized, atomic)
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  graph.yaml.lock                        # sidecar lock file for graph.yaml (exclusive flock)
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  configs/&lt;pmc_id&gt;.yaml                  # best / accepted config (ALL configs in ONE folder)
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial agent-derived config
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  builds/&lt;pmc_id&gt;/                       # KGX agent_0.0.1.{nodes,edges}.ndjson + table.yaml + graph.yaml + .tablassert/store — stable
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>.tablassert/agent/                       # = state_dir (the workspace root)
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  state.json                             # supervisor checkpoint (atomic; unchanged location)
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  graph.yaml                             # SHARED aggregate graph registry (flock-serialized, atomic)
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  graph.yaml.lock                        # sidecar lock file for graph.yaml (exclusive flock)
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  configs/&lt;pmc_id&gt;.yaml                  # best / accepted config (ALL configs in ONE folder)
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial agent-derived config
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  builds/&lt;pmc_id&gt;/                       # KGX agent_0.0.1.{nodes,edges}.ndjson + table.yaml + graph.yaml + .tablassert/store — stable
 </code></pre></div>
 <table>
 <thead>
@@ -1838,7 +1934,7 @@ the fetched downloads, and the build outputs <strong>all co-locate</strong> unde
 <tbody>
 <tr>
 <td><code>state.json</code></td>
-<td>supervisor checkpoint: <code>{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path}</code> per record</td>
+<td>supervisor checkpoint: <code>{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path, biolink_valid_pct, demoted_edge_pct}</code> per record</td>
 <td>written <strong>atomically</strong> (tmp write + <code>os.replace</code>) after each config and each improve iteration; git-ignored</td>
 </tr>
 <tr>
@@ -1879,8 +1975,8 @@ skipped. The <code>downloads/</code> payload persists on disk across runs.</p>
 <p>The best config's <code>source.local</code> points at the downloaded table under <code>downloads/&lt;pmc_id&gt;/</code>, so the full
 (non-agent) pipeline can reuse the agent's output <strong>without re-fetching</strong>. The agent already writes a
 ready-to-build <code>graph.yaml</code> (wrapping <code>table.yaml</code> with the resolved fullmap) into <code>builds/&lt;pmc_id&gt;/</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>.tablassert/agent/builds/PMC11708054
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>graph.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">cd</span><span class="w"> </span>.tablassert/agent/builds/PMC11708054
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>graph.yaml
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Not relocatable</p>
@@ -1892,13 +1988,13 @@ therefore <strong>not relocatable</strong> — moving or renaming the <code>.tab
 <p>Several <code>tablassert agent</code> processes can run CONCURRENTLY against the SAME shared <code>--state-dir</code> and
 each successful build self-registers into ONE aggregate graph config that a single <code>build-kg</code> then
 builds as a whole:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># fan out over DISJOINT pmc sets, all pointed at one shared state dir</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC1<span class="w"> </span>PMC2<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--state-dir<span class="w"> </span>./shared<span class="w"> </span><span class="p">&amp;</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC3<span class="w"> </span>PMC4<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--state-dir<span class="w"> </span>./shared<span class="w"> </span><span class="p">&amp;</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nb">wait</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># one build of the whole registered graph</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./shared/graph.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># fan out over DISJOINT pmc sets, all pointed at one shared state dir</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC1<span class="w"> </span>PMC2<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--state-dir<span class="w"> </span>./shared<span class="w"> </span><span class="p">&amp;</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC3<span class="w"> </span>PMC4<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--state-dir<span class="w"> </span>./shared<span class="w"> </span><span class="p">&amp;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nb">wait</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># one build of the whole registered graph</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./shared/graph.yaml
 </code></pre></div>
 <p>Use <strong>disjoint pmc sets</strong>: each process owns its own ids. The shared registry itself is fully
 cross-process safe, but the per-process checkpoint (<code>state.json</code>) read-modify cycle is not
@@ -1957,7 +2053,7 @@ successful builds) UPSERTS its best config into <code>&lt;state-dir&gt;/graph.ya
 <tr>
 <td><code>build_and_audit</code></td>
 <td>tool</td>
-<td><strong>one</strong> deterministic validate→build→QC→coverage mega-tool</td>
+<td><strong>one</strong> deterministic validate→build→QC→coverage→<strong>Biolink-validity</strong> mega-tool</td>
 </tr>
 <tr>
 <td><code>map_coverage</code></td>
@@ -1972,7 +2068,9 @@ successful builds) UPSERTS its best config into <code>&lt;state-dir&gt;/graph.ya
 </tbody>
 </table>
 <p><code>build_and_audit</code> returns coded errors <strong>verbatim</strong> (each carries a docs URL) so the agent can
-self-correct the exact offending field.</p>
+self-correct the exact offending field. <code>derive_config</code> does the same: a candidate config that fails
+the Section schema comes back as its coded error instead of being forwarded, because the final-answer
+gate can only answer true/false and would otherwise swallow the reason.</p>
 <h2 id="prompt-engineering">Prompt engineering<a class="headerlink" href="#prompt-engineering" title="Permanent link">&para;</a></h2>
 <p>The agent's <code>instructions</code> make the techniques explicit:</p>
 <ul>
@@ -2002,14 +2100,15 @@ self-correct the exact offending field.</p>
 <p>The harness scores every run on three objectives and optimizes them as a black box.</p>
 <p><strong>Deterministic metrics (gate the loop):</strong></p>
 <ul>
-<li><strong>Quality</strong> — fullmap mapping coverage, QC audit pass rate, config validity (hard gate), and KG
-  node/edge <strong>F1</strong> vs the reference graph.</li>
+<li><strong>Quality</strong> — fullmap mapping coverage (0.40), <strong>Biolink pass rate</strong> (0.25), KG node/edge <strong>F1</strong> vs
+  the reference graph (0.15), QC audit pass rate (0.10), and config schema validity (0.10, and a hard
+  gate: an invalid config scores 0).</li>
 <li><strong>Cost</strong> — <code>RunResult.token_usage</code> + step count (the API is free; tokens are the proxy).</li>
 <li><strong>Reliability</strong> — failed / wrong / redundant tool-call counts from the <code>ActionStep</code> logs.</li>
 </ul>
 <p><strong>LLM-as-judge (semantic dimensions only):</strong> a pointwise <strong>0–3</strong> rubric over schema validity, coverage,
-QC pass, predicate/category appropriateness, provenance completeness, efficiency, and tool-call
-cleanliness — with <strong>position</strong> (both orderings averaged) and <strong>verbosity</strong> bias mitigation. Deterministic
+<strong>Biolink validity</strong>, QC pass, predicate/category appropriateness, provenance completeness, efficiency,
+and tool-call cleanliness — with <strong>position</strong> (both orderings averaged) and <strong>verbosity</strong> bias mitigation. Deterministic
 metrics gate the rest; the judge only scores what a metric cannot. Without a judge model, an offline
 deterministic heuristic is used.</p>
 <p><strong>Optimizers:</strong></p>
@@ -2018,7 +2117,7 @@ deterministic heuristic is used.</p>
 <li><strong>GEPA</strong> — <code>dspy.GEPA(metric=gepa_metric, candidate_selection_strategy="pareto", …)</code> optimizes the
   agent's <code>instructions</code> + tool <code>description</code>s + exemplars as a <strong>black box</strong> from textual feedback
   (<code>gepa_metric</code> returns <code>dspy.Prediction(score=weighted_quality, feedback="&lt;failing rows + error codes +
-  wrong-call list&gt;")</code>). It is system-agnostic, Pareto-native, and needs few rollouts.</li>
+  Biolink problems + demoted-edge fraction + wrong-call list&gt;")</code>). It is system-agnostic, Pareto-native, and needs few rollouts.</li>
 </ul>
 <p><strong>Reporting:</strong> <code>pareto_frontier(runs)</code> returns the <strong>non-dominated set</strong> over (quality ↑, cost ↓,
 wrong-calls ↓) and its <strong>knee</strong> (best quality per unit cost).</p>
@@ -2032,15 +2131,15 @@ run fast while the strong model does the thinking; without <code>--task-model</c
 both. <code>--gepa-threads</code> parallelizes GEPA's candidate <strong>LM forward passes</strong> only — the coverage-scoring
 builds stay serialized on the process-wide <code>_GEPA_BUILD_LOCK</code> (<code>agent.py</code>, since <code>os.chdir</code> is
 process-global), so a higher thread count does not speed up the expensive build/coverage step.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
 </code></pre></div>
 <p><code>--dataset</code> is a YAML/JSON list of examples. Each example carries <code>table_summary</code> and
 <code>coverage_feedback</code> (the program inputs); it MAY also carry:</p>
@@ -2066,9 +2165,9 @@ W3 multi-section validation honest on a distinct config.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>The agent suite is <strong>fully offline</strong> — no live LLM or network. It uses a <code>FakeModel</code> smolagents stub,
 mocked/snapshotted PMC data, a tiny real redb (<code>rs.build_fullmap_db</code>), and injectable GEPA stubs.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
 </code></pre></div>
 <p>Without the extra, the base suite stays green and every agent test skips via <code>pytest.importorskip</code>.</p>
 <div class="admonition tip">
