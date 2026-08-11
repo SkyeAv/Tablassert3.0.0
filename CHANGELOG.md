@@ -13,8 +13,11 @@ All notable changes to this project are documented in this file.
       - https://example.com/data.tsv
   ```
 
+- **`Annotation.delimiter` is removed; use `method: list` instead.** Multivalued annotations no longer split an encoded scalar on a separator — declare the list directly with the new `method: list` (see Added). Update `annotations: [{annotation: has_evidence, method: value, encoding: "a|b", delimiter: "|"}]` to `annotations: [{annotation: has_evidence, method: list, encoding: ["a", "b"]}]`. The `source.delimiter` CSV/TSV separator is unrelated and unchanged.
+
 ### Added
 - **`tablassert build-fullmap --aria2c` / `-a`** opt-in downloader acceleration. When requested, the BABEL download stage uses the installed `aria2c` executable with segmented HTTP downloads plus resume/retry flags (`--continue=true`, `--max-tries`, `--retry-wait`) while keeping the existing Python downloader as the default. Missing or failing `aria2c` fails loud instead of silently falling back, and aria2 `.aria2` control files are preserved so interrupted downloads can resume on rerun.
+- **`method: list` annotation encoding.** A new encoding method — the multivalued counterpart of `method: value` — lets an annotation carry a manually-defined list of values, emitted verbatim as a real JSON array for multivalued Biolink slots such as `has_evidence`. It replaces the removed `Annotation.delimiter` (which split an encoded scalar). `method: list` is annotation-only: subject/object/qualifier nodes are single entities and reject it at config time, and it is incompatible with the scalar string ops (`regex`/`remove`/`prefix`/`suffix`/`transformations`/`fill`/`explode_by`).
 
 ## 8.2.0 - 2026-08-10
 
