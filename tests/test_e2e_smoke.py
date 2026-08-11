@@ -133,3 +133,52 @@ def test_validate_command_happy_path(tmp_path: Path) -> None:
     assert validate_pipeline(config, PipelineProgress(total_stages=3)) is None
     # The cyclopts command wrapper (cli.py validate -> run(3, validate_pipeline, ...)).
     assert validate(config, schema="table") is None
+
+
+def test_build_pipeline_emits_list_annotation_as_json_array(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ``method: list`` annotation emits a real JSON array on the edge (replaces ``delimiter``).
+
+    ``method: list`` is the multivalued counterpart of ``method: value``: the literal list
+    in ``encoding`` is emitted verbatim as a multivalued Biolink slot (``has_evidence``),
+    so consumers iterate values instead of walking a joined string's characters.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
+
+    fullmap: Path = _build_real_redb(tmp_path / "fullmap")
+
+    data: Path = tmp_path / "data.tsv"
+    data.write_text("brca1\tmapk1\n")
+
+    table: Path = tmp_path / "table.yaml"
+    table_config: dict[str, Any] = {
+        "template": {
+            "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "predicate": "associated_with",
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+            "annotations": [{"annotation": "has_evidence", "method": "list", "encoding": ["EFO:0001", "EFO:0002"]}],
+        }
+    }
+    to_yaml(table, table_config)
+
+    graph: Path = tmp_path / "graph.yaml"
+    graph_config: dict[str, Any] = {
+        "name": "LIST_KG",
+        "version": "1.0.0",
+        "description": "list annotation smoke graph",
+        "tables": [str(table)],
+        "fullmap": str(fullmap),
+    }
+    to_yaml(graph, graph_config)
+
+    build_pipeline(graph, PipelineProgress(total_stages=6))
+
+    edges: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "LIST_KG_1.0.0.edges.ndjson").read_text().splitlines() if line.strip()]
+    assert len(edges) == 1
+    # method: list emits a real JSON array on the multivalued slot, not a joined scalar.
+    assert isinstance(edges[0]["has_evidence"], list)
+    assert edges[0]["has_evidence"] == ["EFO:0001", "EFO:0002"]
