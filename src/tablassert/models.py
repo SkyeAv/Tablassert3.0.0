@@ -89,7 +89,7 @@ class BaseSource(TablaBase):
     url: list[HttpUrl] = Field(
         ...,
         min_length=1,
-        description="One or more remote source URL(s) recorded as provenance; emitted as the edge `source_record_urls` list and in the RIG. Format-validated only; not fetched.",
+        description="One or more remote source URL(s) recorded as provenance; emitted in the edge `sources` list under the primary entry's `source_record_urls` list and in the RIG. Format-validated only; not fetched.",
     )
 
     rows: list[NonNegativeInt] | None = Field(None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]])

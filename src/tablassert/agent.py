@@ -1977,7 +1977,7 @@ Three compact, schema-valid exemplars (study their shape; adapt encodings to YOU
 table, each section its own source (different file + url):
 
 # (a) tutorial-table — a text/TSV gene~disease association table
-source: {kind: text, local: ./tutorial.tsv, delimiter: "\\t"}
+source: {kind: text, local: ./tutorial.tsv, url: ["https://example.com/tutorial.tsv"], delimiter: "\\t"}
 statement:
   subject: {method: column, encoding: A, prioritize: [Gene]}
   predicate: associated_with
@@ -1990,7 +1990,7 @@ annotations:
   - {annotation: effect_type, method: value, encoding: odds_ratio}
 
 # (b) ALAMV6 — an excel organism~chemical correlation table (fixed chemical object)
-source: {kind: excel, local: ./ALAM.XLSX, sheet: "all correlations", row_slice: [2, auto]}
+source: {kind: excel, local: ./ALAM.XLSX, url: ["https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx"], sheet: "all correlations", row_slice: [2, auto]}
 statement:
   subject:
     method: column
@@ -2608,9 +2608,11 @@ def run_supervisor(
             tables: list[Path] = [path.resolve() for path in candidate_tables(files)]
             table_list: str
             if local_dir is not None:
-                # Local payload: no fabricated S3 link; the agent sets source.url to the original link if known.
+                # Local payload: no fabricated S3 link; source.url is required, so the agent supplies the
+                # table's original public source URL (a list) rather than inventing one.
                 table_list = "\n".join(
-                    f"  - {path}  (local payload; set source.url (as a list) to the original download link if known)" for path in tables
+                    f"  - {path}  (local payload; source.url is REQUIRED — supply the table's original public source URL as a list; do not fabricate one)"
+                    for path in tables
                 )
             else:
                 # Present each candidate table as `local -> url` (W3): the agent authors one section per table,
