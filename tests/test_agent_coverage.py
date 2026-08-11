@@ -242,3 +242,28 @@ def test_coverage_multi_cwd_resolves_relative_source(tmp_path: Path, redb: Path)
     result: dict[str, Any] = map_coverage(cfg, fullmap=redb, workdir=elsewhere)
     assert result["measured"] is True
     assert result["overall"] == 1.0
+
+
+def test_enum_ranged_qualifier_does_not_depress_coverage(tmp_path: Path, redb: Path) -> None:
+    """An enum-ranged qualifier is invisible to coverage, because the build never resolves it.
+
+    ``lib.Tcode._node_ops`` deliberately skips enum-ranged qualifiers: the vocabulary wants the token
+    ``increased``, and sending it through the fullmap would turn it into a CURIE. ``map_coverage``
+    used to resolve them anyway, counting terms the build never looks up and dragging ``overall``
+    down for a column working exactly as designed -- enough to flip a good config to SKIPPED.
+    """
+    data: Path = _write_table(tmp_path, "brca1\tmapk1\tincreased\n")
+    plain: dict[str, Any] = _section_config(data)
+    qualified: dict[str, Any] = _section_config(data)
+    qualified["statement"]["qualifiers"] = [{"qualifier": "object_direction_qualifier", "method": "column", "encoding": "C"}]
+
+    baseline = map_coverage(plain, fullmap=redb, workdir=tmp_path)
+    with_qualifier = map_coverage(qualified, fullmap=redb, workdir=tmp_path)
+
+    assert baseline["measured"] is True
+    assert with_qualifier["measured"] is True
+    assert with_qualifier["overall"] == baseline["overall"] == 1.0
+    # It is not measured at all, rather than measured as a perfect score.
+    per_column = with_qualifier["per_column"]
+    assert isinstance(per_column, dict)
+    assert "object_direction_qualifier" not in per_column

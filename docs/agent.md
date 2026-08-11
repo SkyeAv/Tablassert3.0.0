@@ -4,7 +4,9 @@
 The optional `[agent]` extra makes it autonomous — point it at **PubMed Central (PMC)** article IDs and it
 **derives the config for you**, then builds, audits, and iteratively improves the graph until the entity
 resolution *maps* (coverage threshold). The outcome is an **NCATS Translator-compliant KGX knowledge
-graph** per article, with the whole loop scored on **quality / cost / wrong tool calls**.
+graph** per article — a claim the loop verifies rather than asserts, by constructing every emitted
+record as its own Biolink class (see [Biolink validity](#biolink-validity)) — with the whole loop
+scored on **quality / cost / wrong tool calls**.
 
 Under the hood it is built on [smolagents](https://github.com/huggingface/smolagents) `CodeAgent` (a
 ReAct loop) and [DSPy](https://dspy.ai) GEPA for prompt optimization.
@@ -134,7 +136,7 @@ tablassert agent PMC11708054 PMC12345678 \
 
 Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`, `--max-improve-iters`/`-mi`,
 `--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`, plus `--local`/`-l`, `--reflexion`,
-`--judge-model`, `--judge-threshold`, and the `--optimize`/`-o` prompt-optimization flags
+`--judge-model`, `--judge-threshold`, `--biolink-threshold`, and the `--optimize`/`-o` prompt-optimization flags
 (`--instructions-file`, `--instructions-out`, `--max-metric-calls`, `--dataset`).
 The [CLI reference — `agent`](cli.md#agent) is the authoritative flag table; the list here is a compact
 reminder.
@@ -149,9 +151,11 @@ control flow over agentic decisions. For each PMC id it:
 2. Runs the **inner `CodeAgent`** to *derive* an initial table config (`pmc_article_context` → `read_table`
    → `derive_config`, every section gated by the Section JSON schema). The agent maps **each** mappable
    table/worksheet as its own section — **one config per paper** (see below).
-3. **Builds + audits** in one deterministic mega-tool (`build_and_audit`: validate → build → QC → coverage).
+3. **Builds + audits** in one deterministic mega-tool (`build_and_audit`: validate → build → QC → coverage
+   → **Biolink validity**).
 4. **Improves** while coverage `< map_threshold` and budget remains: `propose_config_edit` → rebuild →
-   **accept iff strictly better** (monotonic — regressions are rejected).
+   **accept iff no worse on coverage *or* Biolink validity and strictly better on one** (monotonic —
+   regressions on either axis are rejected, so a coverage win can no longer be bought with invalid KGX).
 5. **Records** metrics, **checkpoints**, and moves to the next config.
 
 A config that won't map after `--max-improve-iters` is marked `SKIPPED: <reason>` and the supervisor
@@ -173,6 +177,62 @@ endpoint; neither is required):
 - **`--judge-model` / `--judge-threshold`** — a semantic judge scores the built output; when
   `--judge-model` is set, `MAPPED` additionally requires the normalized score to clear
   `--judge-threshold` (`0.5` when unset). Without `--judge-model` the coverage gate alone decides.
+- **`--biolink-threshold`** — `MAPPED` additionally requires the built KGX's Biolink pass rate to
+  clear it. Defaults to `0.0` (report only): the rate is always measured and recorded, and raising
+  the threshold turns that measurement into a terminal gate. See
+  [Biolink validity](#biolink-validity) below.
+
+### Biolink validity
+
+Coverage answers *did the terms resolve?* It says nothing about whether the resulting records are
+consumable. The agent therefore validates **its own output**: after each build, `build_and_audit`
+constructs every emitted node and edge as the Biolink Pydantic class named by its own `category` —
+the same check [`tablassert validate-kgx`](cli.md#validate-kgx) runs, and the same classes
+`translator-ingests` builds. Four fields land in the audit report:
+
+| Field | Meaning |
+| --- | --- |
+| `biolink_valid_pct` | Pass rate excluding known-pending fields. **This is the scored number.** |
+| `biolink_valid_pct_strict` | Pass rate with no exemptions, so the pending gap stays visible |
+| `biolink_problems` | Top `"field: error-type"` failures with counts, for self-correction |
+| `demoted_edge_pct` | Fraction of edges that fell back to bare `biolink:Association` |
+
+**`demoted_edge_pct` is the predicate signal.** Tablassert derives an edge's association class from
+the (subject category, object category) pair, then `resolve_association_class` gives up as much of
+that class as the predicate requires. A predicate the class forbids is **never an error** — it
+silently demotes the edge and discards every qualifier and evidence slot that class declared. So
+`gene_associated_with_condition` on a gene~disease table builds cleanly, maps perfectly, and produces
+`biolink:Association` edges. Nothing but this number tells you.
+
+The prompt now carries a **generated legal-predicate table** for the category pairs the agent meets in
+practice, rendered at import from the installed `biolink-model` (via `lib.predicate_options`) so it
+cannot drift from the model the build validates against:
+
+```text
+- Gene ~ Disease -> GeneToDiseaseAssociation: affects, associated_with, contributes_to
+- SequenceVariant ~ Gene -> VariantToGeneAssociation: condition_associated_with_gene, …
+- any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
+```
+
+!!! note "`effect_size` / `effect_type` are exempt"
+    Tablassert emits both deliberately, pending
+    [biolink-model#1774](https://github.com/biolink/biolink-model/pull/1774) — 4.4.3 declares neither
+    on `Association`, so a strict check rejects every edge carrying them. `biolink_valid_pct` exempts
+    them (and the other curated KGX carryovers) so the agent is scored on **its own** decisions.
+    The exempt set is *derived* — `TABLASERT_EDGE_EXTRAS - <fields any association declares>` — so it
+    empties itself when the model catches up, with no code change.
+
+Two related silent behaviours the agent's prompt now names, since neither raises:
+
+- An annotation like `supporting_study_size` or `sample_size` is declared in the LinkML schema but
+  attached to **no** Pydantic class, so its value is routed onto the inlined `StudyResult` rather than
+  emitted on the edge. Names that are not association slots at all (`q_value`, `fold_change`, …) are
+  folded into `supporting_text`. Authoring either now emits a `BiolinkRelocationWarning` naming where
+  the value actually went — a warning, not an error: nothing is lost, and every existing config
+  keeps building.
+- Enum-ranged qualifiers take a literal token (`object_direction_qualifier: increased`), never a
+  CURIE, and are deliberately **not** entity-resolved. `map_coverage` skips them for the same reason
+  the build does, so they no longer depress a config's coverage score for working correctly.
 
 ### Multi-section configs (one per paper)
 
@@ -213,7 +273,7 @@ the fetched downloads, and the build outputs **all co-locate** under it:
 
 | Path | Contents | Lifecycle |
 | --- | --- | --- |
-| `state.json` | supervisor checkpoint: `{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path}` per record | written **atomically** (tmp write + `os.replace`) after each config and each improve iteration; git-ignored |
+| `state.json` | supervisor checkpoint: `{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path, biolink_valid_pct, demoted_edge_pct}` per record | written **atomically** (tmp write + `os.replace`) after each config and each improve iteration; git-ignored |
 | `graph.yaml` | SHARED aggregate graph registry: one `tables` entry per successful (`MAPPED` / `BUILT_UNMEASURED`) build | maintained under an exclusive `graph.yaml.lock` flock; atomic writes; see [Parallel agents and the shared graph registry](#parallel-agents-and-the-shared-graph-registry) |
 | `graph.yaml.lock` | sidecar lock file serializing registry read-modify-write | created on first registration; never deleted |
 | `configs/<pmc_id>.yaml` | the best / accepted config for the article | the reuse entry point (below) |
@@ -289,12 +349,14 @@ successful builds) UPSERTS its best config into `<state-dir>/graph.yaml`:
 | `pmc_article_context` | tool | parse the JATS main text into a **data-fenced** summary (title/abstract/sections/supplementary manifest); `.txt`/`.pdf` render a fenced excerpt (PDF via `pdfminer.six`) |
 | `read_table` | tool | render a table as **data-fenced, spotlighted** text; lists **all worksheets** of an Excel file (`sheet=`) |
 | `derive_config` | tool | author a table config (`template` + one section per table); each section must satisfy `Section.model_json_schema()` |
-| `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage mega-tool |
+| `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage→**Biolink-validity** mega-tool |
 | `map_coverage` | tool | fullmap term-resolution coverage (per-column + overall) |
 | `propose_config_edit` | tool | deterministic, constrained `NodeEncoding` edits + rationale |
 
 `build_and_audit` returns coded errors **verbatim** (each carries a docs URL) so the agent can
-self-correct the exact offending field.
+self-correct the exact offending field. `derive_config` does the same: a candidate config that fails
+the Section schema comes back as its coded error instead of being forwarded, because the final-answer
+gate can only answer true/false and would otherwise swallow the reason.
 
 ## Prompt engineering
 
@@ -329,14 +391,15 @@ The harness scores every run on three objectives and optimizes them as a black b
 
 **Deterministic metrics (gate the loop):**
 
-- **Quality** — fullmap mapping coverage, QC audit pass rate, config validity (hard gate), and KG
-  node/edge **F1** vs the reference graph.
+- **Quality** — fullmap mapping coverage (0.40), **Biolink pass rate** (0.25), KG node/edge **F1** vs
+  the reference graph (0.15), QC audit pass rate (0.10), and config schema validity (0.10, and a hard
+  gate: an invalid config scores 0).
 - **Cost** — `RunResult.token_usage` + step count (the API is free; tokens are the proxy).
 - **Reliability** — failed / wrong / redundant tool-call counts from the `ActionStep` logs.
 
 **LLM-as-judge (semantic dimensions only):** a pointwise **0–3** rubric over schema validity, coverage,
-QC pass, predicate/category appropriateness, provenance completeness, efficiency, and tool-call
-cleanliness — with **position** (both orderings averaged) and **verbosity** bias mitigation. Deterministic
+**Biolink validity**, QC pass, predicate/category appropriateness, provenance completeness, efficiency,
+and tool-call cleanliness — with **position** (both orderings averaged) and **verbosity** bias mitigation. Deterministic
 metrics gate the rest; the judge only scores what a metric cannot. Without a judge model, an offline
 deterministic heuristic is used.
 
@@ -346,7 +409,7 @@ deterministic heuristic is used.
 - **GEPA** — `dspy.GEPA(metric=gepa_metric, candidate_selection_strategy="pareto", …)` optimizes the
   agent's `instructions` + tool `description`s + exemplars as a **black box** from textual feedback
   (`gepa_metric` returns `dspy.Prediction(score=weighted_quality, feedback="<failing rows + error codes +
-  wrong-call list>")`). It is system-agnostic, Pareto-native, and needs few rollouts.
+  Biolink problems + demoted-edge fraction + wrong-call list>")`). It is system-agnostic, Pareto-native, and needs few rollouts.
 
 **Reporting:** `pareto_frontier(runs)` returns the **non-dominated set** over (quality ↑, cost ↓,
 wrong-calls ↓) and its **knee** (best quality per unit cost).

@@ -273,3 +273,64 @@ def test_build_and_audit_multi_section_two_files(tmp_path: Path, redb: Path) -> 
     edge_count = result["edge_count"]
     assert isinstance(edge_count, int)
     assert edge_count > 0
+
+
+def _gene_disease_redb(root: Path) -> Path:
+    """A fullmap resolving ``brca1`` -> HGNC:1100 (Gene) and ``lung cancer`` -> MONDO:0008903 (Disease).
+
+    The gene~gene fixture above cannot exercise predicate demotion: ``GeneToGeneAssociation``
+    leaves ``predicate`` open, so nothing can be forbidden. A gene~disease pair derives
+    ``GeneToDiseaseAssociation``, whose enum permits only affects / associated_with / contributes_to.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    classes: Path = _write_jsonl(root / "classes.ndjson", [_class_row("HGNC:1100", ["NCBIGene:672"])])
+    synonyms: Path = _write_jsonl(
+        root / "synonyms.ndjson",
+        [_synonym_row("HGNC:1100", "BRCA1", ["BRCA1", "brca1"], "Gene"), _synonym_row("MONDO:0008903", "lung cancer", ["lung cancer"], "Disease")],
+    )
+    output: Path = root / "data" / "fullmap.redb"
+    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    return output
+
+
+def test_build_and_audit_reports_biolink_validity(tmp_path: Path, redb: Path) -> None:
+    """The audit report carries the Biolink compliance of what it just built."""
+    data: Path = _write_table(tmp_path, "brca1\tmapk1\n")
+    result = build_and_audit(_yaml(_section_config(data)), fullmap=redb, workdir=tmp_path)
+
+    assert result["ok"] is True
+    # Measured, not None: the build produced artifacts, so validity is a real number in [0, 1].
+    assert isinstance(result["biolink_valid_pct"], float)
+    assert 0.0 <= result["biolink_valid_pct"] <= 1.0
+    assert isinstance(result["biolink_valid_pct_strict"], float)
+    # The pending exemption can only ever forgive, never accuse.
+    assert result["biolink_valid_pct"] >= result["biolink_valid_pct_strict"]
+    assert isinstance(result["biolink_problems"], dict)
+    assert isinstance(result["demoted_edge_pct"], float)
+
+
+def test_demoted_edge_pct_catches_a_predicate_its_class_forbids(tmp_path: Path) -> None:
+    """The end-to-end proof: the SAME table, two predicates, opposite demotion.
+
+    ``gene_associated_with_condition`` on a gene~disease table is the exact failure the Biolink fix
+    measured across 723,595 edges. It does not error -- ``resolve_association_class`` walks up to
+    bare ``biolink:Association`` -- so ``demoted_edge_pct`` is the only signal the agent gets.
+    """
+    fullmap: Path = _gene_disease_redb(tmp_path / "fullmap")
+    data: Path = _write_table(tmp_path, "brca1\tlung cancer\n")
+
+    def build(predicate: str, where: str) -> dict[str, Any]:
+        config: dict[str, Any] = _section_config(data)
+        config["statement"]["predicate"] = predicate
+        workdir: Path = tmp_path / where
+        workdir.mkdir(parents=True, exist_ok=True)
+        return build_and_audit(_yaml(config), fullmap=fullmap, workdir=workdir)
+
+    legal = build("associated_with", "legal")
+    forbidden = build("gene_associated_with_condition", "forbidden")
+
+    assert legal["ok"] is True
+    assert forbidden["ok"] is True  # a forbidden predicate is NEVER a build error -- that is the point
+    assert legal["edge_count"] == forbidden["edge_count"] == 1
+    assert legal["demoted_edge_pct"] == 0.0  # keeps GeneToDiseaseAssociation
+    assert forbidden["demoted_edge_pct"] == 1.0  # demoted to bare biolink:Association

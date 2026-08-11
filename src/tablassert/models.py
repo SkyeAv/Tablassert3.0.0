@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, NonNegativeInt, Posi
 
 from tablassert._lazy import LazyModule
 from tablassert.biolink import (
+    ALLOWED_EDGE_FIELDS,
     BIOLINK_VERSION,
     ENUM_RANGED_QUALIFIERS,
     UNSATISFIABLE_EDGE_FIELDS,
@@ -19,7 +20,7 @@ from tablassert.biolink import (
     Qualifiers,
 )
 from tablassert.enums import Comparisons, EncodingMethods, Files, FillMethods, Functions, Repositories, Tokens
-from tablassert.errors import TablassertErrorCodes, TablassertValidationError
+from tablassert.errors import BiolinkRelocationWarning, TablassertErrorCodes, TablassertValidationError
 
 if TYPE_CHECKING:
     import polars as pl
@@ -499,6 +500,31 @@ class Annotation(Encoding):
     @classmethod
     def clean_annotation(cls, annotation: str) -> str:
         return annotation.lower().strip()
+
+    @model_validator(mode="after")
+    def warn_when_the_slot_cannot_reach_the_edge(self) -> Self:
+        # Deliberately a WARNING, not an error like the Qualifier guards above: the value is never
+        # lost, only relocated, and rejecting would break configs that build correctly today. Silence
+        # is the real problem -- an author asking for `supporting_study_size` has no way to discover
+        # that Biolink attaches it to no class and the pipeline rerouted it.
+        name: str = str(self.annotation)
+        if name in UNSATISFIABLE_EDGE_FIELDS:
+            warnings.warn(
+                f"`{name}` is declared in biolink-model {BIOLINK_VERSION} but attached to no association class, "
+                "so it cannot be emitted on an edge; its value is routed onto the inlined supporting study "
+                "instead. Use a slot a Biolink association declares (e.g. `p_value`, `adjusted_p_value`) if you "
+                "need it on the edge itself.",
+                BiolinkRelocationWarning,
+                stacklevel=2,
+            )
+        elif name not in ALLOWED_EDGE_FIELDS:
+            warnings.warn(
+                f"`{name}` is not a Biolink association slot, so it is folded into `supporting_text` as a "
+                f'"{name}: <value>" string rather than emitted as its own edge field.',
+                BiolinkRelocationWarning,
+                stacklevel=2,
+            )
+        return self
 
 
 class Section(TablaBase):

@@ -2517,3 +2517,28 @@ def test_compile_subgraph_threads_fine_phases_into_resolve_and_qc(monkeypatch: A
     # QC sub-phases fire for the audits: exact then fuzzy; bert never (exact-match quick exit).
     assert phases.index("qc:exact") < phases.index("qc:fuzzy")
     assert "qc:bert" not in phases
+
+
+def test_predicate_options_answers_which_predicates_keep_the_class() -> None:
+    """The authoring-time helper: which predicates does a (subject, object) pair actually permit?
+
+    Before this existed there was no way to ask, which is how 723,595 edges shipped with
+    ``gene_associated_with_condition`` on ``GeneToDiseaseAssociation`` -- a predicate that class
+    forbids, so every one of them silently demoted to bare ``biolink:Association``.
+    """
+    from tablassert.lib import derived_edge_category, predicate_options
+
+    assert derived_edge_category("biolink:Gene", "biolink:Disease") == "biolink:GeneToDiseaseAssociation"
+    options = predicate_options("biolink:Gene", "biolink:Disease")
+    assert options is not None
+    assert options == {"biolink:affects", "biolink:associated_with", "biolink:contributes_to"}
+    assert "biolink:gene_associated_with_condition" not in options
+
+    # The bare name works identically (configs are written without the prefix).
+    assert predicate_options("Gene", "Disease") == options
+    # Roles roll up through CATEGORY_PARENT: Protein is a Gene-role subject.
+    assert predicate_options("biolink:Protein", "biolink:Disease") == options
+    # gene_associated_with_condition IS legal -- on the variant~gene pair, not gene~disease.
+    assert "biolink:gene_associated_with_condition" in (predicate_options("SequenceVariant", "Gene") or set())
+    # A pair with no specific association class leaves `predicate` open: nothing to demote.
+    assert predicate_options("biolink:OrganismTaxon", "biolink:ChemicalEntity") is None

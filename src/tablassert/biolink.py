@@ -62,6 +62,7 @@ __all__ = [
     "BIOLINK_VERSION",
     "EFFECT_TYPE_VALUES",
     "ENUM_RANGED_QUALIFIERS",
+    "KNOWN_PENDING_EDGE_FIELDS",
     "UNSATISFIABLE_EDGE_FIELDS",
     "AgentTypes",
     "Categories",
@@ -73,6 +74,8 @@ __all__ = [
     "association_class",
     "class_fields",
     "is_multivalued",
+    "is_pending_problem",
+    "legal_predicates",
     "node_class",
     "numeric_slot_kind",
     "resolve_association_class",
@@ -564,6 +567,41 @@ against the resolved class is done by ``lib.prune_to_class()``.
 """
 
 
+KNOWN_PENDING_EDGE_FIELDS: frozenset[str] = TABLASERT_EDGE_EXTRAS - frozenset(_association_model_fields())
+"""Curated edge extras the installed Biolink Model does not (yet) declare on any association.
+
+Tablassert emits these deliberately -- ``effect_size`` / ``effect_type`` pending
+``biolink/biolink-model#1774``, plus the KGX denormalized carryovers (``synonym``,
+``xref``, ``relation``, ...) -- so a Biolink class rejects them as ``extra_forbidden``
+even though the build is behaving as designed. :func:`is_pending_problem` uses this set
+to separate "Tablassert is ahead of the pinned model" from "this record is genuinely
+malformed", so a validity *score* is not dominated by a known, intentional gap.
+
+Derived from the installed package, exactly like :data:`UNSATISFIABLE_EDGE_FIELDS`: a
+field drops out of the set the moment a biolink-model release declares it, with no code
+change.
+"""
+
+
+def legal_predicates(category: str) -> frozenset[str] | None:
+    """Return the predicates an edge category's association class permits.
+
+    The counterpart to :func:`resolve_association_class`: that function asks "given this
+    predicate, how specific a class survives?", this one asks "given this class, which
+    predicates keep it?". Tablassert has no other authoring-time answer -- a predicate the
+    class forbids is never rejected, it silently demotes the edge toward ``Association``.
+
+    Args:
+        category: Edge category CURIE (``"biolink:GeneToDiseaseAssociation"``).
+
+    Returns:
+        The permitted predicate CURIEs, or ``None`` when the class leaves ``predicate``
+        open (``Association`` itself, which accepts anything).
+    """
+    field: Any = association_class(category).model_fields.get("predicate")
+    return None if field is None else _annotation_choices(field.annotation)
+
+
 @cache
 def node_class(category: str) -> type[Any]:
     """Resolve a ``biolink:X`` node category CURIE to its Pydantic class.
@@ -661,6 +699,17 @@ def numeric_slot_kind(field: str) -> str | None:
     return None
 
 
+def is_pending_problem(problem: str) -> bool:
+    """Whether a ``"field: error-type"`` problem is a known, intentional model gap.
+
+    True only for an ``extra_forbidden`` rejection of a field in
+    :data:`KNOWN_PENDING_EDGE_FIELDS` -- i.e. Tablassert emitted a column on purpose that
+    the pinned Biolink Model has not declared yet. Every other failure is a real defect.
+    """
+    field, _, error_type = problem.rpartition(": ")
+    return error_type == "extra_forbidden" and field in KNOWN_PENDING_EDGE_FIELDS
+
+
 def validate_kgx(nodes_path: Path, edges_path: Path, limit: int = 20) -> dict[str, Any]:
     """Validate emitted KGX NDJSON files against the Biolink Pydantic model.
 
@@ -669,23 +718,34 @@ def validate_kgx(nodes_path: Path, edges_path: Path, limit: int = 20) -> dict[st
     -- ship files where no record validated. This closes that loop: every node and edge
     is constructed as the class named by its own ``category``.
 
+    Two pass rates are reported. ``valid`` is strict and drives ``ok`` (the CLI's
+    non-zero exit). ``valid_excluding_pending`` additionally counts records whose *every*
+    failure is a :func:`is_pending_problem` -- the score to optimize against, so a
+    deliberate gap like ``effect_size`` (pending ``biolink-model#1774``) is not mistaken
+    for a malformed record. The two converge as the model catches up.
+
     Args:
         nodes_path: Path to ``<name>_<version>.nodes.ndjson``.
         edges_path: Path to ``<name>_<version>.edges.ndjson``.
         limit: Maximum number of example failures to retain per file.
 
     Returns:
-        Mapping with per-file ``total`` / ``valid`` / ``failures`` counts, a
-        ``problems`` histogram keyed by ``"field: error-type"``, up to ``limit``
-        ``examples``, and a top-level ``ok`` flag.
+        Mapping with per-file ``total`` / ``valid`` / ``valid_excluding_pending`` /
+        ``failures`` counts, a ``missing`` flag, a ``problems`` histogram keyed by
+        ``"field: error-type"``, up to ``limit`` ``examples``, and top-level ``ok`` /
+        ``ok_excluding_pending`` flags.
     """
-    report: dict[str, Any] = {"biolink_version": BIOLINK_VERSION, "ok": True}
+    report: dict[str, Any] = {"biolink_version": BIOLINK_VERSION, "ok": True, "ok_excluding_pending": True}
     for label, path, edge in (("nodes", nodes_path, False), ("edges", edges_path, True)):
         total: int = 0
         valid: int = 0
+        valid_excluding_pending: int = 0
         problems: Counter[str] = Counter()
         examples: list[dict[str, Any]] = []
-        if path.is_file():
+        # A missing path must never read as a clean bill of health: counting zero records
+        # out of zero would otherwise exit 0 on a typo'd filename and hide a broken build.
+        missing: bool = not path.is_file()
+        if not missing:
             with path.open(encoding="utf-8") as handle:
                 for line in handle:
                     if not line.strip():
@@ -695,13 +755,26 @@ def validate_kgx(nodes_path: Path, edges_path: Path, limit: int = 20) -> dict[st
                     errors: list[str] = validate_record(record, edge=edge)
                     if not errors:
                         valid += 1
+                        valid_excluding_pending += 1
                         continue
+                    if all(is_pending_problem(problem) for problem in errors):
+                        valid_excluding_pending += 1
                     problems.update(errors)
                     if len(examples) < limit:
                         examples.append({"id": record.get("id"), "errors": errors})
-        report[label] = {"total": total, "valid": valid, "failures": total - valid, "problems": dict(problems.most_common()), "examples": examples}
-        if total != valid:
+        report[label] = {
+            "total": total,
+            "valid": valid,
+            "valid_excluding_pending": valid_excluding_pending,
+            "failures": total - valid,
+            "missing": missing,
+            "problems": dict(problems.most_common()),
+            "examples": examples,
+        }
+        if missing or total != valid:
             report["ok"] = False
+        if missing or total != valid_excluding_pending:
+            report["ok_excluding_pending"] = False
     return report
 
 

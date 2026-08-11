@@ -602,7 +602,14 @@ def validate_kgx_command(
     print(f"biolink-model {report['biolink_version']}", file=sys.stderr)
     for label in ("nodes", "edges"):
         section: dict[str, Any] = report[label]
-        print(f"{label}: {section['valid']}/{section['total']} valid ({section['failures']} failures)", file=sys.stderr)
+        if section["missing"]:
+            # Never let a typo'd path read as a pass: 0/0 valid would otherwise exit 0.
+            print(f"{label}: file not found ({nodes if label == 'nodes' else edges})", file=sys.stderr)
+            logger.info(f"validate-kgx {label}: file not found")
+            continue
+        pending: int = section["valid_excluding_pending"] - section["valid"]
+        suffix: str = f"; {pending} pending biolink-model support" if pending else ""
+        print(f"{label}: {section['valid']}/{section['total']} valid ({section['failures']} failures{suffix})", file=sys.stderr)
         for problem, count in section["problems"].items():
             print(f"  {count:>9}  {problem}", file=sys.stderr)
         for example in section["examples"][:3]:
@@ -630,6 +637,7 @@ def agent(
     reflexion: Annotated[bool, cyclopts.Parameter(name=["--reflexion"], negative="")] = False,
     judge_model: Annotated[str | None, cyclopts.Parameter(name=["--judge-model"])] = None,
     judge_threshold: Annotated[float | None, cyclopts.Parameter(name=["--judge-threshold"])] = None,
+    biolink_threshold: Annotated[float, cyclopts.Parameter(name=["--biolink-threshold"])] = 0.0,
     local: Annotated[list[str] | None, cyclopts.Parameter(name=["--local", "-l"])] = None,
     optimize: Annotated[bool, cyclopts.Parameter(name=["--optimize", "-o"], negative="")] = False,
     instructions_file: Annotated[Path | None, cyclopts.Parameter(name=["--instructions-file"])] = None,
@@ -669,6 +677,10 @@ def agent(
         judge_model: Optional model id for the semantic judge gate (uses ``--api-base``/``--api-key``);
             when set, MAPPED additionally requires the judge score to clear ``--judge-threshold``.
         judge_threshold: Semantic judge normalized-score threshold for MAPPED (default 0.5 when unset).
+        biolink_threshold: Minimum Biolink pass rate of the built KGX for MAPPED (0.0 = report only).
+            Every record stores its ``biolink_valid_pct`` / ``demoted_edge_pct`` regardless; raising this
+            turns that measurement into a terminal gate, so a config whose output no Biolink class
+            accepts is SKIPPED rather than registered.
         local: Use a local payload instead of fetching from PMC-AWS: a single DIR (applied to every id) or
             one or more ``PMCid=DIR`` mappings (per-article). Fails loud (exit 2) if a DIR does not exist.
         optimize: Run GEPA prompt optimization over the model config and persist optimized instructions
@@ -705,6 +717,11 @@ def agent(
     # semantic gate (-1 passes every score); fail loud BEFORE any model is built.
     if judge_threshold is not None and not 0 <= judge_threshold <= 1:
         print("tablassert agent: --judge-threshold must be a finite number between 0 and 1.", file=sys.stderr)
+        raise SystemExit(2)
+
+    # Same reasoning for the compliance gate: a threshold outside [0, 1] would silently disable it.
+    if not 0 <= biolink_threshold <= 1:
+        print("tablassert agent: --biolink-threshold must be a finite number between 0 and 1.", file=sys.stderr)
         raise SystemExit(2)
 
     # A non-positive thread count would only fail deep inside dspy/ThreadPoolExecutor AFTER the models are
@@ -813,6 +830,7 @@ def agent(
         reflexion_model_factory=reflexion_factory,
         judge_model=judge,
         judge_threshold=judge_threshold,
+        biolink_threshold=biolink_threshold,
         local=local_payload,
         instructions=run_instructions,
     )

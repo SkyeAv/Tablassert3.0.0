@@ -428,13 +428,16 @@ Optional edge attributes (statistical metadata, notes, etc.).
 | `annotation` | String | Yes | Attribute name (e.g., `"p_value"`, `"effect_size"`). Lowercased and trimmed of leading/trailing whitespace at parse time; underscores are preserved (use snake_case). |
 | (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
+Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — are declared with [`method: list`](#method-value-column-and-list), which emits a real JSON array instead of a scalar.
+
 **Example:**
 ```yaml
 annotations:
-  - {annotation: p_value, method: column, encoding: C}                # Read from column C
-  - {annotation: supporting_study_size, method: value, encoding: 450}  # Literal value for all edges
+  - {annotation: p_value, method: column, encoding: C}                 # Read from column C
+  - {annotation: adjusted_p_value, method: column, encoding: D}        # A real Association slot -> emitted on the edge
+  - {annotation: supporting_study_size, method: value, encoding: 450}  # Attached to no class -> inlined supporting study (see below)
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
-  - {annotation: has_evidence, method: list, encoding: ["EFO:0001", "EFO:0002"]}  # Literal list → JSON array
+  - {annotation: has_evidence, method: list, encoding: ["EFO:0001", "EFO:0002"]}  # Multivalued -> a JSON array
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
   - annotation: log2fc_relative_to_vehicle_control
@@ -444,9 +447,10 @@ annotations:
 
 #### Allow-list and auto-folding
 
-Annotation names fall into two groups at build time:
+Annotation names fall into three groups at build time:
 
-- **Allowed edge fields** — names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `primary_knowledge_source`, `supporting_text`, `publications`, `supporting_study_size`, `effect_size`, `effect_type`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim.
+- **Allowed edge fields** — names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `primary_knowledge_source`, `supporting_text`, `publications`, `effect_size`, `effect_type`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim.
+- **Unsatisfiable slots** — names the Biolink LinkML schema declares but attaches to **no** Pydantic class: `supporting_study_size`, `sample_size`, `relationship_strength`, `statistical_significance_qualifier`, and the other `supporting_study_*` slots. A record carrying one could never validate, so their values are routed onto the edge's **inlined supporting study** (`has_supporting_studies` → `Study` → `StudyResult`, the COHD/ICEES pattern) rather than emitted as edge fields. Declaring one is legal and loses nothing, but Tablassert emits a `BiolinkRelocationWarning` naming where the value went. This set is derived from the *installed* `biolink-model`, so a slot leaves it automatically once a release attaches it.
 - **Tablassert pipeline fields** — `upstream_resource_ids`, `source_record_urls`.
 
 Any other annotation name is treated as **supporting context**. At the end of `compile_graph`, tablassert sweeps the edge columns: for each non-allow-listed name it emits `"name: value"` entries into the edge's `supporting_text` (a `list[str]`), then drops the original column. Behavior worth knowing:
@@ -458,7 +462,7 @@ Any other annotation name is treated as **supporting context**. At the end of `c
 
 This means nothing in your source data is silently dropped: context that doesn't map to a structured Biolink slot travels along inside `supporting_text` instead.
 
-In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance, and it folds into `supporting_text` like any other non-allow-list column (e.g. `"extracted_from_row_number: 42"`).
+In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance. Together with the sheet name it identifies the edge's **inlined supporting study** (`has_supporting_studies`), where it is carried alongside any relocated unsatisfiable slots; neither is folded into `supporting_text`.
 
 ## Next Steps
 

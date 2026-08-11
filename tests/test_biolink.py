@@ -10,8 +10,10 @@ asserted so that a change in the underlying model is surfaced loudly.
 from __future__ import annotations
 
 import inspect
+import json
 from enum import Enum
 from importlib.resources import files
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import biolink_model.datamodel.pydanticmodel_v2 as bm
@@ -21,6 +23,8 @@ from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
     BIOLINK_VERSION,
     EFFECT_TYPE_VALUES,
+    KNOWN_PENDING_EDGE_FIELDS,
+    TABLASERT_EDGE_EXTRAS,
     UNSATISFIABLE_EDGE_FIELDS,
     AgentTypes,
     Categories,
@@ -29,8 +33,11 @@ from tablassert.biolink import (
     KnowledgeLevels,
     Predicates,
     Qualifiers,
+    is_pending_problem,
+    legal_predicates,
     numeric_slot_kind,
     resolve_association_class,
+    validate_kgx,
 )
 
 if TYPE_CHECKING:
@@ -369,3 +376,82 @@ def test_numeric_slot_kind_matches_model_ranges() -> None:
     assert numeric_slot_kind("p_value") == "float"
     assert numeric_slot_kind("adjusted_p_value") == "float"
     assert numeric_slot_kind("subject") is None
+
+
+def test_known_pending_fields_are_derived_not_hardcoded() -> None:
+    """``KNOWN_PENDING_EDGE_FIELDS`` must reflect the *installed* model.
+
+    It is exactly "curated Tablassert extra that no Biolink association declares". When
+    ``biolink/biolink-model#1774`` ships, ``effect_size`` / ``effect_type`` become real
+    ``Association`` fields and must drop out of the set with no code change -- so nothing may
+    hardcode either state.
+    """
+    owned: set[str] = set()
+    for cls in vars(bm).values():
+        if inspect.isclass(cls) and inspect.isclass(bm.Association) and issubclass(cls, bm.Association):
+            owned |= set(getattr(cls, "model_fields", {}))
+    assert frozenset(TABLASERT_EDGE_EXTRAS) - owned == KNOWN_PENDING_EDGE_FIELDS
+    # Today's state, asserted so the pending exemption is visibly scoped.
+    assert {"effect_size", "effect_type"} <= KNOWN_PENDING_EDGE_FIELDS
+    assert KNOWN_PENDING_EDGE_FIELDS <= ALLOWED_EDGE_FIELDS
+
+
+def test_is_pending_problem_only_exempts_extra_forbidden_pending_fields() -> None:
+    """The exemption is narrow: a deliberate extra Biolink has not declared, and nothing else."""
+    assert is_pending_problem("effect_size: extra_forbidden")
+    # Same field, a REAL failure -> not exempt.
+    assert not is_pending_problem("effect_size: missing")
+    # A genuinely malformed value on a real slot -> never exempt.
+    assert not is_pending_problem("p_value: float_parsing")
+    assert not is_pending_problem("subject: string_type")
+
+
+def test_legal_predicates_answers_the_authoring_question() -> None:
+    """The inverse of ``resolve_association_class``: which predicates KEEP this class?"""
+    gene_to_disease: frozenset[str] | None = legal_predicates("biolink:GeneToDiseaseAssociation")
+    assert gene_to_disease is not None
+    assert gene_to_disease == {"biolink:affects", "biolink:associated_with", "biolink:contributes_to"}
+    # The 723,595-edge failure from the biolink fix: forbidden here, so it demotes.
+    assert "biolink:gene_associated_with_condition" not in gene_to_disease
+    assert resolve_association_class("biolink:GeneToDiseaseAssociation", "biolink:gene_associated_with_condition") is bm.Association
+    # Association leaves `predicate` open -> nothing to constrain, nothing to demote to.
+    assert legal_predicates("biolink:Association") is None
+
+
+def test_validate_kgx_never_passes_a_missing_file(tmp_path: Path) -> None:
+    """A typo'd path must not read as a clean bill of health (0/0 valid used to exit 0)."""
+    report: dict[str, Any] = validate_kgx(tmp_path / "absent.nodes.ndjson", tmp_path / "absent.edges.ndjson")
+    assert report["ok"] is False
+    assert report["ok_excluding_pending"] is False
+    assert report["nodes"]["missing"] is True
+    assert report["edges"]["missing"] is True
+
+
+def test_validate_kgx_separates_pending_extras_from_real_failures(tmp_path: Path) -> None:
+    """``valid_excluding_pending`` forgives a deliberate extra; ``valid`` stays strict."""
+    nodes: Path = tmp_path / "n.ndjson"
+    edges: Path = tmp_path / "e.ndjson"
+    nodes.write_text(json.dumps({"id": "HGNC:11998", "name": "TP53", "category": ["biolink:Gene"]}) + "\n")
+    base: dict[str, Any] = {
+        "subject": "HGNC:11998",
+        "predicate": "biolink:associated_with",
+        "object": "MONDO:0008903",
+        "category": ["biolink:GeneToDiseaseAssociation"],
+        "knowledge_level": "statistical_association",
+        "agent_type": "data_analysis_pipeline",
+    }
+    edges.write_text(
+        # Otherwise valid; effect_size is a deliberate extra biolink-model 4.4.3 does not declare (PR #1774).
+        json.dumps({**base, "id": "e1", "effect_size": 1.5})
+        + "\n"
+        # A real defect: p_value is typed float, so a non-numeric string can never validate.
+        + json.dumps({**base, "id": "e2", "p_value": "not-a-number"})
+        + "\n"
+    )
+    report: dict[str, Any] = validate_kgx(nodes, edges)
+    assert report["edges"]["total"] == 2
+    assert report["edges"]["valid"] == 0  # strict: both fail
+    assert report["edges"]["valid_excluding_pending"] == 1  # the effect_size edge is forgiven
+    assert report["ok"] is False
+    assert report["ok_excluding_pending"] is False  # the real defect still fails
+    assert "effect_size: extra_forbidden" in report["edges"]["problems"]

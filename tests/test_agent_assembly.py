@@ -159,3 +159,41 @@ def test_fake_model_drives_agent_run_offline() -> None:
     assert result is not None
     assert str(result).strip()
     assert validate_section(str(result)) is True
+
+
+def test_instructions_carry_a_generated_predicate_cheatsheet() -> None:
+    """The prompt teaches predicate<->class legality, and does so from the INSTALLED model.
+
+    The ~30 KB Section schema the derive_config tool injects lists all predicates and all categories
+    as flat enums with nothing tying the two together, which is how the agent came to recommend
+    `gene_associated_with_condition` for gene~disease -- a predicate GeneToDiseaseAssociation forbids.
+    """
+    from tablassert.agent import predicate_cheatsheet
+
+    # Fully rendered: no template placeholder survives into the live prompt.
+    assert "{{PREDICATE_CHEATSHEET}}" not in INSTRUCTIONS
+    assert predicate_cheatsheet() in INSTRUCTIONS
+
+    # The flagship pair, generated from biolink-model rather than hand-written.
+    assert "Gene ~ Disease -> GeneToDiseaseAssociation: affects, associated_with, contributes_to" in INSTRUCTIONS
+    assert "demoted_edge_pct" in INSTRUCTIONS
+
+    # And the two silent-relocation rules the pipeline enforces.
+    assert "supporting_study_size" in INSTRUCTIONS  # named as a slot that does NOT reach the edge
+    assert "adjusted_p_value" in INSTRUCTIONS  # the recommended alternative
+    assert "species_context_qualifier" in INSTRUCTIONS
+
+
+def test_instructions_do_not_recommend_a_class_forbidden_predicate() -> None:
+    """Every predicate the prompt shows in an exemplar must be legal for that exemplar's pair."""
+    import re
+
+    from tablassert.lib import predicate_options
+
+    # Exemplar (a) is gene~disease; whatever predicate it demonstrates must keep the class.
+    exemplar: str = INSTRUCTIONS[INSTRUCTIONS.index("# (a) tutorial-table") : INSTRUCTIONS.index("# (b) ALAMV6")]
+    match = re.search(r"predicate:\s*(\w+)", exemplar)
+    assert match is not None
+    legal = predicate_options("Gene", "Disease")
+    assert legal is not None
+    assert f"biolink:{match.group(1)}" in legal
