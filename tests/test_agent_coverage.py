@@ -64,7 +64,7 @@ def _write_table(tmp_path: Path, text: str) -> Path:
 def _section_config(data: Path, *, object_method: str = "column", object_encoding: str = "B") -> dict[str, Any]:
     """A bare merged Section config: column A subject, configurable object, PMC provenance."""
     return {
-        "source": {"kind": "text", "local": str(data), "url": "https://example.com/data.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",
@@ -230,7 +230,7 @@ def test_coverage_multi_cwd_resolves_relative_source(tmp_path: Path, redb: Path)
     elsewhere.mkdir(parents=True)
     (elsewhere / "rel.tsv").write_text("brca1\tmapk1\nbrca1\tmapk1\n")
     cfg: dict[str, Any] = {
-        "source": {"kind": "text", "local": "rel.tsv", "url": "https://example.com/rel.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": "rel.tsv", "url": ["https://example.com/rel.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",

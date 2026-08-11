@@ -215,7 +215,7 @@ def _write_table(tmp_path: Path, text: str) -> Path:
 def _section_config(data: Path) -> dict[str, Any]:
     """A bare merged Section config: column A subject, column B object, PMC provenance."""
     return {
-        "source": {"kind": "text", "local": str(data), "url": "https://example.com/data.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",

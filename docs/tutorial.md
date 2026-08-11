@@ -45,7 +45,8 @@ template:
   source:
     kind: text
     local: ./docs/examples/tutorial-data.csv
-    url: https://example.com/data.csv
+    url:
+      - https://example.com/data.csv
     row_slice:
       - 1
       - auto

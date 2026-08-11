@@ -34,7 +34,7 @@ from tablassert.agent import (
 # A genuinely valid minimal Section config (schema-valid wherever a valid YAML string is needed).
 VALID_CFG: str = yaml.safe_dump(
     {
-        "source": {"kind": "text", "local": "./t.tsv", "url": "https://e.com/t.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": "./t.tsv", "url": ["https://e.com/t.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "value", "encoding": "BRCA1"},
             "predicate": "associated_with",

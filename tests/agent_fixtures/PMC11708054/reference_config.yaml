@@ -8,7 +8,8 @@ template:
   source:
     kind: text
     local: ./source_table.csv
-    url: https://example.org/PMC11708054/source_table.csv
+    url:
+      - https://example.org/PMC11708054/source_table.csv
     delimiter: ","
   statement:
     subject:

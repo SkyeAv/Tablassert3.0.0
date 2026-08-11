@@ -15,7 +15,8 @@ template:
   source:
     kind: text
     local: ./gene-disease.csv
-    url: https://example.com/gene-disease.csv
+    url:
+      - https://example.com/gene-disease.csv
     row_slice: [1, auto]
     delimiter: ","
   statement:
@@ -57,7 +58,8 @@ template:
   source:
     kind: text
     local: ./drug-targets.tsv
-    url: https://example.com/drug-targets.tsv
+    url:
+      - https://example.com/drug-targets.tsv
     row_slice: [1, auto]
     delimiter: "\t"
   statement:
@@ -102,7 +104,8 @@ template:
   source:
     kind: excel
     local: ./microbiome-correlations.xlsx
-    url: https://example.com/microbiome-data.xlsx
+    url:
+      - https://example.com/microbiome-data.xlsx
     sheet: correlations
     row_slice: [2, auto]
   statement:
@@ -161,7 +164,8 @@ template:
   source:
     kind: text
     local: ./gene-pathways.csv
-    url: https://example.com/gene-pathways.csv
+    url:
+      - https://example.com/gene-pathways.csv
     row_slice: [1, auto]
     delimiter: ","
   statement:
@@ -220,7 +224,8 @@ template:
   source:
     kind: text
     local: ./significant-associations.csv
-    url: https://example.com/associations.csv
+    url:
+      - https://example.com/associations.csv
     row_slice: [1, auto]
     delimiter: ","
     reindex:
@@ -268,7 +273,8 @@ template:
   source:
     kind: text
     local: ./hierarchical-data.csv
-    url: https://example.com/hierarchical.csv
+    url:
+      - https://example.com/hierarchical.csv
     row_slice: [1, auto]
     delimiter: ","
   statement:

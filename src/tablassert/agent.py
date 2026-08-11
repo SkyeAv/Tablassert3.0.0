@@ -2006,12 +2006,12 @@ provenance: {repo: PMC, publication: PMC11708054}
 template:
   provenance: {repo: PMC, publication: PMC11708054}
 sections:
-  - source: {kind: excel, local: ./downloads/PMC11708054/PMC11708054.1/s0006.xlsx, url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC11708054.1/s0006.xlsx", sheet: "all correlations", row_slice: [2, auto]}
+  - source: {kind: excel, local: ./downloads/PMC11708054/PMC11708054.1/s0006.xlsx, url: ["https://pmc-oa-opendata.s3.amazonaws.com/PMC11708054.1/s0006.xlsx"], sheet: "all correlations", row_slice: [2, auto]}
     statement:
       subject: {method: column, encoding: A, prioritize: [OrganismTaxon], avoid: [Gene]}
       predicate: correlated_with
       object: {method: value, encoding: "CHEBI:41774"}
-  - source: {kind: text, local: ./downloads/PMC11708054/PMC11708054.1/s0003.tsv, url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC11708054.1/s0003.tsv", delimiter: "\\t"}
+  - source: {kind: text, local: ./downloads/PMC11708054/PMC11708054.1/s0003.tsv, url: ["https://pmc-oa-opendata.s3.amazonaws.com/PMC11708054.1/s0003.tsv"], delimiter: "\\t"}
     statement:
       subject: {method: column, encoding: A, prioritize: [Gene]}
       predicate: associated_with
@@ -2157,7 +2157,8 @@ def build_agent(
 # FakeModel-driven agent passes the validate_section final-answer gate and terminates offline.
 _FAKE_DEFAULT_YAML: str = """\
 source:
-  url: https://example.com/test.tsv
+  url:
+    - https://example.com/test.tsv
   local: ./test.tsv
   kind: text
   delimiter: "\\t"
@@ -2608,11 +2609,13 @@ def run_supervisor(
             table_list: str
             if local_dir is not None:
                 # Local payload: no fabricated S3 link; the agent sets source.url to the original link if known.
-                table_list = "\n".join(f"  - {path}  (local payload; set source.url to the original download link if known)" for path in tables)
+                table_list = "\n".join(
+                    f"  - {path}  (local payload; set source.url (as a list) to the original download link if known)" for path in tables
+                )
             else:
                 # Present each candidate table as `local -> url` (W3): the agent authors one section per table,
                 # each with its OWN source.local + source.url (the file's public HTTPS link). prefix = parent dir.
-                table_list = "\n".join(f"  - {path}  (source.url: {public_url(path.parent.name, path.name)})" for path in tables)
+                table_list = "\n".join(f"  - {path}  (source.url: [{public_url(path.parent.name, path.name)}])" for path in tables)
             article_xml: Path | None = next((path for path in files if path.suffix.lower() in {".xml", ".nxml"}), None)
 
             metrics: dict[str, object] = {}

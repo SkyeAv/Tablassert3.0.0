@@ -30,7 +30,8 @@ State dir: `.tablassert/qc-assay`  ·  PMCs assayed: 10
 source:
   kind: excel
   local: <state-dir>/downloads/PMC8017771/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
-  url: https://pmc-oa-opendata.s3.amazonaws.com/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
+  url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC8017771.1/NIHMS1644812-supplement-1644812_Supp_Tab2.xlsx
   sheet: "Supp.Table 2A_cluster-1"
   row_slice: [2, "auto"]
   reindex:
@@ -104,7 +105,8 @@ sections:
   - source:
       kind: excel
       local: "<state-dir>/downloads/PMC13161869/PMC13161869.1/ACN3-13-911-s001.xlsx"
-      url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC13161869.1/ACN3-13-911-s001.xlsx"
+      url:
+        - "https://pmc-oa-opendata.s3.amazonaws.com/PMC13161869.1/ACN3-13-911-s001.xlsx"
       sheet: "Cap Score - Ion Level"
       row_slice: [1, "auto"]
       reindex:
@@ -205,7 +207,8 @@ sections:
   - source:
       kind: excel
       local: <state-dir>/downloads/PMC12900646/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx
-      url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx"
+      url:
+        - "https://pmc-oa-opendata.s3.amazonaws.com/PMC12900646.1/41588_2025_2486_MOESM4_ESM.xlsx"
       sheet: "Supp. Table 7"
       row_slice: [7, "auto"]
       reindex:
@@ -294,7 +297,8 @@ sections:
 source:
   kind: excel
   local: <state-dir>/downloads/PMC9187732/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
-  url: https://pmc-oa-opendata.s3.amazonaws.com/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
+  url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC9187732.1/41467_2022_30968_MOESM16_ESM.xlsx
   sheet: "Percentiles - 16p11.2"
   reindex:
     - column: A
@@ -355,7 +359,8 @@ sections:
   - source:
       kind: excel
       local: <state-dir>/downloads/PMC13099431/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx
-      url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx"
+      url:
+        - "https://pmc-oa-opendata.s3.amazonaws.com/PMC13099431.1/41591_2026_4228_MOESM2_ESM.xlsx"
       sheet: "Supplementary Table 7"
       row_slice: [2, "auto"]
     statement:
@@ -408,7 +413,8 @@ sections:
 source:
   kind: excel
   local: <state-dir>/downloads/PMC13172311/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
-  url: https://pmc-oa-opendata.s3.amazonaws.com/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
+  url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC13172311.1/41467_2026_73121_MOESM5_ESM.xlsx
   sheet: vU1-8 KO v WT
 statement:
   subject:
@@ -466,7 +472,8 @@ sections:
   - source:
       kind: excel
       local: <state-dir>/downloads/PMC12906585/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx
-      url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx"
+      url:
+        - "https://pmc-oa-opendata.s3.amazonaws.com/PMC12906585.1/122_2026_5178_MOESM1_ESM.xlsx"
       sheet: Map
     statement:
       subject:
@@ -529,7 +536,8 @@ sections:
   - source:
       kind: excel
       local: <state-dir>/downloads/PMC13172025/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx
-      url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx"
+      url:
+        - "https://pmc-oa-opendata.s3.amazonaws.com/PMC13172025.1/42003_2026_10045_MOESM3_ESM.xlsx"
       sheet: "SD15"
       row_slice: [2, "auto"]
     statement:
@@ -589,7 +597,8 @@ sections:
   - source:
       kind: excel
       local: <state-dir>/downloads/PMC7206184/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx
-      url: "https://pmc-oa-opendata.s3.amazonaws.com/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx"
+      url:
+        - "https://pmc-oa-opendata.s3.amazonaws.com/PMC7206184.1/41467_2020_15823_MOESM9_ESM.xlsx"
       sheet: "v68.lvedv.twas.alltissues"
       row_slice: [1, "auto"]
     statement:
@@ -643,7 +652,8 @@ sections:
 source:
   kind: excel
   local: <state-dir>/downloads/PMC11947420/PMC11947420.1/mmc2.xlsx
-  url: https://pmc-oa-opendata.s3.amazonaws.com/PMC11947420.1/mmc2.xlsx
+  url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC11947420.1/mmc2.xlsx
   sheet: Table_S7
   reindex:
     - column: A

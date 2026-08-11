@@ -79,7 +79,7 @@ def write_text_section(tmp_path: Path, name: str, section: dict[str, object], ro
     source_path.write_text("\n".join(rows) + "\n")
     source_config: object = section.get("source", {})
     source_overrides: dict[str, object] = source_config if isinstance(source_config, dict) else {}
-    section["source"] = {"url": f"https://example.com/{name}.tsv", "local": str(source_path), "kind": "text", "delimiter": "\t", **source_overrides}
+    section["source"] = {"url": [f"https://example.com/{name}.tsv"], "local": str(source_path), "kind": "text", "delimiter": "\t", **source_overrides}
     to_yaml(table_path, section)
     return table_path, source_path
 

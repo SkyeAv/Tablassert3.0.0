@@ -995,7 +995,7 @@ class Tcode(Section):
             # Biolink `primary_knowledge_source` is a scalar; `sources` carries the
             # structured retrieval provenance (roles, upstream ids, record urls).
             (value, ("primary_knowledge_source", primary_knowledge_source)) if primary_knowledge_source else None,
-            (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(self.source.url)])) if primary_knowledge_source else None,
+            (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(u) for u in self.source.url])) if primary_knowledge_source else None,
             (publications, (publication_values,)) if publication_values else None,
             # Prune first so class-rejected values are handed to the study rather than lost.
             (prune_to_class, ()),

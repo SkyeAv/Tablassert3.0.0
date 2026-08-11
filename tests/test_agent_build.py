@@ -63,7 +63,7 @@ def _write_table(tmp_path: Path, text: str) -> Path:
 def _section_config(data: Path) -> dict[str, Any]:
     """A bare merged Section config: column A subject, column B object, PMC provenance."""
     return {
-        "source": {"kind": "text", "local": str(data), "url": "https://example.com/data.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",
@@ -217,7 +217,7 @@ def test_build_and_audit_measures_relative_source_with_correct_cwd(tmp_path: Pat
     workdir.mkdir(parents=True)
     (workdir / "rel.tsv").write_text("brca1\tmapk1\nbrca1\tmapk1\n")
     cfg: dict[str, Any] = {
-        "source": {"kind": "text", "local": "rel.tsv", "url": "https://example.com/rel.tsv", "delimiter": "\t"},
+        "source": {"kind": "text", "local": "rel.tsv", "url": ["https://example.com/rel.tsv"], "delimiter": "\t"},
         "statement": {
             "subject": {"method": "column", "encoding": "A"},
             "predicate": "associated_with",
@@ -246,7 +246,7 @@ def test_build_and_audit_multi_section_two_files(tmp_path: Path, redb: Path) -> 
         "template": {"provenance": {"repo": "PMC", "publication": "PMC1"}},
         "sections": [
             {
-                "source": {"kind": "text", "local": str(t1), "url": "https://example.com/s1.tsv", "delimiter": "\t"},
+                "source": {"kind": "text", "local": str(t1), "url": ["https://example.com/s1.tsv"], "delimiter": "\t"},
                 "statement": {
                     "subject": {"method": "column", "encoding": "A"},
                     "predicate": "associated_with",
@@ -254,7 +254,7 @@ def test_build_and_audit_multi_section_two_files(tmp_path: Path, redb: Path) -> 
                 },
             },
             {
-                "source": {"kind": "text", "local": str(t2), "url": "https://example.com/s2.tsv", "delimiter": "\t"},
+                "source": {"kind": "text", "local": str(t2), "url": ["https://example.com/s2.tsv"], "delimiter": "\t"},
                 "statement": {
                     "subject": {"method": "column", "encoding": "A"},
                     "predicate": "associated_with",

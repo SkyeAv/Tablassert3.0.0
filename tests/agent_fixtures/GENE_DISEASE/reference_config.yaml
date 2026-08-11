@@ -11,7 +11,8 @@ sections:
   - source:
       kind: text
       local: ./source_table.csv
-      url: https://example.org/GENE_DISEASE/source_table.csv
+      url:
+        - https://example.org/GENE_DISEASE/source_table.csv
       delimiter: ","
     statement:
       subject:

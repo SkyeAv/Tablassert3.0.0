@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+- **`source.url` is now a list of URLs (`url: list[HttpUrl]`).** A table-config section may declare one or more remote source URLs, all recorded as provenance (emitted in the edge `source_record_urls` list and the RIG). The legacy scalar form `url: https://example.com/x.tsv` is no longer accepted — wrap it in a list. Update existing configs from `url: https://...` to a sequence:
+
+  ```yaml
+  source:
+    url:
+      - https://example.com/data.tsv
+  ```
+
 ## 8.2.0 - 2026-08-10
 
 ### Breaking Changes

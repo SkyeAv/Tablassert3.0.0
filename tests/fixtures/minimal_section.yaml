@@ -1,5 +1,6 @@
 source:
-  url: https://example.com/test.tsv
+  url:
+    - https://example.com/test.tsv
   local: ./test.tsv
   kind: text
   delimiter: "\t"

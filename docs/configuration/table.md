@@ -90,7 +90,7 @@ Defines the data file location and format.
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"excel"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
-| `url` | URL | Yes | Source URL recorded as provenance (emitted as the edge `source_record_urls` column and in the RIG). Format-validated only; not fetched. |
+| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the edge `source_record_urls` list and in the RIG). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
 | `sheet` | String | No | Sheet name. Defaults to `"Sheet1"`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -101,7 +101,8 @@ Defines the data file location and format.
 source:
   kind: excel
   local: ./data/mydata.xlsx
-  url: https://example.com/data.xlsx
+  url:
+    - https://example.com/data.xlsx
   sheet: "Sheet1"
   row_slice: [1, auto]  # Start at the second physical row, read to end
 ```
@@ -114,7 +115,7 @@ source:
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"text"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
-| `url` | URL | Yes | Source URL recorded as provenance (emitted as the edge `source_record_urls` column and in the RIG). Format-validated only; not fetched. |
+| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the edge `source_record_urls` list and in the RIG). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
 | `delimiter` | String | No | Field delimiter. Defaults to `","`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -125,7 +126,8 @@ source:
 source:
   kind: text
   local: ./data/mydata.tsv
-  url: https://example.com/data.tsv
+  url:
+    - https://example.com/data.tsv
   delimiter: "\t"
   row_slice: [1, auto]
 ```

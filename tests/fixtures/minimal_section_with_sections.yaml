@@ -1,6 +1,7 @@
 template:
   source:
-    url: https://example.com/test.xlsx
+    url:
+      - https://example.com/test.xlsx
     local: ./test.xlsx
     kind: excel
     sheet: Sheet1

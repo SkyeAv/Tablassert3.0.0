@@ -13,7 +13,8 @@ template:
   source:
     kind: excel
     local: ./DATALAKE/ALAM.XLSX
-    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx
+    url:
+      - https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0006.xlsx
     row_slice:
       - 2  # Skip the first two rows (title + header)
       - auto  # Read to end
@@ -174,7 +175,8 @@ correlation tables linking two biological entities per row (e.g., metabolite ↔
 template:
   source:
     kind: excel
-    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
+    url:
+      - https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
     local: ./DATALAKE/AVUTHU1.xlsx
     sheet: signif_metab_microb_corre
     row_slice: [2, auto]
@@ -221,7 +223,8 @@ the `object` (and optionally `row_slice`) per section — one section entry per 
 template:
   source:
     kind: excel
-    url: https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
+    url:
+      - https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/data.xlsx
     local: ./DATALAKE/BLANTON1.xlsx
     sheet: Sheet1
     row_slice: [2, auto]
