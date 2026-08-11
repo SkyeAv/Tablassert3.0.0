@@ -556,27 +556,6 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     return df.lazy()
 
 
-def split_list(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
-    """Split a delimited cell into a real JSON array.
-
-    Tablassert annotations are scalar by construction, so a multivalued Biolink slot
-    such as ``has_evidence`` or ``FDA_regulatory_approvals`` would otherwise be emitted
-    as a single joined string. Consumers that iterate it then walk characters rather
-    than values (``publications.extend(record["has_evidence"])``).
-
-    Args:
-        lf: Source LazyFrame.
-        col: Annotation column to split.
-        delimiter: Separator to split on.
-
-    Returns:
-        LazyFrame with ``col`` converted to a ``list[str]`` column, blanks dropped.
-    """
-    text: pl.Expr = pl.col(col).cast(pl.String)
-    split: pl.Expr = text.str.split(delimiter).list.eval(pl.element().str.strip_chars()).list.drop_nulls()
-    return lf.with_columns(pl.when(text.is_null()).then(None).otherwise(split.list.eval(pl.element().filter(pl.element() != ""))).alias(col))
-
-
 def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
     expr: pl.Expr = pl.lit(prefix) + pl.col(col).cast(pl.String)
     return lf.with_columns(expr.alias(col))
@@ -852,7 +831,7 @@ class Tcode(Section):
             containing ``None`` placeholders) ready for ``clean`` to filter.
         """
         return [
-            (value, (col, x.encoding)) if x.method == EncodingMethods.VALUE else None,
+            (value, (col, x.encoding)) if x.method in (EncodingMethods.VALUE, EncodingMethods.LIST) else None,
             (column, (col, idxname(x.encoding))) if x.method == EncodingMethods.COLUMN else None,
             (column, (f"original_{col}", col)) if table_literal else None,
             (fill, (col, x.fill)) if x.fill else None,
@@ -917,13 +896,7 @@ class Tcode(Section):
             else None,
             # --head preview: randomly sample min(HEAD_ROWS, height) rows before any encoding/resolve.
             (head, (HEAD_ROWS,)) if self.head else None,
-            [
-                op
-                for x in self.annotations
-                for op in [*self.encoding(x, x.annotation.lower()), *([(split_list, (x.annotation.lower(), x.delimiter))] if x.delimiter else [])]
-            ]
-            if self.annotations
-            else None,
+            [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
             (coerce_pvalue_columns, ()),
             (coerce_study_size_columns, ()),
             (coerce_effect_size_columns, ()),
@@ -1051,7 +1024,6 @@ PHASE_OF: dict[Callable, str] = {
     retrieval_sources: "provenance",
     inline_supporting_study: "provenance",
     prune_to_class: "finalize",
-    split_list: "encode",
     sig: "significance",
     drop_not_significant: "significance",
     trim: "finalize",

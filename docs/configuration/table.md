@@ -192,7 +192,7 @@ Defines how to extract and resolve entities.
 | `explode_by` | String | No | Delimiter to split multi-value cells |
 | `transformations` | List[Math] | No | Mathematical transformations |
 
-#### Method: Value vs Column
+#### Method: Value, Column, and List
 
 **`method: value`** - Use a literal value
 
@@ -211,6 +211,19 @@ subject:
 ```
 
 At runtime those letters are converted internally to Polars column names such as `column_1`, but those internal names are not valid configuration values.
+
+**`method: list`** - A literal list of values (annotations only); emits a real JSON array for multivalued Biolink slots
+
+```yaml
+annotations:
+  - annotation: has_evidence
+    method: list
+    encoding: ["EFO:0001", "EFO:0002"]  # Every edge carries this array
+```
+
+`method: list` is the multivalued counterpart of `method: value`: the literal list is emitted verbatim as a JSON array, so consumers iterate values instead of walking a joined string's characters (e.g. `publications.extend(edge["has_evidence"])`). It is incompatible with the scalar string ops (`regex`, `remove`, `prefix`, `suffix`, `transformations`, `fill`, `explode_by`) — encode the final values directly. `method: list` is valid on annotations only (subject/object/qualifier nodes are single entities). (The earlier annotation `delimiter` field that split an encoded scalar into a list — unrelated to the `source.delimiter` CSV/TSV separator — has been removed in favor of this explicit list method.)
+
+> **Literal only — no per-row lists.** A list `encoding` is a literal, so every edge carries the *same* array. `method: list` therefore replaces only the literal (`method: value`) use of the removed `delimiter`; a column-based annotation that split each cell's own value (`{annotation: has_evidence, method: column, encoding: D, delimiter: "|"}`) has no direct equivalent. `explode_by` does not fill the gap — it splits one row into many rows rather than building a per-row JSON array. Handle those sources upstream (reshape so each row carries a single value, or pre-split the column before Tablassert reads it).
 
 #### Taxonomic Filtering
 
@@ -421,6 +434,7 @@ annotations:
   - {annotation: p_value, method: column, encoding: C}                # Read from column C
   - {annotation: supporting_study_size, method: value, encoding: 450}  # Literal value for all edges
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
+  - {annotation: has_evidence, method: list, encoding: ["EFO:0001", "EFO:0002"]}  # Literal list → JSON array
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
   - annotation: log2fc_relative_to_vehicle_control

@@ -19,6 +19,7 @@ from tablassert.models import (
     ManualProvenance,
     NodeEncoding,
     Provenance,
+    Qualifier,
     Regex,
     Reindex,
     Section,
@@ -149,6 +150,58 @@ def test_encoding_with_transformations() -> None:
     )
     assert len(enc.transformations) == 1  # pyright: ignore
     assert enc.transformations[0].function == "pow"  # pyright: ignore
+
+
+def test_encoding_list_method_accepts_literal_list() -> None:
+    """method: list carries a literal list emitted as a multivalued annotation."""
+    enc: Encoding = Encoding(method="list", encoding=["EFO:0001", "EFO:0002"])  # pyright: ignore
+    assert enc.method == EncodingMethods.LIST  # pyright: ignore
+    assert enc.encoding == ["EFO:0001", "EFO:0002"]  # pyright: ignore
+
+
+def test_annotation_list_method_emits_multivalued_slot() -> None:
+    """An annotation with method: list is the multivalued counterpart of method: value."""
+    ann: Annotation = Annotation(annotation="has_evidence", method="list", encoding=["EFO:1", "EFO:2"])  # pyright: ignore
+    assert ann.annotation == "has_evidence"  # pyright: ignore
+    assert ann.method == "list"  # pyright: ignore
+
+
+def test_encoding_list_method_requires_list_encoding() -> None:
+    """method: list rejects a scalar encoding."""
+    with pytest.raises(ValidationError, match="method: list"):
+        Encoding(method="list", encoding="EFO:1")  # pyright: ignore
+
+
+def test_encoding_list_rejects_scalar_string_ops() -> None:
+    """method: list is a literal list and rejects every scalar string op at once."""
+    with pytest.raises(ValidationError, match="incompatible with the scalar string ops"):
+        Encoding(  # pyright: ignore
+            method="list",  # pyright: ignore
+            encoding=["a"],
+            regex=[{"pattern": "x", "replacement": "y"}],  # pyright: ignore
+            fill="zero",  # pyright: ignore
+            explode_by="|",
+            remove=["z"],
+            prefix="p",
+            suffix="s",
+            transformations=[{"function": "pow", "arguments": ["values", 2]}],  # pyright: ignore
+        )
+
+
+def test_encoding_list_encoding_requires_list_method() -> None:
+    """A list encoding is rejected unless method is list (for value and column)."""
+    with pytest.raises(ValidationError, match="requires `method: list`"):
+        Encoding(method="value", encoding=["a"])  # pyright: ignore
+    with pytest.raises(ValidationError, match="requires `method: list`"):
+        Encoding(method="column", encoding=["A"])  # pyright: ignore
+
+
+def test_node_encoding_rejects_list_method() -> None:
+    """method: list is annotation-only; subject/object and qualifier nodes reject it at config time."""
+    with pytest.raises(ValidationError, match="only valid on annotations"):
+        NodeEncoding(method="list", encoding=["a"])  # pyright: ignore
+    with pytest.raises(ValidationError, match="only valid on annotations"):
+        Qualifier(qualifier="object_direction_qualifier", method="list", encoding=["increased"])  # pyright: ignore
 
 
 def test_node_encoding_with_taxon() -> None:
