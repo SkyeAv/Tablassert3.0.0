@@ -163,17 +163,64 @@ class Math(TablaBase):
 class Encoding(TablaBase):
     method: EncodingMethods = Field(
         EncodingMethods.VALUE,
-        description="Interpret encoding as a literal value or as source column letters.",
-        examples=[EncodingMethods.VALUE, EncodingMethods.COLUMN],
+        description="Interpret `encoding` as a literal value, a list of literal values, or source column letters.",
+        examples=[EncodingMethods.VALUE, EncodingMethods.COLUMN, EncodingMethods.LIST],
     )
-    encoding: str | int | float = Field(..., description="Literal value or source column letters, depending on method.", examples=["A", "BRCA1", 1.0])
+    encoding: str | int | float | list[str | int | float] = Field(
+        ...,
+        description="Literal value, list of literal values (with `method: list`), or source column letters.",
+        examples=["A", "BRCA1", 1.0, ["EFO:0001", "EFO:0002"]],
+    )
 
     @model_validator(mode="after")
     def excel_style_columns(self: Self) -> Self:
-        if self.method == EncodingMethods.COLUMN:
-            x: str | int | float = self.encoding
+        # A list encoding is only valid under `method: list` (checked by `list_method_consistency`);
+        # skip the Excel-letter check here so that case reports the clearer list error.
+        if self.method == EncodingMethods.COLUMN and not isinstance(self.encoding, list):
+            x = self.encoding
             if not re.search(r"^[A-Z]{1,3}$", str(x)):
                 raise TablassertValidationError(f"`encoding` must be an Excel-style column name (A-ZZ), got {x!r}.", code="encoding-bad-excel-column")
+
+        return self
+
+    @model_validator(mode="after")
+    def list_method_consistency(self: Self) -> Self:
+        """Enforce that ``method: list`` carries a literal list and no scalar string ops.
+
+        ``method: list`` is the multivalued counterpart of ``method: value``: the
+        ``encoding`` is a literal list emitted as a real JSON array (for multivalued
+        Biolink slots such as ``has_evidence``). The scalar string ops
+        (``regex``/``remove``/``prefix``/``suffix``/``transformations``/``fill``/``explode_by``)
+        operate on a single string per row and would mangle a list column, so they are
+        rejected here — encode the final values directly instead.
+        """
+        is_list: bool = isinstance(self.encoding, list)
+        if self.method == EncodingMethods.LIST:
+            if not is_list:
+                raise TablassertValidationError("`method: list` requires `encoding` to be a list of values.", code="encoding-list-requires-list")
+            scalar_ops: list[str] = []
+            if self.regex:
+                scalar_ops.append("regex")
+            if self.fill is not None:
+                scalar_ops.append("fill")
+            if self.explode_by is not None:
+                scalar_ops.append("explode_by")
+            if self.remove:
+                scalar_ops.append("remove")
+            if self.prefix:
+                scalar_ops.append("prefix")
+            if self.suffix:
+                scalar_ops.append("suffix")
+            if self.transformations:
+                scalar_ops.append("transformations")
+            if scalar_ops:
+                raise TablassertValidationError(
+                    f"`method: list` is a literal list and is incompatible with the scalar string ops "
+                    f"({', '.join(scalar_ops)}); apply them upstream or encode the final values directly.",
+                    code="encoding-list-incompatible-ops",
+                )
+        elif is_list:
+            raise TablassertValidationError("A list `encoding` requires `method: list`.", code="encoding-list-requires-list")
 
         return self
 
@@ -257,6 +304,23 @@ class NodeEncoding(Encoding):
                     ) from e
 
         return exclude_regex
+
+    @model_validator(mode="after")
+    def reject_list_method(self: Self) -> Self:
+        """Reject ``method: list`` on node encodings (subject/object/qualifiers).
+
+        ``method: list`` is the multivalued counterpart of ``method: value`` and only
+        makes sense on an annotation (a multivalued Biolink slot). A subject/object/
+        qualifier is a single entity: a list node column crashes resolution deep in the
+        pipeline (a polars list-to-string cast) instead of failing at config time, and an
+        enum-ranged qualifier would silently emit a list where Biolink expects one token.
+        """
+        if self.method == EncodingMethods.LIST:
+            raise TablassertValidationError(
+                "`method: list` is only valid on annotations (multivalued Biolink slots); subject/object/qualifier nodes are single entities.",
+                code="encoding-list-annotation-only",
+            )
+        return self
 
 
 class Qualifier(NodeEncoding):
@@ -430,25 +494,6 @@ class Provenance(TablaBase):
 
 class Annotation(Encoding):
     annotation: str = Field(..., description="Output column name that receives this encoded annotation.", examples=["p_value", "cohort"])
-    delimiter: str | None = Field(
-        None,
-        description=(
-            "Split the encoded cell on this separator to emit a real JSON array instead of a scalar. "
-            "Required for multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals`, "
-            "whose consumers iterate the value."
-        ),
-        examples=["|", ";", ","],
-    )
-
-    @field_validator("delimiter", mode="after")
-    @classmethod
-    def non_empty_delimiter(cls, delimiter: str | None) -> str | None:
-        # An empty separator splits into individual characters, which is never intended
-        # and is exactly the failure mode a scalar-vs-list mismatch already causes
-        # downstream (`publications.extend("PMID:1")` iterating characters).
-        if delimiter is not None and not delimiter:
-            raise TablassertValidationError("`delimiter` must be a non-empty separator.", code="annotation-bad-delimiter")
-        return delimiter
 
     @field_validator("annotation", mode="after")
     @classmethod
