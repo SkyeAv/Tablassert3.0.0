@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 9.0.0 - 2026-08-11
+
+**Identical in content to 8.2.1 — re-released under a major version to correct the version signal.**
+
+8.2.1 shipped as a patch release but carried two breaking configuration changes: `source.url` became a list (`url: list[HttpUrl]`, no longer accepting the scalar form) and `Annotation.delimiter` was removed in favor of `method: list`. A patch bump advertises a drop-in upgrade, so a downstream pinned to `~=8.2.0` or `>=8.2,<8.3` would have picked 8.2.1 up automatically and broken on its existing table configs.
+
+9.0.0 contains no code, test, or documentation changes over 8.2.1 — only the version bump. It exists so the breaking changes are announced by the version number itself, and so a compatible-release pin cannot cross them silently. 8.2.1 remains on PyPI and is unaffected; upgrade from any 8.x directly to 9.0.0 and apply the migrations described under 8.2.1's **Breaking Changes** below.
+
 ## 8.2.1 - 2026-08-11
 
 ### Breaking Changes
