@@ -1096,6 +1096,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#automatic-column-coercion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic column coercion
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1685,6 +1696,17 @@
     <span class="md-ellipsis">
       
         Allow-list and auto-folding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automatic-column-coercion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic column coercion
       
     </span>
   </a>
@@ -2398,6 +2420,50 @@ metadata and should not be declared manually.</p>
 </ul>
 <p>This means nothing in your source data is silently dropped: context that doesn't map to a structured Biolink slot travels along inside <code>supporting_text</code> instead.</p>
 <p>In addition to user-declared annotations, every edge automatically carries <code>extracted_from_row_number</code>, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance. Together with the sheet name it identifies the edge's <strong>inlined supporting study</strong> (<code>has_supporting_studies</code>), where it is carried alongside any relocated unsatisfiable slots; neither is folded into <code>supporting_text</code>.</p>
+<h4 id="automatic-column-coercion">Automatic column coercion<a class="headerlink" href="#automatic-column-coercion" title="Permanent link">&para;</a></h4>
+<p>Before the allow-list sweep runs, tablassert renames statistical columns to their canonical Biolink names so source headers do not have to match exactly. Recognition is delimiter-anchored (spaces, <code>_</code>, <code>-</code>, <code>.</code> are interchangeable) and the <strong>best fuzzy match per target wins, with an existing canonical column always preferred</strong> over a higher-scoring spaced alias.</p>
+<table>
+<thead>
+<tr>
+<th>Recognized as</th>
+<th>Canonical name</th>
+<th>Typical source spellings</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P value (raw)</td>
+<td><code>p_value</code></td>
+<td><code>p value</code>, <code>p-value</code>, <code>pvalue</code>, <code>P</code>, <code>gwas p</code>, <code>raw_p</code>, <code>pvalue1</code></td>
+</tr>
+<tr>
+<td>Adjusted P value</td>
+<td><code>adjusted_p_value</code></td>
+<td><code>padj</code>, <code>p.adj</code>, <code>adj.P.Val</code>, <code>FDR</code>, <code>Bonferroni</code>, <code>Holm</code>, <code>q value</code></td>
+</tr>
+<tr>
+<td>Study size</td>
+<td><code>supporting_study_size</code></td>
+<td><code>n</code>, <code>sample_size</code>, <code>study size</code>, <code>cohort_size</code>, <code>participants_n</code>, <code>enrollment</code></td>
+</tr>
+<tr>
+<td>Effect size</td>
+<td><code>effect_size</code></td>
+<td><code>effect size</code>, <code>odds ratio</code>, <code>hazard ratio</code>, <code>beta</code>, <code>log2FC</code>, <code>correlation</code>, <code>rho</code> (and the legacy <code>relationship_strength</code>)</td>
+</tr>
+<tr>
+<td>Effect type</td>
+<td><code>effect_type</code></td>
+<td><code>effect type</code>, <code>effect metric</code>, <code>statistic type</code>, <code>metric</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong><code>effect_type</code> values are also coerced.</strong> Each cell is matched case/separator-insensitively against an alias table (e.g. <code>"OR"</code> → <code>odds_ratio</code>, <code>"Cohen's d"</code> → <code>cohens_d</code>, <code>"Spearman"</code> → <code>spearmans_rho</code>), then by <code>rapidfuzz</code> fallback against the 25 permissible <code>EffectTypes</code> values; anything matching nothing is dropped to <code>null</code> rather than carried through (the Biolink range is the enum).</li>
+<li><strong><code>statistical_significance_qualifier</code> is auto-derived</strong> from the p-value column into five bands — <code>biolink:very_strongly_significant</code> (p ≤ 0.001), <code>biolink:strongly_significant</code> (≤ 0.01), <code>biolink:significant</code> (≤ 0.05), <code>biolink:suggestive</code> (≤ 0.10), <code>biolink:not_significant</code> (&gt; 0.10). The same rigorous selection picks the source column: a raw <code>p_value</code> column is preferred, <code>adjusted_p_value</code> is the fallback, and the qualifier is omitted entirely when no p-value column is present.</li>
+<li><strong>Biolink class rules are enforced.</strong> <code>effect_type</code> is nulled on every row where <code>effect_size</code> is null (and nulled entirely when no <code>effect_size</code> column exists); <code>statistical_significance_qualifier</code> is only set when <code>p_value</code>/<code>adjusted_p_value</code> is populated, and null p-values yield a null qualifier.</li>
+</ul>
+<p>This is why declaring an annotation like <code>{annotation: p value, method: column, encoding: E}</code> still produces a top-level <code>p_value</code> edge field — the header is normalized to the Biolink name before folding is considered.</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><a href="../advanced-example/">Advanced Example</a></strong> - Real-world configuration with complex transformations</li>
