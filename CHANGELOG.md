@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 8.2.1 - 2026-08-11
 
 ### Breaking Changes
 - **`source.url` is now a list of URLs (`url: list[HttpUrl]`).** A table-config section may declare one or more remote source URLs, all recorded as provenance (emitted in the edge `source_record_urls` list and the RIG). The legacy scalar form `url: https://example.com/x.tsv` is no longer accepted — wrap it in a list. Update existing configs from `url: https://...` to a sequence:
@@ -30,6 +30,7 @@ All notable changes to this project are documented in this file.
 - **`biolink.legal_predicates()` and `lib.predicate_options()`** — the missing authoring-time helpers. `predicate_options("Gene", "Disease")` returns `{affects, associated_with, contributes_to}`; there was previously no way to ask which predicates a subject/object pair may carry without composing three private functions.
 - **`biolink.KNOWN_PENDING_EDGE_FIELDS`** — the curated extras Tablassert emits deliberately that the pinned model does not declare (`effect_size` / `effect_type` pending [biolink-model#1774](https://github.com/biolink/biolink-model/pull/1774), plus the KGX denormalized carryovers). `validate_kgx` now reports `valid_excluding_pending` / `ok_excluding_pending` alongside the strict counts, so a deliberate gap is not scored as a modelling error. Derived from the installed package, so it empties itself as the model catches up.
 - **A `BiolinkRelocationWarning` on annotations whose values cannot reach the edge.** An annotation named `supporting_study_size` or `sample_size` is routed onto the inlined `StudyResult`; one like `q_value` is folded into `supporting_text`. Both were silent. This is a warning, not an error: nothing is lost and every existing config keeps building.
+- New regression tests: three `sig()` rigor tests (raw-`p_value`-over-adjusted preference, canonical-column-wins-over-alias, and `pvalue_target`-based exclusion of a look-alike substring column) plus an end-to-end smoke proving the real pipeline normalizes raw statistical annotation names (`p value`, `sample size`, `odds ratio`, `effect type`) to canonical Biolink edge fields and routes `supporting_study_size` / `statistical_significance_qualifier` into the inlined Study.
 
 ### Fixed
 - **`map_coverage` no longer resolves enum-ranged qualifiers the build deliberately skips.** `lib.Tcode._node_ops` excludes them (their vocabulary wants the token `increased`, not a CURIE), but the agent's coverage measurement sent every qualifier through the fullmap — counting terms the build never looks up, depressing `overall` for a column working exactly as designed, and potentially flipping a good config to `SKIPPED`.
@@ -41,10 +42,12 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - **`quality_score` reweighted** to coverage 0.40, Biolink validity 0.25, node/edge F1 0.15, QC 0.10, schema validity 0.10 (still a hard gate). Most of the new weight came out of `w_qc`, which scores `build_and_audit`'s structurally-constant `qc_pass_rate`. GEPA's feedback string now carries `biolink_problems` and `demoted_edge_pct`, and the judge rubric gained a `biolink_validity` dimension.
+- **`sig()` now applies the same fuzzy-matching rigor as the column coercions.** The `statistical_significance_qualifier` is derived from a p-value column chosen by `pvalue_target()` — the same delimiter-anchored classifier `coerce_pvalue_columns` uses — rather than a naive substring. A raw `p_value` column is preferred over `adjusted_p_value`, and an existing canonical column always wins over a higher-scoring spaced alias, mirroring the selection rule every other `coerce_*` step already uses. The five-band cascade and the Biolink class rule (qualifier omitted when no p-value column is present) are unchanged. No realistic build is affected: `coerce_pvalue_columns` canonicalizes every p-value column before `sig` runs, so the old and new selectors pick the same column; the lone divergence is a contrived column that merely contains a `p_value` substring but is not a real p-value column, which now correctly omits the qualifier instead of deriving a bogus one.
 
 ### Documentation
 - `docs/agent.md` gains a **Biolink validity** section; its "NCATS Translator-compliant KGX" claim is now verified by the loop rather than asserted.
 - `docs/configuration/table.md` was left stale by 8.2.0's Biolink fix: it recommended `supporting_study_size` without noting the reroute, and still said `extracted_from_row_number` folds into `supporting_text`. Both corrected.
+- **Documented automatic column coercion** in the table-configuration reference: p-value / study-size / effect-size / effect-type columns are auto-normalized to canonical Biolink names before the edge allow-list sweep (with `effect_type` values mapped to the `EffectTypes` enum, unmatched values dropped to `null`, and the legacy `relationship_strength` renamed forward to `effect_size`), `statistical_significance_qualifier` is auto-derived into five significance bands, and the Biolink class rules that null `effect_type` where `effect_size` is absent and omit the qualifier without a p-value column.
 
 ## 8.2.0 - 2026-08-10
 
