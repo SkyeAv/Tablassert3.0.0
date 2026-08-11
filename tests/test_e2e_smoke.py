@@ -182,3 +182,83 @@ def test_build_pipeline_emits_list_annotation_as_json_array(tmp_path: Path, monk
     # method: list emits a real JSON array on the multivalued slot, not a joined scalar.
     assert isinstance(edges[0]["has_evidence"], list)
     assert edges[0]["has_evidence"] == ["EFO:0001", "EFO:0002"]
+
+
+def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real pipeline normalizes raw statistical column names to canonical Biolink fields.
+
+    Declares annotations with non-canonical source spellings (``p value``, ``sample size``,
+    ``odds ratio``, ``effect type``) and asserts the emitted KGX edge carries the coerced
+    canonical fields flat on the edge (``p_value`` as a JSON number, ``effect_size`` in
+    controlled notation, ``effect_type`` with the alias mapped to the ``EffectTypes`` enum)
+    and routes the auto-derived ``statistical_significance_qualifier`` plus
+    ``supporting_study_size`` into the inlined Study. Proves the whole coercion pipeline
+    (``coerce_pvalue_columns`` / ``coerce_study_size_columns`` / ``coerce_effect_size_columns``
+    / ``coerce_effect_type_columns`` / ``sig``) wires through ``build_pipeline`` end-to-end.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
+
+    fullmap: Path = _build_real_redb(tmp_path / "fullmap")
+
+    # A=subject  B=object  C=p value  D=sample size  E=odds ratio(effect size)  F=effect type
+    data: Path = tmp_path / "data.tsv"
+    data.write_text("brca1\tmapk1\t0.01\t450\t0.85\tSpearman\n")
+
+    table: Path = tmp_path / "table.yaml"
+    table_config: dict[str, Any] = {
+        "template": {
+            "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "predicate": "associated_with",
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+            "annotations": [
+                {"annotation": "p value", "method": "column", "encoding": "C"},
+                {"annotation": "sample size", "method": "column", "encoding": "D"},
+                {"annotation": "odds ratio", "method": "column", "encoding": "E"},
+                {"annotation": "effect type", "method": "column", "encoding": "F"},
+            ],
+        }
+    }
+    to_yaml(table, table_config)
+
+    graph: Path = tmp_path / "graph.yaml"
+    graph_config: dict[str, Any] = {
+        "name": "COERCE_KG",
+        "version": "1.0.0",
+        "description": "coercion smoke graph",
+        "tables": [str(table)],
+        "fullmap": str(fullmap),
+    }
+    to_yaml(graph, graph_config)
+
+    build_pipeline(graph, PipelineProgress(total_stages=6))
+
+    edges_path: Path = tmp_path / "COERCE_KG_1.0.0.edges.ndjson"
+    assert edges_path.is_file()
+    edge_text: str = edges_path.read_text()
+    edges: list[dict[str, Any]] = [json.loads(line) for line in edge_text.splitlines() if line.strip()]
+    assert len(edges) == 1
+    edge: dict[str, Any] = edges[0]
+
+    # Raw annotation names normalized to canonical Biolink fields flat on the edge.
+    # p_value is a numeric Biolink float slot (emitted as a real JSON number), while
+    # effect_size has no numeric slot and keeps controlled {:.4g} string notation.
+    assert isinstance(edge["p_value"], float)
+    assert isinstance(edge["effect_size"], str)
+    assert float(edge["p_value"]) == 0.01
+    assert edge["effect_size"] == "0.85"
+    assert edge["effect_type"] == "spearmans_rho"  # "Spearman" alias mapped to the EffectTypes enum
+    assert "sample size" not in edge
+    assert "odds ratio" not in edge
+    assert "effect type" not in edge
+
+    # supporting_study_size + the auto-derived statistical_significance_qualifier are
+    # UNSATISFIABLE edge fields, so they ride the inlined Study rather than the edge.
+    assert "supporting_study_size" not in edge
+    assert "statistical_significance_qualifier" not in edge
+    assert "supporting_study_size=450" in edge_text
+    assert "statistical_significance_qualifier=biolink:strongly_significant" in edge_text
