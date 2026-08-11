@@ -62,6 +62,16 @@ class TablassertValidationError(_Coded, ValueError):
         self.code = code
 
 
+class BiolinkRelocationWarning(UserWarning):
+    """An annotation is valid but will not land on the edge under its own name.
+
+    Distinct from a deprecation: nothing is wrong with the config and nothing is lost. The value is
+    relocated -- onto the inlined ``StudyResult`` for a slot Biolink attaches to no class, or into
+    ``supporting_text`` for a name that is not an association slot at all. Its own category so
+    callers can silence or assert on relocations without touching the deprecation scaffold.
+    """
+
+
 class QcRuntimeMissingError(TablassertError):
     def __init__(self) -> None:
         super().__init__("QC requires optional runtime dependencies. Install tablassert[qc].", code="qc-runtime-missing")

@@ -7,13 +7,14 @@ base environment (no ``[agent]`` extra). The smolagents ``Tool`` object tests ca
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
-from tablassert.agent import make_derive_config_tool, section_json_schema, validate_section
+from tablassert.agent import make_derive_config_tool, section_json_schema, table_config_error, validate_section
 from tablassert.models import Section
 
 FIXTURES: Path = Path(__file__).parent / "fixtures"
@@ -138,10 +139,31 @@ def test_derive_config_tool_exposes_section_schema() -> None:
 
 
 def test_derive_config_tool_forward_passthrough() -> None:
-    """forward returns the candidate YAML unchanged (the gate does the validating)."""
+    """forward returns a VALID candidate YAML unchanged (the gate does the validating)."""
     pytest.importorskip("smolagents")
     tool = make_derive_config_tool()
-    assert tool.forward("foo: bar") == "foo: bar"
+    valid: str = yaml.safe_dump(ALAMV6_TEMPLATE, sort_keys=False)
+    assert tool.forward(valid) == valid
+
+
+def test_derive_config_tool_forward_returns_the_coded_error_for_an_invalid_config() -> None:
+    """An invalid config comes back as its coded error, not silently forwarded.
+
+    The final-answer gate can only answer True/False, so this is the ONLY channel through which the
+    model sees the actionable text the coded errors were written to carry.
+    """
+    pytest.importorskip("smolagents")
+    tool = make_derive_config_tool()
+
+    # Structurally wrong: not a Section at all.
+    assert tool.forward("foo: bar").startswith("INVALID CONFIG (not forwarded):")
+
+    # A coded Biolink error reaches the agent verbatim, slug and all.
+    bad_qualifier: dict[str, Any] = copy.deepcopy(ALAMV6_TEMPLATE)
+    bad_qualifier["template"]["statement"]["qualifiers"] = [{"qualifier": "object_direction_qualifier", "method": "value", "encoding": "way up"}]
+    message: str = tool.forward(yaml.safe_dump(bad_qualifier, sort_keys=False))
+    assert "qualifier-bad-value" in message
+    assert "Permitted values include" in message
 
 
 def test_derive_config_tool_description_mentions_schema_gate() -> None:
@@ -162,3 +184,24 @@ def test_validate_section_never_raises_on_empty_sections() -> None:
     assert validate_section("template: {}\nsections: []\n") is False
     assert validate_section("template: {}\n") is False  # no sections key -> merges empty template -> invalid
     assert validate_section("template: {}\nsections: []\n") is False  # never raises
+
+
+def test_table_config_error_returns_the_actionable_message_the_gate_swallows() -> None:
+    """The gates stay boolean (smolagents' contract) but the REASON is no longer thrown away."""
+    valid: str = yaml.safe_dump(ALAMV6_TEMPLATE, sort_keys=False)
+    assert table_config_error(valid) is None
+    assert validate_section(valid) is True
+
+    # `direction_qualifier` is declared in the LinkML schema but attached to no Pydantic class.
+    unsatisfiable: dict[str, Any] = copy.deepcopy(ALAMV6_TEMPLATE)
+    unsatisfiable["template"]["statement"]["qualifiers"] = [{"qualifier": "direction_qualifier", "method": "value", "encoding": "increased"}]
+    message: str | None = table_config_error(yaml.safe_dump(unsatisfiable, sort_keys=False))
+    assert message is not None
+    assert "qualifier-unsatisfiable" in message
+    assert "Use a concrete subtype" in message
+    # Still False, still never raises -- only the reason is newly available.
+    assert validate_section(yaml.safe_dump(unsatisfiable, sort_keys=False)) is False
+
+    # Never raises, whatever it is handed.
+    for nasty in ("", "[]", "{", "\x00", "a: [1, 2", "- - -"):
+        assert table_config_error(nasty) is None or isinstance(table_config_error(nasty), str)

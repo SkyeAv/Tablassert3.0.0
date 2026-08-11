@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from pydantic import ValidationError
 from tablassert import models
 from tablassert.biolink import Categories
 from tablassert.enums import Comparisons, EncodingMethods, Repositories
+from tablassert.errors import BiolinkRelocationWarning
 from tablassert.ingests import from_yaml, to_sections
 from tablassert.models import (
     DEFAULT_RIG_UI_EXPLANATION,
@@ -601,7 +603,10 @@ def test_no_deprecation_warnings_for_current_fixtures(fixtures_path: Path, recwa
 
     Every shipped fixture and docs example must load and validate with ZERO UserWarnings,
     proving the deprecation scaffold never regresses today's corpus. Scoped to UserWarning so
-    unrelated DeprecationWarnings (multiprocessing/polars) cannot interfere with the assertion.
+    unrelated DeprecationWarnings (multiprocessing/polars) cannot interfere with the assertion,
+    and excluding BiolinkRelocationWarning, which is not a deprecation: the tutorial's
+    `supporting_study_size` is the SUPPORTED way to record a study size (it lands on the inlined
+    StudyResult), and its relocation notice is asserted by its own test below.
     """
     # Single-section fixture validates directly.
     Section.model_validate(from_yaml(fixtures_path / "minimal_section.yaml"))
@@ -618,7 +623,22 @@ def test_no_deprecation_warnings_for_current_fixtures(fixtures_path: Path, recwa
     # Graph example validates directly.
     Graph.model_validate(from_yaml(EXAMPLES / "tutorial-graph.yaml"))
 
-    assert [w for w in recwarn if issubclass(w.category, UserWarning)] == []
+    assert [w for w in recwarn if issubclass(w.category, UserWarning) and not issubclass(w.category, BiolinkRelocationWarning)] == []
+
+
+def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
+    """An annotation whose value is relocated says so; one that reaches the edge stays silent."""
+    # Attached to no Biolink class -> routed onto the inlined StudyResult.
+    with pytest.warns(BiolinkRelocationWarning, match="attached to no association class"):
+        Annotation.model_validate({"annotation": "supporting_study_size", "method": "column", "encoding": "D"})
+    # Not an association slot at all -> folded into supporting_text.
+    with pytest.warns(BiolinkRelocationWarning, match="folded into `supporting_text`"):
+        Annotation.model_validate({"annotation": "q_value", "method": "column", "encoding": "E"})
+    # Real association slots, and the deliberate pending extras, are silent.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", BiolinkRelocationWarning)
+        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type"):
+            Annotation.model_validate({"annotation": name, "method": "column", "encoding": "C"})
 
 
 def test_deprecated_key_in_registry_warns_but_still_validates(monkeypatch: pytest.MonkeyPatch) -> None:

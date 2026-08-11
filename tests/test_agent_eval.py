@@ -106,13 +106,26 @@ def test_node_edge_f1_identical_and_disjoint_and_partial() -> None:
 
 def test_quality_score_range_and_validity_gate() -> None:
     """quality_score is in [0,1] and an invalid config hard-gates to 0.0."""
-    report = {"coverage_pct": 1.0, "qc_pass_rate": 1.0}
+    report = {"coverage_pct": 1.0, "qc_pass_rate": 1.0, "biolink_valid_pct": 1.0}
     f1 = {"node_f1": 1.0, "edge_f1": 1.0}
     score = quality_score(VALID_CFG, report, f1)
     assert 0.0 <= score <= 1.0
-    assert score == pytest.approx(1.0)  # valid + full coverage + full qc + full f1
+    assert score == pytest.approx(1.0)  # valid + full coverage + full biolink + full qc + full f1
     # Invalid config -> hard gate 0.0 regardless of the (great) report.
     assert quality_score("statement: {}", report, f1) == 0.0
+
+
+def test_quality_score_rewards_biolink_validity() -> None:
+    """Biolink validity carries real weight: KGX no Biolink class accepts is not a good config."""
+    f1 = {"node_f1": 1.0, "edge_f1": 1.0}
+    base = {"coverage_pct": 1.0, "qc_pass_rate": 1.0}
+    # Coverage/QC/F1 held fixed; only the biolink rate moves.
+    perfect = quality_score(VALID_CFG, {**base, "biolink_valid_pct": 1.0}, f1)
+    broken = quality_score(VALID_CFG, {**base, "biolink_valid_pct": 0.0}, f1)
+    assert perfect - broken == pytest.approx(0.25)  # w_biolink
+    assert broken < quality_score(VALID_CFG, {**base, "biolink_valid_pct": 0.5}, f1) < perfect
+    # Unmeasurable validity contributes 0.0 rather than a free pass (same as unmeasurable coverage).
+    assert quality_score(VALID_CFG, base, f1) == pytest.approx(broken)
 
 
 def test_metric_helpers() -> None:
@@ -596,3 +609,43 @@ def test_second_fixture_offline_judge_scores() -> None:
     assert 0.0 <= verdict["normalized"] <= 1.0
     assert verdict["scores"]["schema_validity"] == 3.0  # the fixture is schema-valid
     assert verdict["scores"]["provenance_completeness"] == 3.0  # repo + publication
+
+
+def test_is_improvement_never_trades_biolink_validity_for_coverage() -> None:
+    """The improve loop's two-axis rule: no regression on either, a strict gain on one."""
+    from tablassert.agent import _is_improvement
+
+    def report(coverage: float, biolink: float | None) -> dict[str, object]:
+        return {"coverage_pct": coverage, "biolink_valid_pct": biolink}
+
+    current = report(0.5, 0.9)
+    # A coverage win that tanks validity is NOT an improvement (the old rule accepted it).
+    assert _is_improvement(0.5, current, 0.8, report(0.8, 0.2)) is False
+    # A coverage win at equal validity is.
+    assert _is_improvement(0.5, current, 0.8, report(0.8, 0.9)) is True
+    # So is a validity win at equal coverage -- coverage alone could never see this.
+    assert _is_improvement(0.5, current, 0.5, report(0.5, 1.0)) is True
+    # Neither axis moves -> not an improvement (keeps the loop monotonic and terminating).
+    assert _is_improvement(0.5, current, 0.5, report(0.5, 0.9)) is False
+    # A validity win that loses coverage is refused too: the rule is symmetric.
+    assert _is_improvement(0.5, current, 0.4, report(0.4, 1.0)) is False
+    # Unmeasurable validity on either side degrades to the historical coverage-only rule.
+    assert _is_improvement(0.5, report(0.5, None), 0.8, report(0.8, 0.1)) is True
+    assert _is_improvement(0.5, current, 0.8, report(0.8, None)) is True
+
+
+def test_judge_scores_biolink_validity_and_catches_demoted_predicates() -> None:
+    """The offline judge grades what the build actually emitted, not just the config's shape."""
+    from tablassert.agent import JUDGE_DIMENSIONS, judge_config
+
+    assert "biolink_validity" in JUDGE_DIMENSIONS
+
+    good = judge_config(VALID_CFG, {"coverage_pct": 1.0, "biolink_valid_pct": 1.0, "demoted_edge_pct": 0.0}, {})
+    bad = judge_config(VALID_CFG, {"coverage_pct": 1.0, "biolink_valid_pct": 0.0, "demoted_edge_pct": 1.0}, {})
+
+    assert good["scores"]["biolink_validity"] == 3.0
+    assert bad["scores"]["biolink_validity"] == 0.0
+    # A fully demoted edge is by definition an inappropriate predicate/category pairing.
+    assert bad["scores"]["predicate_category_appropriateness"] == 0.0
+    assert good["scores"]["predicate_category_appropriateness"] > bad["scores"]["predicate_category_appropriateness"]
+    assert good["normalized"] > bad["normalized"]

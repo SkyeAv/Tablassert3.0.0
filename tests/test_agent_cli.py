@@ -420,3 +420,44 @@ def test_rebuild_agent_graph_rebuilds_and_reports(tmp_path: Path, capsys: pytest
     data: object = yaml.safe_load((tmp_path / "graph.yaml").read_text())
     assert isinstance(data, dict)
     assert data["tables"] == [str(config.resolve())]
+
+
+@pytest.mark.parametrize("bad_threshold", [-1.0, 2.0, float("nan"), float("inf")])
+def test_agent_biolink_threshold_out_of_range_exits_2(
+    bad_threshold: float, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--biolink-threshold outside [0, 1] (or non-finite) fails loud before any model runs."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    def fail_supervisor(*a: object, **k: object) -> object:
+        raise AssertionError("run_supervisor must NOT run with an invalid --biolink-threshold")
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
+
+    with pytest.raises(SystemExit) as exc_info:
+        agent(["PMC1"], fullmap=Path("/tmp/fm"), biolink_threshold=bad_threshold)
+    assert exc_info.value.code == 2
+    assert "biolink-threshold" in capsys.readouterr().err
+
+
+def test_agent_biolink_threshold_defaults_to_report_only_and_forwards(monkeypatch: pytest.MonkeyPatch) -> None:
+    """It defaults to 0.0 (report-only, preserving today's terminal behavior) and forwards verbatim."""
+    monkeypatch.setenv(ENV_MODEL_ID, "m")
+    monkeypatch.setenv(ENV_API_BASE, "b")
+    monkeypatch.setenv(ENV_API_KEY, "k")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"))
+    assert captured["biolink_threshold"] == 0.0
+
+    agent(["PMC1"], fullmap=Path("/tmp/fm"), biolink_threshold=0.95)
+    assert captured["biolink_threshold"] == 0.95

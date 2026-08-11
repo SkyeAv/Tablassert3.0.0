@@ -21,6 +21,7 @@ from tablassert.biolink import (
     association_class,
     class_fields,
     is_multivalued,
+    legal_predicates,
     numeric_slot_kind,
     resolve_association_class,
     resolve_node_category,
@@ -75,6 +76,7 @@ __all__ = [
     "effect_type_target",
     "infores",
     "normalize_biolink_category",
+    "predicate_options",
     "pvalue_target",
     "rig_edge_type_info",
     "rig_node_type_info",
@@ -164,6 +166,51 @@ def edge_tables() -> tuple[dict[str, str], dict[str, str]]:
     EDGE_LOOKUP: dict[str, str] = {f"{s}|{o}": f"biolink:{ec.value}" for (s, o), ec in EDGE_MAP.items()}
 
     return CATEGORY_ROLE, EDGE_LOOKUP
+
+
+@cache
+def derived_edge_category(subject_category: str, object_category: str) -> str:
+    """Return the edge category the build derives for a (subject, object) category pair.
+
+    The pure-Python twin of the ``(subject role, object role)`` lookup :func:`edge_category`
+    performs inside a LazyFrame, so an authoring-time caller can ask what class a statement
+    would land in without building anything.
+
+    Args:
+        subject_category: Subject category, with or without the ``biolink:`` prefix.
+        object_category: Object category, with or without the ``biolink:`` prefix.
+
+    Returns:
+        The unresolved edge category CURIE, ``"biolink:Association"`` when the pair has no
+        specific mapping.
+    """
+    cat_role: dict[str, str]
+    edge_lookup: dict[str, str]
+    cat_role, edge_lookup = edge_tables()
+    subject: str = subject_category.removeprefix("biolink:")
+    obj: str = object_category.removeprefix("biolink:")
+    key: str = f"{cat_role.get(subject, subject)}|{cat_role.get(obj, obj)}"
+    return edge_lookup.get(key, f"biolink:{EdgeCategories.ASSOCIATION.value}")
+
+
+def predicate_options(subject_category: str, object_category: str) -> frozenset[str] | None:
+    """Return the predicates a (subject, object) category pair may carry without demotion.
+
+    Composes :func:`derived_edge_category` with :func:`biolink.legal_predicates` to answer
+    the question config authors (and the agent) actually have: *which predicate keeps this
+    edge's specific association class?* A predicate outside this set is not an error -- it
+    silently costs the edge its class via :func:`biolink.resolve_association_class`, taking
+    every qualifier and evidence slot that class declared with it.
+
+    Args:
+        subject_category: Subject category, with or without the ``biolink:`` prefix.
+        object_category: Object category, with or without the ``biolink:`` prefix.
+
+    Returns:
+        The permitted predicate CURIEs, or ``None`` when the pair derives an association
+        class with an open ``predicate`` slot (anything is legal, nothing is specific).
+    """
+    return legal_predicates(derived_edge_category(subject_category, object_category))
 
 
 def edge_category(lf: pl.LazyFrame, predicate: str | None = None) -> pl.LazyFrame:

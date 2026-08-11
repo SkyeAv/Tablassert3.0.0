@@ -14,8 +14,33 @@ import yaml
 STATE_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".tablassert/qc-assay")
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else STATE_DIR / "QC_REPORT.md"
 
-# predicates that are "specific" vs generic fallbacks (for a heuristic appropriateness flag)
-GENERIC_PREDICATES = {"associated_with", "related_to", "biolink:associated_with", "biolink:related_to"}
+
+def demotes_edge(statement: dict) -> bool:
+    """Whether this statement's predicate costs its edge the specific association class.
+
+    Replaces the old spelling-based `GENERIC_PREDICATES` set, which flagged `associated_with` as a
+    "generic fallback" — but `associated_with` is one of only three predicates
+    `GeneToDiseaseAssociation` permits, so the old heuristic penalised the CORRECT choice and passed
+    `gene_associated_with_condition`, which that class forbids and which demotes the edge to bare
+    `biolink:Association`. Asks the Biolink Model instead of a hand-written list.
+
+    Only meaningful when both nodes declare a `prioritize` category; an unprioritized node's category
+    is resolved per-row from the fullmap, so there is nothing to check at config-inspection time.
+    """
+    from tablassert.lib import predicate_options
+
+    predicate = statement.get("predicate")
+    if not predicate:
+        return False
+    categories = []
+    for role in ("subject", "object"):
+        node = statement.get(role) or {}
+        prioritize = node.get("prioritize") if isinstance(node, dict) else None
+        if not prioritize:
+            return False
+        categories.append(str(prioritize[0]))
+    options = predicate_options(*categories)
+    return options is not None and f"biolink:{str(predicate).removeprefix('biolink:')}" not in options
 
 
 def redact_paths(text: str, state_dir: Path | None = None) -> str:
@@ -99,7 +124,7 @@ def main() -> None:
     mapped = skipped = 0
     coverages: list[float] = []
     predicate_counts: dict[str, int] = {}
-    generic_predicate_pmc: list[str] = []
+    demoting_predicate_pmc: list[str] = []
     error_pmc: list[tuple[str, str]] = []
 
     for pmc, rec in records.items():
@@ -120,8 +145,9 @@ def main() -> None:
         stmt = sec.get("statement") or {}
         pred = stmt.get("predicate", "?")
         predicate_counts[pred] = predicate_counts.get(pred, 0) + 1
-        if pred in GENERIC_PREDICATES:
-            generic_predicate_pmc.append(pmc)
+        demoted = demotes_edge(stmt)
+        if demoted:
+            demoting_predicate_pmc.append(pmc)
         subj = stmt.get("subject") or {}
         obj = stmt.get("object") or {}
         src = sec.get("source") or {}
@@ -131,7 +157,7 @@ def main() -> None:
         lines.append(f"\n---\n## {pmc} — **{status}**\n")
         lines.append(f"- **best coverage:** {cov:.3f}")
         lines.append(f"- **KG:** {n} nodes / {e} edges")
-        lines.append(f"- **predicate:** `{pred}`" + ("  ⚠️ *generic fallback*" if pred in GENERIC_PREDICATES else ""))
+        lines.append(f"- **predicate:** `{pred}`" + ("  ⚠️ *forbidden by its association class — demotes the edge*" if demoted else ""))
         lines.append(
             f"- **subject:** method={subj.get('method')} encoding={subj.get('encoding')} "
             f"prioritize={subj.get('prioritize')} taxon={subj.get('taxon')}"
@@ -168,8 +194,8 @@ def main() -> None:
     )
     agg.append(f"- mean best coverage: **{avg_cov:.3f}**")
     agg.append("- predicate distribution: " + ", ".join(f"`{p}`\u00d7{c}" for p, c in sorted(predicate_counts.items(), key=lambda kv: -kv[1])))
-    if generic_predicate_pmc:
-        agg.append(f"- ⚠️ generic-fallback predicate used for: {', '.join(generic_predicate_pmc)}")
+    if demoting_predicate_pmc:
+        agg.append(f"- ⚠️ class-demoting predicate used for: {', '.join(demoting_predicate_pmc)}")
     if error_pmc:
         agg.append("- SKIPPED reasons:")
         for pmc, note in error_pmc:
@@ -180,8 +206,8 @@ def main() -> None:
     print(f"QC report -> {OUT}")
     print(f"MAPPED={mapped} SKIPPED={skipped} mean_cov={avg_cov:.3f}")
     print("predicates:", predicate_counts)
-    if generic_predicate_pmc:
-        print("generic-fallback predicate PMCs:", generic_predicate_pmc)
+    if demoting_predicate_pmc:
+        print("class-demoting predicate PMCs:", demoting_predicate_pmc)
 
 
 if __name__ == "__main__":

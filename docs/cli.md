@@ -60,6 +60,7 @@ PMC ids are passed positionally (also accepted as `--pmc-ids`). This page lists 
 | `--reflexion` | bool | No | `False` | Enable the tier-2 LLM reflexion improver (same model config) when the deterministic proposer stalls |
 | `--judge-model` | str | No | `None` | Model id for the semantic judge gate; MAPPED then also requires the score to clear `--judge-threshold` |
 | `--judge-threshold` | float | No | `None` | Semantic judge normalized-score threshold for MAPPED (`0.5` when unset) |
+| `--biolink-threshold` | float | No | `0.0` | Minimum Biolink pass rate of the built KGX for MAPPED; `0.0` reports the rate without gating |
 | `--local`, `-l` | list[str] | No | `None` | Local payload: one DIR for all ids, or `PMCid=DIR` mappings; skips the PMC-AWS fetch (exit 2 on a missing DIR) |
 | `--optimize`, `-o` | bool | No | `False` | Run GEPA prompt optimization and persist optimized instructions instead of running the supervisor |
 | `--instructions-file` | Path | No | `None` | Load GEPA-optimized instructions from a prior `--optimize` run |
@@ -229,7 +230,20 @@ edges: 2000085/2000085 valid (0 failures)
 KGX output is Biolink-compliant.
 ```
 
-Exits non-zero when any record fails, so it can gate a release in CI.
+Exits non-zero when any record fails, so it can gate a release in CI. A missing or misspelled path is
+reported as `file not found` and also exits non-zero — a file that was never read must never count as
+a pass.
+
+Edges carrying `effect_size` / `effect_type` are reported invalid until a `biolink-model` release
+ships [#1774](https://github.com/biolink/biolink-model/pull/1774), because 4.4.3 declares neither on
+`Association`. Those are counted separately as *pending* rather than treated as defects:
+
+```text
+edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
+```
+
+The strict count is what `ok` and the exit code use; the pending count is what
+[`tablassert agent`](#agent) optimizes against, so a deliberate gap never reads as a modelling error.
 
 ---
 
