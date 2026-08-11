@@ -464,6 +464,24 @@ This means nothing in your source data is silently dropped: context that doesn't
 
 In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance. Together with the sheet name it identifies the edge's **inlined supporting study** (`has_supporting_studies`), where it is carried alongside any relocated unsatisfiable slots; neither is folded into `supporting_text`.
 
+#### Automatic column coercion
+
+Before the allow-list sweep runs, tablassert renames statistical columns to their canonical Biolink names so source headers do not have to match exactly. Recognition is delimiter-anchored (spaces, `_`, `-`, `.` are interchangeable) and the **best fuzzy match per target wins, with an existing canonical column always preferred** over a higher-scoring spaced alias.
+
+| Recognized as | Canonical name | Typical source spellings |
+|---|---|---|
+| P value (raw) | `p_value` | `p value`, `p-value`, `pvalue`, `P`, `gwas p`, `raw_p`, `pvalue1` |
+| Adjusted P value | `adjusted_p_value` | `padj`, `p.adj`, `adj.P.Val`, `FDR`, `Bonferroni`, `Holm`, `q value` |
+| Study size | `supporting_study_size` | `n`, `sample_size`, `study size`, `cohort_size`, `participants_n`, `enrollment` |
+| Effect size | `effect_size` | `effect size`, `odds ratio`, `hazard ratio`, `beta`, `log2FC`, `correlation`, `rho` (and the legacy `relationship_strength`) |
+| Effect type | `effect_type` | `effect type`, `effect metric`, `statistic type`, `metric` |
+
+- **`effect_type` values are also coerced.** Each cell is matched case/separator-insensitively against an alias table (e.g. `"OR"` → `odds_ratio`, `"Cohen's d"` → `cohens_d`, `"Spearman"` → `spearmans_rho`), then by `rapidfuzz` fallback against the 25 permissible `EffectTypes` values; anything matching nothing is dropped to `null` rather than carried through (the Biolink range is the enum).
+- **`statistical_significance_qualifier` is auto-derived** from the p-value column into five bands — `biolink:very_strongly_significant` (p ≤ 0.001), `biolink:strongly_significant` (≤ 0.01), `biolink:significant` (≤ 0.05), `biolink:suggestive` (≤ 0.10), `biolink:not_significant` (> 0.10). The same rigorous selection picks the source column: a raw `p_value` column is preferred, `adjusted_p_value` is the fallback, and the qualifier is omitted entirely when no p-value column is present.
+- **Biolink class rules are enforced.** `effect_type` is nulled on every row where `effect_size` is null (and nulled entirely when no `effect_size` column exists); `statistical_significance_qualifier` is only set when `p_value`/`adjusted_p_value` is populated, and null p-values yield a null qualifier.
+
+This is why declaring an annotation like `{annotation: p value, method: column, encoding: E}` still produces a top-level `p_value` edge field — the header is normalized to the Biolink name before folding is considered.
+
 ## Next Steps
 
 - **[Advanced Example](advanced-example.md)** - Real-world configuration with complex transformations
