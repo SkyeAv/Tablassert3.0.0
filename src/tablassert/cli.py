@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -420,6 +422,93 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
     raise BabelDownloadError(url, retries, last_error or RuntimeError("no attempts made")) from last_error
 
 
+def download_babel_file_aria2c(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+    """Download one BABEL file with the optional external ``aria2c`` executable.
+
+    The helper mirrors ``download_babel_file``'s final-file cache contract but
+    delegates resume/retry behavior to aria2. Incomplete aria2 downloads leave a
+    ``<filename>.aria2`` control file next to the target; when that control file
+    exists we do NOT treat the target as a cache hit, and failures never remove
+    either file so a later run can continue.
+
+    Args:
+        filename: Output basename under ``destination``.
+        url: Source URL.
+        destination: Directory to download into (created if missing).
+        retries: Maximum aria2 tries (forwarded to ``--max-tries``).
+
+    Returns:
+        Path to the downloaded file.
+
+    Raises:
+        BabelDownloadError: If ``aria2c`` is missing, fails, or does not leave a
+            complete final file.
+    """
+    destination.mkdir(parents=True, exist_ok=True)
+    final_path: Path = destination / filename
+    control_path: Path = destination / f"{filename}.aria2"
+    if final_path.is_file() and not control_path.exists():
+        download_logger.info("Reusing cached BABEL file: {path}", path=final_path)
+        return final_path
+    if retries < 1:
+        error = ValueError("aria2c retries must be a positive integer")
+        raise BabelDownloadError(url, retries, error) from error
+
+    binary: str | None = shutil.which("aria2c")
+    if binary is None:
+        error = FileNotFoundError("aria2c executable not found; install aria2 or omit --aria2c")
+        raise BabelDownloadError(url, 0, error) from error
+
+    command: list[str] = [
+        binary,
+        "--continue=true",
+        "--max-tries",
+        str(retries),
+        "--retry-wait",
+        "5",
+        "--allow-overwrite=true",
+        "--auto-file-renaming=false",
+        "--max-connection-per-server=8",
+        "--split=8",
+        "--min-split-size=1M",
+        "--summary-interval=0",
+        "--console-log-level=warn",
+        "--show-console-readout=false",
+        "--dir",
+        str(destination),
+        "--out",
+        filename,
+        url,
+    ]
+    try:
+        completed: subprocess.CompletedProcess[str] = subprocess.run(
+            command, shell=False, check=False, capture_output=True, text=True, errors="replace"
+        )
+    except OSError as e:
+        raise BabelDownloadError(url, retries, e) from e
+
+    if completed.returncode != 0:
+        output: str = (completed.stderr or completed.stdout or "").strip()
+        detail: str = f"aria2c exited with status {completed.returncode}"
+        if output:
+            detail = f"{detail}: {output[-2000:]}"
+        error = RuntimeError(detail)
+        raise BabelDownloadError(url, retries, error) from error
+
+    if not final_path.is_file() or control_path.exists():
+        suffix: str = ""
+        if control_path.exists():
+            suffix = f"; resume control file still present: {control_path}"
+        output = (completed.stderr or completed.stdout or "").strip()
+        if output:
+            suffix = f"{suffix}; aria2c output: {output[-2000:]}"
+        error = FileNotFoundError(f"aria2c completed but did not create a complete file at {final_path}{suffix}")
+        raise BabelDownloadError(url, retries, error) from error
+
+    download_logger.info("Downloaded {url} -> {path} with aria2c", url=url, path=final_path)
+    return final_path
+
+
 def stream_copy(source: BinaryIO, destination: BinaryIO, on_bytes: Callable[[int], None] | None = None) -> None:
     """Copy ``source`` to ``destination`` in 1 MiB chunks.
 
@@ -780,7 +869,12 @@ def rebuild_agent_graph(
 
 
 def build_fullmap_pipeline(
-    output: Path, progress: PipelineProgress, cache: Path = Path("./fullmap/downloads"), version: str = BABEL_VERSION, threads: int | None = None
+    output: Path,
+    progress: PipelineProgress,
+    cache: Path = Path("./fullmap/downloads"),
+    version: str = BABEL_VERSION,
+    threads: int | None = None,
+    aria2c: bool = False,
 ) -> None:
     """Build an embedded fullmap redb database from BABEL outputs.
 
@@ -793,6 +887,7 @@ def build_fullmap_pipeline(
         cache: Directory for downloaded BABEL files.
         version: BABEL version label.
         threads: Optional thread count forwarded to Rust.
+        aria2c: Use the optional aria2c executable for downloads when true.
     """
     from tablassert import rs
 
@@ -816,18 +911,19 @@ def build_fullmap_pipeline(
     def report_progress(downloaded: int, total: int) -> None:
         sub_step(_download_detail(downloaded, total))
 
-    class_files: list[Path] = []
-    for filename, url in class_urls:
+    def download_one(filename: str, url: str, destination: Path) -> Path:
         start(filename)
-        sub_step("downloading")
-        class_files.append(download_babel_file(filename, url, cache / "classes", on_progress=report_progress))
+        if aria2c:
+            sub_step("aria2c downloading")
+            path: Path = download_babel_file_aria2c(filename, url, destination)
+        else:
+            sub_step("downloading")
+            path = download_babel_file(filename, url, destination, on_progress=report_progress)
         advance()
-    synonym_files: list[Path] = []
-    for filename, url in synonym_urls:
-        start(filename)
-        sub_step("downloading")
-        synonym_files.append(download_babel_file(filename, url, cache / "synonyms", on_progress=report_progress))
-        advance()
+        return path
+
+    class_files: list[Path] = [download_one(filename, url, cache / "classes") for filename, url in class_urls]
+    synonym_files: list[Path] = [download_one(filename, url, cache / "synonyms") for filename, url in synonym_urls]
 
     # Stage 3/3: build fullmap database.
     progress.stage("Building Fullmap Database")
@@ -852,6 +948,7 @@ def build_fullmap(
     cache: Annotated[Path, cyclopts.Parameter(name=["--cache", "-c"])] = Path("./fullmap/downloads"),
     version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,
     threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
+    aria2c: Annotated[bool, cyclopts.Parameter(name=["--aria2c", "-a"], negative="")] = False,
 ) -> None:
     """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
-    run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads)
+    run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads, aria2c=aria2c)
