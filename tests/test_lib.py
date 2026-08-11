@@ -737,10 +737,11 @@ def test_sig_uses_non_exact_p_value_column() -> None:
 
 
 def test_sig_picks_closest_non_exact_match() -> None:
-    """sig picks closest match when multiple non-exact columns present."""
+    """sig prefers a raw p-value bucket over an adjusted one when both are non-exact."""
     lf: pl.LazyFrame = pl.DataFrame({"log_p_value": [0.01], "adjusted_p_value_corrected": [0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    # "log_p_value" has higher fuzz.ratio to "p_value" than "adjusted_p_value_corrected"
+    # "log_p_value" -> raw p_value bucket; "adjusted_p_value_corrected" -> adjusted bucket.
+    # The raw bucket is preferred, so 0.01 -> strongly_significant (not 0.5 -> not_significant).
     assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant"]
 
 
@@ -790,6 +791,45 @@ def test_sig_not_significant_band() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.11, 0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     assert list(result["statistical_significance_qualifier"]) == ["biolink:not_significant", "biolink:not_significant"]
+
+
+def test_sig_prefers_raw_p_value_over_adjusted_bucket() -> None:
+    """sig derives the qualifier from a raw p-value column, not a co-present adjusted one.
+
+    ``"P"`` classifies as the raw ``p_value`` bucket (bare-P token) and ``"FDR"`` as the
+    ``adjusted_p_value`` bucket. The qualifier must follow the raw column: 0.01 maps to
+    ``strongly_significant``, whereas the adjusted 0.001 would wrongly yield
+    ``very_strongly_significant``.
+    """
+    lf: pl.LazyFrame = pl.DataFrame({"P": [0.01], "FDR": [0.001]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant"]
+
+
+def test_sig_canonical_column_wins_over_higher_scoring_alias() -> None:
+    """An existing canonical ``p_value`` column wins over a higher-scoring spaced alias.
+
+    Both ``"p_value"`` and ``"p vals"`` land in the raw bucket; the canonical column is
+    chosen directly (no fuzzy tiebreak), so banding follows ``p_value``=0.05
+    (``significant``) rather than ``p vals``=0.001 (``very_strongly_significant``).
+    """
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.05], "p vals": [0.001]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["statistical_significance_qualifier"]) == ["biolink:significant"]
+
+
+def test_sig_excludes_substring_only_non_pvalue_column() -> None:
+    """sig uses pvalue_target, not a naive substring, so a look-alike column is ignored.
+
+    ``"xp_value_x"`` contains the literal ``p_value`` substring (the old selector would
+    grab it) but ``pvalue_target`` rejects it: the ``p`` is glued to an alphanumeric on
+    both sides, so neither the value token nor the bare-P token matches. With no real
+    p-value column the qualifier is omitted (Biolink class rule).
+    """
+    lf: pl.LazyFrame = pl.DataFrame({"xp_value_x": [0.01], "gene": ["BRCA1"]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert "statistical_significance_qualifier" not in result.columns
+    assert result.height == 1
 
 
 def test_drop_not_significant_removes_band_keeps_nulls() -> None:

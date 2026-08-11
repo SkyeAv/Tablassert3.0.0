@@ -15,12 +15,20 @@ else:
 def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_significance_qualifier") -> pl.LazyFrame:
     """Create the ``statistical_significance_qualifier`` column (Biolink PR #1766).
 
-    Picks the closest fuzzy-matching p-value-like column when the exact name
-    is missing, then buckets the value into one of five significance bands.
+    Picks the p-value column via ``pvalue_target`` classification (raw ``p_value``
+    preferred, canonical-wins), then buckets the value into one of five significance bands.
+
+    Candidate selection mirrors :func:`coerce_pvalue_columns`: a column counts
+    only when :func:`pvalue_target` accepts it (not by naive substring), an
+    existing canonical column always wins over a higher-scoring spaced alias,
+    and ties break by ``rapidfuzz`` ratio against ``target.replace("_", " ")``.
+    A raw ``p_value`` column is preferred over ``adjusted_p_value``.
 
     Args:
         lf: Source LazyFrame.
-        col: Reference column name to fuzzy-match against.
+        col: Preferred canonical target (``"p_value"`` raw or
+            ``"adjusted_p_value"``); the other bucket is the fallback. Kept for
+            API compatibility — selection still runs through :func:`pvalue_target`.
         out: Output qualifier column name.
 
     Returns:
@@ -40,11 +48,25 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
     from rapidfuzz import fuzz
 
     names: list[str] = lf.collect_schema().names()
-    candidates: list[str] = [c for c in names if col in c]
-    chosen: str | None = max(candidates, key=lambda c: fuzz.ratio(c, col)) if candidates else None
-    if chosen is None:
+    # Same rigorous classification as ``coerce_pvalue_columns``: a column is a significance
+    # source only when ``pvalue_target`` accepts it — NOT by naive substring — so non-p-value
+    # columns that merely contain the reference text stay out of the qualifier.
+    buckets: dict[str, list[str]] = {}
+    for name in names:
+        target: str | None = pvalue_target(name)
+        if target:
+            buckets.setdefault(target, []).append(name)
+    if not buckets:
         # Biolink class rule: qualifier may only be set when p_value/adjusted_p_value is populated.
         return lf
+    # Prefer the requested target (raw ``p_value`` by default); fall back to whichever p-value
+    # bucket is present. Raw p-value is the canonical significance source; adjusted is the fallback.
+    preferred: str = col if col in buckets else next(iter(buckets))
+    candidates: list[str] = buckets[preferred]
+    reference: str = preferred.replace("_", " ")
+    # An existing canonical column always wins; fuzzy ranking only picks among aliases
+    # (same rule as ``coerce_pvalue_columns``).
+    chosen: str = preferred if preferred in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
     expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
     band: pl.Expr = (
         pl.when(expr.is_null())
