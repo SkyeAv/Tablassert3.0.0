@@ -1280,14 +1280,17 @@ files — a primary file holding the dimensions, CURIEs, and schema metadata, pl
 files (<code>fullmap.s0.redb</code> … <code>fullmap.s15.redb</code> by default) holding the term→postings index — containing
 biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS
 Translator BABEL export files.</p>
-<p>Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step required (this is an in-process redb shard scheme, not the older external DuckDB shards).</p>
+<p>Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step required by default (this is an in-process redb shard scheme, not the older external DuckDB shards). If you opt into <code>build-fullmap --aria2c</code> / <code>-a</code>, only the download stage uses an installed external <code>aria2c</code> executable.</p>
 <h2 id="build-command">Build Command<a class="headerlink" href="#build-command" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Build a fullmap database (downloads BABEL data automatically)</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>tablassert<span class="w"> </span>build-fullmap
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Optional: use installed aria2c for resumable segmented BABEL downloads</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c
 </code></pre></div>
 <p>See the <a href="../cli/#build-fullmap">CLI Reference → build-fullmap</a> for the complete flag table (output path,
-cache directory, BABEL snapshot version, worker threads), their defaults, and more examples. Two facts
-matter most when planning a build:</p>
+cache directory, BABEL snapshot version, worker threads, and the optional <code>--aria2c</code> / <code>-a</code> downloader),
+their defaults, and more examples. Two facts matter most when planning a build:</p>
 <ul>
 <li>The BABEL <strong>version</strong> flag selects a RENCI BABEL snapshot date (default <code>2026jul22</code>) — <em>not</em>
   Tablassert's package version. Bumping it fetches a different snapshot and requires rebuilding; the
@@ -1299,7 +1302,7 @@ matter most when planning a build:</p>
 <h3 id="data-pipeline">Data Pipeline<a class="headerlink" href="#data-pipeline" title="Permanent link">&para;</a></h3>
 <p>The build is a parallel, <strong>memory-bounded</strong> pipeline executed by the Rust extension:</p>
 <ol>
-<li><strong>Download</strong> — fetch BABEL class and synonym files from RENCI into the cache (resumable, reused).</li>
+<li><strong>Download</strong> — fetch BABEL class and synonym files from RENCI into the cache (resumable, reused). By default this uses Tablassert's Python downloader; <code>--aria2c</code> / <code>-a</code> opts into the installed <code>aria2c</code> executable, preserving aria2 resume control files across dropped downloads and failing loud if the executable is missing or the download fails.</li>
 <li><strong>Equivalents index</strong> — parse class files into sorted on-disk runs, then k-way merge them into a
    memory-mapped index mapping each primary CURIE to its equivalents.</li>
 <li><strong>Synonym pass</strong> — a producer/consumer pool streams byte-bounded line-chunks; workers dedup CURIEs,
@@ -1316,7 +1319,10 @@ memory budget; the <a href="https://github.com/microsoft/mimalloc">mimalloc</a> 
 multi-threaded allocation from bloating resident memory.</p>
 <ul>
 <li><strong>Download</strong> — files come from <code>https://stars.renci.org/var/babel_outputs</code> via resumable,
-  range-request downloads; cached files are reused.</li>
+  range-request downloads; cached files are reused. Passing <code>--aria2c</code> / <code>-a</code> switches only this
+  stage to the installed <code>aria2c</code> executable, using aria2's segmented HTTP downloads and retry/resume
+  control files while suppressing aria2's own progress UI so Tablassert's progress bar stays clean.
+  The progress detail remains file-level (<code>aria2c downloading</code>) rather than byte-level in this mode.</li>
 <li><strong>Equivalents index</strong> — class files parse in parallel into sorted on-disk runs, k-way merged into a
   single memory-mapped CURIE→equivalents index; only a compact <code>(hash, offset)</code> index lives in RAM,
   the string data is mmap'd.</li>
