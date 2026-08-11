@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Added
+- **`tablassert build-fullmap --aria2c` / `-a`** opt-in downloader acceleration. When requested, the BABEL download stage uses the installed `aria2c` executable with segmented HTTP downloads plus resume/retry flags (`--continue=true`, `--max-tries`, `--retry-wait`) while keeping the existing Python downloader as the default. Missing or failing `aria2c` fails loud instead of silently falling back, and aria2 `.aria2` control files are preserved so interrupted downloads can resume on rerun.
+
 ## 8.2.0 - 2026-08-10
 
 ### Breaking Changes

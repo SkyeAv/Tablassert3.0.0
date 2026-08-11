@@ -10,6 +10,7 @@ stubbed, and all artifacts land in ``tmp_path``. No network, no real Rust build.
 from __future__ import annotations
 
 import io
+import subprocess
 from email.message import Message
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,7 @@ import pytest
 from cyclopts.exceptions import UnknownOptionError  # pyright: ignore[reportMissingImports]
 
 from tablassert import cli, rs
-from tablassert.cli import build_fullmap_pipeline, build_kg, download_babel_file, validate_graph_pipeline
+from tablassert.cli import build_fullmap_pipeline, build_kg, download_babel_file, download_babel_file_aria2c, validate_graph_pipeline
 from tablassert.errors import BabelDownloadError, GraphValidationError
 from tablassert.ingests import to_yaml
 from tablassert.progress import PipelineProgress
@@ -184,6 +185,128 @@ def test_download_babel_file_zero_retries_raises_without_attempt(tmp_path: Path)
         download_babel_file("f.gz", "https://example.com/f.gz", tmp_path, retries=0)
 
 
+def test_download_babel_file_aria2c_reuses_cached_complete_without_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A complete final file is reused before binary detection or subprocess execution."""
+    final: Path = tmp_path / "f.gz"
+    final.write_bytes(b"cached-bytes")
+
+    def _which_must_not_run(name: str) -> str | None:
+        raise AssertionError(f"shutil.which({name!r}) must not run for a complete cache hit")
+
+    def _run_must_not_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("subprocess.run must not run for a complete cache hit")
+
+    monkeypatch.setattr(cli.shutil, "which", _which_must_not_run)
+    monkeypatch.setattr(cli.subprocess, "run", _run_must_not_run)
+    out: Path = download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
+    assert out == final
+    assert out.read_bytes() == b"cached-bytes"
+
+
+def test_download_babel_file_aria2c_runs_resume_retry_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """aria2c helper uses subprocess without shell and passes resume/retry flags."""
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c" if name == "aria2c" else None)
+    commands: list[list[str]] = []
+
+    def _fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        assert kwargs["shell"] is False
+        destination = Path(command[command.index("--dir") + 1])
+        filename = command[command.index("--out") + 1]
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / filename).write_bytes(b"downloaded")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli.subprocess, "run", _fake_run)
+    out: Path = download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path, retries=7)
+    assert out == tmp_path / "f.gz"
+    assert out.read_bytes() == b"downloaded"
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[0] == "/usr/bin/aria2c"
+    assert "--continue=true" in command
+    assert "--max-tries" in command
+    assert command[command.index("--max-tries") + 1] == "7"
+    assert "--retry-wait" in command
+    assert command[command.index("--retry-wait") + 1] == "5"
+    assert "--summary-interval=0" in command
+    assert "--show-console-readout=false" in command
+    assert command[-1] == "https://example.com/f.gz"
+
+
+def test_download_babel_file_aria2c_missing_binary_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opting into aria2c fails loud when the executable is unavailable."""
+    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+
+    def _run_must_not_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("subprocess.run must not run when aria2c is missing")
+
+    monkeypatch.setattr(cli.subprocess, "run", _run_must_not_run)
+    with pytest.raises(BabelDownloadError):
+        download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
+
+
+def test_download_babel_file_aria2c_zero_retries_raises_without_unlimited_aria2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``retries=0`` is rejected before aria2 can interpret it as unlimited retries."""
+
+    def _which_must_not_run(name: str) -> str | None:
+        raise AssertionError("aria2c lookup must not run when retries is invalid")
+
+    monkeypatch.setattr(cli.shutil, "which", _which_must_not_run)
+    with pytest.raises(BabelDownloadError):
+        download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path, retries=0)
+
+
+def test_download_babel_file_aria2c_subprocess_oserror_raises_typed_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """OS errors from launching aria2c surface as ``BabelDownloadError``."""
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c")
+
+    def _raise_oserror(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise OSError("exec failed")
+
+    monkeypatch.setattr(cli.subprocess, "run", _raise_oserror)
+    with pytest.raises(BabelDownloadError):
+        download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
+
+
+def test_download_babel_file_aria2c_success_without_complete_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Even an exit-0 aria2c run must leave a final file without a resume control file."""
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c")
+
+    def _fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        destination = Path(command[command.index("--dir") + 1])
+        filename = command[command.index("--out") + 1]
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / filename).write_bytes(b"partial")
+        (destination / f"{filename}.aria2").write_bytes(b"resume-state")
+        return subprocess.CompletedProcess(command, 0, stdout="done", stderr="")
+
+    monkeypatch.setattr(cli.subprocess, "run", _fake_run)
+    with pytest.raises(BabelDownloadError):
+        download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
+
+
+def test_download_babel_file_aria2c_preserves_control_file_on_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An existing aria2 control file means the target is partial and must be resumed, not reused."""
+    final: Path = tmp_path / "f.gz"
+    control: Path = tmp_path / "f.gz.aria2"
+    final.write_bytes(b"partial")
+    control.write_bytes(b"resume-state")
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c")
+    commands: list[list[str]] = []
+
+    def _fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="dropped connection")
+
+    monkeypatch.setattr(cli.subprocess, "run", _fake_run)
+    with pytest.raises(BabelDownloadError):
+        download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
+    assert len(commands) == 1  # final + .aria2 was NOT treated as a complete cache hit
+    assert final.read_bytes() == b"partial"
+    assert control.read_bytes() == b"resume-state"  # failure path preserves aria2 resume metadata
+
+
 def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Cover cli.py:501 — the ``build-kg`` cyclopts command forwards to ``run(6, build_pipeline, ...)``.
 
@@ -200,6 +323,35 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(cli, "run", _fake_run)
     build_kg(config, release=True, qc=True, log=True, head=True)
     assert calls == [(6, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True})]
+
+
+def test_build_fullmap_command_passes_aria2c_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``build-fullmap --aria2c`` delegates the opt-in flag to ``build_fullmap_pipeline``."""
+    output: Path = tmp_path / "fullmap.redb"
+    cache: Path = tmp_path / "downloads"
+    calls: list[tuple[Any, ...]] = []
+
+    def _fake_run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
+        calls.append((stages, fn, arg, kwargs))
+
+    monkeypatch.setattr(cli, "run", _fake_run)
+    cli.build_fullmap(output=output, cache=cache, version="v", threads=2, aria2c=True)
+    assert calls == [(3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "threads": 2, "aria2c": True})]
+
+
+def test_build_fullmap_aria2c_flag_parses() -> None:
+    """``build-fullmap`` accepts ``--aria2c`` and ``-a`` but no generated negative alias."""
+
+    def parse(argv: list[str]) -> dict[str, Any]:
+        fn, bound, _ = cli.APP.parse_args(argv, exit_on_error=False)
+        assert fn is cli.build_fullmap
+        return dict(bound.arguments)
+
+    assert parse(["build-fullmap"]) == {}
+    assert parse(["build-fullmap", "--aria2c"])["aria2c"] is True
+    assert parse(["build-fullmap", "-a"])["aria2c"] is True
+    with pytest.raises(UnknownOptionError):
+        parse(["build-fullmap", "--no-aria2c"])
 
 
 def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
@@ -276,4 +428,72 @@ def test_build_fullmap_pipeline_reports_download_progress(tmp_path: Path, monkey
     assert (cache / "classes" / "c.gz").read_bytes() == payload
     assert (cache / "synonyms" / "s.gz").read_bytes() == payload
     # Stage 3 received the downloaded paths and the thread count.
+    assert built == [(output, [cache / "classes" / "c.gz"], [cache / "synonyms" / "s.gz"], 1)]
+
+
+def test_build_fullmap_pipeline_uses_aria2c_when_opted_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The aria2c flag switches both class and synonym loops to the aria2 helper and simple progress text."""
+
+    def _fake_babel_urls(version: str, endpoints: tuple[str, ...], pattern: object) -> list[tuple[str, str]]:
+        if endpoints == cli.BABEL_CLASS_ENDPOINTS:
+            return [("c.gz", "https://example.com/c.gz")]
+        return [("s.gz", "https://example.com/s.gz")]
+
+    monkeypatch.setattr(cli, "babel_urls", _fake_babel_urls)
+
+    def _python_download_must_not_run(*args: Any, **kwargs: Any) -> Path:
+        raise AssertionError("Python downloader must not run when aria2c=True")
+
+    monkeypatch.setattr(cli, "download_babel_file", _python_download_must_not_run)
+    aria_calls: list[tuple[str, str, Path]] = []
+
+    def _fake_aria2c(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+        aria_calls.append((filename, url, destination))
+        destination.mkdir(parents=True, exist_ok=True)
+        path = destination / filename
+        path.write_bytes(b"downloaded")
+        return path
+
+    monkeypatch.setattr(cli, "download_babel_file_aria2c", _fake_aria2c)
+    built: list[tuple[Any, ...]] = []
+
+    def _fake_build(output: Path, class_files: list[Path], synonym_files: list[Path], threads: int | None = None, progress: Any = None) -> None:
+        built.append((output, class_files, synonym_files, threads))
+
+    monkeypatch.setattr(rs, "build_fullmap_db", _fake_build)
+
+    class _RecordingProgress:
+        def __init__(self) -> None:
+            self.sub_steps: list[str] = []
+            self.advances: int = 0
+
+        def stage(self, name: str) -> None:
+            pass
+
+        def section_loop(self, total: int, label: str) -> tuple[Any, Any, Any]:
+            def start(detail: str) -> None:
+                pass
+
+            def advance() -> None:
+                self.advances += 1
+
+            def sub_step(phase: str) -> None:
+                self.sub_steps.append(phase)
+
+            return start, advance, sub_step
+
+        def dynamic_loop(self, label: str) -> Any:
+            return lambda *args: None
+
+        def end_section_task(self) -> None:
+            pass
+
+    progress = _RecordingProgress()
+    output: Path = tmp_path / "fullmap.redb"
+    cache: Path = tmp_path / "downloads"
+    build_fullmap_pipeline(output, progress, cache=cache, version="v", threads=1, aria2c=True)  # type: ignore[arg-type]
+
+    assert aria_calls == [("c.gz", "https://example.com/c.gz", cache / "classes"), ("s.gz", "https://example.com/s.gz", cache / "synonyms")]
+    assert progress.sub_steps.count("aria2c downloading") == 2
+    assert progress.advances == 4  # two discovery entries + two downloaded files
     assert built == [(output, [cache / "classes" / "c.gz"], [cache / "synonyms" / "s.gz"], 1)]
