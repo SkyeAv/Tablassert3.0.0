@@ -16,8 +16,22 @@ import pytest
 import yaml
 from cyclopts.exceptions import MissingArgumentError  # pyright: ignore[reportMissingImports]
 
+from tablassert import extras
 from tablassert.agent import ENV_API_BASE, ENV_API_KEY, ENV_MODEL_ID, load_optimized_instructions, save_optimized_instructions
 from tablassert.cli import APP, agent, rebuild_agent_graph
+from tablassert.errors import MissingExtraError
+
+
+@pytest.fixture(autouse=True)
+def _extras_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report every optional extra as installed for this module's wiring tests.
+
+    Why: ``tablassert agent`` preflights the ``[agent]``/``[optimize]`` extras, but these tests
+    monkeypatch ``run_supervisor``/``run_gepa`` so no smolagents or dspy code ever runs — and CI
+    installs neither extra. Stubbing the probe keeps each test about the flag plumbing it was
+    written for. The preflight has its own tests below, which re-stub over this fixture.
+    """
+    monkeypatch.setattr(extras, "missing", lambda extra: ())
 
 
 def test_agent_command_registered() -> None:
@@ -47,6 +61,70 @@ def test_agent_no_secret_fails_loud(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     captured = capsys.readouterr()
     assert ENV_MODEL_ID in captured.err
     assert "secret" in captured.err.lower() or "hardcode" in captured.err.lower()
+
+
+def _set_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Satisfy the secret checks so a test can reach the checks that come after them."""
+    monkeypatch.setenv(ENV_MODEL_ID, "env-model")
+    monkeypatch.setenv(ENV_API_BASE, "env-base")
+    monkeypatch.setenv(ENV_API_KEY, "env-key")
+
+
+def test_agent_without_extra_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without the ``[agent]`` extra the command stops up front and prints the install command.
+
+    Why: smolagents is otherwise only imported per-article inside ``build_agent``, so a user missing
+    the extra would download an article from PMC before learning they cannot run at all. The preflight
+    must name the absent distribution AND the exact pip command — a bare ``ModuleNotFoundError:
+    smolagents`` does not tell anyone that ``tablassert[agent]`` is the fix.
+    """
+    _set_model_env(monkeypatch)
+    monkeypatch.setattr(extras, "missing", lambda extra: ("smolagents",) if extra == "agent" else ())
+    monkeypatch.setattr("tablassert.agent.run_supervisor", lambda *a, **k: pytest.fail("supervisor ran without the extra"))
+
+    with pytest.raises(MissingExtraError) as excinfo:
+        agent(["PMC1"], fullmap=Path("/tmp/fm"))
+
+    message: str = str(excinfo.value)
+    assert "smolagents" in message
+    assert 'pip install "tablassert[agent]"' in message
+    assert excinfo.value.extra == "agent"
+
+
+def test_agent_optimize_without_optimize_extra_points_at_optimize(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--optimize`` on an agent-ready install points at ``[optimize]``, not ``[agent]``.
+
+    Why: dspy powers only the GEPA path and ships in its own extra. Naming ``[agent]`` here would
+    send a user who already has it in a circle.
+    """
+    _set_model_env(monkeypatch)
+    monkeypatch.setattr(extras, "missing", lambda extra: ("dspy",) if extra == "optimize" else ())
+    monkeypatch.setattr("tablassert.agent.run_gepa", lambda *a, **k: pytest.fail("GEPA ran without the extra"))
+
+    with pytest.raises(MissingExtraError) as excinfo:
+        agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True)
+
+    message: str = str(excinfo.value)
+    assert 'pip install "tablassert[optimize]"' in message
+    assert "tablassert[agent]" not in message
+
+
+def test_agent_missing_secret_is_reported_before_missing_extra(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """With BOTH a missing secret and a missing extra, the secret is reported first.
+
+    Why: the flag/secret checks are about the command the user just typed; the extras preflight is
+    about their environment. Fixing an install only to be told the model id was never set is a worse
+    loop than the reverse, so the ordering is pinned.
+    """
+    for env in (ENV_MODEL_ID, ENV_API_BASE, ENV_API_KEY):
+        monkeypatch.delenv(env, raising=False)
+    monkeypatch.setattr(extras, "missing", lambda extra: ("smolagents",))
+
+    with pytest.raises(SystemExit) as exc_info:
+        agent(["PMC1"], fullmap=Path("/tmp/fm"))
+
+    assert exc_info.value.code == 2
+    assert ENV_MODEL_ID in capsys.readouterr().err
 
 
 def test_agent_env_fallback_and_forwarding(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

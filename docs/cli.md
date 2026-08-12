@@ -35,8 +35,10 @@ These are flags on the root `tablassert` command, **not** subcommands.
 
 Use this to autonomously turn one or more PMC articles into audited, improved KG configs and graphs
 (fetch → derive config → build + audit → improve until coverage maps). Requires the `[agent]` extra
-(`pip install tablassert[agent]`); `--optimize` additionally needs the `[optimize]` extra
-(`pip install tablassert[optimize]`, pulls `dspy`).
+(`pip install "tablassert[agent]"`); `--optimize` additionally needs the `[optimize]` extra
+(`pip install "tablassert[optimize]"`, pulls `dspy`). Both are checked after flag validation and
+before any model is built or article fetched, so a missing extra is reported with its install
+command instead of surfacing mid-run — see [When an extra is missing](installation.md#when-an-extra-is-missing).
 
 ```bash
 tablassert agent --fullmap PATH [OPTIONS] PMC-IDS...
@@ -97,7 +99,7 @@ tablassert build-fullmap [ARGS]
 | `--cache`, `-c` | Path | No | `./fullmap/downloads` | Directory for downloaded BABEL files when building from scratch (`classes/`, `synonyms/`) |
 | `--version`, `-v` | str | No | `2026jul22` | BABEL snapshot date to fetch (a RENCI stamp, **not** Tablassert's version) |
 | `--threads`, `-t` | int | No | `None` (auto) | Worker threads for a from-scratch build; auto-capped by memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
-| `--aria2c`, `-a` | Flag | No | `False` | Opt into the bundled `aria2c` binary from the `[aria2]` extra for resumable segmented downloads (the prebuilt archive **or** BABEL files); fails loud if the extra is missing, unsupported on the current platform, or aria2c exits non-zero |
+| `--aria2c`, `-a` | Flag | No | `False` | Opt into the bundled `aria2c` binary from the `[aria2]` extra for resumable segmented downloads (the prebuilt archive **or** BABEL files); fails loud (exit 2, before any download starts) if the extra is missing or unsupported on the current platform, and on a non-zero aria2c exit |
 | `--force`, `-f` | Flag | No | `False` | Skip the prebuilt download and always rebuild from BABEL outputs |
 
 ```bash
@@ -135,7 +137,7 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 | --- | --- | --- | --- | --- |
 | `GRAPH-CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph YAML |
 | `--release`, `-r` | Flag | No | `False` | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
-| `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the `[qc]` extra |
+| `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
 

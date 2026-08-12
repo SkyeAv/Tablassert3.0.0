@@ -23,9 +23,9 @@ from urllib.error import HTTPError, URLError
 import pytest
 from cyclopts.exceptions import UnknownOptionError  # pyright: ignore[reportMissingImports]
 
-from tablassert import cli, rs
+from tablassert import cli, extras, rs
 from tablassert.cli import build_fullmap_pipeline, build_kg, download_babel_file, download_babel_file_aria2c, validate_graph_pipeline
-from tablassert.errors import BabelDownloadError, GraphValidationError
+from tablassert.errors import BabelDownloadError, GraphValidationError, QcRuntimeMissingError
 from tablassert.ingests import to_yaml
 from tablassert.progress import PipelineProgress
 
@@ -273,7 +273,8 @@ def test_download_babel_file_aria2c_missing_extra_raises(tmp_path: Path, monkeyp
     monkeypatch.setattr(cli.subprocess, "run", _run_must_not_run)
     with pytest.raises(BabelDownloadError) as excinfo:
         download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
-    assert "pip install tablassert[aria2]" in str(excinfo.value)
+    # Quoted: unquoted brackets glob in zsh, so the command as printed must be runnable as-is.
+    assert 'pip install "tablassert[aria2]"' in str(excinfo.value)
 
 
 def test_download_babel_file_aria2c_missing_extra_on_macos_raises_platform_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -370,8 +371,44 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
         calls.append((stages, fn, arg, kwargs))
 
     monkeypatch.setattr(cli, "run", _fake_run)
+    monkeypatch.setattr(extras, "missing", lambda extra: ())
     build_kg(config, release=True, qc=True, log=True, head=True)
     assert calls == [(6, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True})]
+
+
+def test_build_kg_qc_without_the_extra_stops_before_the_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--qc`` without the ``[qc]`` extra fails immediately, naming the install command.
+
+    Why this matters more than any other extras check: the QC audit is the LAST stage of the
+    pipeline, running only after entity resolution has finished. Without the preflight a user
+    waits out the whole build before learning scikit-learn was never installed — so the test
+    asserts ``run`` was never reached, not merely that an error was raised.
+    """
+    config: Path = tmp_path / "graph.yaml"
+    monkeypatch.setattr(cli, "run", lambda *args, **kwargs: pytest.fail("the build started without the [qc] extra"))
+    monkeypatch.setattr(extras, "missing", lambda extra: ("scikit-learn", "sentence-transformers"))
+
+    with pytest.raises(QcRuntimeMissingError) as excinfo:
+        build_kg(config, qc=True)
+
+    message: str = str(excinfo.value)
+    assert "scikit-learn" in message
+    assert 'pip install "tablassert[qc]"' in message
+
+
+def test_build_kg_without_qc_never_probes_the_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A plain ``build-kg`` runs on a base install, extra absent or not.
+
+    Why: QC is opt-in. Gating every build on an extra nobody asked for would break the
+    base install this project promises.
+    """
+    config: Path = tmp_path / "graph.yaml"
+    calls: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(cli, "run", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(extras, "missing", lambda extra: pytest.fail("probed an extra for a build that never runs QC"))
+
+    build_kg(config)
+    assert len(calls) == 1
 
 
 def test_build_fullmap_command_force_build_passes_aria2c_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -388,8 +425,66 @@ def test_build_fullmap_command_force_build_passes_aria2c_flag(tmp_path: Path, mo
         calls.append((stages, fn, arg, kwargs))
 
     monkeypatch.setattr(cli, "run", _fake_run)
+    monkeypatch.setattr(extras, "missing", lambda extra: ())
     cli.build_fullmap(output=output, cache=cache, version="v", threads=2, aria2c=True, force=True)
     assert calls == [(3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "threads": 2, "aria2c": True})]
+
+
+def test_build_fullmap_aria2c_without_the_extra_stops_before_downloading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--aria2c`` without the ``[aria2]`` extra exits 2 before any download starts.
+
+    Why: the flag is otherwise resolved on the FIRST download, after BABEL URL discovery has
+    already hit the network. A flag that cannot work should cost nothing.
+    """
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+    monkeypatch.setattr(cli, "run", lambda *args, **kwargs: pytest.fail("the download started without the [aria2] extra"))
+    monkeypatch.setattr(extras, "missing", lambda extra: ("aria2",))
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.build_fullmap(output=tmp_path / "fullmap.redb", aria2c=True)
+
+    assert excinfo.value.code == 2
+    assert 'pip install "tablassert[aria2]"' in capsys.readouterr().err
+
+
+def test_build_fullmap_aria2c_is_not_checked_when_the_db_already_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An existing DB still short-circuits, even with ``--aria2c`` and no ``[aria2]`` extra.
+
+    Why: that path downloads nothing, so the flag is moot. Failing a command that was going to
+    be a no-op would turn a harmless leftover flag into an error.
+    """
+    output: Path = tmp_path / "fullmap.redb"
+    output.write_bytes(b"existing-db")
+    monkeypatch.setattr(cli, "run", lambda *args, **kwargs: pytest.fail("an existing DB must short-circuit"))
+    monkeypatch.setattr(extras, "missing", lambda extra: ("aria2",))
+
+    cli.build_fullmap(output=output, aria2c=True)  # must not raise
+    assert "already present" in capsys.readouterr().err
+
+
+def test_build_fullmap_aria2c_on_macos_says_drop_the_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """On macOS the preflight says to drop ``--aria2c``, never to install the extra.
+
+    Why: the ``aria2`` distribution publishes no macOS wheels, so telling a mac user to install
+    the extra is a dead end — the fix there is the default Python downloader.
+    """
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    monkeypatch.setattr(cli, "run", lambda *args, **kwargs: pytest.fail("the download started on an unsupported platform"))
+    monkeypatch.setattr(extras, "missing", lambda extra: ("aria2",))
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.build_fullmap(output=tmp_path / "fullmap.redb", aria2c=True)
+
+    assert excinfo.value.code == 2
+    message: str = capsys.readouterr().err
+    assert "drop --aria2c" in message
+    assert "tablassert[aria2]" not in message
 
 
 def test_build_fullmap_aria2c_flag_parses() -> None:
@@ -947,6 +1042,7 @@ def test_build_fullmap_command_defaults_to_prebuilt_download(tmp_path: Path, mon
         calls.append((stages, fn, arg, kwargs))
 
     monkeypatch.setattr(cli, "run", _fake_run)
+    monkeypatch.setattr(extras, "missing", lambda extra: ())  # --aria2c preflight: report [aria2] as installed
     output: Path = tmp_path / "fullmap.redb"  # does not exist
     cli.build_fullmap(output=output, version="v", aria2c=True)
     assert calls == [(2, cli.fetch_prebuilt_fullmap, output, {"version": "v", "aria2c": True})]
@@ -981,6 +1077,7 @@ def test_build_fullmap_command_falls_back_to_build_on_prebuilt_unavailable(tmp_p
             raise cli.PrebuiltFullmapUnavailable("no prebuilt for this version")
 
     monkeypatch.setattr(cli, "run", _fake_run)
+    monkeypatch.setattr(extras, "missing", lambda extra: ())  # --aria2c preflight: report [aria2] as installed
     output: Path = tmp_path / "fullmap.redb"  # absent
     cache: Path = tmp_path / "c"
     cli.build_fullmap(output=output, cache=cache, version="v", threads=4, aria2c=True)

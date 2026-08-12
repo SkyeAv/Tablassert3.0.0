@@ -14,13 +14,13 @@ ReAct loop) and [DSPy](https://dspy.ai) GEPA for prompt optimization.
 !!! warning "Optional extra"
     The base `tablassert` package does **not** require any of this. `smolagents` and `dspy` are imported
     **lazily** in `tablassert.agent`, so the base install and its test suite are unaffected. Install the
-    extra with `pip install tablassert[agent]`. GEPA prompt optimization (`--optimize`) additionally needs
-    the `[optimize]` extra (`dspy`): `pip install tablassert[optimize]`.
+    extra with `pip install "tablassert[agent]"`. GEPA prompt optimization (`--optimize`) additionally needs
+    the `[optimize]` extra (`dspy`): `pip install "tablassert[optimize]"`.
 
 ## Installation
 
 ```bash
-pip install tablassert[agent]
+pip install "tablassert[agent]"
 
 # GEPA prompt optimization (--optimize) additionally needs dspy:
 pip install "tablassert[agent,optimize]"

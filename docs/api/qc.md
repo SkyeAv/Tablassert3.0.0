@@ -2,7 +2,9 @@
 
 The `qc` module validates entity-resolution mappings through a three-stage pipeline (exact, fuzzy, BioBERT semantic similarity) — it runs behind `build-kg --qc` and `resolve_many(qc=True)` to keep only high-confidence assertions.
 
-QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `scikit-learn` and `sentence-transformers` (`torch` and `numpy` arrive transitively); `rapidfuzz` is a core dependency and is always available. If the audit stage runs without `sentence-transformers` installed, `fullmap_audit()` raises `QcRuntimeMissingError`.
+QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `scikit-learn` and `sentence-transformers` (`torch` and `numpy` arrive transitively); `rapidfuzz` is a core dependency and is always available.
+
+`fullmap_audit()` checks the whole extra before it does any work and raises `QcRuntimeMissingError` naming every absent package and the install command. Checking up front matters because the two packages are needed at different stages — `scikit-learn` from the start, `sentence-transformers` only if Stage 3 is reached — so a half-installed extra would otherwise fail after the audit had already run. `build-kg --qc` performs the same check before the build begins, since the audit is the pipeline's last stage.
 
 ## fullmap_audit()
 
