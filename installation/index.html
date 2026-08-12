@@ -644,6 +644,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#when-an-extra-is-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an extra is missing
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1359,6 +1370,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#when-an-extra-is-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an extra is missing
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1586,55 +1608,102 @@ extras are opt-in.</p>
 <p>The <code>[aria2]</code> extra depends on the PyPI <code>aria2</code> package, which imports as <code>aria2c</code> and bundles a static aria2c binary. Its wheels are available for Linux and Windows only; on macOS, omit <code>--aria2c</code> and use Tablassert's default Python downloader.</p>
 <p>The bundled aria2c dependency is GPL-2.0. Tablassert remains Apache-2.0 and does not vendor aria2c, but redistributors who ship the optional extra should review GPL-2.0 obligations.</p>
 </div>
-<p>Excel (<code>.xlsx</code>) input is read through Polars' <code>calamine</code> engine and additionally requires <code>python-calamine</code> (<code>pip install python-calamine</code>).</p>
+<p>Excel (<code>.xlsx</code>) input is read through Polars' <code>calamine</code> engine, which ships with the base install
+(<code>fastexcel</code>). A handful of workbooks calamine rejects are readable by the pure-Python fallback
+engine: <code>pip install openpyxl</code>.</p>
+<h4 id="when-an-extra-is-missing">When an extra is missing<a class="headerlink" href="#when-an-extra-is-missing" title="Permanent link">&para;</a></h4>
+<p>Reaching a feature whose extra was never installed is a normal, recoverable mistake, so Tablassert
+never lets it surface as a bare <code>ModuleNotFoundError</code>. Every one of these paths reports the absent
+distribution <strong>and</strong> the command that fixes it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Missing optional dependencies &#39;scikit-learn&#39;, &#39;sentence-transformers&#39; — required by the QC audit.
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Install the [qc] extra: pip install &quot;tablassert[qc]&quot; (uv: uv tool install &quot;tablassert[qc]&quot;)
+</code></pre></div>
+<p>Where the gap is knowable up front, it is reported up front rather than mid-run:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Checked</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>build-kg --qc</code></td>
+<td><code>[qc]</code></td>
+<td>Before the build starts — the QC audit is the pipeline's LAST stage, so a late failure would cost the entire entity-resolution pass</td>
+</tr>
+<tr>
+<td><code>tablassert agent</code></td>
+<td><code>[agent]</code></td>
+<td>After flag validation, before any model is built or any article fetched</td>
+</tr>
+<tr>
+<td><code>tablassert agent --optimize</code></td>
+<td><code>[agent]</code> + <code>[optimize]</code></td>
+<td>Same point; both are reported at once</td>
+</tr>
+<tr>
+<td><code>build-fullmap --aria2c</code></td>
+<td><code>[aria2]</code></td>
+<td>Before any download starts</td>
+</tr>
+</tbody>
+</table>
+<p>A partially installed extra names every package it is still missing, so installing them is one step
+rather than a retry loop. Library calls that reach an optional import directly (for example
+<code>fullmap_audit()</code> or the agent's lazy <code>dspy</code> import) raise the same message at that point.</p>
+<p>The <code>rt</code> extra is the exception: it installs <code>polars[rtcompat]</code>, which imports as plain <code>polars</code>, so
+it cannot be detected by inspection. It is suggested when polars itself fails to import — the usual
+cause being a CPU that lacks the instructions the default polars wheel requires.</p>
 <h3 id="method-3-install-from-github-main">Method 3: Install from GitHub main<a class="headerlink" href="#method-3-install-from-github-main" title="Permanent link">&para;</a></h3>
 <p>Use this when you want the latest main-branch build.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Install from main branch</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>git+https://github.com/SkyeAv/Tablassert.git@main
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Install from main branch</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>git+https://github.com/SkyeAv/Tablassert.git@main
 </code></pre></div>
 <h3 id="method-4-install-from-local-source">Method 4: Install from local source<a class="headerlink" href="#method-4-install-from-local-source" title="Permanent link">&para;</a></h3>
 <p>For contributors testing local repository changes.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Clone the repository</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/SkyeAv/Tablassert.git
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">cd</span><span class="w"> </span>Tablassert
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># Install Tablassert CLI tool from local source</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Clone the repository</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/SkyeAv/Tablassert.git
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nb">cd</span><span class="w"> </span>Tablassert
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># Install Tablassert CLI tool from local source</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>.
 </code></pre></div>
 <h2 id="verifying-installation">Verifying Installation<a class="headerlink" href="#verifying-installation" title="Permanent link">&para;</a></h2>
 <p>Confirm the CLI is on your path (use <code>uv run tablassert --help</code> for the in-repo dev environment):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>--help
 </code></pre></div>
 <p>You should see the Tablassert CLI help message with available commands.</p>
 <h2 id="development-setup">Development Setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
 <p>For contributing to Tablassert, use the source install above, then run the local task runner:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>make<span class="w"> </span>setup
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>make<span class="w"> </span>check
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>make<span class="w"> </span>setup
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>make<span class="w"> </span>check
 </code></pre></div>
 <p>The underlying stable gates are <code>ruff check</code> / <code>ruff format --check</code>, <code>pyright</code>, <code>pytest</code>, and <code>cargo fmt --check</code> / <code>cargo test</code> / <code>cargo clippy --all-targets -- -D warnings</code> (see <a href="../development/">Development</a>).</p>
 <p>Install pre-commit hooks to run the fast lint/format checks automatically before commits (the full gates run in CI):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pre-commit<span class="w"> </span>install
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pre-commit<span class="w"> </span>install
 </code></pre></div>
 <h2 id="upgrading-development-installation">Upgrading Development Installation<a class="headerlink" href="#upgrading-development-installation" title="Permanent link">&para;</a></h2>
 <p>To upgrade to the latest version:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Pull latest changes</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Update dependencies and rebuild the editable extension</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>uv<span class="w"> </span>sync<span class="w"> </span>--group<span class="w"> </span>dev<span class="w"> </span>--extra<span class="w"> </span>qc
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>uv<span class="w"> </span>run<span class="w"> </span>maturin<span class="w"> </span>develop<span class="w"> </span>--manifest-path<span class="w"> </span>rust/Cargo.toml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Pull latest changes</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Update dependencies and rebuild the editable extension</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>uv<span class="w"> </span>sync<span class="w"> </span>--group<span class="w"> </span>dev<span class="w"> </span>--extra<span class="w"> </span>qc
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>uv<span class="w"> </span>run<span class="w"> </span>maturin<span class="w"> </span>develop<span class="w"> </span>--manifest-path<span class="w"> </span>rust/Cargo.toml
 </code></pre></div>
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <h3 id="python-version">Python version<a class="headerlink" href="#python-version" title="Permanent link">&para;</a></h3>
 <p>Tablassert requires Python 3.11+. On version errors, check <code>python --version</code> and pin a supported
 release:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>uv<span class="w"> </span>python<span class="w"> </span>install<span class="w"> </span><span class="m">3</span>.11
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>uv<span class="w"> </span>python<span class="w"> </span>pin<span class="w"> </span><span class="m">3</span>.11
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>uv<span class="w"> </span>python<span class="w"> </span>install<span class="w"> </span><span class="m">3</span>.11
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>uv<span class="w"> </span>python<span class="w"> </span>pin<span class="w"> </span><span class="m">3</span>.11
 </code></pre></div>
 <h3 id="qc-runtime">QC runtime<a class="headerlink" href="#qc-runtime" title="Permanent link">&para;</a></h3>
 <p>If <code>build-kg --qc</code> reports a missing QC runtime, install the <code>qc</code> extra (torch / sentence-transformers
 BioBERT backend for the audit stage):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[qc]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[qc]&quot;</span>
 </code></pre></div>
 
 

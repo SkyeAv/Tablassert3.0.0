@@ -1416,8 +1416,10 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <h2 id="agent">agent<a class="headerlink" href="#agent" title="Permanent link">&para;</a></h2>
 <p>Use this to autonomously turn one or more PMC articles into audited, improved KG configs and graphs
 (fetch → derive config → build + audit → improve until coverage maps). Requires the <code>[agent]</code> extra
-(<code>pip install tablassert[agent]</code>); <code>--optimize</code> additionally needs the <code>[optimize]</code> extra
-(<code>pip install tablassert[optimize]</code>, pulls <code>dspy</code>).</p>
+(<code>pip install "tablassert[agent]"</code>); <code>--optimize</code> additionally needs the <code>[optimize]</code> extra
+(<code>pip install "tablassert[optimize]"</code>, pulls <code>dspy</code>). Both are checked after flag validation and
+before any model is built or article fetched, so a missing extra is reported with its install
+command instead of surfacing mid-run — see <a href="../installation/#when-an-extra-is-missing">When an extra is missing</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>--fullmap<span class="w"> </span>PATH<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>PMC-IDS...
 </code></pre></div>
 <p>PMC ids are passed positionally (also accepted as <code>--pmc-ids</code>). This page lists the flags; see
@@ -1648,7 +1650,7 @@ builds from RENCI BABEL exports instead (download class + synonym files, then bu
 <td>Flag</td>
 <td>No</td>
 <td><code>False</code></td>
-<td>Opt into the bundled <code>aria2c</code> binary from the <code>[aria2]</code> extra for resumable segmented downloads (the prebuilt archive <strong>or</strong> BABEL files); fails loud if the extra is missing, unsupported on the current platform, or aria2c exits non-zero</td>
+<td>Opt into the bundled <code>aria2c</code> binary from the <code>[aria2]</code> extra for resumable segmented downloads (the prebuilt archive <strong>or</strong> BABEL files); fails loud (exit 2, before any download starts) if the extra is missing or unsupported on the current platform, and on a non-zero aria2c exit</td>
 </tr>
 <tr>
 <td><code>--force</code>, <code>-f</code></td>
@@ -1710,7 +1712,7 @@ YAML configuration file.</p>
 <td>Flag</td>
 <td>No</td>
 <td><code>False</code></td>
-<td>Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra</td>
+<td>Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra, checked before the build starts</td>
 </tr>
 <tr>
 <td><code>--log</code>, <code>-l</code></td>
