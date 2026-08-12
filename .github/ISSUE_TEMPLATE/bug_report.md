@@ -1,3 +1,11 @@
+---
+name: Bug report
+about: Report a reproducible problem with Tablassert
+title: ""
+labels: ""
+assignees: ""
+---
+
 ## Description
 <!-- Briefly describe the bug -->
 

@@ -1,3 +1,11 @@
+---
+name: Feature request
+about: Propose an improvement or new capability for Tablassert
+title: ""
+labels: ""
+assignees: ""
+---
+
 ## Problem Statement
 <!-- Describe the feature or enhancement you want to add -->
 
