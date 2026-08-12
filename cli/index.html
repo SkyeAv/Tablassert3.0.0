@@ -1599,8 +1599,9 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 </div>
 <hr />
 <h2 id="build-fullmap">build-fullmap<a class="headerlink" href="#build-fullmap" title="Permanent link">&para;</a></h2>
-<p>Use this to build the embedded <code>fullmap.redb</code> entity-resolution database from RENCI BABEL exports
-(download class + synonym files, then build a single redb).</p>
+<p>Use this to obtain the embedded <code>fullmap.redb</code> entity-resolution database. By default it first tries
+to <strong>download a prebuilt database</strong> published for this Tablassert version; <code>--force</code> skips that and
+builds from RENCI BABEL exports instead (download class + synonym files, then build a single redb).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
 </code></pre></div>
 <table>
@@ -1619,14 +1620,14 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <td>Path</td>
 <td>No</td>
 <td><code>./fullmap/data/fullmap.redb</code></td>
-<td>Path to write the built redb file</td>
+<td>Path to write the redb file (prebuilt extraction or build output)</td>
 </tr>
 <tr>
 <td><code>--cache</code>, <code>-c</code></td>
 <td>Path</td>
 <td>No</td>
 <td><code>./fullmap/downloads</code></td>
-<td>Directory for downloaded BABEL files (<code>classes/</code>, <code>synonyms/</code>)</td>
+<td>Directory for downloaded BABEL files when building from scratch (<code>classes/</code>, <code>synonyms/</code>)</td>
 </tr>
 <tr>
 <td><code>--version</code>, <code>-v</code></td>
@@ -1640,21 +1641,37 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <td>int</td>
 <td>No</td>
 <td><code>None</code> (auto)</td>
-<td>Worker threads; auto-capped by memory on Linux (<code>/proc/meminfo</code>), else ~90% of CPUs</td>
+<td>Worker threads for a from-scratch build; auto-capped by memory on Linux (<code>/proc/meminfo</code>), else ~90% of CPUs</td>
 </tr>
 <tr>
 <td><code>--aria2c</code>, <code>-a</code></td>
 <td>Flag</td>
 <td>No</td>
 <td><code>False</code></td>
-<td>Opt into the bundled <code>aria2c</code> binary from the <code>[aria2]</code> extra for resumable segmented BABEL downloads; fails loud if the extra is missing, unsupported on the current platform, or aria2c exits non-zero</td>
+<td>Opt into the bundled <code>aria2c</code> binary from the <code>[aria2]</code> extra for resumable segmented downloads (the prebuilt archive <strong>or</strong> BABEL files); fails loud if the extra is missing, unsupported on the current platform, or aria2c exits non-zero</td>
+</tr>
+<tr>
+<td><code>--force</code>, <code>-f</code></td>
+<td>Flag</td>
+<td>No</td>
+<td><code>False</code></td>
+<td>Skip the prebuilt download and always rebuild from BABEL outputs</td>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># Optional: after `pip install &quot;tablassert[aria2]&quot;`, use bundled aria2c for faster/resumable BABEL downloads</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Force a from-scratch rebuild from BABEL outputs (e.g. after a BABEL snapshot bump)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--force<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Accelerate either download with bundled aria2c (`pip install &quot;tablassert[aria2]&quot;`; the multi-GB prebuilt is the ideal aria2 use case)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
 </code></pre></div>
+<p>By default <code>build-fullmap</code> looks for a prebuilt <code>fullmap.tar.zst</code> at
+<code>https://stars.renci.org/var/babel_outputs/&lt;babel-version&gt;/fullmap/&lt;tablassert-version&gt;/</code> (the version
+directory is the <strong>installed Tablassert package version</strong>, never hardcoded), verifies it against the
+published <code>sha256sum.txt</code>, and stream-extracts it beside <code>--output</code>. If no prebuilt exists for this
+version (or the download/extract fails), it falls back to a from-scratch BABEL build and logs a
+warning. A database already present at <code>--output</code> is reused as-is; pass <code>--force</code> to rebuild.</p>
 <p>See <a href="../fullmap/">Fullmap</a> for the data pipeline, output schema, and graph-config usage.</p>
 <hr />
 <h2 id="build-kg">build-kg<a class="headerlink" href="#build-kg" title="Permanent link">&para;</a></h2>

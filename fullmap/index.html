@@ -1282,15 +1282,26 @@ biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenanc
 Translator BABEL export files.</p>
 <p>Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step required by default (this is an in-process redb shard scheme, not the older external DuckDB shards). If you opt into <code>build-fullmap --aria2c</code> / <code>-a</code>, only the download stage uses the bundled aria2c binary from the optional <code>[aria2]</code> extra (<code>pip install "tablassert[aria2]"</code>; Linux/Windows wheels only).</p>
 <h2 id="build-command">Build Command<a class="headerlink" href="#build-command" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Build a fullmap database (downloads BABEL data automatically)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>tablassert<span class="w"> </span>build-fullmap
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Optional: after `pip install &quot;tablassert[aria2]&quot;`, use bundled aria2c for resumable segmented BABEL downloads</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Force a from-scratch build from BABEL outputs (skips the prebuilt download)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--force
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Optional: after `pip install &quot;tablassert[aria2]&quot;`, use bundled aria2c for resumable segmented downloads (the multi-GB prebuilt is the ideal aria2 use case)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c
 </code></pre></div>
 <p>See the <a href="../cli/#build-fullmap">CLI Reference → build-fullmap</a> for the complete flag table (output path,
-cache directory, BABEL snapshot version, worker threads, and the optional <code>--aria2c</code> / <code>-a</code> downloader),
-their defaults, and more examples. Two facts matter most when planning a build:</p>
+cache directory, BABEL snapshot version, worker threads, the optional <code>--aria2c</code> / <code>-a</code> downloader,
+and the <code>--force</code> / <code>-f</code> rebuild flag), their defaults, and more examples.</p>
+<p>By default, <code>build-fullmap</code> first downloads a <strong>prebuilt</strong> database published for this Tablassert
+version — a <code>fullmap.tar.zst</code> under <code>.../fullmap/&lt;tablassert-version&gt;/</code> (the version directory is the
+installed package version, never hardcoded), verified against a co-published <code>sha256sum.txt</code> and
+stream-extracted beside <code>--output</code>. If none is available for this version it falls back to the
+from-scratch build below; <code>--force</code> / <code>-f</code> skips the prebuilt attempt and always builds. The optional
+<code>--aria2c</code> / <code>-a</code> accelerates <strong>either</strong> download — the multi-GB prebuilt archive is the ideal aria2
+use case.</p>
+<p>Two facts matter most when planning a build:</p>
 <ul>
 <li>The BABEL <strong>version</strong> flag selects a RENCI BABEL snapshot date (default <code>2026jul22</code>) — <em>not</em>
   Tablassert's package version. Bumping it fetches a different snapshot and requires rebuilding; the
