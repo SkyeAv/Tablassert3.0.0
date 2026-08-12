@@ -34,7 +34,19 @@ class LazyModule:
     def _load(self) -> Any:
         module = self._module
         if module is None:
-            module = import_module(self._name)
+            try:
+                module = import_module(self._name)
+            except ImportError as exc:
+                # Deferred: keeps this module import-light (everything imports it) and the
+                # registry lookup off the success path. A proxied optional dependency that
+                # is absent must name its extra here -- this is the LAST point that knows
+                # the module name, and the caller only sees "No module named 'x'".
+                from tablassert.extras import actionable_import_error
+
+                actionable = actionable_import_error(self._name)
+                if actionable is None:
+                    raise
+                raise actionable from exc
             self._module = module
         return module
 

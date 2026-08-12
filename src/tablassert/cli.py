@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 
 import cyclopts
 
+from tablassert import extras
 from tablassert._lazy import LazyModule
 from tablassert.errors import BabelDownloadError, GraphValidationError, SectionValidationError
 from tablassert.log import cat
@@ -440,6 +441,18 @@ def _resolve_aria2_binary() -> str:
     return str(binary)
 
 
+def aria2_unavailable_detail() -> str:
+    """Explain how to get ``aria2c``, accounting for the platform.
+
+    macOS gets DIFFERENT advice on purpose: the ``aria2`` distribution publishes no macOS
+    wheels, so pointing a mac user at the extra sends them to a dead end. There the fix is
+    to drop the flag, and the default Python downloader takes over.
+    """
+    if sys.platform == "darwin":
+        return "the [aria2] extra ships no macOS wheels; drop --aria2c to use the default Python downloader"
+    return f"install the [aria2] extra: {extras.install_command('aria2')}"
+
+
 def download_babel_file_aria2c(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
     """Download one BABEL file with the bundled aria2c binary from ``[aria2]``.
 
@@ -477,11 +490,7 @@ def download_babel_file_aria2c(filename: str, url: str, destination: Path, retri
     try:
         binary: str = _resolve_aria2_binary()
     except ImportError as e:
-        if sys.platform == "darwin":
-            detail = "the [aria2] extra ships no macOS wheels; drop --aria2c to use the default Python downloader"
-        else:
-            detail = "install the [aria2] extra: pip install tablassert[aria2]"
-        error = FileNotFoundError(detail)
+        error = FileNotFoundError(aria2_unavailable_detail())
         raise BabelDownloadError(url, 0, error) from e
 
     command: list[str] = [
@@ -587,7 +596,13 @@ def build_kg(
 
     The positional config is a Graph YAML that orchestrates one or more table
     configs into a single knowledge-graph build.
+
+    ``--qc`` requires the ``[qc]`` extra (``pip install "tablassert[qc]"``); it is
+    checked before the build starts, because the audit stage runs LAST and a missing
+    extra would otherwise surface only after entity resolution has finished.
     """
+    if qc:
+        extras.require("qc", required_by="--qc")
     run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head)
 
 
@@ -684,7 +699,7 @@ def agent(
     Model config comes from ``--model-id``/``--api-base``/``--api-key`` OR the ``TABLASSERT_AGENT_MODEL_ID``
     / ``TABLASSERT_AGENT_API_BASE`` / ``TABLASSERT_AGENT_API_KEY`` environment variables (explicit flags win).
     Secrets are NEVER hardcoded or defaulted: a missing value fails loud (exit 2) BEFORE any model is built.
-    Requires the ``[agent]`` extra (``pip install tablassert[agent]``).
+    Requires the ``[agent]`` extra (``pip install "tablassert[agent]"``).
 
     Args:
         pmc_ids: One or more PMC article ids (positional).
@@ -754,6 +769,14 @@ def agent(
     if gepa_threads is not None and gepa_threads < 1:
         print("tablassert agent: --gepa-threads must be a positive integer.", file=sys.stderr)
         raise SystemExit(2)
+
+    # Preflight the extras once the flags are known to be valid and BEFORE any model is
+    # built or any article fetched. smolagents is otherwise only required per-article
+    # (inside build_agent) and dspy only once GEPA starts, so an absent extra would
+    # surface after real work. --optimize needs BOTH, and reports whichever is missing.
+    extras.require("agent", required_by="tablassert agent")
+    if optimize:
+        extras.require("optimize", required_by="tablassert agent --optimize")
 
     def build_model_factory() -> object:
         return agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend)
@@ -1229,12 +1252,16 @@ def build_fullmap(
     version (or the download/extract fails), fall back to a from-scratch build.
     ``--force`` / ``-f`` skips the prebuilt attempt and always builds from BABEL outputs.
 
+    ``--aria2c`` requires the ``[aria2]`` extra, checked before the first download rather
+    than on it, so an unusable flag costs nothing.
+
     Args:
         output: Path to write the redb file (prebuilt extraction or build output).
         cache: Directory for downloaded BABEL files when building from scratch.
         version: BABEL snapshot date to fetch (a RENCI stamp, NOT Tablassert's version).
         threads: Worker threads for a from-scratch build (auto when unset).
-        aria2c: Use the installed aria2c executable for downloads (prebuilt or BABEL).
+        aria2c: Use the bundled aria2c binary from the ``[aria2]`` extra for downloads
+            (prebuilt or BABEL).
         force: Skip the prebuilt download and always rebuild from BABEL outputs.
     """
     # A complete primary redb already on disk means the DB is in place: reuse it. Only
@@ -1242,6 +1269,11 @@ def build_fullmap(
     if not force and output.is_file() and output.stat().st_size > 0:
         print(f"tablassert build-fullmap: fullmap already present at {output}; skipping (use --force to rebuild).", file=sys.stderr)
         return
+    # Checked here rather than earlier: the reuse path above downloads nothing, so a
+    # missing [aria2] extra is irrelevant to it and must not fail a no-op command.
+    if aria2c and not extras.is_installed("aria2"):
+        print(f"tablassert build-fullmap: --aria2c is unavailable — {aria2_unavailable_detail()}", file=sys.stderr)
+        raise SystemExit(2)
     if not force:
         try:
             run(2, fetch_prebuilt_fullmap, output, version=version, aria2c=aria2c)

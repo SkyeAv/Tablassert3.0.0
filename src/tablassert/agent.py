@@ -4,11 +4,11 @@ This module hosts a smolagents ``CodeAgent`` pipeline that autonomously builds
 and audits KGX knowledge graphs from PubMed Central articles. It is part of the
 OPTIONAL ``[agent]`` extra, so ``smolagents`` is imported LAZILY (via
 :class:`tablassert._lazy.LazyModule`) and the base package never requires it at
-import time. Install the extra with ``pip install tablassert[agent]``.
+import time. Install the extra with ``pip install "tablassert[agent]"``.
 
 ``dspy`` powers ONLY the GEPA prompt-optimization path (``agent --optimize``)
 and lives in its own OPTIONAL ``[optimize]`` extra
-(``pip install tablassert[optimize]``); it is likewise lazy-imported and never
+(``pip install "tablassert[optimize]"``); it is likewise lazy-imported and never
 required by ordinary agent runs.
 """
 
@@ -26,7 +26,6 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
-from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 from urllib.request import Request, urlopen
@@ -38,6 +37,7 @@ from tablassert._lazy import LazyModule
 from tablassert.biolink import ENUM_RANGED_QUALIFIERS, Categories
 from tablassert.enums import EncodingMethods
 from tablassert.errors import GraphValidationError, QcRuntimeMissingError, SectionValidationError, TablassertValidationError
+from tablassert.extras import install_command, require_module
 from tablassert.fullmap import distinct, fullmap_db_path, is_lock_contention, lookup_rows
 from tablassert.graph_registry import REGISTERED_STATUSES, register_build
 from tablassert.lib import Tcode
@@ -55,21 +55,23 @@ else:
     pl = LazyModule("polars")
     smolagents = LazyModule("smolagents")
 
-AGENT_EXTRA: str = "pip install tablassert[agent]"
-OPTIMIZE_EXTRA: str = "pip install tablassert[optimize]"
-
-# Package -> install hint for the extra that actually ships it (default: [agent]).
-_EXTRA_HINT: dict[str, str] = {"dspy": OPTIMIZE_EXTRA}
+# Published install hints, derived from the extras registry so they cannot drift from
+# either pyproject.toml or the messages users actually see.
+AGENT_EXTRA: str = install_command("agent")
+OPTIMIZE_EXTRA: str = install_command("optimize")
 
 logger = cat("AGENT")
 
 
 def _require(name: str) -> None:
-    """Import an optional dependency or raise a loud, actionable ImportError."""
-    try:
-        import_module(name)
-    except ImportError as exc:
-        raise ImportError(f"tablassert agent features require the '{name}' package. Install with {_EXTRA_HINT.get(name, AGENT_EXTRA)}.") from exc
+    """Import an optional dependency or raise a loud, actionable ImportError.
+
+    Thin wrapper over :func:`tablassert.extras.require_module`, which owns the
+    package -> extra mapping (``dspy`` belongs to ``[optimize]``, everything else the
+    agent lazy-imports to ``[agent]``) so the hints cannot drift from
+    ``pyproject.toml``.
+    """
+    require_module(name, required_by="tablassert agent features")
 
 
 def is_lazy() -> bool:
@@ -455,43 +457,44 @@ DATA_GUARDRAIL: str = (
 def excel_sheet_names(path: Path) -> list[str]:
     """Return the worksheet names of an Excel workbook (calamine preferred, openpyxl fallback).
 
-    Uses the SAME optional engines :func:`_read_excel` reads with (imported lazily), so a workbook is
-    introspectable wherever it is readable. Raises a clear ``ValueError`` naming the install path when
-    neither engine can open the workbook (a corrupt file or a missing engine).
+    Uses the SAME engines :func:`_read_excel` reads with (imported lazily), so a workbook is
+    introspectable wherever it is readable. Raises a clear ``ValueError`` naming the fix when
+    neither engine can open the workbook (a corrupt file, or a base install missing its engine).
     """
     try:
-        import fastexcel  # lazy optional engine (calamine), same as _read_excel
+        import fastexcel  # lazy import of the core calamine engine, same as _read_excel
 
         return [str(name) for name in fastexcel.read_excel(path).sheet_names]
-    except Exception as calamine_err:  # missing fastexcel OR a genuinely unreadable workbook
+    except Exception as calamine_err:  # unreadable workbook OR (rarely) a broken fastexcel install
         try:
             import openpyxl  # lazy pure-Python fallback engine, same as _read_excel
 
             return [str(name) for name in openpyxl.load_workbook(path, read_only=True).sheetnames]
         except Exception:
             raise ValueError(
-                f"Listing Excel sheets requires an excel engine (calamine/openpyxl); install tablassert[agent] or tablassert[rt]. ({calamine_err})"
+                f"Could not list Excel sheets with either engine. calamine (fastexcel) is a core dependency, so this is usually an unreadable "
+                f"workbook; `pip install openpyxl` adds the pure-Python fallback engine. ({calamine_err})"
             ) from calamine_err
 
 
 def _read_excel(path: Path, sheet: str | None = None) -> pl.DataFrame:
     """Read an Excel worksheet, preferring ``calamine`` and falling back to ``openpyxl``.
 
-    WHY two engines: the fast ``calamine`` engine needs the optional ``fastexcel``
-    package, which the base install lacks; ``openpyxl`` is a pure-Python fallback
-    that is commonly present. ``sheet`` selects a worksheet BY NAME (``None`` reads
-    the first/active sheet, matching polars' default). If neither engine can load the
-    file (both missing, or the workbook is corrupt), raise a clear ``ValueError``
-    naming the install path instead of leaking a raw engine error to the caller.
+    WHY two engines: the fast ``calamine`` engine (``fastexcel``) is a core dependency and
+    handles almost every workbook; ``openpyxl`` is a pure-Python fallback that reads some
+    files calamine rejects. ``sheet`` selects a worksheet BY NAME (``None`` reads the
+    first/active sheet, matching polars' default). If neither engine can load the file,
+    raise a clear ``ValueError`` naming the fix instead of leaking a raw engine error.
     """
     try:
         return pl.read_excel(path, engine="calamine", sheet_name=sheet)
-    except Exception as calamine_err:  # missing fastexcel OR a genuinely unreadable workbook
+    except Exception as calamine_err:  # unreadable workbook OR (rarely) a broken fastexcel install
         try:
             return pl.read_excel(path, engine="openpyxl", sheet_name=sheet)
         except Exception:
             raise ValueError(
-                f"Reading Excel requires an excel engine (calamine/openpyxl); install tablassert[agent] or tablassert[rt]. ({calamine_err})"
+                f"Could not read Excel with either engine. calamine (fastexcel) is a core dependency, so this is usually an unreadable "
+                f"workbook; `pip install openpyxl` adds the pure-Python fallback engine. ({calamine_err})"
             ) from calamine_err
 
 
@@ -572,7 +575,7 @@ def _extract_pdf_text(path: Path) -> str:
     try:
         from pdfminer.high_level import extract_text  # pyright: ignore[reportMissingImports]  # lazy optional dep ([agent] extra)
     except ImportError as exc:
-        raise ValueError(f"Reading PDF main text requires pdfminer.six; install tablassert[agent]. ({exc})") from exc
+        raise ValueError(f"Reading PDF main text requires pdfminer.six. {install_command('agent')} ({exc})") from exc
     return str(extract_text(str(path)))
 
 
@@ -2042,6 +2045,9 @@ def build_model(model_id: str | None, api_base: str | None, api_key: str | None,
 
     _require("smolagents")
     if backend == "litellm":
+        # smolagents imports litellm lazily inside LiteLLMModel; require it here so the
+        # failure names the [agent] extra instead of surfacing smolagents' own message.
+        _require("litellm")
         from smolagents import LiteLLMModel  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
 
         return LiteLLMModel(model_id=rid, api_base=rbase, api_key=rkey)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -7,6 +8,7 @@ DOCS_URL: str = "https://tablassert.readthedocs.io/errors/"
 
 TablassertErrorCodes = Literal[
     "qc-runtime-missing",
+    "missing-extra",
     "graph-validation-failed",
     "section-validation-failed",
     "babel-download-failed",
@@ -74,9 +76,72 @@ class BiolinkRelocationWarning(UserWarning):
     """
 
 
+def format_missing_extra(extra: str, problem: str) -> str:
+    """Append the install instructions for ``extra`` to a one-sentence ``problem``.
+
+    Every missing-extra failure — whichever module noticed it — ends in the same
+    two commands, so a user never has to guess the package name behind an extra or
+    which installer their CLI came from.
+
+    Args:
+        extra: Extra name as it appears in ``pyproject.toml`` (``qc``, ``agent``, ...).
+        problem: One complete sentence stating what is missing and what needed it.
+
+    Returns:
+        The full message body (the docs URL is appended separately by :class:`_Coded`).
+    """
+    return f'{problem} Install the [{extra}] extra: pip install "tablassert[{extra}]" (uv: uv tool install "tablassert[{extra}]")'
+
+
+def describe_missing(missing: Sequence[str], required_by: str) -> str:
+    """Phrase the ``problem`` sentence naming the absent distributions and the feature that wanted them.
+
+    Args:
+        missing: DISTRIBUTION names (what a user types into pip: ``scikit-learn``,
+            not the ``sklearn`` import name).
+        required_by: The feature that needs them, phrased to follow "required by".
+
+    Returns:
+        A single sentence, or a generic one when ``missing`` is empty.
+    """
+    if not missing:
+        return f"{required_by} requires optional dependencies that are not installed."
+    plural: str = "y" if len(missing) == 1 else "ies"
+    names: str = ", ".join(repr(name) for name in missing)
+    return f"Missing optional dependenc{plural} {names} — required by {required_by}."
+
+
+class MissingExtraError(_Coded, ImportError):
+    """An optional extra is not installed, reported with the exact install command.
+
+    Notes:
+        Inherits ``ImportError`` rather than :class:`TablassertError` (a ``RuntimeError``)
+        so the existing ``except ImportError`` guards wrapping lazy optional imports keep
+        catching it, and so a missing package still reads as an import failure to callers
+        that never heard of Tablassert's error hierarchy.
+    """
+
+    def __init__(self, extra: str, problem: str, *, missing: Sequence[str] = ()) -> None:
+        message: str = format_missing_extra(extra, problem)
+        super().__init__(message)
+        self.message = message
+        self.code = "missing-extra"
+        self.extra = extra
+        self.missing: tuple[str, ...] = tuple(missing)
+
+
 class QcRuntimeMissingError(TablassertError):
-    def __init__(self) -> None:
-        super().__init__("QC requires optional runtime dependencies. Install tablassert[qc].", code="qc-runtime-missing")
+    """The ``[qc]`` extra is absent on a QC code path.
+
+    Notes:
+        Keeps its own ``qc-runtime-missing`` code and ``TablassertError`` base for
+        back-compat (``build_and_audit`` catches it by name, and the code is documented),
+        but shares :class:`MissingExtraError`'s message so both read identically.
+    """
+
+    def __init__(self, missing: Sequence[str] = ()) -> None:
+        super().__init__(format_missing_extra("qc", describe_missing(missing, "the QC audit")), code="qc-runtime-missing")
+        self.missing: tuple[str, ...] = tuple(missing)
 
 
 class GraphValidationError(TablassertError):

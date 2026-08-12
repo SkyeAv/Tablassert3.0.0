@@ -6,6 +6,30 @@ All notable changes to this project are documented in this file.
 
 ### Added
 - **`tablassert build-fullmap` now downloads a prebuilt database by default, with `--force` / `-f` to rebuild from scratch.** Without `--force`, the command first fetches the prebuilt `fullmap.tar.zst` published for the INSTALLED Tablassert version at `https://stars.renci.org/var/babel_outputs/<babel-version>/fullmap/<tablassert-version>/` (the version directory is derived from installed-package metadata, never hardcoded), verifies it against the co-published `sha256sum.txt`, and stream-extracts it beside `--output` — far faster than building from BABEL. If no prebuilt exists for this version (or the download/extract fails), it falls back to the existing from-scratch BABEL build and logs a warning; `--force` / `-f` skips the prebuilt attempt entirely. A database already present at `--output` is reused. Extraction uses Python 3.14+ native `tarfile` zstd, falling back to the installed `zstd` binary on older interpreters. The `--aria2c` / `-a` flag accelerates the prebuilt download through the same shared downloader the BABEL build uses (so it benefits from the optional bundled `[aria2]` extra when that is installed).
+- **Missing optional extras now name themselves and the command that installs them.** Reaching a feature whose extra was never installed used to surface as whatever the import happened to throw — most often a bare `ModuleNotFoundError: No module named 'sklearn'`, which does not tell anyone that `tablassert[qc]` is the fix, or that `sklearn` is installed as `scikit-learn`. Every one of those paths now reports both:
+
+  ```text
+  Missing optional dependencies 'scikit-learn', 'sentence-transformers' — required by the QC audit.
+  Install the [qc] extra: pip install "tablassert[qc]" (uv: uv tool install "tablassert[qc]")
+  ```
+
+  Where the gap is knowable before the work starts, it is now reported before the work starts:
+
+  | Command | Checked | When |
+  |---|---|---|
+  | `build-kg --qc` | `[qc]` | Before the build starts |
+  | `tablassert agent` | `[agent]` | After flag validation, before any model is built or article fetched |
+  | `tablassert agent --optimize` | `[agent]` + `[optimize]` | Same point; both reported at once |
+  | `build-fullmap --aria2c` | `[aria2]` | Before the first download, rather than on it (BABEL URL discovery already hit the network by then). Keeps the platform-aware message: on macOS, where the `aria2` distribution publishes no wheels, it still says to drop the flag rather than to install a dead end |
+
+  `build-kg --qc` is the one that mattered most. The QC audit is the pipeline's LAST stage, so a missing extra was discovered only after entity resolution had already finished — the whole build spent, then a traceback. The check now costs one `importlib.util.find_spec` probe (no import, so nothing is paid for having the extra) and happens before stage 1.
+
+  A half-installed extra reports every package it is still missing rather than one per attempt. That was a real failure mode in `[qc]`: `scikit-learn` is imported at the start of the audit and `sentence-transformers` only if Stage 3 is reached, so installing the first would have run the audit again just to fail on the second.
+
+  Flag and secret validation still comes first — `tablassert agent` reports a missing `--model-id` before a missing extra, since fixing an install only to be told the model id was never set is the worse loop.
+
+  New `tablassert.extras` module holds the package → extra mapping as the single source of truth, and a test asserts it against `pyproject.toml`, so an extra cannot be added or a dependency moved without the hints following.
+
 - **`split_by` on annotations — per-row multivalued slots.** A `method: column` annotation may declare a separator that splits each cell's own delimited text into a real JSON array:
 
   ```yaml
@@ -31,6 +55,12 @@ All notable changes to this project are documented in this file.
 
   This tightens `explode_by`: items are now trimmed and blanks dropped, so a trailing or doubled separator (`"P1;P2;"`, `"P1;;P2"` — routine in hand-maintained spreadsheets) no longer fans out a row carrying `""`. Those rows only ever failed entity resolution and were discarded downstream, so no edge changes; the work is simply not done. Trimming is likewise not a behavior change for nodes — `level_one` already strips before resolution — but it is load-bearing for annotations, which are never resolved and previously would have carried `" b"` straight onto the edge.
 - **`tablassert build-fullmap --aria2c` / `-a` now uses the optional `[aria2]` PyPI extra instead of a system `aria2c` install.** Install with `pip install "tablassert[aria2]"` to get the bundled static aria2c binary from the `aria2` package (`aria2==0.0.1b0`, imported as `aria2c`). The extra has Linux/Windows wheels only; on macOS, `--aria2c` fails loud and the default Python downloader remains available. `aria2` is a separate optional GPL-2.0 runtime dependency; Tablassert remains Apache-2.0, but redistributors who ship the optional extra should review GPL-2.0 obligations.
+
+### Fixed
+- **Suggested install commands now quote the extra: `pip install "tablassert[qc]"`.** Unquoted brackets are a glob pattern in zsh — the default shell on macOS — so every `pip install tablassert[agent]` this project printed or documented failed with `zsh: no matches found` before pip was ever reached. A suggestion the user's own shell rejects is worse than none. `agent.AGENT_EXTRA` and `agent.OPTIMIZE_EXTRA` carry the quoted form and are now derived from the registry rather than written out by hand.
+- **The Excel error messages no longer recommend an extra that has never contained an Excel engine.** An unreadable workbook told users to `install tablassert[agent] or tablassert[rt]`. Neither extra ships an Excel engine, and the calamine engine (`fastexcel`) became a core dependency, so the advice both misdirected and described an install the user already had. The message now says what is actually true — calamine ships with the base install, so a failure is usually the workbook itself — and points at `pip install openpyxl` for the pure-Python fallback engine. `docs/installation.md` carried the same drift (`pip install python-calamine`) and is corrected.
+- **`agent --backend litellm` names the `[agent]` extra when `litellm` is absent.** The path only required `smolagents`, leaving smolagents' own import error to explain a Tablassert extra.
+- **A `polars` import failure now points at the `[rt]` extra.** polars is a core dependency, so it is never merely absent — the realistic failure is a wheel whose instruction set the CPU does not support, which is exactly what `polars[rtcompat]` (the `[rt]` extra) exists to fix. The extra cannot be detected by inspection (it imports as plain `polars`), so this hint is the only place a user learns it exists.
 
 ## 9.0.0 - 2026-08-11
 

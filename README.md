@@ -104,7 +104,10 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
 | `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |
 
-QC is opt-in at build time (`build-kg --qc`). See the
+QC is opt-in at build time (`build-kg --qc`). Reaching a feature whose extra is not installed never
+produces a bare `ModuleNotFoundError`: the failure names the missing package and the exact install
+command, and for `build-kg --qc` and `tablassert agent` it arrives before the run starts rather than
+partway through. See the
 [Installation guide](https://skyeav.github.io/Tablassert/installation/) for the full matrix and the
 [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for every flag.
 

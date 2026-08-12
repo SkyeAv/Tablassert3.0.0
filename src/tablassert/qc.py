@@ -14,6 +14,7 @@ else:
     sentence_transformers = LazyModule("sentence_transformers")
     pl = LazyModule("polars")
 
+from tablassert import extras
 from tablassert.errors import QcRuntimeMissingError
 from tablassert.log import cat
 from tablassert.utils import BASE
@@ -62,7 +63,7 @@ def get_biobert() -> object:
             MODEL.mkdir(parents=True, exist_ok=True)
             model.save(MODEL)  # pyright: ignore
     except ImportError as exc:
-        raise QcRuntimeMissingError() from exc
+        raise QcRuntimeMissingError(extras.missing("qc")) from exc
     return model
 
 
@@ -106,10 +107,18 @@ def fullmap_audit(
     Returns:
         LazyFrame containing only rows whose ``col`` value passed QC.
 
+    Raises:
+        QcRuntimeMissingError: If the ``[qc]`` extra is not installed.
+
     Notes:
         Collection point: pending pairs are handled eagerly because each stage
         needs the full set of survivors to batch-similarity-score them.
     """
+    # The whole extra is checked up front, not just the package the next line needs:
+    # scikit-learn is imported here but sentence-transformers only in Stage 3, so a
+    # half-installed extra would otherwise fail after the audit had already run.
+    extras.require("qc", required_by="the QC audit")
+
     # Stage 0: deletes suspected errors.
     from rapidfuzz import fuzz
     from rapidfuzz.process import cpdist

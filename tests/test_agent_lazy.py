@@ -17,7 +17,7 @@ def test_agent_module_imports_without_extra() -> None:
     hint guards the actionable error message users rely on when the extra is
     missing, and confirms the module surface is present without the extra.
     """
-    assert agent_mod.AGENT_EXTRA == "pip install tablassert[agent]"
+    assert agent_mod.AGENT_EXTRA == 'pip install "tablassert[agent]"'
     assert "agent" in agent_mod.AGENT_EXTRA
 
 
@@ -50,7 +50,7 @@ def test_require_dspy_points_at_optimize_extra() -> None:
     ``[optimize]`` extra; the actionable error must tell users to install that
     extra (not ``[agent]``, which no longer ships ``dspy``).
     """
-    assert agent_mod.OPTIMIZE_EXTRA == "pip install tablassert[optimize]"
+    assert agent_mod.OPTIMIZE_EXTRA == 'pip install "tablassert[optimize]"'
     if importlib.util.find_spec("dspy") is not None:
         agent_mod._require("dspy")
         return

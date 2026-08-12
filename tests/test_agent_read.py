@@ -177,8 +177,13 @@ def test_read_table_xlsx_corrupt_raises_valueerror(tmp_path: Path) -> None:
     """
     path: Path = tmp_path / "garbage.xlsx"
     path.write_bytes(b"this is not a real xlsx file")
-    with pytest.raises(ValueError, match="Reading Excel requires an excel engine"):
+    with pytest.raises(ValueError, match="Could not read Excel with either engine") as excinfo:
         read_table(path)
+    # calamine ships with the base install, so the message must NOT send users off to an
+    # extra that has never carried an excel engine.
+    message: str = str(excinfo.value)
+    assert "openpyxl" in message
+    assert "tablassert[" not in message
 
 
 # --------------------------------------------------------------------------- #
@@ -215,8 +220,9 @@ def test_excel_sheet_names_corrupt_raises(tmp_path: Path) -> None:
     """A corrupt workbook raises a clear ``ValueError`` (every engine fails to open it)."""
     path: Path = tmp_path / "garbage.xlsx"
     path.write_bytes(b"this is not a real xlsx file")
-    with pytest.raises(ValueError, match="Listing Excel sheets requires an excel engine"):
+    with pytest.raises(ValueError, match="Could not list Excel sheets with either engine") as excinfo:
         excel_sheet_names(path)
+    assert "tablassert[" not in str(excinfo.value)
 
 
 def test_read_table_xlsx_lists_sheets_and_default(tmp_path: Path) -> None:

@@ -92,7 +92,37 @@ pip install "tablassert[agent]"
 
     The bundled aria2c dependency is GPL-2.0. Tablassert remains Apache-2.0 and does not vendor aria2c, but redistributors who ship the optional extra should review GPL-2.0 obligations.
 
-Excel (`.xlsx`) input is read through Polars' `calamine` engine and additionally requires `python-calamine` (`pip install python-calamine`).
+Excel (`.xlsx`) input is read through Polars' `calamine` engine, which ships with the base install
+(`fastexcel`). A handful of workbooks calamine rejects are readable by the pure-Python fallback
+engine: `pip install openpyxl`.
+
+#### When an extra is missing
+
+Reaching a feature whose extra was never installed is a normal, recoverable mistake, so Tablassert
+never lets it surface as a bare `ModuleNotFoundError`. Every one of these paths reports the absent
+distribution **and** the command that fixes it:
+
+```text
+Missing optional dependencies 'scikit-learn', 'sentence-transformers' — required by the QC audit.
+Install the [qc] extra: pip install "tablassert[qc]" (uv: uv tool install "tablassert[qc]")
+```
+
+Where the gap is knowable up front, it is reported up front rather than mid-run:
+
+| Command | Checked | When |
+|---|---|---|
+| `build-kg --qc` | `[qc]` | Before the build starts — the QC audit is the pipeline's LAST stage, so a late failure would cost the entire entity-resolution pass |
+| `tablassert agent` | `[agent]` | After flag validation, before any model is built or any article fetched |
+| `tablassert agent --optimize` | `[agent]` + `[optimize]` | Same point; both are reported at once |
+| `build-fullmap --aria2c` | `[aria2]` | Before any download starts |
+
+A partially installed extra names every package it is still missing, so installing them is one step
+rather than a retry loop. Library calls that reach an optional import directly (for example
+`fullmap_audit()` or the agent's lazy `dspy` import) raise the same message at that point.
+
+The `rt` extra is the exception: it installs `polars[rtcompat]`, which imports as plain `polars`, so
+it cannot be detected by inspection. It is suggested when polars itself fails to import — the usual
+cause being a CPU that lacks the instructions the default polars wheel requires.
 
 ### Method 3: Install from GitHub main
 
