@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 9.1.0 - 2026-08-12
+
 ### Added
 - **`tablassert build-fullmap` now downloads a prebuilt database by default, with `--force` / `-f` to rebuild from scratch.** Without `--force`, the command first fetches the prebuilt `fullmap.tar.zst` published for the INSTALLED Tablassert version at `https://stars.renci.org/var/babel_outputs/<babel-version>/fullmap/<tablassert-version>/` (the version directory is derived from installed-package metadata, never hardcoded), verifies it against the co-published `sha256sum.txt`, and stream-extracts it beside `--output` — far faster than building from BABEL. If no prebuilt exists for this version (or the download/extract fails), it falls back to the existing from-scratch BABEL build and logs a warning; `--force` / `-f` skips the prebuilt attempt entirely. A database already present at `--output` is reused. Extraction uses Python 3.14+ native `tarfile` zstd, falling back to the installed `zstd` binary on older interpreters. The `--aria2c` / `-a` flag accelerates the prebuilt download through the same shared downloader the BABEL build uses (so it benefits from the optional bundled `[aria2]` extra when that is installed).
 - **Missing optional extras now name themselves and the command that installs them.** Reaching a feature whose extra was never installed used to surface as whatever the import happened to throw — most often a bare `ModuleNotFoundError: No module named 'sklearn'`, which does not tell anyone that `tablassert[qc]` is the fix, or that `sklearn` is installed as `scikit-learn`. Every one of those paths now reports both:
@@ -61,6 +63,11 @@ All notable changes to this project are documented in this file.
 - **The Excel error messages no longer recommend an extra that has never contained an Excel engine.** An unreadable workbook told users to `install tablassert[agent] or tablassert[rt]`. Neither extra ships an Excel engine, and the calamine engine (`fastexcel`) became a core dependency, so the advice both misdirected and described an install the user already had. The message now says what is actually true — calamine ships with the base install, so a failure is usually the workbook itself — and points at `pip install openpyxl` for the pure-Python fallback engine. `docs/installation.md` carried the same drift (`pip install python-calamine`) and is corrected.
 - **`agent --backend litellm` names the `[agent]` extra when `litellm` is absent.** The path only required `smolagents`, leaving smolagents' own import error to explain a Tablassert extra.
 - **A `polars` import failure now points at the `[rt]` extra.** polars is a core dependency, so it is never merely absent — the realistic failure is a wheel whose instruction set the CPU does not support, which is exactly what `polars[rtcompat]` (the `[rt]` extra) exists to fix. The extra cannot be detected by inspection (it imports as plain `polars`), so this hint is the only place a user learns it exists.
+
+### Documentation
+- **Issue and pull-request templates.** `.github/ISSUE_TEMPLATE/bug_report.md` asks for the parts of a Tablassert report that are otherwise missing on the first round-trip — the exact command, expected versus actual behavior, and the OS/Python/Rust environment — and `feature_request.md` asks a proposal to state its problem and success metrics before its implementation. `.github/pull_request_template.md` asks for the validation commands actually run and their results, rather than an unqualified "tests pass".
+- `llms.txt` listed the optional extras as `rt` and `qc` only, predating `aria2`, `agent`, and `optimize`; all five are now named in both places the file lists them, and the new `tablassert.extras` registry is on the implementation map.
+- The `--version` example in `docs/cli.md` had been left at `tablassert 8.2.0`.
 
 ## 9.0.0 - 2026-08-11
 

@@ -22,7 +22,7 @@ These are flags on the root `tablassert` command, **not** subcommands.
 
 | Flag | Description |
 | --- | --- |
-| `--version` | Print the installed package version as `tablassert <version>` (e.g. `tablassert 8.2.0`) and exit |
+| `--version` | Print the installed package version as `tablassert <version>` (e.g. `tablassert 9.1.0`) and exit |
 | `--help`, `-h` | Show help for the app or a subcommand |
 
 !!! warning "Two different `--version`s"

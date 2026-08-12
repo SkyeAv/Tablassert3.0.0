@@ -8,7 +8,7 @@ Current CLI behavior queries an embedded redb database whose primary file is `fu
 
 ## Quickstart
 - [README](README.md): high-level overview, install snippets, and one-command graph build.
-- [Installation Guide](docs/installation.md): local/dev/tool installation paths. Optional extras: `rt` (runtime-compatible Polars) and `qc` (quality-control runtime).
+- [Installation Guide](docs/installation.md): local/dev/tool installation paths. Optional extras: `rt` (runtime-compatible Polars), `aria2` (bundled aria2c downloader), `qc` (quality-control runtime), `agent` (autonomous agent), and `optimize` (GEPA prompt optimization).
 - [CLI Reference](docs/cli.md): command syntax for building graphs and validating table configs.
 - [Tutorial](docs/tutorial.md): first end-to-end run from CSV input to KGX NDJSON output.
 
@@ -29,7 +29,7 @@ Current CLI behavior queries an embedded redb database whose primary file is `fu
 ## Contributor Development
 - [Contributing Guide](CONTRIBUTING.md): setup, style conventions, checks, and PR expectations.
 - [Development](docs/development.md): docs-site contributor setup and the local `uv run mkdocs build --strict` docs gate.
-- [Project Metadata](pyproject.toml): dependencies, tooling config, and CLI entrypoint. Optional extras: `rt` and `qc`.
+- [Project Metadata](pyproject.toml): dependencies, tooling config, and CLI entrypoint. Optional extras: `rt`, `aria2`, `qc`, `agent`, and `optimize`.
 - [Tests](tests/): pytest coverage and fixtures.
 - [MkDocs Configuration](mkdocs.yml): docs navigation and published pages.
 - [GitHub Workflows](.github/workflows/): release, docs, docker, and autotag automation.
@@ -41,6 +41,7 @@ Current CLI behavior queries an embedded redb database whose primary file is `fu
 - [Normalization](src/tablassert/nlp.py): text normalization levels and preprocessing helpers.
 - [Enums Catalog](src/tablassert/enums.py): allowed values for predicates, qualifiers, categories, repositories, knowledge levels, agent types, and transforms.
 - [Utilities](src/tablassert/utils.py): hashing, storage path constants, and filesystem helpers.
+- [Optional Extras Registry](src/tablassert/extras.py): the package → extra mapping behind the missing-dependency errors and their install hints.
 
 ## Optional
 - [API Reference: Fullmap](docs/api/fullmap.md): lower-level entity-resolution details.
