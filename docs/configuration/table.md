@@ -221,9 +221,36 @@ annotations:
     encoding: ["EFO:0001", "EFO:0002"]  # Every edge carries this array
 ```
 
-`method: list` is the multivalued counterpart of `method: value`: the literal list is emitted verbatim as a JSON array, so consumers iterate values instead of walking a joined string's characters (e.g. `publications.extend(edge["has_evidence"])`). It is incompatible with the scalar string ops (`regex`, `remove`, `prefix`, `suffix`, `transformations`, `fill`, `explode_by`) — encode the final values directly. `method: list` is valid on annotations only (subject/object/qualifier nodes are single entities). (The earlier annotation `delimiter` field that split an encoded scalar into a list — unrelated to the `source.delimiter` CSV/TSV separator — has been removed in favor of this explicit list method.)
+`method: list` is the multivalued counterpart of `method: value`: the literal list is emitted verbatim as a JSON array, so consumers iterate values instead of walking a joined string's characters (e.g. `publications.extend(edge["has_evidence"])`). It is incompatible with the scalar string ops (`regex`, `remove`, `prefix`, `suffix`, `transformations`, `fill`, `explode_by`) — encode the final values directly. `method: list` is valid on annotations only (subject/object/qualifier nodes are single entities). (The earlier annotation `delimiter` field — unrelated to the `source.delimiter` CSV/TSV separator — was replaced by this explicit list method for literals and by [`split_by`](#split_by) for per-row column splits.)
 
-> **Literal only — no per-row lists.** A list `encoding` is a literal, so every edge carries the *same* array. `method: list` therefore replaces only the literal (`method: value`) use of the removed `delimiter`; a column-based annotation that split each cell's own value (`{annotation: has_evidence, method: column, encoding: D, delimiter: "|"}`) has no direct equivalent. `explode_by` does not fill the gap — it splits one row into many rows rather than building a per-row JSON array. Handle those sources upstream (reshape so each row carries a single value, or pre-split the column before Tablassert reads it).
+> **`method: list` is literal only.** A list `encoding` is fixed at config time, so every edge carries the *same* array. For an array that differs per row — a column whose cells hold delimited text — use [`split_by`](#split_by) instead.
+
+#### `split_by`
+
+**`split_by`** — annotations only; splits each cell of a `method: column` encoding into a real JSON array.
+
+```yaml
+annotations:
+  - annotation: has_evidence
+    method: column
+    encoding: D        # cells like "EFO:0001|EFO:0002"
+    split_by: "|"      # -> ["EFO:0001", "EFO:0002"], per row
+```
+
+`split_by` is the per-row counterpart of `method: list`: the literal form covers an array known up front, `split_by` covers one that differs on every row. Values are trimmed and blanks dropped; a null cell stays null.
+
+Reach for it whenever an aggregated column feeds a multivalued Biolink slot. Without it the joined cell stays a scalar, and because `mask_illegal_edge_fields` wraps a scalar bound for a multivalued slot into a one-element list, the edge emits `has_evidence: ["EFO:0001|EFO:0002"]` — structurally valid Biolink that hands consumers one unusable blob instead of two ids.
+
+`split_by` requires `method: column` (a literal encoding declares its members directly via `method: list`) and rejects an empty separator, which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator.
+
+**`split_by` and `explode_by` are the same split, with different destinations.** Both read a delimited cell through one shared primitive — items trimmed, blanks dropped (so `"a;b;"` and `"a;;b"` yield two items, not three), a null cell left null — and then differ only in what they do with the items:
+
+| | Destination | Use for |
+|---|---|---|
+| `explode_by` | one **row** per item | node encodings — each item is its own entity, producing its own edge |
+| `split_by` | one **array** on the row | annotations — the items are one multivalued slot on a single edge |
+
+So `explode_by` is not an alternative to `split_by` for a multivalued annotation: it multiplies edges rather than filling one edge's array.
 
 #### Taxonomic Filtering
 
@@ -426,9 +453,10 @@ Optional edge attributes (statistical metadata, notes, etc.).
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `annotation` | String | Yes | Attribute name (e.g., `"p_value"`, `"effect_size"`). Lowercased and trimmed of leading/trailing whitespace at parse time; underscores are preserved (use snake_case). |
+| `split_by` | String | No | Separator splitting each cell of a `method: column` encoding into a real JSON array. See [`split_by`](#split_by). |
 | (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
-Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — are declared with [`method: list`](#method-value-column-and-list), which emits a real JSON array instead of a scalar.
+Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — must emit a real JSON array rather than a scalar. Declare a fixed array with [`method: list`](#method-value-column-and-list), or split an aggregated column's per-row text with [`split_by`](#split_by).
 
 **Example:**
 ```yaml
@@ -438,6 +466,8 @@ annotations:
   - {annotation: supporting_study_size, method: value, encoding: 450}  # Attached to no class -> inlined supporting study (see below)
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
   - {annotation: has_evidence, method: list, encoding: ["EFO:0001", "EFO:0002"]}  # Multivalued -> a JSON array
+  # ...or, when each row carries its own evidence in one delimited column:
+  # - {annotation: has_evidence, method: column, encoding: E, split_by: "|"}
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
   - annotation: log2fc_relative_to_vehicle_control

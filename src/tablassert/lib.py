@@ -603,6 +603,54 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     return df.lazy()
 
 
+def split_expr(col: str, delimiter: str) -> pl.Expr:
+    """Build the shared "split a delimited cell into items" expression.
+
+    The single splitting primitive behind both delimiter-driven ops: ``explode_by``
+    fans the items out into rows (node encodings), ``split_by`` keeps them as a real
+    JSON array on the row (annotations). Only what happens to the items afterwards
+    differs, so the parsing rules stay defined in exactly one place.
+
+    Items are trimmed and blanks are dropped -- a trailing or doubled separator
+    (``"a;b;"``, ``"a;;b"``) is a delimited-text artifact, not a value. A null cell
+    stays null rather than becoming a one-element list of null.
+
+    Args:
+        col: Column whose string values should be split.
+        delimiter: Separator to split on.
+
+    Returns:
+        Expression yielding a ``list[str]`` column (null preserved).
+    """
+    text: pl.Expr = pl.col(col).cast(pl.String)
+    items: pl.Expr = text.str.split(delimiter).list.eval(pl.element().str.strip_chars()).list.drop_nulls()
+    return pl.when(text.is_null()).then(None).otherwise(items.list.eval(pl.element().filter(pl.element() != "")))
+
+
+def split_list(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
+    """Split a delimited cell into a real JSON array, in place.
+
+    A column encoding is scalar by construction, so a multivalued Biolink slot such as
+    ``has_evidence`` fed from an aggregated cell would otherwise be emitted as a single
+    joined string -- and ``mask_illegal_edge_fields`` wraps that scalar into a
+    one-element list, so the value survives Biolink validation while consumers iterate a
+    single ``"a|b|c"`` blob instead of three ids.
+
+    Same split as ``explode``, minus the fan-out: this is the per-row counterpart of
+    ``method: list`` (the literal form covers a fixed array known at config time, this
+    covers an array that differs on every row).
+
+    Args:
+        lf: Source LazyFrame.
+        col: Annotation column to split.
+        delimiter: Separator to split on.
+
+    Returns:
+        LazyFrame with ``col`` converted to a ``list[str]`` column, blanks dropped.
+    """
+    return lf.with_columns(split_expr(col, delimiter).alias(col))
+
+
 def prefix(lf: pl.LazyFrame, col: str, prefix: str) -> pl.LazyFrame:
     expr: pl.Expr = pl.lit(prefix) + pl.col(col).cast(pl.String)
     return lf.with_columns(expr.alias(col))
@@ -634,10 +682,14 @@ def explode(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
     Returns:
         LazyFrame with one row per item (the split column becomes a list
         before the explode).
+
+    Notes:
+        Shares ``split_expr`` with ``split_list`` (the ``split_by`` annotation op), so
+        both read a delimited cell the same way: items trimmed, blanks dropped. A
+        trailing/doubled separator therefore no longer fans out rows carrying ``""``,
+        which only ever failed entity resolution and dropped the edge downstream.
     """
-    expr: pl.Expr = pl.col(col).cast(pl.String).str.split(delimiter)
-    lf = lf.with_columns(expr.alias(col))
-    return lf.explode(col)
+    return lf.with_columns(split_expr(col, delimiter).alias(col)).explode(col)
 
 
 def idx(lf: pl.LazyFrame, col: str = "extracted_from_row_number") -> pl.LazyFrame:
@@ -943,7 +995,13 @@ class Tcode(Section):
             else None,
             # --head preview: randomly sample min(HEAD_ROWS, height) rows before any encoding/resolve.
             (head, (HEAD_ROWS,)) if self.head else None,
-            [op for x in self.annotations for op in self.encoding(x, x.annotation.lower())] if self.annotations else None,
+            [
+                op
+                for x in self.annotations
+                for op in [*self.encoding(x, x.annotation.lower()), *([(split_list, (x.annotation.lower(), x.split_by))] if x.split_by else [])]
+            ]
+            if self.annotations
+            else None,
             (coerce_pvalue_columns, ()),
             (coerce_study_size_columns, ()),
             (coerce_effect_size_columns, ()),
@@ -1071,6 +1129,7 @@ PHASE_OF: dict[Callable, str] = {
     retrieval_sources: "provenance",
     inline_supporting_study: "provenance",
     prune_to_class: "finalize",
+    split_list: "encode",
     sig: "significance",
     drop_not_significant: "significance",
     trim: "finalize",
