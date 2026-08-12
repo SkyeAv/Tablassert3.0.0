@@ -14,6 +14,9 @@ assignees: ""
 2. <!-- Second step -->
 3. <!-- Third step -->
 
+## Command
+<!-- Include the exact command that reproduces the problem -->
+
 ## Expected Behavior
 <!-- What should happen -->
 

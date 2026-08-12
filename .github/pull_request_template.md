@@ -9,6 +9,8 @@
 - **How it affects the project**
 
 ## Testing
+<!-- List exact validation commands and their results, e.g. `make check` — passed -->
+- **Commands run and results**
 - **Unit tests added/updated**
 - **Integration tests added/updated**
 - **Manual testing performed**
