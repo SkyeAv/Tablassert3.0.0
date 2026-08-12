@@ -1484,8 +1484,8 @@
 
 
 <h1 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h1>
-<p>Get a working <code>tablassert</code> install, then pick the <code>rt</code> / <code>qc</code> / <code>agent</code> extras that match how you will
-use it (building graphs, auditing mappings, or running the autonomous agent).</p>
+<p>Get a working <code>tablassert</code> install, then pick the <code>rt</code> / <code>aria2</code> / <code>qc</code> / <code>agent</code> / <code>optimize</code> extras that match how you will
+use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, or GEPA prompt optimization).</p>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Python 3.11 or higher</strong>: Tablassert requires Python 3.11+ for compatibility with modern tooling</li>
@@ -1541,6 +1541,11 @@ extras are opt-in.</p>
 <td><code>polars[rtcompat]</code></td>
 </tr>
 <tr>
+<td><code>aria2</code></td>
+<td>Bundled aria2c downloader for <code>build-fullmap --aria2c</code> (Linux/Windows wheels only)</td>
+<td><code>aria2==0.0.1b0</code> (imports as <code>aria2c</code>, bundles aria2c)</td>
+</tr>
+<tr>
 <td><code>qc</code></td>
 <td>QC runtime (exact → fuzzy → BioBERT audit)</td>
 <td><code>scikit-learn</code>, <code>sentence-transformers</code> (<code>torch</code> + <code>numpy</code> arrive transitively; <code>rapidfuzz</code> is a core dependency)</td>
@@ -1564,14 +1569,23 @@ extras are opt-in.</p>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># pip equivalents</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[rt]&quot;</span>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># Install the QC runtime</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[qc]&quot;</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[qc]&quot;</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># Install the bundled aria2c downloader</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[aria2]&quot;</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[aria2]&quot;</span>
 <a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="c1"># Install the autonomous agent</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[agent]&quot;</span>
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[agent]&quot;</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="c1"># Install the QC runtime</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[qc]&quot;</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[qc]&quot;</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="c1"># Install the autonomous agent</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[agent]&quot;</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[agent]&quot;</span>
 </code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>[aria2]</code> platform and license notes</p>
+<p>The <code>[aria2]</code> extra depends on the PyPI <code>aria2</code> package, which imports as <code>aria2c</code> and bundles a static aria2c binary. Its wheels are available for Linux and Windows only; on macOS, omit <code>--aria2c</code> and use Tablassert's default Python downloader.</p>
+<p>The bundled aria2c dependency is GPL-2.0. Tablassert remains Apache-2.0 and does not vendor aria2c, but redistributors who ship the optional extra should review GPL-2.0 obligations.</p>
+</div>
 <p>Excel (<code>.xlsx</code>) input is read through Polars' <code>calamine</code> engine and additionally requires <code>python-calamine</code> (<code>pip install python-calamine</code>).</p>
 <h3 id="method-3-install-from-github-main">Method 3: Install from GitHub main<a class="headerlink" href="#method-3-install-from-github-main" title="Permanent link">&para;</a></h3>
 <p>Use this when you want the latest main-branch build.</p>

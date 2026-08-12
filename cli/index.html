@@ -1647,12 +1647,12 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 <td>Flag</td>
 <td>No</td>
 <td><code>False</code></td>
-<td>Opt into the installed <code>aria2c</code> executable for resumable segmented BABEL downloads; fails loud if <code>aria2c</code> is missing or exits non-zero</td>
+<td>Opt into the bundled <code>aria2c</code> binary from the <code>[aria2]</code> extra for resumable segmented BABEL downloads; fails loud if the extra is missing, unsupported on the current platform, or aria2c exits non-zero</td>
 </tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># Optional: use aria2c for faster/resumable BABEL downloads when installed</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># Optional: after `pip install &quot;tablassert[aria2]&quot;`, use bundled aria2c for faster/resumable BABEL downloads</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
 </code></pre></div>
 <p>See <a href="../fullmap/">Fullmap</a> for the data pipeline, output schema, and graph-config usage.</p>
