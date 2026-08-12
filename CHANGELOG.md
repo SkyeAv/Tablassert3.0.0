@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+- **`tablassert build-fullmap --aria2c` / `-a` now uses the optional `[aria2]` PyPI extra instead of a system `aria2c` install.** Install with `pip install "tablassert[aria2]"` to get the bundled static aria2c binary from the `aria2` package (`aria2==0.0.1b0`, imported as `aria2c`). The extra has Linux/Windows wheels only; on macOS, `--aria2c` fails loud and the default Python downloader remains available. `aria2` is a separate optional GPL-2.0 runtime dependency; Tablassert remains Apache-2.0, but redistributors who ship the optional extra should review GPL-2.0 obligations.
+
 ## 9.0.0 - 2026-08-11
 
 **Identical in content to 8.2.1 — re-released under a major version to correct the version signal.**

@@ -1,7 +1,7 @@
 # Installation
 
-Get a working `tablassert` install, then pick the `rt` / `qc` / `agent` extras that match how you will
-use it (building graphs, auditing mappings, or running the autonomous agent).
+Get a working `tablassert` install, then pick the `rt` / `aria2` / `qc` / `agent` / `optimize` extras that match how you will
+use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, or GEPA prompt optimization).
 
 ## Prerequisites
 
@@ -61,6 +61,7 @@ pip install tablassert
 | Extra | Description | Includes |
 |---|---|---|
 | `rt` | Runtime-compatible Polars build | `polars[rtcompat]` |
+| `aria2` | Bundled aria2c downloader for `build-fullmap --aria2c` (Linux/Windows wheels only) | `aria2==0.0.1b0` (imports as `aria2c`, bundles aria2c) |
 | `qc` | QC runtime (exact → fuzzy → BioBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
 | `agent` | Autonomous PMC → KG agent (`tablassert agent`) | `smolagents`, `litellm` |
 | `optimize` | GEPA prompt optimization (`tablassert agent --optimize`) | `dspy` |
@@ -73,6 +74,10 @@ uv tool install "tablassert[rt]"
 # pip equivalents
 pip install "tablassert[rt]"
 
+# Install the bundled aria2c downloader
+uv tool install "tablassert[aria2]"
+pip install "tablassert[aria2]"
+
 # Install the QC runtime
 uv tool install "tablassert[qc]"
 pip install "tablassert[qc]"
@@ -81,6 +86,11 @@ pip install "tablassert[qc]"
 uv tool install "tablassert[agent]"
 pip install "tablassert[agent]"
 ```
+
+!!! note "`[aria2]` platform and license notes"
+    The `[aria2]` extra depends on the PyPI `aria2` package, which imports as `aria2c` and bundles a static aria2c binary. Its wheels are available for Linux and Windows only; on macOS, omit `--aria2c` and use Tablassert's default Python downloader.
+
+    The bundled aria2c dependency is GPL-2.0. Tablassert remains Apache-2.0 and does not vendor aria2c, but redistributors who ship the optional extra should review GPL-2.0 obligations.
 
 Excel (`.xlsx`) input is read through Polars' `calamine` engine and additionally requires `python-calamine` (`pip install python-calamine`).
 
