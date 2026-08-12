@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
+- **`tablassert build-fullmap` now downloads a prebuilt database by default, with `--force` / `-f` to rebuild from scratch.** Without `--force`, the command first fetches the prebuilt `fullmap.tar.zst` published for the INSTALLED Tablassert version at `https://stars.renci.org/var/babel_outputs/<babel-version>/fullmap/<tablassert-version>/` (the version directory is derived from installed-package metadata, never hardcoded), verifies it against the co-published `sha256sum.txt`, and stream-extracts it beside `--output` — far faster than building from BABEL. If no prebuilt exists for this version (or the download/extract fails), it falls back to the existing from-scratch BABEL build and logs a warning; `--force` / `-f` skips the prebuilt attempt entirely. A database already present at `--output` is reused. Extraction uses Python 3.14+ native `tarfile` zstd, falling back to the installed `zstd` binary on older interpreters. The `--aria2c` / `-a` flag accelerates the prebuilt download through the same shared downloader the BABEL build uses (so it benefits from the optional bundled `[aria2]` extra when that is installed).
 - **`split_by` on annotations — per-row multivalued slots.** A `method: column` annotation may declare a separator that splits each cell's own delimited text into a real JSON array:
 
   ```yaml

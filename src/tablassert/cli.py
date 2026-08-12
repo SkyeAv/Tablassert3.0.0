@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import re
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
 from collections.abc import Callable
 from importlib import import_module
@@ -907,6 +911,233 @@ def rebuild_agent_graph(
     print(f"tablassert rebuild-agent-graph: wrote {graph_path} with {count} table config(s).")
 
 
+class PrebuiltFullmapUnavailable(Exception):
+    """A prebuilt fullmap could not be fetched or extracted.
+
+    Raised by :func:`fetch_prebuilt_fullmap` whenever the prebuilt is absent for this
+    version, the download/extract fails, or the checksum mismatches. The
+    ``build-fullmap`` command catches it to fall back to a from-scratch BABEL build, so
+    it is control flow, not a user-facing error (it never reaches the docs-coded
+    ``TablassertError`` surface). Carries a short reason so the fallback warning is actionable.
+    """
+
+
+def _prebuilt_fullmap_urls(babel_version: str) -> tuple[str, str]:
+    """Resolve the prebuilt archive + checksum URLs for THIS Tablassert version.
+
+    RENCI publishes a prebuilt ``fullmap.tar.zst`` (and a ``sha256sum.txt``) under
+    ``{BABEL_BASE}/{babel_version}/fullmap/{tablassert_version}/``, where the version
+    directory is the INSTALLED Tablassert package version (e.g. ``9.0.0``) — resolved from
+    installed-package metadata, never hardcoded, so a new release looks itself up.
+
+    Args:
+        babel_version: BABEL snapshot label (the ``--version`` value), e.g. ``2026jul22``.
+
+    Returns:
+        ``(archive_url, checksum_url)`` for ``fullmap.tar.zst`` and ``sha256sum.txt``.
+    """
+    base: str = f"{BABEL_BASE}/{babel_version}/fullmap/{get_version('tablassert')}"
+    return f"{base}/fullmap.tar.zst", f"{base}/sha256sum.txt"
+
+
+def _fetch_prebuilt_sha256(url: str) -> str | None:
+    """Fetch ``sha256sum.txt`` and return the hex digest listed for ``fullmap.tar.zst``.
+
+    Best-effort: a missing or malformed checksum file returns ``None`` so the caller
+    proceeds without verification (with a warning) instead of blocking a download.
+
+    Args:
+        url: URL of the ``sha256sum.txt`` file.
+
+    Returns:
+        The 64-char lowercase hex sha256, or ``None`` if it could not be fetched/parsed.
+    """
+    try:
+        request: Request = Request(url, headers={"User-Agent": "tablassert"})
+        with urlopen(request, timeout=60) as response:
+            body: str = response.read().decode("utf-8", errors="replace")
+    except (HTTPError, OSError, URLError):
+        return None
+    for line in body.splitlines():
+        parts: list[str] = line.split()
+        # sha256sum format: "<hex>  <filename>" (two spaces, optional leading "*").
+        # sha256sum format: "<hex>  <filename>"; binary mode prefixes the filename with "*".
+        if len(parts) >= 2 and Path(parts[1].removeprefix("*")).name == "fullmap.tar.zst":
+            digest: str = parts[0].lower()
+            if len(digest) == 64 and all(c in "0123456789abcdef" for c in digest):
+                return digest
+    return None
+
+
+def _stream_tar(tar: tarfile.TarFile, dest: Path, on_phase: Callable[[str], None]) -> None:
+    """Extract every member of a streaming tarfile into ``dest`` (data-filtered on 3.12+).
+
+    Streaming mode (``r|``) only allows extracting each member as it is read (no random
+    access), which is exactly the loop here. PEP 706 (Python 3.12) added tar-extraction
+    filters; ``filter="data"`` strips absolute paths, traversals, and unsafe links. On
+    3.11 the kwarg is absent and is omitted — the archive is RENCI-published, but the
+    filter is cheap defense-in-depth when available.
+
+    Args:
+        tar: An open streaming-mode tarfile.
+        dest: Directory members are written into.
+        on_phase: Progress callback fired with the active step label.
+    """
+    use_data_filter: bool = sys.version_info >= (3, 12)
+    for member in tar:
+        on_phase(f"extracting {member.name}")
+        # Explicit branch so pyright sees the "data" literal (PEP 706, Python 3.12+).
+        if use_data_filter:
+            tar.extract(member, dest, filter="data")
+        else:
+            tar.extract(member, dest)
+
+
+def _extract_zst_tar(archive: Path, dest: Path, on_phase: Callable[[str], None]) -> None:
+    """Stream-extract a ``.tar.zst`` archive into ``dest`` without materializing the tar on disk.
+
+    Prefers Python 3.14+ native tarfile zstd support; on older runtimes (where ``r|zst``
+    raises ``CompressionError``) it streams the archive through the installed ``zstd``
+    binary into tarfile. Streaming keeps peak disk near the redb files' own size even
+    though the uncompressed tar is tens of GB.
+
+    Args:
+        archive: Path to the downloaded ``fullmap.tar.zst``.
+        dest: Directory members are written into (created if missing).
+        on_phase: Progress callback fired with the active step label.
+
+    Raises:
+        PrebuiltFullmapUnavailable: If the archive cannot be decompressed/extracted
+            (native zstd unavailable AND no ``zstd`` binary, a read error, or a zstd failure).
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    on_phase("opening archive")
+    # Native zstd landed in tarfile for 3.14; older interpreters reject the ``zst`` mode
+    # with CompressionError, which is caught to fall through to the zstd binary.
+    try:
+        with tarfile.open(archive, "r|zst") as tar:
+            _stream_tar(tar, dest, on_phase)
+        return
+    except tarfile.CompressionError:
+        pass
+    except (OSError, tarfile.TarError) as exc:
+        raise PrebuiltFullmapUnavailable(f"failed to read prebuilt archive: {exc}") from exc
+
+    on_phase("streaming via zstd")
+    binary: str | None = shutil.which("zstd")
+    if binary is None:
+        raise PrebuiltFullmapUnavailable("no native zstd support and the `zstd` executable was not found")
+    try:
+        proc: subprocess.Popen[bytes] = subprocess.Popen([binary, "-d", "-c", "-T0", str(archive)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as exc:
+        raise PrebuiltFullmapUnavailable(f"could not start zstd: {exc}") from exc
+    assert proc.stdout is not None
+    try:
+        with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
+            _stream_tar(tar, dest, on_phase)
+    except (OSError, tarfile.TarError) as exc:
+        raise PrebuiltFullmapUnavailable(f"failed to extract prebuilt archive: {exc}") from exc
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
+        proc.wait()
+    if proc.returncode not in (0, None):
+        stderr: bytes = proc.stderr.read() if proc.stderr else b""
+        detail: str = stderr.decode("utf-8", "replace").strip()[-500:]
+        raise PrebuiltFullmapUnavailable(f"zstd exited with status {proc.returncode}: {detail}")
+
+
+def fetch_prebuilt_fullmap(output: Path, progress: PipelineProgress, version: str = BABEL_VERSION, aria2c: bool = False) -> None:
+    """Download and extract a prebuilt fullmap database from RENCI (instead of building).
+
+    Two stages: download ``fullmap.tar.zst`` for THIS Tablassert version (cached +
+    resumable, optionally via ``aria2c``) beside ``output``, then stream-extract it so the
+    primary redb and its shards land beside ``output`` named after its stem. The checksum
+    published alongside the archive is verified when present.
+
+    Args:
+        output: Target primary redb path; the archive is downloaded + extracted beside it.
+        progress: Pipeline progress reporter.
+        version: BABEL snapshot label selecting the RENCI release directory (NOT the
+            Tablassert package version, which the URL derives from installed-package metadata).
+        aria2c: Use the optional aria2c executable for the archive download when true.
+
+    Raises:
+        PrebuiltFullmapUnavailable: If the prebuilt is absent for this version, the download
+            or extraction fails, or the checksum mismatches. ``build-fullmap`` catches this
+            and falls back to a from-scratch BABEL build.
+    """
+    release: str = get_version("tablassert")
+    archive_url, checksum_url = _prebuilt_fullmap_urls(version)
+    download_dir: Path = output.parent
+    archive: Path = download_dir / "fullmap.tar.zst"
+
+    # Stage 1/2: download the prebuilt archive (cached + resumable, like a BABEL file).
+    progress.stage("Downloading Prebuilt Fullmap")
+    start, advance, sub_step = progress.section_loop(1, "Download")
+    start(f"fullmap.tar.zst v{release}")
+
+    def report_progress(downloaded: int, total: int) -> None:
+        sub_step(_download_detail(downloaded, total))
+
+    try:
+        if aria2c:
+            sub_step("aria2c downloading")
+            download_babel_file_aria2c("fullmap.tar.zst", archive_url, download_dir)
+        else:
+            sub_step("downloading")
+            download_babel_file("fullmap.tar.zst", archive_url, download_dir, on_progress=report_progress)
+    except BabelDownloadError as exc:
+        raise PrebuiltFullmapUnavailable(f"prebuilt archive download failed: {exc}") from exc
+    advance()
+
+    # Best-effort checksum: RENCI publishes sha256sum.txt; verify when present, warn otherwise.
+    expected: str | None = _fetch_prebuilt_sha256(checksum_url)
+    if expected is None:
+        download_logger.warning("No sha256sum.txt at {url}; skipping integrity check", url=checksum_url)
+    else:
+        sub_step("verifying checksum")
+        hasher = hashlib.sha256()
+        with archive.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        actual: str = hasher.hexdigest()
+        if actual != expected:
+            archive.unlink(missing_ok=True)
+            raise PrebuiltFullmapUnavailable(f"checksum mismatch for {archive.name}: expected {expected}, got {actual}")
+
+    # Stage 2/2: stream-extract into a temp dir ON THE SAME FILESYSTEM as the output (so
+    # the renames are atomic), then move the primary + shards beside ``output`` named
+    # after its stem. A custom --output stem is honored, not assumed to be fullmap.redb.
+    progress.stage("Extracting Fullmap")
+    start, advance, sub_step = progress.section_loop(1, "Extract")
+    start("fullmap.tar.zst")
+    sub_step("extracting")
+    download_dir.mkdir(parents=True, exist_ok=True)
+    shard_re: re.Pattern[str] = re.compile(r"\.s(\d+)\.redb$")
+    with tempfile.TemporaryDirectory(dir=download_dir) as tmp_name:
+        tmp_dir: Path = Path(tmp_name)
+        _extract_zst_tar(archive, tmp_dir, on_phase=sub_step)
+        primary_src: Path | None = None
+        shards: dict[int, Path] = {}
+        for candidate in tmp_dir.rglob("*.redb"):
+            match: re.Match[str] | None = shard_re.search(candidate.name)
+            if match:
+                shards[int(match.group(1))] = candidate
+            elif primary_src is None or candidate.name == "fullmap.redb":
+                # Prefer a primary literally named fullmap.redb when several non-shard redb files appear.
+                primary_src = candidate
+        if primary_src is None:
+            raise PrebuiltFullmapUnavailable("prebuilt archive contained no primary .redb file")
+        primary_src.replace(output)
+        for shard_index, shard_src in sorted(shards.items()):
+            shard_src.replace(output.parent / f"{output.stem}.s{shard_index}.redb")
+
+    # The extracted redb files are the cache; drop the multi-GB archive to free the space.
+    archive.unlink(missing_ok=True)
+    download_logger.info("Installed prebuilt fullmap v{release} -> {output}", release=release, output=output)
+
+
 def build_fullmap_pipeline(
     output: Path,
     progress: PipelineProgress,
@@ -988,6 +1219,33 @@ def build_fullmap(
     version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,
     threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
     aria2c: Annotated[bool, cyclopts.Parameter(name=["--aria2c", "-a"], negative="")] = False,
+    force: Annotated[bool, cyclopts.Parameter(name=["--force", "-f"], negative="")] = False,
 ) -> None:
-    """Build an embedded fullmap redb database from hardcoded BABEL outputs."""
+    """Build an embedded fullmap redb database, or download a prebuilt one from RENCI.
+
+    By default, first try to download a prebuilt ``fullmap.tar.zst`` published for THIS
+    Tablassert version under ``{BABEL_BASE}/{version}/fullmap/<tablassert-version>/`` and
+    extract it — far faster than building from BABEL. If no prebuilt exists for this
+    version (or the download/extract fails), fall back to a from-scratch build.
+    ``--force`` / ``-f`` skips the prebuilt attempt and always builds from BABEL outputs.
+
+    Args:
+        output: Path to write the redb file (prebuilt extraction or build output).
+        cache: Directory for downloaded BABEL files when building from scratch.
+        version: BABEL snapshot date to fetch (a RENCI stamp, NOT Tablassert's version).
+        threads: Worker threads for a from-scratch build (auto when unset).
+        aria2c: Use the installed aria2c executable for downloads (prebuilt or BABEL).
+        force: Skip the prebuilt download and always rebuild from BABEL outputs.
+    """
+    # A complete primary redb already on disk means the DB is in place: reuse it. Only
+    # --force rebuilds once a DB exists, so it is the explicit "fresh build" knob.
+    if not force and output.is_file() and output.stat().st_size > 0:
+        print(f"tablassert build-fullmap: fullmap already present at {output}; skipping (use --force to rebuild).", file=sys.stderr)
+        return
+    if not force:
+        try:
+            run(2, fetch_prebuilt_fullmap, output, version=version, aria2c=aria2c)
+            return
+        except PrebuiltFullmapUnavailable as exc:
+            logger.warning("Prebuilt fullmap unavailable ({reason}); building from BABEL outputs.", reason=exc)
     run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads, aria2c=aria2c)

@@ -9,8 +9,12 @@ stubbed, and all artifacts land in ``tmp_path``. No network, no real Rust build.
 
 from __future__ import annotations
 
+import hashlib
 import io
+import shutil
 import subprocess
+import sys
+import tarfile
 from email.message import Message
 from pathlib import Path
 from typing import Any
@@ -370,8 +374,12 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
     assert calls == [(6, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True})]
 
 
-def test_build_fullmap_command_passes_aria2c_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """``build-fullmap --aria2c`` delegates the opt-in flag to ``build_fullmap_pipeline``."""
+def test_build_fullmap_command_force_build_passes_aria2c_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``build-fullmap --force --aria2c`` delegates both flags to the from-scratch build.
+
+    With the download-first default, only ``--force`` reaches ``build_fullmap_pipeline``; the
+    default path is covered by :func:`test_build_fullmap_command_defaults_to_prebuilt_download`.
+    """
     output: Path = tmp_path / "fullmap.redb"
     cache: Path = tmp_path / "downloads"
     calls: list[tuple[Any, ...]] = []
@@ -380,7 +388,7 @@ def test_build_fullmap_command_passes_aria2c_flag(tmp_path: Path, monkeypatch: p
         calls.append((stages, fn, arg, kwargs))
 
     monkeypatch.setattr(cli, "run", _fake_run)
-    cli.build_fullmap(output=output, cache=cache, version="v", threads=2, aria2c=True)
+    cli.build_fullmap(output=output, cache=cache, version="v", threads=2, aria2c=True, force=True)
     assert calls == [(3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "threads": 2, "aria2c": True})]
 
 
@@ -542,3 +550,456 @@ def test_build_fullmap_pipeline_uses_aria2c_when_opted_in(tmp_path: Path, monkey
     assert progress.sub_steps.count("aria2c downloading") == 2
     assert progress.advances == 4  # two discovery entries + two downloaded files
     assert built == [(output, [cache / "classes" / "c.gz"], [cache / "synonyms" / "s.gz"], 1)]
+
+
+# --- prebuilt fullmap downloader (download-first default; --force rebuilds from BABEL) ---
+
+
+def _write_archive(filename: str, url: str, destination: Path, on_progress: object = None) -> Path:
+    """Fake ``download_babel_file`` that just materializes the archive on disk (no network)."""
+    destination.mkdir(parents=True, exist_ok=True)
+    path: Path = destination / filename
+    path.write_bytes(b"archive-bytes")
+    return path
+
+
+def _build_tiny_tar_zst(path: Path, members: dict[str, bytes]) -> None:
+    """Create a tiny ``.tar.zst`` hermetically (native 3.14+ tarfile, else the ``zstd`` binary)."""
+    if sys.version_info >= (3, 14):
+        with tarfile.open(path, "w|zst") as tar:
+            for name, data in members.items():
+                info: tarfile.TarInfo = tarfile.TarInfo(name=name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        return
+    zstd: str | None = shutil.which("zstd")
+    if zstd is None:
+        pytest.skip("no native zstd tarfile and no zstd binary to build a test archive")
+    tar_path: Path = path.with_suffix(".tar")
+    with tarfile.open(tar_path, "w") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    subprocess.run([zstd, "-q", "-f", "-o", str(path), str(tar_path)], check=True)
+
+
+def test_prebuilt_fullmap_urls_derive_installed_version() -> None:
+    """The release directory is the INSTALLED Tablassert version, never a hardcoded literal.
+
+    WHY: the RENCI layout is ``.../fullmap/<tablassert-version>/``; pinning a literal would
+    break on every release. The URLs must embed the live installed-package version plus the
+    BABEL snapshot, and expose the fixed ``fullmap.tar.zst`` / ``sha256sum.txt`` filenames.
+    """
+    from importlib.metadata import version as get_version
+
+    release: str = get_version("tablassert")
+    archive: str
+    checksum: str
+    archive, checksum = cli._prebuilt_fullmap_urls("2026jul22")
+    assert archive == f"https://stars.renci.org/var/babel_outputs/2026jul22/fullmap/{release}/fullmap.tar.zst"
+    assert checksum == f"https://stars.renci.org/var/babel_outputs/2026jul22/fullmap/{release}/sha256sum.txt"
+    # The version slot is exactly the live installed version (equality above pins position);
+    # an old release stamp like 8.1.0 must never appear in that slot.
+    assert "8.1.0" not in archive
+
+
+def test_fetch_prebuilt_sha256_parses_fullmap_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The ``fullmap.tar.zst`` digest is extracted from sha256sum.txt; other lines ignored."""
+    digest: str = "0" * 64
+    body: str = f"aaaa  other.gz\n{digest}  fullmap.tar.zst\nbbbb  fullmap.s0.redb\n"
+    monkeypatch.setattr(cli, "urlopen", lambda request, timeout: _FakeResponse(body.encode(), 200, str(len(body))))
+    assert cli._fetch_prebuilt_sha256("https://example.com/sha256sum.txt") == digest
+
+
+def test_fetch_prebuilt_sha256_handles_binary_mode_star(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Binary-mode sha256sum prefixes the filename with ``*``; still matched."""
+    digest: str = "a" * 64
+    body: str = f"{digest} *fullmap.tar.zst\n"
+    monkeypatch.setattr(cli, "urlopen", lambda request, timeout: _FakeResponse(body.encode(), 200, str(len(body))))
+    assert cli._fetch_prebuilt_sha256("https://example.com/sha256sum.txt") == digest
+
+
+def test_fetch_prebuilt_sha256_returns_none_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing/unreadable checksum file returns ``None`` (best-effort), not an error."""
+
+    def _404(request: Any, timeout: int) -> None:
+        raise HTTPError("https://example.com/sha256sum.txt", 404, "Not Found", Message(), None)
+
+    monkeypatch.setattr(cli, "urlopen", _404)
+    assert cli._fetch_prebuilt_sha256("https://example.com/sha256sum.txt") is None
+
+
+def test_fetch_prebuilt_sha256_returns_none_when_no_fullmap_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A checksum file without a ``fullmap.tar.zst`` line returns ``None`` (no match to verify)."""
+    body: str = "aaaa  other.gz\nbbbb  fullmap.s0.redb\n"  # no fullmap.tar.zst entry
+    monkeypatch.setattr(cli, "urlopen", lambda request, timeout: _FakeResponse(body.encode(), 200, str(len(body))))
+    assert cli._fetch_prebuilt_sha256("https://example.com/sha256sum.txt") is None
+
+
+def test_fetch_prebuilt_fullmap_downloads_verifies_and_extracts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """End-to-end orchestration: download archive -> verify checksum -> extract beside output.
+
+    The download, checksum fetch, and zstd extraction are faked so the test asserts the
+    ORCHESTRATION: primary + shards land beside ``output`` named after its stem, the verify
+    branch actually ran against the downloaded bytes, and the archive is removed after extraction.
+    """
+    archive_bytes: bytes = b"pretend-archive"
+    digest: str = hashlib.sha256(archive_bytes).hexdigest()
+
+    def _fake_download(filename: str, url: str, destination: Path, on_progress: object = None) -> Path:
+        destination.mkdir(parents=True, exist_ok=True)
+        path: Path = destination / filename
+        path.write_bytes(archive_bytes)
+        if on_progress is not None:
+            on_progress(len(archive_bytes), len(archive_bytes))  # type: ignore[operator]
+        return path
+
+    monkeypatch.setattr(cli, "download_babel_file", _fake_download)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: digest)
+
+    def _fake_extract(archive: Path, dest: Path, on_phase: object) -> None:
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "fullmap.redb").write_bytes(b"PRIMARY")
+        (dest / "fullmap.s0.redb").write_bytes(b"SHARD0")
+        (dest / "fullmap.s1.redb").write_bytes(b"SHARD1")
+
+    monkeypatch.setattr(cli, "_extract_zst_tar", _fake_extract)
+
+    output: Path = tmp_path / "data" / "fullmap.redb"
+    cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="2026jul22")
+
+    assert output.read_bytes() == b"PRIMARY"
+    assert (output.parent / "fullmap.s0.redb").read_bytes() == b"SHARD0"
+    assert (output.parent / "fullmap.s1.redb").read_bytes() == b"SHARD1"
+    assert not (output.parent / "fullmap.tar.zst").exists()  # archive removed after extraction
+
+
+def test_fetch_prebuilt_fullmap_checksum_mismatch_unlinks_and_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A checksum mismatch deletes the corrupt archive and raises so the build falls back.
+
+    WHY: extracting a corrupt 46 GB archive would waste disk/time and produce a broken DB.
+    The mismatch path fails loud (PrebuiltFullmapUnavailable) AND removes the bad archive so
+    the next attempt re-downloads instead of re-verifying garbage.
+    """
+    monkeypatch.setattr(cli, "download_babel_file", _write_archive)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: "f" * 64)  # never matches
+    monkeypatch.setattr(cli, "_extract_zst_tar", lambda *a, **k: pytest.fail("extract must not run on a checksum mismatch"))
+
+    output: Path = tmp_path / "fullmap.redb"
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="checksum mismatch"):
+        cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+    assert not (output.parent / "fullmap.tar.zst").exists()  # corrupt archive removed
+
+
+def test_fetch_prebuilt_fullmap_missing_checksum_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When RENCI publishes no sha256sum.txt, extraction proceeds (warned, not blocked)."""
+    monkeypatch.setattr(cli, "download_babel_file", _write_archive)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: None)
+    extracted: dict[str, bool] = {"ran": False}
+
+    def _fake_extract(archive: Path, dest: Path, on_phase: object) -> None:
+        extracted["ran"] = True
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "fullmap.redb").write_bytes(b"PRIMARY")
+
+    monkeypatch.setattr(cli, "_extract_zst_tar", _fake_extract)
+    output: Path = tmp_path / "fullmap.redb"
+    cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+    assert extracted["ran"] is True
+    assert output.read_bytes() == b"PRIMARY"
+
+
+def test_fetch_prebuilt_fullmap_download_failure_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed archive download surfaces as PrebuiltFullmapUnavailable (-> build fallback)."""
+
+    def _fail(filename: str, url: str, destination: Path, on_progress: object = None) -> Path:
+        raise BabelDownloadError(url, 1, RuntimeError("network down"))
+
+    monkeypatch.setattr(cli, "download_babel_file", _fail)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: None)
+    output: Path = tmp_path / "fullmap.redb"
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="download failed"):
+        cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+
+
+def test_fetch_prebuilt_fullmap_aria2c_uses_shared_helper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``aria2c=True`` routes the archive through ``download_babel_file_aria2c`` (PR #80's seam).
+
+    WHY: the 46 GB prebuilt is the ideal aria2 use case, and aria2 discovery is moving into
+    the optional ``[aria2]`` extra (PR #80). Pinning that the prebuilt path calls the SAME
+    shared helper the build uses (not ``shutil.which`` directly) means it inherits #80's
+    bundled binary automatically; the Python downloader must NOT run in this mode.
+    """
+
+    def _python_must_not_run(*args: Any, **kwargs: Any) -> Path:
+        raise AssertionError("Python downloader must not run when aria2c=True")
+
+    monkeypatch.setattr(cli, "download_babel_file", _python_must_not_run)
+    aria_calls: list[tuple[str, str, Path]] = []
+
+    def _fake_aria2c(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
+        aria_calls.append((filename, url, destination))
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / filename).write_bytes(b"archive-bytes")
+        return destination / filename
+
+    monkeypatch.setattr(cli, "download_babel_file_aria2c", _fake_aria2c)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: None)
+
+    def _fake_extract(archive: Path, dest: Path, on_phase: object) -> None:
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "fullmap.redb").write_bytes(b"PRIMARY")
+
+    monkeypatch.setattr(cli, "_extract_zst_tar", _fake_extract)
+
+    output: Path = tmp_path / "data" / "fullmap.redb"
+    cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="2026jul22", aria2c=True)
+
+    assert len(aria_calls) == 1
+    assert aria_calls[0][0] == "fullmap.tar.zst"
+    assert aria_calls[0][1].endswith("/fullmap.tar.zst")
+    assert aria_calls[0][2] == output.parent
+
+
+def test_fetch_prebuilt_fullmap_custom_output_name_renames_shards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A custom ``--output`` stem renames the extracted primary + shards to match it.
+
+    WHY: the read path derives shard names from the primary stem (``<stem>.s<N>.redb``), so a
+    prebuilt tarball of ``fullmap.redb`` / ``fullmap.sN.redb`` must be renamed when
+    ``--output`` is e.g. ``mydb.redb`` or lookups would not find the shards.
+    """
+    monkeypatch.setattr(cli, "download_babel_file", _write_archive)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: None)
+
+    def _fake_extract(archive: Path, dest: Path, on_phase: object) -> None:
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "fullmap.redb").write_bytes(b"PRIMARY")
+        (dest / "fullmap.s0.redb").write_bytes(b"SHARD0")
+        (dest / "fullmap.s15.redb").write_bytes(b"SHARD15")
+
+    monkeypatch.setattr(cli, "_extract_zst_tar", _fake_extract)
+    output: Path = tmp_path / "store" / "mydb.redb"
+    cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+
+    assert output.read_bytes() == b"PRIMARY"
+    assert (output.parent / "mydb.s0.redb").read_bytes() == b"SHARD0"
+    assert (output.parent / "mydb.s15.redb").read_bytes() == b"SHARD15"
+    # the original fullmap.* names did NOT survive the rename
+    assert not (output.parent / "fullmap.redb").exists()
+    assert not (output.parent / "fullmap.s0.redb").exists()
+
+
+def test_fetch_prebuilt_fullmap_raises_when_archive_has_no_primary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An archive with only shards (no primary .redb) fails loud instead of silently passing."""
+    monkeypatch.setattr(cli, "download_babel_file", _write_archive)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: None)
+    monkeypatch.setattr(
+        cli,
+        "_extract_zst_tar",
+        lambda archive, dest, on_phase: (dest.mkdir(parents=True, exist_ok=True), (dest / "fullmap.s0.redb").write_bytes(b"SHARD")),
+    )
+    output: Path = tmp_path / "fullmap.redb"
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match=r"no primary \.redb"):
+        cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+
+
+def test_extract_zst_tar_extracts_real_tiny_archive(tmp_path: Path) -> None:
+    """A real tiny ``.tar.zst`` round-trips through ``_extract_zst_tar`` (native path on 3.14+).
+
+    WHY: the production archive is a 46 GB ``.tar.zst`` we cannot fetch in tests; this builds a
+    tiny one and proves the streaming extraction + data filter land members on disk, including
+    a nested file (parent dirs created automatically).
+    """
+    archive: Path = tmp_path / "fullmap.tar.zst"
+    _build_tiny_tar_zst(archive, {"fullmap.redb": b"PRIMARY", "fullmap.s0.redb": b"SHARD0", "nested/x.txt": b"hi"})
+    dest: Path = tmp_path / "out"
+    phases: list[str] = []
+    cli._extract_zst_tar(archive, dest, on_phase=phases.append)
+    assert (dest / "fullmap.redb").read_bytes() == b"PRIMARY"
+    assert (dest / "fullmap.s0.redb").read_bytes() == b"SHARD0"
+    assert (dest / "nested" / "x.txt").read_bytes() == b"hi"
+    assert any("extracting" in p for p in phases)
+
+
+def test_extract_zst_tar_falls_back_to_zstd_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When native zstd is unavailable, the ``zstd`` binary streams the archive into tarfile.
+
+    WHY: Python 3.11-3.13 lack native tarfile zstd, so the binary fallback is the only path
+    there. On 3.14+ we force the native attempt to raise ``CompressionError`` to exercise the
+    fallback; skipped when no ``zstd`` binary is installed.
+    """
+    zstd: str | None = shutil.which("zstd")
+    if zstd is None:
+        pytest.skip("no zstd binary to exercise the fallback path")
+    archive: Path = tmp_path / "fullmap.tar.zst"
+    _build_tiny_tar_zst(archive, {"fullmap.redb": b"PRIMARY"})
+    real_open = cli.tarfile.open
+
+    def _force_native_failure(*args: Any, **kwargs: Any) -> Any:
+        mode: str = args[1] if len(args) > 1 else str(kwargs.get("mode", ""))
+        if "zst" in mode:
+            raise cli.tarfile.CompressionError("forced: simulate a pre-3.14 runtime")
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(cli.tarfile, "open", _force_native_failure)
+    dest: Path = tmp_path / "out"
+    cli._extract_zst_tar(archive, dest, on_phase=lambda p: None)
+    assert (dest / "fullmap.redb").read_bytes() == b"PRIMARY"
+
+
+def _force_native_zst_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make ``tarfile.open`` reject the ``r|zst`` mode so the zstd-binary path runs on any Python."""
+    real_open = cli.tarfile.open
+
+    def _fake_open(*args: Any, **kwargs: Any) -> Any:
+        mode: str = args[1] if len(args) > 1 else str(kwargs.get("mode", ""))
+        if "zst" in mode:
+            raise cli.tarfile.CompressionError("forced: simulate a pre-3.14 runtime")
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(cli.tarfile, "open", _fake_open)
+
+
+def test_extract_zst_tar_raises_when_no_zstd_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No native zstd AND no zstd binary => PrebuiltFullmapUnavailable (-> build fallback).
+
+    WHY: a pre-3.14 Python without the zstd CLI cannot extract the archive, so the default
+    from-scratch BABEL build is the correct fallback.
+    """
+    archive: Path = tmp_path / "fullmap.tar.zst"
+    archive.write_bytes(b"not-used")  # never reaches the archive before the binary check
+    _force_native_zst_failure(monkeypatch)
+    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="`zstd` executable was not found"):
+        cli._extract_zst_tar(archive, tmp_path / "out", on_phase=lambda p: None)
+
+
+def test_extract_zst_tar_raises_when_zstd_binary_fails_to_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A zstd binary present but failing to exec => PrebuiltFullmapUnavailable (defensive OSError)."""
+    archive: Path = tmp_path / "fullmap.tar.zst"
+    archive.write_bytes(b"x")
+    _force_native_zst_failure(monkeypatch)
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/zstd")
+    monkeypatch.setattr(cli.subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(OSError("exec failed")))
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="could not start zstd"):
+        cli._extract_zst_tar(archive, tmp_path / "out", on_phase=lambda p: None)
+
+
+def test_extract_zst_tar_raises_on_corrupt_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A corrupt (non-zstd) archive => tarfile read error => PrebuiltFullmapUnavailable (-> build fallback).
+
+    WHY: a truncated/corrupt download must fail loud rather than silently extract garbage. zstd
+    decompresses nothing, tarfile hits an empty/invalid stream, and the fallback read-error path fires.
+    """
+    zstd: str | None = shutil.which("zstd")
+    if zstd is None:
+        pytest.skip("no zstd binary to exercise the corrupt-archive path")
+    archive: Path = tmp_path / "fullmap.tar.zst"
+    archive.write_bytes(b"this is definitely not a zstd stream")
+    _force_native_zst_failure(monkeypatch)
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="failed to extract prebuilt archive"):
+        cli._extract_zst_tar(archive, tmp_path / "out", on_phase=lambda p: None)
+
+
+def test_extract_zst_tar_raises_on_nonzero_zstd_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-zero zstd exit AFTER a valid tar stream still fails loud (returncode guard).
+
+    WHY: zstd can write a complete, valid stream and still exit non-zero (e.g. trailing garbage
+    after the frame). The returncode guard refuses to trust such output. Native is forced off and
+    a fake Popen serves a real (uncompressed) tar stream while reporting exit 2.
+    """
+    tar_buf: io.BytesIO = io.BytesIO()
+    with tarfile.open(fileobj=tar_buf, mode="w|") as tar:
+        info: tarfile.TarInfo = tarfile.TarInfo(name="fullmap.redb")
+        info.size = 1
+        tar.addfile(info, io.BytesIO(b"P"))
+    tar_buf.seek(0)
+
+    class _FakeProc:
+        def __init__(self) -> None:
+            self.stdout = tar_buf
+            self.stderr = io.BytesIO(b"")
+            self.returncode = 2
+
+        def wait(self) -> int:
+            return 2
+
+    _force_native_zst_failure(monkeypatch)
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/zstd")
+    monkeypatch.setattr(cli.subprocess, "Popen", lambda *a, **k: _FakeProc())
+    archive: Path = tmp_path / "fullmap.tar.zst"
+    archive.write_bytes(b"ignored")  # fake Popen ignores the archive path
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="zstd exited with status 2"):
+        cli._extract_zst_tar(archive, tmp_path / "out", on_phase=lambda p: None)
+
+
+def test_build_fullmap_command_defaults_to_prebuilt_download(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default (no ``--force``) tries the prebuilt download FIRST, not a from-scratch build.
+
+    WHY: 'download from here first (before building)' is the requested default. The command
+    calls ``run(2, fetch_prebuilt_fullmap, ...)`` and returns on success WITHOUT invoking the
+    3-stage build. (``output`` absent => no skip-if-exists short-circuit.)
+    """
+    calls: list[tuple[Any, ...]] = []
+
+    def _fake_run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
+        calls.append((stages, fn, arg, kwargs))
+
+    monkeypatch.setattr(cli, "run", _fake_run)
+    output: Path = tmp_path / "fullmap.redb"  # does not exist
+    cli.build_fullmap(output=output, version="v", aria2c=True)
+    assert calls == [(2, cli.fetch_prebuilt_fullmap, output, {"version": "v", "aria2c": True})]
+
+
+def test_build_fullmap_command_skips_when_output_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """A complete existing DB short-circuits everything (no ``run`` call) unless ``--force``."""
+    output: Path = tmp_path / "fullmap.redb"
+    output.write_bytes(b"existing-db")
+
+    def _run_must_not_run(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("run must not be called when output already exists")
+
+    monkeypatch.setattr(cli, "run", _run_must_not_run)
+    cli.build_fullmap(output=output, version="v")
+    assert "already present" in capsys.readouterr().err
+
+
+def test_build_fullmap_command_falls_back_to_build_on_prebuilt_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the prebuilt fetch raises, the command falls back to a from-scratch build.
+
+    WHY: a version with no published prebuilt (or a download/extract failure) must not abort;
+    it builds from BABEL. Both ``run`` calls fire: the fetch (which raises) then the build.
+    """
+    calls: list[tuple[Any, ...]] = []
+    state: dict[str, int] = {"n": 0}
+
+    def _fake_run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
+        calls.append((stages, fn, arg, kwargs))
+        state["n"] += 1
+        if state["n"] == 1:
+            raise cli.PrebuiltFullmapUnavailable("no prebuilt for this version")
+
+    monkeypatch.setattr(cli, "run", _fake_run)
+    output: Path = tmp_path / "fullmap.redb"  # absent
+    cache: Path = tmp_path / "c"
+    cli.build_fullmap(output=output, cache=cache, version="v", threads=4, aria2c=True)
+    assert len(calls) == 2
+    assert calls[0][0] == 2
+    assert calls[0][1] is cli.fetch_prebuilt_fullmap
+    assert calls[1] == (3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "threads": 4, "aria2c": True})
+
+
+def test_build_fullmap_force_flag_parses() -> None:
+    """``--force``/``-f`` parse True; no generated ``--no-force`` alias (``negative=""``)."""
+
+    def parse(argv: list[str]) -> dict[str, Any]:
+        fn, bound, _ = cli.APP.parse_args(argv, exit_on_error=False)
+        assert fn is cli.build_fullmap
+        return dict(bound.arguments)
+
+    assert parse(["build-fullmap"]) == {}  # defaults are absent when no flag is passed
+    assert parse(["build-fullmap", "--force"])["force"] is True
+    assert parse(["build-fullmap", "-f"])["force"] is True
+    with pytest.raises(UnknownOptionError):
+        parse(["build-fullmap", "--no-force"])
