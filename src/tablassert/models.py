@@ -495,11 +495,39 @@ class Provenance(TablaBase):
 
 class Annotation(Encoding):
     annotation: str = Field(..., description="Output column name that receives this encoded annotation.", examples=["p_value", "cohort"])
+    split_by: str | None = Field(
+        None, description="Separator splitting each cell of a `method: column` annotation into a real JSON array.", examples=["|", ";"]
+    )
 
     @field_validator("annotation", mode="after")
     @classmethod
     def clean_annotation(cls, annotation: str) -> str:
         return annotation.lower().strip()
+
+    @model_validator(mode="after")
+    def split_by_requires_a_column(self) -> Self:
+        """Enforce that ``split_by`` carries a real separator and a ``method: column`` encoding.
+
+        ``split_by`` is the per-row counterpart of ``method: list``: it turns each cell's
+        own delimited text into a real JSON array, which is the one multivalued shape a
+        literal cannot express (a list ``encoding`` is fixed at config time, so it emits
+        the same array on every row). A ``value``/``list`` encoding therefore declares its
+        members directly rather than round-tripping them through a separator.
+        """
+        if self.split_by is None:
+            return self
+        if self.method != EncodingMethods.COLUMN:
+            raise TablassertValidationError(
+                "`split_by` splits a column's per-row text and requires `method: column`; "
+                "declare a literal multivalued annotation with `method: list` instead.",
+                code="annotation-split-by-requires-column",
+            )
+        if not self.split_by:
+            # An empty separator splits into individual characters -- exactly the
+            # character-walking failure the JSON array exists to prevent.
+            raise TablassertValidationError("`split_by` must be a non-empty separator.", code="annotation-split-by-empty")
+
+        return self
 
     @model_validator(mode="after")
     def warn_when_the_slot_cannot_reach_the_edge(self) -> Self:

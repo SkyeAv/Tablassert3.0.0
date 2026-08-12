@@ -97,7 +97,7 @@ tablassert build-fullmap [ARGS]
 | `--cache`, `-c` | Path | No | `./fullmap/downloads` | Directory for downloaded BABEL files when building from scratch (`classes/`, `synonyms/`) |
 | `--version`, `-v` | str | No | `2026jul22` | BABEL snapshot date to fetch (a RENCI stamp, **not** Tablassert's version) |
 | `--threads`, `-t` | int | No | `None` (auto) | Worker threads for a from-scratch build; auto-capped by memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
-| `--aria2c`, `-a` | Flag | No | `False` | Opt into the installed `aria2c` executable for resumable segmented downloads (the prebuilt archive **or** BABEL files); fails loud if `aria2c` is missing or exits non-zero |
+| `--aria2c`, `-a` | Flag | No | `False` | Opt into the bundled `aria2c` binary from the `[aria2]` extra for resumable segmented downloads (the prebuilt archive **or** BABEL files); fails loud if the extra is missing, unsupported on the current platform, or aria2c exits non-zero |
 | `--force`, `-f` | Flag | No | `False` | Skip the prebuilt download and always rebuild from BABEL outputs |
 
 ```bash
@@ -105,7 +105,7 @@ tablassert build-fullmap [ARGS]
 tablassert build-fullmap --output /data/fullmap/fullmap.redb
 # Force a from-scratch rebuild from BABEL outputs (e.g. after a BABEL snapshot bump)
 tablassert build-fullmap --force --output /data/fullmap/fullmap.redb
-# Accelerate either download with aria2c (the multi-GB prebuilt is the ideal aria2 use case)
+# Accelerate either download with bundled aria2c (`pip install "tablassert[aria2]"`; the multi-GB prebuilt is the ideal aria2 use case)
 tablassert build-fullmap --aria2c --output /data/fullmap/fullmap.redb
 ```
 

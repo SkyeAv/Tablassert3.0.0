@@ -194,13 +194,13 @@ def test_download_babel_file_aria2c_reuses_cached_complete_without_binary(tmp_pa
     final: Path = tmp_path / "f.gz"
     final.write_bytes(b"cached-bytes")
 
-    def _which_must_not_run(name: str) -> str | None:
-        raise AssertionError(f"shutil.which({name!r}) must not run for a complete cache hit")
+    def _resolve_must_not_run() -> str:
+        raise AssertionError("aria2c resolver must not run for a complete cache hit")
 
     def _run_must_not_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
         raise AssertionError("subprocess.run must not run for a complete cache hit")
 
-    monkeypatch.setattr(cli.shutil, "which", _which_must_not_run)
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", _resolve_must_not_run)
     monkeypatch.setattr(cli.subprocess, "run", _run_must_not_run)
     out: Path = download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
     assert out == final
@@ -209,7 +209,7 @@ def test_download_babel_file_aria2c_reuses_cached_complete_without_binary(tmp_pa
 
 def test_download_babel_file_aria2c_runs_resume_retry_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """aria2c helper uses subprocess without shell and passes resume/retry flags."""
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c" if name == "aria2c" else None)
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", lambda: "/usr/bin/aria2c")
     commands: list[list[str]] = []
 
     def _fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -238,32 +238,77 @@ def test_download_babel_file_aria2c_runs_resume_retry_command(tmp_path: Path, mo
     assert command[-1] == "https://example.com/f.gz"
 
 
-def test_download_babel_file_aria2c_missing_binary_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Opting into aria2c fails loud when the executable is unavailable."""
-    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+def test_resolve_aria2_binary_returns_bundled_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The resolver returns the bundled ``aria2c.ARIA2C`` path as a string."""
+
+    class FakeAria2c:
+        ARIA2C = Path("/tmp/aria2c")
+
+    monkeypatch.setattr(cli, "import_module", lambda name: FakeAria2c())
+    assert cli._resolve_aria2_binary() == "/tmp/aria2c"
+
+
+def test_resolve_aria2_binary_missing_export_raises_importerror(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A shadowed ``aria2c`` module without ``ARIA2C`` still hits the clean missing-extra path."""
+
+    class BrokenAria2c:
+        pass
+
+    monkeypatch.setattr(cli, "import_module", lambda name: BrokenAria2c())
+    with pytest.raises(ImportError, match=r"aria2c\.ARIA2C"):
+        cli._resolve_aria2_binary()
+
+
+def test_download_babel_file_aria2c_missing_extra_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opting into aria2c fails loud when the ``[aria2]`` extra is unavailable."""
+
+    def _missing_extra() -> str:
+        raise ImportError("No module named 'aria2c'")
 
     def _run_must_not_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        raise AssertionError("subprocess.run must not run when aria2c is missing")
+        raise AssertionError("subprocess.run must not run when the [aria2] extra is missing")
 
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", _missing_extra)
+    monkeypatch.setattr(cli.sys, "platform", "linux")
     monkeypatch.setattr(cli.subprocess, "run", _run_must_not_run)
-    with pytest.raises(BabelDownloadError):
+    with pytest.raises(BabelDownloadError) as excinfo:
         download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
+    assert "pip install tablassert[aria2]" in str(excinfo.value)
+
+
+def test_download_babel_file_aria2c_missing_extra_on_macos_raises_platform_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The unsupported macOS path explains that bundled aria2c wheels are unavailable."""
+
+    def _missing_extra() -> str:
+        raise ImportError("No module named 'aria2c'")
+
+    def _run_must_not_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("subprocess.run must not run when the [aria2] extra is unsupported")
+
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", _missing_extra)
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    monkeypatch.setattr(cli.subprocess, "run", _run_must_not_run)
+    with pytest.raises(BabelDownloadError) as excinfo:
+        download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path)
+    message = str(excinfo.value)
+    assert "no macOS wheels" in message
+    assert "drop --aria2c" in message
 
 
 def test_download_babel_file_aria2c_zero_retries_raises_without_unlimited_aria2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``retries=0`` is rejected before aria2 can interpret it as unlimited retries."""
 
-    def _which_must_not_run(name: str) -> str | None:
-        raise AssertionError("aria2c lookup must not run when retries is invalid")
+    def _resolve_must_not_run() -> str:
+        raise AssertionError("aria2c resolver must not run when retries is invalid")
 
-    monkeypatch.setattr(cli.shutil, "which", _which_must_not_run)
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", _resolve_must_not_run)
     with pytest.raises(BabelDownloadError):
         download_babel_file_aria2c("f.gz", "https://example.com/f.gz", tmp_path, retries=0)
 
 
 def test_download_babel_file_aria2c_subprocess_oserror_raises_typed_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """OS errors from launching aria2c surface as ``BabelDownloadError``."""
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c")
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", lambda: "/usr/bin/aria2c")
 
     def _raise_oserror(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
         raise OSError("exec failed")
@@ -275,7 +320,7 @@ def test_download_babel_file_aria2c_subprocess_oserror_raises_typed_error(tmp_pa
 
 def test_download_babel_file_aria2c_success_without_complete_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Even an exit-0 aria2c run must leave a final file without a resume control file."""
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c")
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", lambda: "/usr/bin/aria2c")
 
     def _fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         destination = Path(command[command.index("--dir") + 1])
@@ -296,7 +341,7 @@ def test_download_babel_file_aria2c_preserves_control_file_on_failure(tmp_path: 
     control: Path = tmp_path / "f.gz.aria2"
     final.write_bytes(b"partial")
     control.write_bytes(b"resume-state")
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/aria2c")
+    monkeypatch.setattr(cli, "_resolve_aria2_binary", lambda: "/usr/bin/aria2c")
     commands: list[list[str]] = []
 
     def _fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:

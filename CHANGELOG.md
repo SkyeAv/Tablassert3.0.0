@@ -6,6 +6,31 @@ All notable changes to this project are documented in this file.
 
 ### Added
 - **`tablassert build-fullmap` now downloads a prebuilt database by default, with `--force` / `-f` to rebuild from scratch.** Without `--force`, the command first fetches the prebuilt `fullmap.tar.zst` published for the INSTALLED Tablassert version at `https://stars.renci.org/var/babel_outputs/<babel-version>/fullmap/<tablassert-version>/` (the version directory is derived from installed-package metadata, never hardcoded), verifies it against the co-published `sha256sum.txt`, and stream-extracts it beside `--output` — far faster than building from BABEL. If no prebuilt exists for this version (or the download/extract fails), it falls back to the existing from-scratch BABEL build and logs a warning; `--force` / `-f` skips the prebuilt attempt entirely. A database already present at `--output` is reused. Extraction uses Python 3.14+ native `tarfile` zstd, falling back to the installed `zstd` binary on older interpreters. The `--aria2c` / `-a` flag accelerates the prebuilt download through the same shared downloader the BABEL build uses (so it benefits from the optional bundled `[aria2]` extra when that is installed).
+- **`split_by` on annotations — per-row multivalued slots.** A `method: column` annotation may declare a separator that splits each cell's own delimited text into a real JSON array:
+
+  ```yaml
+  annotations:
+    - {annotation: has_evidence, method: column, encoding: D, split_by: "|"}
+  ```
+
+  This closes the gap 8.2.1 opened. Removing `Annotation.delimiter` left `method: list` as the only multivalued encoding, but a list `encoding` is a literal — it emits the same array on every row — so a column whose cells hold aggregated values had no migration at all. `split_by` is the per-row counterpart: `method: list` for an array known at config time, `split_by` for one that differs per row.
+
+  The failure it prevents is silent rather than loud. `mask_illegal_edge_fields` wraps a scalar bound for a multivalued slot into a one-element list, so a joined cell emits `has_evidence: ["EFO:0001|EFO:0002"]` — structurally valid Biolink that passes `validate-kgx` while handing consumers one unusable blob instead of two ids.
+
+  `split_by` requires `method: column` (`annotation-split-by-requires-column`) and rejects an empty separator (`annotation-split-by-empty`), which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator, and it is annotation-only — subject/object/qualifier nodes are single entities.
+
+  Purely additive: existing configs are unaffected, and upgrading from 8.2.x with column-based `delimiter` configs is now a rename to `split_by`.
+
+### Changed
+- **`explode_by` and `split_by` are now one splitting primitive.** `explode_by` was already "split a delimited cell, then fan the items out into rows"; `split_by` is the same split without the fan-out. Both now route through a shared `split_expr`, so a delimited cell is parsed identically whether it feeds a node encoding or an annotation, and the parsing rules live in exactly one place:
+
+  | | Destination | Use for |
+  | --- | --- | --- |
+  | `explode_by` | one **row** per item | node encodings — each item is its own entity, its own edge |
+  | `split_by` | one **array** on the row | annotations — the items are one multivalued slot on a single edge |
+
+  This tightens `explode_by`: items are now trimmed and blanks dropped, so a trailing or doubled separator (`"P1;P2;"`, `"P1;;P2"` — routine in hand-maintained spreadsheets) no longer fans out a row carrying `""`. Those rows only ever failed entity resolution and were discarded downstream, so no edge changes; the work is simply not done. Trimming is likewise not a behavior change for nodes — `level_one` already strips before resolution — but it is load-bearing for annotations, which are never resolved and previously would have carried `" b"` straight onto the edge.
+- **`tablassert build-fullmap --aria2c` / `-a` now uses the optional `[aria2]` PyPI extra instead of a system `aria2c` install.** Install with `pip install "tablassert[aria2]"` to get the bundled static aria2c binary from the `aria2` package (`aria2==0.0.1b0`, imported as `aria2c`). The extra has Linux/Windows wheels only; on macOS, `--aria2c` fails loud and the default Python downloader remains available. `aria2` is a separate optional GPL-2.0 runtime dependency; Tablassert remains Apache-2.0, but redistributors who ship the optional extra should review GPL-2.0 obligations.
 
 ## 9.0.0 - 2026-08-11
 

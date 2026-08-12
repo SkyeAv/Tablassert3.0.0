@@ -188,6 +188,20 @@ wheels = [
 ]
 
 [[package]]
+name = "aria2"
+version = "0.0.1b0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/ce/394c14fff7d4b66d3fb3be64b70ca5a4077ad8f5399c5e7cd3b213c82ffd/aria2-0.0.1b0.tar.gz", hash = "sha256:332b31b5caafb381c43112de01f01cade19de5c68b515c37d971bb147edf56f8", size = 37396, upload-time = "2023-12-18T18:31:08.398Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/67/88617a007ee3ce58bafce2454d930226a1d60198bbbd93f1ab1dac6a08c1/aria2-0.0.1b0-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:349f9fe693d900453d2c1a885cab761a0fce6b92ac7e390df5da32edbb5018e5", size = 5495392, upload-time = "2023-12-18T18:30:56.763Z" },
+    { url = "https://files.pythonhosted.org/packages/24/61/0d0e41652ca687182f226bab80697e7b899330a00c56a3983d479818ad52/aria2-0.0.1b0-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:80e6626d297e8d391f483e173abc193a7232a74b26c108c89250e697ced02596", size = 5299111, upload-time = "2023-12-18T18:30:59.039Z" },
+    { url = "https://files.pythonhosted.org/packages/51/0e/634ba04e5e213a02e5ea472693c3b7d12017b42a68f3156a2be56ad106df/aria2-0.0.1b0-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:8bbbeaa1bc1a0b30ccdd7909e786821fb345071ba0fe14157a0f715a761e1691", size = 5495392, upload-time = "2023-12-18T18:31:01.222Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/d9/2e5360f783148a00f92ba2fad990498f17970bf2dcc34e720be376284272/aria2-0.0.1b0-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:0f87a26658c44668d4aadaf50c0342c63b04814032f51bf533bdeacc024ed1e2", size = 5299111, upload-time = "2023-12-18T18:31:03.308Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/d5/9b367dd6e94d0f49d13aff71857c40c24d31d13b68966c5233d0017fdd79/aria2-0.0.1b0-py3-none-win32.whl", hash = "sha256:4e73cfb52fd61aedfb7e8e23942b50eebb3081c452ece8acb682622dfcdb709d", size = 2823708, upload-time = "2023-12-18T18:31:05.355Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/a0/8513d8aca9e992ea89807acec645906c08affe383f0072b6290ce6ce2eba/aria2-0.0.1b0-py3-none-win_amd64.whl", hash = "sha256:00aa00c9f8b709d37849a84760709d31b6c7752007f645f8bea175325c0b14cb", size = 2691804, upload-time = "2023-12-18T18:31:06.785Z" },
+]
+
+[[package]]
 name = "arrow"
 version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4118,6 +4132,9 @@ agent = [
     { name = "pdfminer-six" },
     { name = "smolagents" },
 ]
+aria2 = [
+    { name = "aria2" },
+]
 optimize = [
     { name = "dspy" },
 ]
@@ -4144,6 +4161,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aria2", marker = "extra == 'aria2'", specifier = "==0.0.1b0" },
     { name = "biolink-model", specifier = ">=4.4.3" },
     { name = "cyclopts", specifier = ">=1.0.0" },
     { name = "dspy", marker = "extra == 'optimize'", specifier = ">=3.2.1" },
@@ -4161,7 +4179,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'qc'", specifier = ">=5.3.0" },
     { name = "smolagents", marker = "extra == 'agent'", specifier = ">=1.26.0" },
 ]
-provides-extras = ["rt", "qc", "agent", "optimize"]
+provides-extras = ["rt", "aria2", "qc", "agent", "optimize"]
 
 [package.metadata.requires-dev]
 dev = [

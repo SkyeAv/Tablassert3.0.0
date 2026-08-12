@@ -9,6 +9,7 @@ import tarfile
 import tempfile
 import time
 from collections.abc import Callable
+from importlib import import_module
 from importlib.metadata import version as get_version
 from itertools import chain
 from multiprocessing import Pool
@@ -425,14 +426,30 @@ def download_babel_file(filename: str, url: str, destination: Path, retries: int
     raise BabelDownloadError(url, retries, last_error or RuntimeError("no attempts made")) from last_error
 
 
+def _resolve_aria2_binary() -> str:
+    """Return the bundled aria2c binary path from the optional ``[aria2]`` extra.
+
+    Raises:
+        ImportError: If the optional ``[aria2]`` extra is not installed.
+    """
+    aria2c = import_module("aria2c")
+    try:
+        binary = aria2c.ARIA2C
+    except AttributeError as e:
+        raise ImportError("aria2c.ARIA2C was not found; install the [aria2] extra") from e
+    return str(binary)
+
+
 def download_babel_file_aria2c(filename: str, url: str, destination: Path, retries: int = 5) -> Path:
-    """Download one BABEL file with the optional external ``aria2c`` executable.
+    """Download one BABEL file with the bundled aria2c binary from ``[aria2]``.
 
     The helper mirrors ``download_babel_file``'s final-file cache contract but
-    delegates resume/retry behavior to aria2. Incomplete aria2 downloads leave a
-    ``<filename>.aria2`` control file next to the target; when that control file
-    exists we do NOT treat the target as a cache hit, and failures never remove
-    either file so a later run can continue.
+    delegates resume/retry behavior to aria2. The ``aria2`` PyPI package is an
+    optional extra that bundles the aria2c binary and exposes it as
+    ``aria2c.ARIA2C``, so no system ``aria2c`` executable is required. Incomplete
+    aria2 downloads leave a ``<filename>.aria2`` control file next to the target;
+    when that control file exists we do NOT treat the target as a cache hit, and
+    failures never remove either file so a later run can continue.
 
     Args:
         filename: Output basename under ``destination``.
@@ -444,8 +461,8 @@ def download_babel_file_aria2c(filename: str, url: str, destination: Path, retri
         Path to the downloaded file.
 
     Raises:
-        BabelDownloadError: If ``aria2c`` is missing, fails, or does not leave a
-            complete final file.
+        BabelDownloadError: If the ``[aria2]`` extra is missing, aria2c fails,
+            or aria2c does not leave a complete final file.
     """
     destination.mkdir(parents=True, exist_ok=True)
     final_path: Path = destination / filename
@@ -457,10 +474,15 @@ def download_babel_file_aria2c(filename: str, url: str, destination: Path, retri
         error = ValueError("aria2c retries must be a positive integer")
         raise BabelDownloadError(url, retries, error) from error
 
-    binary: str | None = shutil.which("aria2c")
-    if binary is None:
-        error = FileNotFoundError("aria2c executable not found; install aria2 or omit --aria2c")
-        raise BabelDownloadError(url, 0, error) from error
+    try:
+        binary: str = _resolve_aria2_binary()
+    except ImportError as e:
+        if sys.platform == "darwin":
+            detail = "the [aria2] extra ships no macOS wheels; drop --aria2c to use the default Python downloader"
+        else:
+            detail = "install the [aria2] extra: pip install tablassert[aria2]"
+        error = FileNotFoundError(detail)
+        raise BabelDownloadError(url, 0, error) from e
 
     command: list[str] = [
         binary,
@@ -1135,7 +1157,7 @@ def build_fullmap_pipeline(
         cache: Directory for downloaded BABEL files.
         version: BABEL version label.
         threads: Optional thread count forwarded to Rust.
-        aria2c: Use the optional aria2c executable for downloads when true.
+        aria2c: Use the bundled aria2c binary from the optional ``[aria2]`` extra for downloads when true.
     """
     from tablassert import rs
 

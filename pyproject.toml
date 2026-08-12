@@ -78,6 +78,10 @@ tablassert = "tablassert.cli:APP"
 rt = [
     "polars[rtcompat]>=1.40.1",
 ]
+# PyPI distribution "aria2" exposes import module "aria2c" with a bundled aria2c binary.
+aria2 = [
+    "aria2==0.0.1b0",
+]
 qc = [
     "scikit-learn>=1.8.0",
     "sentence-transformers>=5.3.0",

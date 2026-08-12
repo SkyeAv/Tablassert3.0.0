@@ -184,6 +184,62 @@ def test_build_pipeline_emits_list_annotation_as_json_array(tmp_path: Path, monk
     assert edges[0]["has_evidence"] == ["EFO:0001", "EFO:0002"]
 
 
+def test_build_pipeline_splits_column_annotation_into_per_row_json_array(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``split_by`` turns each cell's own delimited text into a real JSON array.
+
+    This is the case ``method: list`` structurally cannot cover: a literal encoding is
+    fixed at config time, so it emits the SAME array on every row. Here the two rows
+    carry different values AND different lengths, which is only expressible per row.
+
+    Without ``split_by`` the joined cell stays a scalar and ``mask_illegal_edge_fields``
+    wraps it into a one-element list -- ``["EFO:0001|EFO:0002"]`` passes Biolink
+    validation while giving consumers one unusable blob instead of two ids.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
+
+    fullmap: Path = _build_real_redb(tmp_path / "fullmap")
+
+    # A=subject  B=object  C=pipe-joined evidence. Rows are swapped so the two edges stay
+    # distinct (a shared subject/object would collapse and hide the per-row difference).
+    data: Path = tmp_path / "data.tsv"
+    data.write_text("brca1\tmapk1\tEFO:0001|EFO:0002\nmapk1\tbrca1\tEFO:0003\n")
+
+    table: Path = tmp_path / "table.yaml"
+    table_config: dict[str, Any] = {
+        "template": {
+            "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
+            "statement": {
+                "subject": {"method": "column", "encoding": "A"},
+                "predicate": "associated_with",
+                "object": {"method": "column", "encoding": "B"},
+            },
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+            "annotations": [{"annotation": "has_evidence", "method": "column", "encoding": "C", "split_by": "|"}],
+        }
+    }
+    to_yaml(table, table_config)
+
+    graph: Path = tmp_path / "graph.yaml"
+    graph_config: dict[str, Any] = {
+        "name": "SPLIT_KG",
+        "version": "1.0.0",
+        "description": "split_by annotation smoke graph",
+        "tables": [str(table)],
+        "fullmap": str(fullmap),
+    }
+    to_yaml(graph, graph_config)
+
+    build_pipeline(graph, PipelineProgress(total_stages=6))
+
+    edges: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "SPLIT_KG_1.0.0.edges.ndjson").read_text().splitlines() if line.strip()]
+    assert len(edges) == 2
+    evidence: dict[tuple[str, str], Any] = {(e["subject"], e["object"]): e["has_evidence"] for e in edges}
+    # Each row splits into its OWN array -- different members and different lengths.
+    assert evidence[("HGNC:1100", "HGNC:6871")] == ["EFO:0001", "EFO:0002"]
+    assert evidence[("HGNC:6871", "HGNC:1100")] == ["EFO:0003"]
+
+
 def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The real pipeline normalizes raw statistical column names to canonical Biolink fields.
 
