@@ -15,16 +15,29 @@ Fullmap is built entirely in-process by Tablassert's own Rust extension — no e
 ## Build Command
 
 ```bash
-# Build a fullmap database (downloads BABEL data automatically)
+# Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)
 tablassert build-fullmap
 
-# Optional: use installed aria2c for resumable segmented BABEL downloads
+# Force a from-scratch build from BABEL outputs (skips the prebuilt download)
+tablassert build-fullmap --force
+
+# Optional: accelerate either download with installed aria2c
 tablassert build-fullmap --aria2c
 ```
 
 See the [CLI Reference → build-fullmap](cli.md#build-fullmap) for the complete flag table (output path,
-cache directory, BABEL snapshot version, worker threads, and the optional `--aria2c` / `-a` downloader),
-their defaults, and more examples. Two facts matter most when planning a build:
+cache directory, BABEL snapshot version, worker threads, the optional `--aria2c` / `-a` downloader,
+and the `--force` / `-f` rebuild flag), their defaults, and more examples.
+
+By default, `build-fullmap` first downloads a **prebuilt** database published for this Tablassert
+version — a `fullmap.tar.zst` under `.../fullmap/<tablassert-version>/` (the version directory is the
+installed package version, never hardcoded), verified against a co-published `sha256sum.txt` and
+stream-extracted beside `--output`. If none is available for this version it falls back to the
+from-scratch build below; `--force` / `-f` skips the prebuilt attempt and always builds. The optional
+`--aria2c` / `-a` accelerates **either** download — the multi-GB prebuilt archive is the ideal aria2
+use case.
+
+Two facts matter most when planning a build:
 
 - The BABEL **version** flag selects a RENCI BABEL snapshot date (default `2026jul22`) — *not*
   Tablassert's package version. Bumping it fetches a different snapshot and requires rebuilding; the

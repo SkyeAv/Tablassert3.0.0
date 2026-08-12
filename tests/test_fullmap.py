@@ -822,7 +822,7 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(cli, "download_babel_file", fake_download_babel_file)
     monkeypatch.chdir(tmp_path)
 
-    build_fullmap(output=output, version="test-version", threads=1)
+    build_fullmap(output=output, version="test-version", threads=1, force=True)
 
     assert downloaded_paths == [Path("fullmap/downloads/classes/classes.ndjson"), Path("fullmap/downloads/synonyms/HGNC.ndjson")]
     rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"], threads=1)

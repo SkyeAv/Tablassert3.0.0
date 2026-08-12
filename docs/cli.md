@@ -83,8 +83,9 @@ tablassert agent PMC11708054 --fullmap ./fullmap
 
 ## build-fullmap
 
-Use this to build the embedded `fullmap.redb` entity-resolution database from RENCI BABEL exports
-(download class + synonym files, then build a single redb).
+Use this to obtain the embedded `fullmap.redb` entity-resolution database. By default it first tries
+to **download a prebuilt database** published for this Tablassert version; `--force` skips that and
+builds from RENCI BABEL exports instead (download class + synonym files, then build a single redb).
 
 ```bash
 tablassert build-fullmap [ARGS]
@@ -92,17 +93,28 @@ tablassert build-fullmap [ARGS]
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `--output`, `-o` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the built redb file |
-| `--cache`, `-c` | Path | No | `./fullmap/downloads` | Directory for downloaded BABEL files (`classes/`, `synonyms/`) |
+| `--output`, `-o` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the redb file (prebuilt extraction or build output) |
+| `--cache`, `-c` | Path | No | `./fullmap/downloads` | Directory for downloaded BABEL files when building from scratch (`classes/`, `synonyms/`) |
 | `--version`, `-v` | str | No | `2026jul22` | BABEL snapshot date to fetch (a RENCI stamp, **not** Tablassert's version) |
-| `--threads`, `-t` | int | No | `None` (auto) | Worker threads; auto-capped by memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
-| `--aria2c`, `-a` | Flag | No | `False` | Opt into the installed `aria2c` executable for resumable segmented BABEL downloads; fails loud if `aria2c` is missing or exits non-zero |
+| `--threads`, `-t` | int | No | `None` (auto) | Worker threads for a from-scratch build; auto-capped by memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
+| `--aria2c`, `-a` | Flag | No | `False` | Opt into the installed `aria2c` executable for resumable segmented downloads (the prebuilt archive **or** BABEL files); fails loud if `aria2c` is missing or exits non-zero |
+| `--force`, `-f` | Flag | No | `False` | Skip the prebuilt download and always rebuild from BABEL outputs |
 
 ```bash
+# Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)
 tablassert build-fullmap --output /data/fullmap/fullmap.redb
-# Optional: use aria2c for faster/resumable BABEL downloads when installed
+# Force a from-scratch rebuild from BABEL outputs (e.g. after a BABEL snapshot bump)
+tablassert build-fullmap --force --output /data/fullmap/fullmap.redb
+# Accelerate either download with aria2c (the multi-GB prebuilt is the ideal aria2 use case)
 tablassert build-fullmap --aria2c --output /data/fullmap/fullmap.redb
 ```
+
+By default `build-fullmap` looks for a prebuilt `fullmap.tar.zst` at
+`https://stars.renci.org/var/babel_outputs/<babel-version>/fullmap/<tablassert-version>/` (the version
+directory is the **installed Tablassert package version**, never hardcoded), verifies it against the
+published `sha256sum.txt`, and stream-extracts it beside `--output`. If no prebuilt exists for this
+version (or the download/extract fails), it falls back to a from-scratch BABEL build and logs a
+warning. A database already present at `--output` is reused as-is; pass `--force` to rebuild.
 
 See [Fullmap](fullmap.md) for the data pipeline, output schema, and graph-config usage.
 
