@@ -99,6 +99,7 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | Extra | Adds | Install |
 | ----- | ---- | ------- |
 | `rt` | CPU-compatible Polars runtime | `pip install "tablassert[rt]"` |
+| `aria2` | bundled aria2c downloader for `build-fullmap --aria2c` (Linux/Windows wheels only) | `pip install "tablassert[aria2]"` |
 | `qc` | three-stage QC audit (exact → fuzzy → BioBERT embeddings) | `pip install "tablassert[qc]"` |
 | `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
 | `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |

@@ -29,6 +29,7 @@ All notable changes to this project are documented in this file.
   | `split_by` | one **array** on the row | annotations — the items are one multivalued slot on a single edge |
 
   This tightens `explode_by`: items are now trimmed and blanks dropped, so a trailing or doubled separator (`"P1;P2;"`, `"P1;;P2"` — routine in hand-maintained spreadsheets) no longer fans out a row carrying `""`. Those rows only ever failed entity resolution and were discarded downstream, so no edge changes; the work is simply not done. Trimming is likewise not a behavior change for nodes — `level_one` already strips before resolution — but it is load-bearing for annotations, which are never resolved and previously would have carried `" b"` straight onto the edge.
+- **`tablassert build-fullmap --aria2c` / `-a` now uses the optional `[aria2]` PyPI extra instead of a system `aria2c` install.** Install with `pip install "tablassert[aria2]"` to get the bundled static aria2c binary from the `aria2` package (`aria2==0.0.1b0`, imported as `aria2c`). The extra has Linux/Windows wheels only; on macOS, `--aria2c` fails loud and the default Python downloader remains available. `aria2` is a separate optional GPL-2.0 runtime dependency; Tablassert remains Apache-2.0, but redistributors who ship the optional extra should review GPL-2.0 obligations.
 
 ## 9.0.0 - 2026-08-11
 

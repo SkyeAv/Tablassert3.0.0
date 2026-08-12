@@ -96,11 +96,11 @@ tablassert build-fullmap [ARGS]
 | `--cache`, `-c` | Path | No | `./fullmap/downloads` | Directory for downloaded BABEL files (`classes/`, `synonyms/`) |
 | `--version`, `-v` | str | No | `2026jul22` | BABEL snapshot date to fetch (a RENCI stamp, **not** Tablassert's version) |
 | `--threads`, `-t` | int | No | `None` (auto) | Worker threads; auto-capped by memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
-| `--aria2c`, `-a` | Flag | No | `False` | Opt into the installed `aria2c` executable for resumable segmented BABEL downloads; fails loud if `aria2c` is missing or exits non-zero |
+| `--aria2c`, `-a` | Flag | No | `False` | Opt into the bundled `aria2c` binary from the `[aria2]` extra for resumable segmented BABEL downloads; fails loud if the extra is missing, unsupported on the current platform, or aria2c exits non-zero |
 
 ```bash
 tablassert build-fullmap --output /data/fullmap/fullmap.redb
-# Optional: use aria2c for faster/resumable BABEL downloads when installed
+# Optional: after `pip install "tablassert[aria2]"`, use bundled aria2c for faster/resumable BABEL downloads
 tablassert build-fullmap --aria2c --output /data/fullmap/fullmap.redb
 ```
 
