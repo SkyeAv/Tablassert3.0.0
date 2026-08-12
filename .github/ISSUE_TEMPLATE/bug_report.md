@@ -14,8 +14,9 @@
 
 ## Environment
 - OS: <!-- e.g., macOS 14.2 -->
-- Node version: <!-- e.g., v18.17.0 -->
-- Browser: <!-- if web -->
+- Python version: <!-- e.g., 3.11 -->
+- Rust version: <!-- e.g., 1.75 -->
+- Runtime: <!-- e.g., Linux, Windows, macOS -->
 - Additional environment details: <!-- -->
 
 ## Screenshots
