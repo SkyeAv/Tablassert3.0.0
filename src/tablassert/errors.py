@@ -26,6 +26,8 @@ TablassertErrorCodes = Literal[
     "encoding-list-requires-list",
     "encoding-list-incompatible-ops",
     "encoding-list-annotation-only",
+    "annotation-split-by-requires-column",
+    "annotation-split-by-empty",
     "qualifier-auto-derived",
     "qualifier-bad-value",
     "qualifier-unsatisfiable",

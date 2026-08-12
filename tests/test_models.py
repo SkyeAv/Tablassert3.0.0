@@ -198,6 +198,26 @@ def test_encoding_list_encoding_requires_list_method() -> None:
         Encoding(method="column", encoding=["A"])  # pyright: ignore
 
 
+def test_annotation_split_by_accepts_a_column_encoding() -> None:
+    """split_by is the per-row counterpart of method: list and rides a column encoding."""
+    ann: Annotation = Annotation(annotation="has_evidence", method="column", encoding="D", split_by="|")  # pyright: ignore
+    assert ann.split_by == "|"  # pyright: ignore
+
+
+def test_annotation_split_by_requires_a_column_method() -> None:
+    """split_by splits per-row text, so a literal value/list encoding rejects it."""
+    with pytest.raises(ValidationError, match="requires `method: column`"):
+        Annotation(annotation="has_evidence", method="value", encoding="a|b", split_by="|")  # pyright: ignore
+    with pytest.raises(ValidationError, match="requires `method: column`"):
+        Annotation(annotation="has_evidence", method="list", encoding=["a", "b"], split_by="|")  # pyright: ignore
+
+
+def test_annotation_split_by_rejects_an_empty_separator() -> None:
+    """An empty separator splits into characters -- the failure the JSON array prevents."""
+    with pytest.raises(ValidationError, match="non-empty separator"):
+        Annotation(annotation="has_evidence", method="column", encoding="D", split_by="")  # pyright: ignore
+
+
 def test_node_encoding_rejects_list_method() -> None:
     """method: list is annotation-only; subject/object and qualifier nodes reject it at config time."""
     with pytest.raises(ValidationError, match="only valid on annotations"):

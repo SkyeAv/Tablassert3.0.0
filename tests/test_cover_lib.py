@@ -76,6 +76,26 @@ def test_explode_splits_delimited_into_rows() -> None:
     assert result == ["a", "b", "c"]
 
 
+def test_explode_and_split_list_parse_a_cell_identically() -> None:
+    """``explode_by`` and ``split_by`` share one split; only the destination differs.
+
+    Both route through ``split_expr``, so a delimited cell is read the same way for a
+    node encoding and for an annotation -- items trimmed, blanks dropped (a trailing or
+    doubled separator is a delimited-text artifact, not a value), nulls preserved. The
+    ONLY difference is that ``explode`` fans the items out into rows while ``split_list``
+    keeps them as an array on the row.
+    """
+    lf: pl.LazyFrame = pl.LazyFrame({"c": ["a; b", "x;;y", "p;", None]})
+
+    arrays: list[list[str] | None] = lib.split_list(lf, "c", ";").collect()["c"].to_list()
+    assert arrays == [["a", "b"], ["x", "y"], ["p"], None]
+
+    # Exploding those same arrays is exactly what `explode` produces.
+    rows: list[str | None] = lib.explode(lf, "c", ";").collect()["c"].to_list()
+    assert rows == [item for array in arrays for item in (array or [None])]
+    assert rows == ["a", "b", "x", "y", "p", None]
+
+
 def test_excel_reads_sheet_without_header(tmp_path: Path) -> None:
     """Lines 410-417: ``excel`` reads a sheet via ``pl.read_excel`` with no header.
 
