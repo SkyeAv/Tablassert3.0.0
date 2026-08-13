@@ -1712,7 +1712,7 @@ YAML configuration file.</p>
 <td>Flag</td>
 <td>No</td>
 <td><code>False</code></td>
-<td>Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra, checked before the build starts</td>
+<td>Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, no undeclared or isolated nodes, no malformed lines or stray whitespace — and fails the build (non-zero exit) on any violation</td>
 </tr>
 <tr>
 <td><code>--log</code>, <code>-l</code></td>
