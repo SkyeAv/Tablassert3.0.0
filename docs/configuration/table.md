@@ -90,7 +90,7 @@ Defines the data file location and format.
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"excel"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
-| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the edge `source_record_urls` list and in the RIG). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
+| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the primary `sources` entry's `source_record_urls` list and in the RIG). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
 | `sheet` | String | No | Sheet name. Defaults to `"Sheet1"`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -115,7 +115,7 @@ source:
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"text"`, but specify it explicitly in configs. |
 | `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
-| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the edge `source_record_urls` list and in the RIG). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
+| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the primary `sources` entry's `source_record_urls` list and in the RIG). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
 | `delimiter` | String | No | Field delimiter. Defaults to `","`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -425,7 +425,7 @@ provenance:
 
 #### Manual provenance override
 
-Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section's upstream sources, publications, and KL/AT. The edge `primary_knowledge_source` is **not** overridable per section — it always derives from the graph-level `infores` (see [Graph](graph.md)); put manual infores CURIEs in `upstream_resource_ids`.
+Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section's upstream sources, publications, and KL/AT. The primary entry of the edge `sources` list (`resource_role: primary_knowledge_source`) is **not** overridable per section — it always derives from the graph-level `infores` (see [Graph](graph.md)); put manual infores CURIEs in `upstream_resource_ids`.
 
 ```yaml
 provenance:
@@ -447,7 +447,7 @@ Override fields:
 | `knowledge_level` | String | No | Override-specific KL value. Defaults to `statistical_association`. |
 | `agent_type` | String | No | Override-specific AT value. Defaults to `data_analysis_pipeline`. |
 
-Tablassert emits the graph-level infores (or `infores:<graph-name>` when unset) as the Biolink-compatible `primary_knowledge_source` edge slot — a single-element list such as `["infores:multiomics-kg"]`, matching the form of `upstream_resource_ids`. The override cannot set a per-section `primary_knowledge_source`; manual infores CURIEs belong in `upstream_resource_ids`. Older `resource_id` output has been replaced so generated KGX is compatible with the Biolink edge allow-list.
+Tablassert emits the graph-level infores (or `infores:<graph-name>` when unset) as the primary entry of the Biolink `sources` list on each edge — `{resource_id: "infores:multiomics-kg", resource_role: "primary_knowledge_source", upstream_resource_ids: [...], source_record_urls: [...]}` — with one additional `supporting_data_source` entry per upstream. No flat `primary_knowledge_source` scalar is emitted: current translator-ingests practice carries retrieval provenance only in `sources`, and the Biolink `RetrievalSource` class is where `resource_id` / `upstream_resource_ids` / `source_record_urls` are defined. (Each entry also mirrors `resource_id` into `id` because the generated Biolink classes still require it; that mirror disappears once biolink-model [#1706](https://github.com/biolink/biolink-model/issues/1706) lands.) The override cannot set a per-section primary source; manual infores CURIEs belong in `upstream_resource_ids`. Older flat `resource_id` / `primary_knowledge_source` output has been removed so generated KGX matches the Biolink edge contract.
 
 ### Annotations
 
