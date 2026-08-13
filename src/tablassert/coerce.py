@@ -523,6 +523,26 @@ def effect_size_target(name: str) -> str | None:
     return None
 
 
+def coerced_target(name: str) -> str:
+    """Map a column/annotation name to the canonical name the clean phase renames it to.
+
+    Args:
+        name: Raw source column or annotation name.
+
+    Returns:
+        The canonical slot name a ``coerce_*_columns`` op would rename ``name``
+        to, or ``name`` unchanged when no coercion claims it.
+
+    Notes:
+        Classifier order mirrors the op order in ``Tcode._source_ops``:
+        ``coerce_pvalue_columns`` runs first, so a p/q-value alias is claimed
+        before the study-size and effect classifiers ever see it. Config-time
+        validators judge this target rather than the raw name so they see a
+        name exactly as the build will.
+    """
+    return pvalue_target(name) or study_size_target(name) or effect_size_target(name) or effect_type_target(name) or name
+
+
 def coerce_effect_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Rename effect-size-like columns to Biolink KGX-compliant ``effect_size`` (Biolink PR #1774).
 

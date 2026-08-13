@@ -204,6 +204,7 @@ template:
   annotations:
     - {annotation: p_value, method: column, encoding: E}
     - {annotation: effect_size, method: column, encoding: C}
+    - {annotation: effect_type, method: value, encoding: correlation_coefficient}
 ```
 
 Each column-mapped node gets its own `prioritize` list to guide disambiguation. `remove` strips each
@@ -247,6 +248,12 @@ template:
   provenance:
     repo: PMC
     publication: PMC87654321
+
+  # Constant across every section. Template and section annotation lists are CONCATENATED,
+  # so declaring the effect type once here pairs it with each section's own effect_size
+  # column -- and `effect_size` requires that pairing.
+  annotations:
+    - {annotation: effect_type, method: value, encoding: correlation_coefficient}
 
 sections:
   # Each section targets one metabolite column

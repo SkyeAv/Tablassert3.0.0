@@ -51,6 +51,9 @@ template:
     - annotation: relationship_strength
       method: column
       encoding: B
+    - annotation: effect_type
+      method: value
+      encoding: spearmans_rho
     - annotation: assertion_method
       method: value
       encoding: Spearman correlation

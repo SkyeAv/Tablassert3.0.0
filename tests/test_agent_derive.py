@@ -23,7 +23,9 @@ FIXTURES: Path = Path(__file__).parent / "fixtures"
 # exercising the ``template`` branch of validate_section via to_sections + fastmerge.
 # Kept on the OLD annotation names (sample_size / relationship_strength) on purpose:
 # build-time coercion renames them to supporting_study_size / effect_size, so this
-# doubles as the legacy-config backward-compatibility case.
+# doubles as the legacy-config backward-compatibility case. `effect_type` has no legacy
+# spelling, so it stays canonical -- and it is mandatory here, since the legacy
+# `relationship_strength` coerces to `effect_size` and the two must be declared as a pair.
 ALAMV6_TEMPLATE: dict[str, Any] = {
     "template": {
         "source": {
@@ -50,6 +52,7 @@ ALAMV6_TEMPLATE: dict[str, Any] = {
             {"annotation": "sample_size", "method": "value", "encoding": 9},
             {"annotation": "p_value", "method": "column", "encoding": "C"},
             {"annotation": "relationship_strength", "method": "column", "encoding": "B"},
+            {"annotation": "effect_type", "method": "value", "encoding": "spearmans_rho"},
         ],
     }
 }

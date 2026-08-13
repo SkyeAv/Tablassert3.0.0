@@ -28,6 +28,8 @@ TablassertErrorCodes = Literal[
     "encoding-list-method-removed",
     "annotation-split-by-requires-column",
     "annotation-split-by-empty",
+    "annotation-effect-size-without-type",
+    "annotation-effect-type-without-size",
     "qualifier-auto-derived",
     "qualifier-bad-value",
     "qualifier-unsatisfiable",

@@ -9,6 +9,22 @@ All notable changes to this project are documented in this file.
 
   `sources[].id` still mirrors `resource_id`: `RetrievalSource` inherits `id` from `entity`, and the LinkML-generated Biolink Pydantic classes (PyPI 4.4.3 and GitHub master 4.4.4 alike) require it, so omitting it fails KGX validation. The mirror disappears once biolink-model [#1706](https://github.com/biolink/biolink-model/issues/1706) / [#1731](https://github.com/biolink/biolink-model/pull/1731) land.
 
+- **`effect_size` and `effect_type` are now mandatory as a pair.** A section declaring one without the other fails validation with `annotation-effect-size-without-type` / `annotation-effect-type-without-size`. Only half the rule existed before, and only as silent data nulling at build time: `coerce_effect_type_columns` nulls an `effect_type` on every row where `effect_size` is null, but a bare `effect_size` validated clean, warned nothing, and shipped on the edge. That is uninterpretable evidence — `"effect_size": "0.85"` says nothing without knowing whether 0.85 is an odds ratio, a Spearman rho, or a log2 fold change — and the only guard against it was prose advice in the agent prompt, which nothing enforced.
+
+  The check lives on `Section`, so it covers `tablassert validate`, `build-kg`, and the agent's `validate_section` final-answer gate alike, and it runs after `template`/`sections` expansion — annotation lists are concatenated, so a constant `effect_type` declared once on the template pairs with each section's own `effect_size` column:
+
+  ```yaml
+  template:
+    annotations:
+      - {annotation: effect_type, method: value, encoding: correlation_coefficient}
+  sections:
+    - annotations: [{annotation: effect_size, method: column, encoding: B}]
+  ```
+
+  Names are judged by their **coerced** target, not their raw spelling, so alias forms are caught the same way the build sees them: `odds ratio` and the legacy `relationship_strength` both coerce to `effect_size` and both now require a sibling `effect_type`. The runtime coercion behavior is unchanged — this adds a config-time gate in front of it, nothing more.
+
+  **Migration:** add an `effect_type` to any config declaring an effect size (`method: value` when every row shares one statistic, `method: column` when the table provides it); its value is coerced to the permissible `EffectTypes` set as before. Drop a lone `effect_type` that had no effect size — the build was already discarding it.
+
 ### Changed
 - **The `build-kg --qc` study no longer flags `original_*` fields for leading/trailing whitespace.** Those slots are verbatim copies of the source-table cell (written by `Tcode.encoding` under an `original_` prefix before any regex/normalization runs), so retaining the cell's whitespace is faithful to the source, not a defect. The whitespace assertion now skips any key prefixed `original_`, while every other field is still checked exactly as before.
 
