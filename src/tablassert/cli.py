@@ -121,13 +121,15 @@ def build_pipeline(
     """Build a knowledge graph from a YAML configuration file.
 
     Runs the six-stage build pipeline: load tables → extract sections → build
-    Tcodes → collect instructions → build subgraphs → compile graph.
+    Tcodes → collect instructions → build subgraphs → compile graph. With ``qc``
+    enabled a seventh stage studies the final NDJSON files.
 
     Args:
         configuration_file: Path to the graph YAML file.
         progress: Pipeline progress reporter.
         release: When ``True``, emit release-mode artifacts.
-        qc: When ``True``, run quality-control audits on each section.
+        qc: When ``True``, run quality-control audits on each section and assert
+            over the final NDJSON files (failing the build on any violation).
         log: When ``True``, enable per-section verbose logging.
         head: When ``True``, preview a random sample of up to 5 rows per section (fast schema/shape check).
 
@@ -218,7 +220,33 @@ def build_pipeline(
         subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables, g.infores, on_phase=sub_step, on_subgraph=advance
     )
 
+    # Stage 7/7 (only with --qc): assert over the final NDJSON files.
+    if qc:
+        progress.stage("Studying Graph")
+        study_final_ndjson(g.name, g.version)
+
     logger.info("Built graph {name} v{version}: {n} sections", name=g.name, version=g.version, n=n)
+
+
+def study_final_ndjson(name: str, version: str) -> None:
+    """Run study assertions over a build's final NDJSON files (the ``--qc`` stage 7).
+
+    Args:
+        name: Graph name, used to locate ``./<name>_<version>.nodes.ndjson``.
+        version: Graph version, used to locate ``./<name>_<version>.edges.ndjson``.
+
+    Raises:
+        SystemExit: With status 1 when any study assertion is violated.
+    """
+    from tablassert.study import format_violations, study_kgx
+
+    violations = study_kgx(Path(f"./{name}_{version}.nodes.ndjson"), Path(f"./{name}_{version}.edges.ndjson"))
+    if violations:
+        summary: str = format_violations(violations)
+        print(summary, file=sys.stderr)
+        logger.warning("study assertions failed on final NDJSON:\n{summary}", summary=summary)
+        raise SystemExit(1)
+    logger.info("study assertions passed on final NDJSON")
 
 
 def validate_pipeline(table_configuration_file: Path, progress: PipelineProgress) -> None:
@@ -599,11 +627,14 @@ def build_kg(
 
     ``--qc`` requires the ``[qc]`` extra (``pip install "tablassert[qc]"``); it is
     checked before the build starts, because the audit stage runs LAST and a missing
-    extra would otherwise surface only after entity resolution has finished.
+    extra would otherwise surface only after entity resolution has finished. It also
+    runs a final study stage that asserts over the emitted NDJSON -- no duplicate node
+    ids, no undeclared or isolated nodes, no malformed lines or stray whitespace --
+    and fails the build (non-zero exit) when any assertion is violated.
     """
     if qc:
         extras.require("qc", required_by="--qc")
-    run(6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head)
+    run(7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head)
 
 
 @APP.command(name="validate")

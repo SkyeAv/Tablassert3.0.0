@@ -358,11 +358,11 @@ def test_download_babel_file_aria2c_preserves_control_file_on_failure(tmp_path: 
 
 
 def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cover cli.py:501 — the ``build-kg`` cyclopts command forwards to ``run(6, build_pipeline, ...)``.
+    """Cover cli.py:501 — the ``build-kg`` cyclopts command forwards to ``run(7, build_pipeline, ...)``.
 
     ``cli.run`` is stubbed to a recorder so the command body executes (line 501) without a real
-    multi-hour build. Asserts the stage count, pipeline function, config path, and every flag are
-    threaded through unchanged.
+    multi-hour build. Asserts the stage count (7 with ``--qc``: the study stage over the final
+    NDJSON is appended), pipeline function, config path, and every flag are threaded through unchanged.
     """
     config: Path = tmp_path / "graph.yaml"
     calls: list[tuple[Any, ...]] = []
@@ -373,7 +373,10 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(cli, "run", _fake_run)
     monkeypatch.setattr(extras, "missing", lambda extra: ())
     build_kg(config, release=True, qc=True, log=True, head=True)
-    assert calls == [(6, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True})]
+    assert calls == [(7, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True})]
+    calls.clear()
+    build_kg(config)
+    assert calls == [(6, cli.build_pipeline, config, {"release": False, "qc": False, "log": False, "head": False})]
 
 
 def test_build_kg_qc_without_the_extra_stops_before_the_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
