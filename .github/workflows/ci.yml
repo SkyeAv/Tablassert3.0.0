@@ -25,12 +25,12 @@ jobs:
       # ~40s of pure overhead. `version-file` reads the resolved pin (0.15.12) out of uv.lock,
       # which is the same version .pre-commit-config.yaml pins, so local and CI cannot drift.
       - name: Ruff lint
-        uses: astral-sh/ruff-action@v4
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           version-file: uv.lock
           args: check --output-format=github
       - name: Ruff format check
-        uses: astral-sh/ruff-action@v4
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           version-file: uv.lock
           args: format --check
@@ -41,7 +41,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
         with:
           python-version: "3.13"
           enable-cache: true
@@ -73,7 +73,7 @@ jobs:
           # Without this every shard is a distinct cache key, so shards 2-4 build cold.
           shared-key: maturin-dev
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
         with:
           python-version: "3.13"
           enable-cache: true
@@ -112,7 +112,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
         with:
           python-version: "3.13"
       - name: Download coverage data
