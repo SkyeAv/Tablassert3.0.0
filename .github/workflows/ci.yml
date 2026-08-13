@@ -54,13 +54,12 @@ jobs:
       - name: Pyright
         run: uv run pyright
 
+  # Deliberately NOT sharded across a matrix. Measured on this repo: ~21s of every pytest
+  # run is fixed overhead (interpreter start, imports, xdist workers, coverage init) against
+  # only ~15s of actual test execution, so a 4-way split saved ~12s of test time while the
+  # slowest-of-four sync straggler plus a coverage-combine job cost ~20s more than it saved.
   python-test:
     runs-on: ubuntu-latest
-    strategy:
-      # Report every shard's failures, not just the first to fail.
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,8 +69,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-          # Without this every shard is a distinct cache key, so shards 2-4 build cold.
-          shared-key: maturin-dev
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
@@ -81,58 +78,11 @@ jobs:
           cache-suffix: ci-qc
       - name: Sync dependencies
         run: uv sync --frozen ${{ env.SYNC_ARGS }}
-      # Kept per-shard on purpose: hoisting this into a build-once job that uploads a wheel
-      # costs more in extra job setup + artifact round-trip than the ~15s it saves in each
-      # shard, because the shards run in parallel and the build job would be serial.
       - name: Build Rust extension
         run: uv run maturin develop --manifest-path rust/Cargo.toml
-      # `-n auto` (pyproject addopts) still parallelises within a shard across the runner's
-      # cores. `--cov-report=` suppresses the per-shard report; the real number is produced
-      # by the `coverage` job after combining all four data files.
+      # `-n auto` comes from the pyproject addopts; coverage is reported inline.
       - name: Run tests
-        run: uv run pytest --splits 4 --group ${{ matrix.shard }} --cov-report=
-      - name: Name the coverage data file
-        run: mv .coverage .coverage.${{ matrix.shard }}
-      - name: Upload coverage data
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.shard }}
-          path: .coverage.${{ matrix.shard }}
-          include-hidden-files: true
-          retention-days: 1
-
-  coverage:
-    needs: python-test
-    # Report the combined number even when a shard fails, so a red test run still shows what
-    # it covered. No threshold is enforced (there is no fail_under), so this job is
-    # informational and cannot fail the run on coverage alone.
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.0
-        with:
-          python-version: "3.13"
-      - name: Download coverage data
-        uses: actions/download-artifact@v4
-        with:
-          pattern: coverage-*
-          merge-multiple: true
-        continue-on-error: true
-      - name: Combine and report
-        run: |
-          set -euo pipefail
-          # Every shard failing is already reported by python-test; don't pile a second,
-          # more confusing failure on top of it just because there was nothing to combine.
-          if ! compgen -G '.coverage.*' > /dev/null; then
-            echo "No coverage data was produced -- see the python-test jobs." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          uvx coverage combine
-          uvx coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
-          uvx coverage report
+        run: uv run pytest
 
   rust:
     runs-on: ubuntu-latest

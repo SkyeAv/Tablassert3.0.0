@@ -101,7 +101,6 @@ test = [
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
-    "pytest-split>=0.11.0",
 ]
 typecheck = [
     "pyright>=1.1.411",
@@ -136,10 +135,6 @@ markers = ["network: requires internet"]
 
 [tool.coverage.run]
 source = ["src/tablassert"]
-# CI shards the suite across runners and combines the per-shard data files afterwards.
-# Recording paths relative to the project root is what lets `coverage combine` match a
-# module measured on one runner with the same module measured on another.
-relative_files = true
 
 [tool.ruff]
 line-length = 150
