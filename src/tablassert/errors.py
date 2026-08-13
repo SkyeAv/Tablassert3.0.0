@@ -12,6 +12,7 @@ TablassertErrorCodes = Literal[
     "graph-validation-failed",
     "section-validation-failed",
     "babel-download-failed",
+    "resolve-bad-specs",
     "config-rows-and-row-slice-conflict",
     "comparison-bad-comparator-type",
     "comparison-nonnumeric-comparator",
