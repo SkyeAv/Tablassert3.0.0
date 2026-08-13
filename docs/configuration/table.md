@@ -192,7 +192,7 @@ Defines how to extract and resolve entities.
 | `explode_by` | String | No | Delimiter to split multi-value cells |
 | `transformations` | List[Math] | No | Mathematical transformations |
 
-#### Method: Value, Column, and List
+#### Method: Value and Column
 
 **`method: value`** - Use a literal value
 
@@ -212,19 +212,6 @@ subject:
 
 At runtime those letters are converted internally to Polars column names such as `column_1`, but those internal names are not valid configuration values.
 
-**`method: list`** - A literal list of values (annotations only); emits a real JSON array for multivalued Biolink slots
-
-```yaml
-annotations:
-  - annotation: has_evidence
-    method: list
-    encoding: ["EFO:0001", "EFO:0002"]  # Every edge carries this array
-```
-
-`method: list` is the multivalued counterpart of `method: value`: the literal list is emitted verbatim as a JSON array, so consumers iterate values instead of walking a joined string's characters (e.g. `publications.extend(edge["has_evidence"])`). It is incompatible with the scalar string ops (`regex`, `remove`, `prefix`, `suffix`, `transformations`, `fill`, `explode_by`) — encode the final values directly. `method: list` is valid on annotations only (subject/object/qualifier nodes are single entities). (The earlier annotation `delimiter` field — unrelated to the `source.delimiter` CSV/TSV separator — was replaced by this explicit list method for literals and by [`split_by`](#split_by) for per-row column splits.)
-
-> **`method: list` is literal only.** A list `encoding` is fixed at config time, so every edge carries the *same* array. For an array that differs per row — a column whose cells hold delimited text — use [`split_by`](#split_by) instead.
-
 #### `split_by`
 
 **`split_by`** — annotations only; splits each cell of a `method: column` encoding into a real JSON array.
@@ -237,11 +224,11 @@ annotations:
     split_by: "|"      # -> ["EFO:0001", "EFO:0002"], per row
 ```
 
-`split_by` is the per-row counterpart of `method: list`: the literal form covers an array known up front, `split_by` covers one that differs on every row. Values are trimmed and blanks dropped; a null cell stays null.
+`split_by` is the one multivalued encoding: every row's cell becomes its own JSON array, so an array that differs per row — the shape a literal can never express — is declared directly. Values are trimmed and blanks dropped; a null cell stays null.
 
 Reach for it whenever an aggregated column feeds a multivalued Biolink slot. Without it the joined cell stays a scalar, and because `mask_illegal_edge_fields` wraps a scalar bound for a multivalued slot into a one-element list, the edge emits `has_evidence: ["EFO:0001|EFO:0002"]` — structurally valid Biolink that hands consumers one unusable blob instead of two ids.
 
-`split_by` requires `method: column` (a literal encoding declares its members directly via `method: list`) and rejects an empty separator, which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator.
+`split_by` requires `method: column` and rejects an empty separator, which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator. (The earlier annotation `delimiter` field — unrelated to the `source.delimiter` CSV/TSV separator — was replaced by `split_by`.)
 
 **`split_by` and `explode_by` are the same split, with different destinations.** Both read a delimited cell through one shared primitive — items trimmed, blanks dropped (so `"a;b;"` and `"a;;b"` yield two items, not three), a null cell left null — and then differ only in what they do with the items:
 
@@ -456,7 +443,7 @@ Optional edge attributes (statistical metadata, notes, etc.).
 | `split_by` | String | No | Separator splitting each cell of a `method: column` encoding into a real JSON array. See [`split_by`](#split_by). |
 | (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
-Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — must emit a real JSON array rather than a scalar. Declare a fixed array with [`method: list`](#method-value-column-and-list), or split an aggregated column's per-row text with [`split_by`](#split_by).
+Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — must emit a real JSON array rather than a scalar. [`split_by`](#split_by) is the multivalued encoding: point it at an aggregated column and each cell's delimited text splits into a per-row array.
 
 **Example:**
 ```yaml
@@ -465,9 +452,7 @@ annotations:
   - {annotation: adjusted_p_value, method: column, encoding: D}        # A real Association slot -> emitted on the edge
   - {annotation: supporting_study_size, method: value, encoding: 450}  # Attached to no class -> inlined supporting study (see below)
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
-  - {annotation: has_evidence, method: list, encoding: ["EFO:0001", "EFO:0002"]}  # Multivalued -> a JSON array
-  # ...or, when each row carries its own evidence in one delimited column:
-  # - {annotation: has_evidence, method: column, encoding: E, split_by: "|"}
+  - {annotation: has_evidence, method: column, encoding: E, split_by: "|"}       # Multivalued -> a per-row JSON array
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
   - annotation: log2fc_relative_to_vehicle_control

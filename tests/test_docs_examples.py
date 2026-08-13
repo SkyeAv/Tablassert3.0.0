@@ -15,10 +15,10 @@ ROOT: Path = Path(__file__).resolve().parent.parent
 DOCS: Path = ROOT / "docs"
 EXAMPLES: Path = DOCS / "examples"
 
-# Config keys and runtime backends removed in 8.0.0. Their presence anywhere in
-# the documentation signals doc drift and fails CI. Patterns are matched
-# case-insensitively; ``contributors`` is anchored to a YAML key at line start so
-# the unrelated RIG ``contributions`` field does not trip it.
+# Config keys/values and runtime backends removed since 8.0.0. Their presence
+# anywhere in the documentation signals doc drift and fails CI. Patterns are
+# matched case-insensitively; ``contributors`` is anchored to a YAML key at line
+# start so the unrelated RIG ``contributions`` field does not trip it.
 BANNED_PATTERNS: list[tuple[str, str]] = [
     (r"syntax:\s*(TC|GC)\d", "the retired `syntax` config key (TC*/GC*)"),
     (r"status:\s*(alpha|beta|primetime)", "the retired `status` config key"),
@@ -26,6 +26,7 @@ BANNED_PATTERNS: list[tuple[str, str]] = [
     (r"qc-cuda", "the removed `qc-cuda` extra"),
     (r"onnxruntime", "the removed ONNX Runtime QC backend"),
     (r"\.tablassert/onnx", "the removed `.tablassert/onnx` working directory"),
+    (r"method:\s*list", "the removed `method: list` encoding (use `split_by`)"),
 ]
 
 
@@ -77,8 +78,8 @@ def test_example_yaml_validates(path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", _doc_text_files(), ids=lambda p: str(p.relative_to(ROOT)))
-def test_docs_have_no_removed_8_0_0_tokens(path: Path) -> None:
-    """Documentation does not reintroduce keys or backends removed in 8.0.0.
+def test_docs_have_no_removed_tokens(path: Path) -> None:
+    """Documentation does not reintroduce keys, values, or backends removed since 8.0.0.
 
     Args:
         path: Documentation text file to scan.

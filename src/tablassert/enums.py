@@ -57,7 +57,6 @@ class Files(str, Enum):
 class EncodingMethods(str, Enum):
     VALUE = "value"
     COLUMN = "column"
-    LIST = "list"
 
 
 class FillMethods(str, Enum):

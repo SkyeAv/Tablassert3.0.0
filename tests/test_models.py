@@ -154,76 +154,42 @@ def test_encoding_with_transformations() -> None:
     assert enc.transformations[0].function == "pow"  # pyright: ignore
 
 
-def test_encoding_list_method_accepts_literal_list() -> None:
-    """method: list carries a literal list emitted as a multivalued annotation."""
-    enc: Encoding = Encoding(method="list", encoding=["EFO:0001", "EFO:0002"])  # pyright: ignore
-    assert enc.method == EncodingMethods.LIST  # pyright: ignore
-    assert enc.encoding == ["EFO:0001", "EFO:0002"]  # pyright: ignore
+def test_encoding_rejects_removed_list_method() -> None:
+    """method: list is removed; every encoding class fails with the migration pointer."""
+    with pytest.raises(ValidationError, match="was removed"):
+        Encoding(method="list", encoding=["a"])  # pyright: ignore
+    with pytest.raises(ValidationError, match="was removed"):
+        Annotation(annotation="has_evidence", method="list", encoding=["a"])  # pyright: ignore
+    with pytest.raises(ValidationError, match="was removed"):
+        NodeEncoding(method="list", encoding=["a"])  # pyright: ignore
+    with pytest.raises(ValidationError, match="was removed"):
+        Qualifier(qualifier="object_direction_qualifier", method="list", encoding=["increased"])  # pyright: ignore
 
 
-def test_annotation_list_method_emits_multivalued_slot() -> None:
-    """An annotation with method: list is the multivalued counterpart of method: value."""
-    ann: Annotation = Annotation(annotation="has_evidence", method="list", encoding=["EFO:1", "EFO:2"])  # pyright: ignore
-    assert ann.annotation == "has_evidence"  # pyright: ignore
-    assert ann.method == "list"  # pyright: ignore
-
-
-def test_encoding_list_method_requires_list_encoding() -> None:
-    """method: list rejects a scalar encoding."""
-    with pytest.raises(ValidationError, match="method: list"):
-        Encoding(method="list", encoding="EFO:1")  # pyright: ignore
-
-
-def test_encoding_list_rejects_scalar_string_ops() -> None:
-    """method: list is a literal list and rejects every scalar string op at once."""
-    with pytest.raises(ValidationError, match="incompatible with the scalar string ops"):
-        Encoding(  # pyright: ignore
-            method="list",  # pyright: ignore
-            encoding=["a"],
-            regex=[{"pattern": "x", "replacement": "y"}],  # pyright: ignore
-            fill="zero",  # pyright: ignore
-            explode_by="|",
-            remove=["z"],
-            prefix="p",
-            suffix="s",
-            transformations=[{"function": "pow", "arguments": ["values", 2]}],  # pyright: ignore
-        )
-
-
-def test_encoding_list_encoding_requires_list_method() -> None:
-    """A list encoding is rejected unless method is list (for value and column)."""
-    with pytest.raises(ValidationError, match="requires `method: list`"):
+def test_encoding_rejects_a_list_encoding() -> None:
+    """The encoding field is scalar-only now; a list value is rejected outright."""
+    with pytest.raises(ValidationError):
         Encoding(method="value", encoding=["a"])  # pyright: ignore
-    with pytest.raises(ValidationError, match="requires `method: list`"):
+    with pytest.raises(ValidationError):
         Encoding(method="column", encoding=["A"])  # pyright: ignore
 
 
 def test_annotation_split_by_accepts_a_column_encoding() -> None:
-    """split_by is the per-row counterpart of method: list and rides a column encoding."""
+    """split_by is the one multivalued encoding and rides a column encoding."""
     ann: Annotation = Annotation(annotation="has_evidence", method="column", encoding="D", split_by="|")  # pyright: ignore
     assert ann.split_by == "|"  # pyright: ignore
 
 
 def test_annotation_split_by_requires_a_column_method() -> None:
-    """split_by splits per-row text, so a literal value/list encoding rejects it."""
+    """split_by splits per-row text, so a literal value encoding rejects it."""
     with pytest.raises(ValidationError, match="requires `method: column`"):
         Annotation(annotation="has_evidence", method="value", encoding="a|b", split_by="|")  # pyright: ignore
-    with pytest.raises(ValidationError, match="requires `method: column`"):
-        Annotation(annotation="has_evidence", method="list", encoding=["a", "b"], split_by="|")  # pyright: ignore
 
 
 def test_annotation_split_by_rejects_an_empty_separator() -> None:
     """An empty separator splits into characters -- the failure the JSON array prevents."""
     with pytest.raises(ValidationError, match="non-empty separator"):
         Annotation(annotation="has_evidence", method="column", encoding="D", split_by="")  # pyright: ignore
-
-
-def test_node_encoding_rejects_list_method() -> None:
-    """method: list is annotation-only; subject/object and qualifier nodes reject it at config time."""
-    with pytest.raises(ValidationError, match="only valid on annotations"):
-        NodeEncoding(method="list", encoding=["a"])  # pyright: ignore
-    with pytest.raises(ValidationError, match="only valid on annotations"):
-        Qualifier(qualifier="object_direction_qualifier", method="list", encoding=["increased"])  # pyright: ignore
 
 
 def test_node_encoding_with_taxon() -> None:
