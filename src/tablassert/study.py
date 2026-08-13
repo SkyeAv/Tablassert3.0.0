@@ -78,6 +78,14 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
                 scan.malformed += 1
                 continue
             for key, value in record.items():
+                # `original_*` fields are verbatim copies of the source-table cell
+                # (written by lib.Tcode.encoding under an `original_` prefix before any
+                # regex/normalization runs), so leading/trailing whitespace there is
+                # faithful to the source, not a defect to flag. Safe only because every
+                # `original_` producer is such a verbatim copy; a future slot that merely
+                # starts with `original_` would escape this check and must be revisited here.
+                if key.startswith("original_"):
+                    continue
                 if isinstance(value, str) and value != value.strip():
                     scan.whitespace[key] += 1
             if edge:

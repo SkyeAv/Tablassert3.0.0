@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+- **The `build-kg --qc` study no longer flags `original_*` fields for leading/trailing whitespace.** Those slots are verbatim copies of the source-table cell (written by `Tcode.encoding` under an `original_` prefix before any regex/normalization runs), so retaining the cell's whitespace is faithful to the source, not a defect. The whitespace assertion now skips any key prefixed `original_`, while every other field is still checked exactly as before.
+
 ## 10.1.0 - 2026-08-13
 
 ### Added
