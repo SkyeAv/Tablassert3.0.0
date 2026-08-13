@@ -226,7 +226,7 @@ annotations:
 
 `split_by` is the one multivalued encoding: every row's cell becomes its own JSON array, so an array that differs per row — the shape a literal can never express — is declared directly. Values are trimmed and blanks dropped; a null cell stays null.
 
-Reach for it whenever an aggregated column feeds a multivalued Biolink slot. Without it the joined cell stays a scalar, and because `mask_illegal_edge_fields` wraps a scalar bound for a multivalued slot into a one-element list, the edge emits `has_evidence: ["EFO:0001|EFO:0002"]` — structurally valid Biolink that hands consumers one unusable blob instead of two ids.
+Reach for it whenever an aggregated column feeds a multivalued Biolink slot. Without it the joined cell stays a scalar, and because `prune_to_class` wraps a scalar bound for a uniformly multivalued slot into a one-element list, the edge emits `has_evidence: ["EFO:0001|EFO:0002"]` — structurally valid Biolink that hands consumers one unusable blob instead of two ids.
 
 `split_by` requires `method: column` and rejects an empty separator, which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator. (The earlier annotation `delimiter` field — unrelated to the `source.delimiter` CSV/TSV separator — was replaced by `split_by`.)
 

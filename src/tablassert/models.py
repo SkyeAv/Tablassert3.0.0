@@ -19,6 +19,7 @@ from tablassert.biolink import (
     Predicates,
     Qualifiers,
 )
+from tablassert.coerce import effect_size_target, effect_type_target, pvalue_target, study_size_target
 from tablassert.enums import Comparisons, EncodingMethods, Files, FillMethods, Functions, Repositories, Tokens
 from tablassert.errors import BiolinkRelocationWarning, TablassertErrorCodes, TablassertValidationError
 
@@ -514,18 +515,24 @@ class Annotation(Encoding):
         # is the real problem -- an author asking for `supporting_study_size` has no way to discover
         # that Biolink attaches it to no class and the pipeline rerouted it.
         name: str = str(self.annotation)
-        if name in UNSATISFIABLE_EDGE_FIELDS:
+        # Judge the coerced target, not the raw alias: the clean-phase column coercions rename
+        # statistical aliases to their canonical slot before any relocation runs, so
+        # `adjusted p value` reaches the edge as `adjusted_p_value` and warning on the alias
+        # is a false positive.
+        target: str = pvalue_target(name) or study_size_target(name) or effect_size_target(name) or effect_type_target(name) or name
+        shown: str = f"`{name}` (coerced to `{target}`)" if target != name else f"`{name}`"
+        if target in UNSATISFIABLE_EDGE_FIELDS:
             warnings.warn(
-                f"`{name}` is declared in biolink-model {BIOLINK_VERSION} but attached to no association class, "
+                f"{shown} is declared in biolink-model {BIOLINK_VERSION} but attached to no association class, "
                 "so it cannot be emitted on an edge; its value is routed onto the inlined supporting study "
                 "instead. Use a slot a Biolink association declares (e.g. `p_value`, `adjusted_p_value`) if you "
                 "need it on the edge itself.",
                 BiolinkRelocationWarning,
                 stacklevel=2,
             )
-        elif name not in ALLOWED_EDGE_FIELDS:
+        elif target not in ALLOWED_EDGE_FIELDS:
             warnings.warn(
-                f"`{name}` is not a Biolink association slot, so it is folded into `supporting_text` as a "
+                f"{shown} is not a Biolink association slot, so it is folded into `supporting_text` as a "
                 f'"{name}: <value>" string rather than emitted as its own edge field.',
                 BiolinkRelocationWarning,
                 stacklevel=2,
