@@ -636,9 +636,8 @@ def split_list(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
     one-element list, so the value survives Biolink validation while consumers iterate a
     single ``"a|b|c"`` blob instead of three ids.
 
-    Same split as ``explode``, minus the fan-out: this is the per-row counterpart of
-    ``method: list`` (the literal form covers a fixed array known at config time, this
-    covers an array that differs on every row).
+    Same split as ``explode``, minus the fan-out: this is the one multivalued
+    encoding (``split_by``), turning each row's cell into its own JSON array.
 
     Args:
         lf: Source LazyFrame.
@@ -930,7 +929,7 @@ class Tcode(Section):
             containing ``None`` placeholders) ready for ``clean`` to filter.
         """
         return [
-            (value, (col, x.encoding)) if x.method in (EncodingMethods.VALUE, EncodingMethods.LIST) else None,
+            (value, (col, x.encoding)) if x.method == EncodingMethods.VALUE else None,
             (column, (col, idxname(x.encoding))) if x.method == EncodingMethods.COLUMN else None,
             (column, (f"original_{col}", col)) if table_literal else None,
             (fill, (col, x.fill)) if x.fill else None,

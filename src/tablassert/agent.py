@@ -2172,6 +2172,11 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
   description rather than emitted on the edge. `q_value`, `fold_change`, `z_score`, `beta` and
   similar are not association slots at all and are folded into `supporting_text`. Prefer
   `p_value`, `adjusted_p_value`, `effect_size`, `effect_type`, `has_evidence`.
+- MULTIVALUED slots (`has_evidence` and friends) take a real JSON array, never a joined string:
+  declare the annotation `{method: column, encoding: <letter>, split_by: "|"}` so each cell's
+  delimited text splits into its own per-row array. `split_by` is the ONLY multivalued encoding
+  — there is no literal-list method, and a scalar bound for a multivalued slot ships to consumers
+  as one unusable "a|b|c" blob.
 - `effect_size` / `effect_type` are deliberate Tablassert extras pending biolink-model#1774 and
   are EXEMPT from the validity score: a `biolink_valid_pct` below 1.0 is never caused by them.
 - QUALIFIERS: enum-ranged qualifiers take a literal TOKEN, never a CURIE

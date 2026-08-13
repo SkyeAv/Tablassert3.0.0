@@ -164,64 +164,37 @@ class Math(TablaBase):
 class Encoding(TablaBase):
     method: EncodingMethods = Field(
         EncodingMethods.VALUE,
-        description="Interpret `encoding` as a literal value, a list of literal values, or source column letters.",
-        examples=[EncodingMethods.VALUE, EncodingMethods.COLUMN, EncodingMethods.LIST],
+        description="Interpret `encoding` as a literal value or source column letters.",
+        examples=[EncodingMethods.VALUE, EncodingMethods.COLUMN],
     )
-    encoding: str | int | float | list[str | int | float] = Field(
-        ...,
-        description="Literal value, list of literal values (with `method: list`), or source column letters.",
-        examples=["A", "BRCA1", 1.0, ["EFO:0001", "EFO:0002"]],
-    )
+    encoding: str | int | float = Field(..., description="Literal value or source column letters.", examples=["A", "BRCA1", 1.0])
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_removed_list_method(cls, data: Any) -> Any:
+        """Fail configs still declaring the removed ``method: list`` with a migration pointer.
+
+        ``method: list`` (a literal list emitted as one fixed JSON array on every row)
+        was removed: ``split_by`` on a ``method: column`` annotation is the one
+        multivalued encoding now, and it covers the per-row case the literal never
+        could. A bare pydantic enum error would only say the value is invalid, so
+        this hook turns the stale config into the actionable coded error the
+        migration needs.
+        """
+        if isinstance(data, dict) and data.get("method") == "list":
+            raise TablassertValidationError(
+                "`method: list` was removed; for a multivalued annotation use `method: column` with `split_by` "
+                "to split each cell's delimited text into a JSON array (subject/object/qualifier nodes are single entities).",
+                code="encoding-list-method-removed",
+            )
+        return data
 
     @model_validator(mode="after")
     def excel_style_columns(self: Self) -> Self:
-        # A list encoding is only valid under `method: list` (checked by `list_method_consistency`);
-        # skip the Excel-letter check here so that case reports the clearer list error.
-        if self.method == EncodingMethods.COLUMN and not isinstance(self.encoding, list):
+        if self.method == EncodingMethods.COLUMN:
             x = self.encoding
             if not re.search(r"^[A-Z]{1,3}$", str(x)):
                 raise TablassertValidationError(f"`encoding` must be an Excel-style column name (A-ZZ), got {x!r}.", code="encoding-bad-excel-column")
-
-        return self
-
-    @model_validator(mode="after")
-    def list_method_consistency(self: Self) -> Self:
-        """Enforce that ``method: list`` carries a literal list and no scalar string ops.
-
-        ``method: list`` is the multivalued counterpart of ``method: value``: the
-        ``encoding`` is a literal list emitted as a real JSON array (for multivalued
-        Biolink slots such as ``has_evidence``). The scalar string ops
-        (``regex``/``remove``/``prefix``/``suffix``/``transformations``/``fill``/``explode_by``)
-        operate on a single string per row and would mangle a list column, so they are
-        rejected here — encode the final values directly instead.
-        """
-        is_list: bool = isinstance(self.encoding, list)
-        if self.method == EncodingMethods.LIST:
-            if not is_list:
-                raise TablassertValidationError("`method: list` requires `encoding` to be a list of values.", code="encoding-list-requires-list")
-            scalar_ops: list[str] = []
-            if self.regex:
-                scalar_ops.append("regex")
-            if self.fill is not None:
-                scalar_ops.append("fill")
-            if self.explode_by is not None:
-                scalar_ops.append("explode_by")
-            if self.remove:
-                scalar_ops.append("remove")
-            if self.prefix:
-                scalar_ops.append("prefix")
-            if self.suffix:
-                scalar_ops.append("suffix")
-            if self.transformations:
-                scalar_ops.append("transformations")
-            if scalar_ops:
-                raise TablassertValidationError(
-                    f"`method: list` is a literal list and is incompatible with the scalar string ops "
-                    f"({', '.join(scalar_ops)}); apply them upstream or encode the final values directly.",
-                    code="encoding-list-incompatible-ops",
-                )
-        elif is_list:
-            raise TablassertValidationError("A list `encoding` requires `method: list`.", code="encoding-list-requires-list")
 
         return self
 
@@ -305,23 +278,6 @@ class NodeEncoding(Encoding):
                     ) from e
 
         return exclude_regex
-
-    @model_validator(mode="after")
-    def reject_list_method(self: Self) -> Self:
-        """Reject ``method: list`` on node encodings (subject/object/qualifiers).
-
-        ``method: list`` is the multivalued counterpart of ``method: value`` and only
-        makes sense on an annotation (a multivalued Biolink slot). A subject/object/
-        qualifier is a single entity: a list node column crashes resolution deep in the
-        pipeline (a polars list-to-string cast) instead of failing at config time, and an
-        enum-ranged qualifier would silently emit a list where Biolink expects one token.
-        """
-        if self.method == EncodingMethods.LIST:
-            raise TablassertValidationError(
-                "`method: list` is only valid on annotations (multivalued Biolink slots); subject/object/qualifier nodes are single entities.",
-                code="encoding-list-annotation-only",
-            )
-        return self
 
 
 class Qualifier(NodeEncoding):
@@ -508,19 +464,15 @@ class Annotation(Encoding):
     def split_by_requires_a_column(self) -> Self:
         """Enforce that ``split_by`` carries a real separator and a ``method: column`` encoding.
 
-        ``split_by`` is the per-row counterpart of ``method: list``: it turns each cell's
-        own delimited text into a real JSON array, which is the one multivalued shape a
-        literal cannot express (a list ``encoding`` is fixed at config time, so it emits
-        the same array on every row). A ``value``/``list`` encoding therefore declares its
-        members directly rather than round-tripping them through a separator.
+        ``split_by`` is the one multivalued encoding: it turns each cell's own
+        delimited text into a real JSON array, per row. A ``value`` encoding is a
+        scalar literal with no per-row text to split, so it rejects ``split_by``.
         """
         if self.split_by is None:
             return self
         if self.method != EncodingMethods.COLUMN:
             raise TablassertValidationError(
-                "`split_by` splits a column's per-row text and requires `method: column`; "
-                "declare a literal multivalued annotation with `method: list` instead.",
-                code="annotation-split-by-requires-column",
+                "`split_by` splits a column's per-row text and requires `method: column`.", code="annotation-split-by-requires-column"
             )
         if not self.split_by:
             # An empty separator splits into individual characters -- exactly the

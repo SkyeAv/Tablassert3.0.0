@@ -135,61 +135,12 @@ def test_validate_command_happy_path(tmp_path: Path) -> None:
     assert validate(config, schema="table") is None
 
 
-def test_build_pipeline_emits_list_annotation_as_json_array(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A ``method: list`` annotation emits a real JSON array on the edge (replaces ``delimiter``).
-
-    ``method: list`` is the multivalued counterpart of ``method: value``: the literal list
-    in ``encoding`` is emitted verbatim as a multivalued Biolink slot (``has_evidence``),
-    so consumers iterate values instead of walking a joined string's characters.
-    """
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
-
-    fullmap: Path = _build_real_redb(tmp_path / "fullmap")
-
-    data: Path = tmp_path / "data.tsv"
-    data.write_text("brca1\tmapk1\n")
-
-    table: Path = tmp_path / "table.yaml"
-    table_config: dict[str, Any] = {
-        "template": {
-            "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
-            "statement": {
-                "subject": {"method": "column", "encoding": "A"},
-                "predicate": "associated_with",
-                "object": {"method": "column", "encoding": "B"},
-            },
-            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
-            "annotations": [{"annotation": "has_evidence", "method": "list", "encoding": ["EFO:0001", "EFO:0002"]}],
-        }
-    }
-    to_yaml(table, table_config)
-
-    graph: Path = tmp_path / "graph.yaml"
-    graph_config: dict[str, Any] = {
-        "name": "LIST_KG",
-        "version": "1.0.0",
-        "description": "list annotation smoke graph",
-        "tables": [str(table)],
-        "fullmap": str(fullmap),
-    }
-    to_yaml(graph, graph_config)
-
-    build_pipeline(graph, PipelineProgress(total_stages=6))
-
-    edges: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "LIST_KG_1.0.0.edges.ndjson").read_text().splitlines() if line.strip()]
-    assert len(edges) == 1
-    # method: list emits a real JSON array on the multivalued slot, not a joined scalar.
-    assert isinstance(edges[0]["has_evidence"], list)
-    assert edges[0]["has_evidence"] == ["EFO:0001", "EFO:0002"]
-
-
 def test_build_pipeline_splits_column_annotation_into_per_row_json_array(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``split_by`` turns each cell's own delimited text into a real JSON array.
 
-    This is the case ``method: list`` structurally cannot cover: a literal encoding is
-    fixed at config time, so it emits the SAME array on every row. Here the two rows
-    carry different values AND different lengths, which is only expressible per row.
+    ``split_by`` is the one multivalued encoding. Here the two rows carry different
+    values AND different lengths — an array that differs per row, which only a
+    per-row split can express.
 
     Without ``split_by`` the joined cell stays a scalar and ``mask_illegal_edge_fields``
     wraps it into a one-element list -- ``["EFO:0001|EFO:0002"]`` passes Biolink

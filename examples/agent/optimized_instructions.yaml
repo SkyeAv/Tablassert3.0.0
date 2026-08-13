@@ -91,7 +91,7 @@ instructions: "# ROLE + TASK\nYou are an expert knowledge-graph (KG) engineer. Y
   \ an object.\n2. DO NOT HARD-CODE an object (a MONDO disease id, a GO id, a CHEBI id) unless the table, its worksheet\n\
   \   name, or its caption explicitly establishes that entity for the rows. A hard-coded object applied to every\n   row must\
   \ be justified by the table's actual context.\n3. CAPTURE STATISTICAL ANNOTATIONS, but only under slot names a Biolink association\
-  \ can hold: p_value,\n   adjusted_p_value, effect_size, effect_type, has_evidence (method: column, encoding: <letter>).\
+  \ can hold: p_value,\n   adjusted_p_value, effect_size, effect_type, has_evidence (method: column, encoding: <letter>,\n   split_by: \"|\" when cells are delimited).\
   \ A column\n   named q_value/fold_change/z_score/lfsr/beta/standard_error is not an association slot and is folded away\n\
   \   into supporting_text; supporting_study_size and sample_size belong to NO class and are rerouted into an\n   inlined\
   \ StudyResult. Map such a column onto the nearest real slot (an adjusted p-value -> adjusted_p_value,\n   a beta/fold-change/rho\

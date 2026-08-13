@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+- **`method: list` is removed; use `split_by` instead.** The literal-list encoding — `method: list` with a list `encoding`, added in 9.0.0 as the successor of `Annotation.delimiter` — is gone. Every edge carried the *same* array (the list is fixed at config time), which is exactly the one shape `split_by` subsumes in practice: a multivalued annotation is declared on a column whose cells hold delimited text, and each row splits into its own JSON array. Multivalued annotations now have exactly one encoding:
+
+  ```yaml
+  annotations:
+    - {annotation: has_evidence, method: column, encoding: D, split_by: "|"}
+  ```
+
+  Configs still declaring `method: list` fail at validation with the new `encoding-list-method-removed` code and a pointer to `split_by`, instead of a bare enum error — including under `tablassert agent`, whose error-recovery loop reads coded errors verbatim. The `encoding` field is scalar-only now (`str | int | float`); a list value is rejected by the schema.
+
+  **Accepted caveat:** an array known at config time (identical on every edge) has no literal form anymore — materialize it as a source column (the same delimited value per row) and split it with `split_by`, or record it once as graph-level metadata. This trades a rare literal shape for one multivalued encoding instead of two that overlapped.
+
 ## 9.1.0 - 2026-08-12
 
 ### Added
