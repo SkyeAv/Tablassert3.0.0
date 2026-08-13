@@ -28,6 +28,9 @@ All notable changes to this project are documented in this file.
 ### Changed
 - **The `build-kg --qc` study no longer flags `original_*` fields for leading/trailing whitespace.** Those slots are verbatim copies of the source-table cell (written by `Tcode.encoding` under an `original_` prefix before any regex/normalization runs), so retaining the cell's whitespace is faithful to the source, not a defect. The whitespace assertion now skips any key prefixed `original_`, while every other field is still checked exactly as before.
 
+### Fixed
+- **Duplicate qualifier declarations now fail at config time instead of crashing mid-build with a raw polars error.** A table config that declared the same qualifier key twice died deep into the build with `polars.exceptions.ColumnNotFoundError: unable to find column "<qualifier>_two"` — both declarations resolved the same column, and the fullmap join drops the `<col>_two` working column right after the first resolve pass, so the second pass hit an already-dropped column. The statement validator now rejects duplicate qualifier keys at config time with the `qualifier-duplicated` code, and `resolve_batch` gained a defense-in-depth guard: it validates its specs schema-only before any term extraction or database access, raising `resolve-bad-specs` on duplicate spec columns or a spec missing its `<col>` / `<col>+tag` normalization column, so the same failure class can never resurface as a raw polars crash from another call path.
+
 ## 10.1.0 - 2026-08-13
 
 ### Added
