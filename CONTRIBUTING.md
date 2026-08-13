@@ -100,23 +100,35 @@ What the gates cover:
 
 - **Ruff linting and formatting.** The current tree enforces core pycodestyle/pyflakes safety checks plus stale-suppression detection. It also enforces an expanded rule set covering common bug patterns (bugbear), simplifications, Python-version upgrades, pytest style, import order, and comprehensions. Treat `uv run ruff check .` and `uv run ruff format --check .` as the stable interface rather than relying on individual rule codes.
 - **Pyright.** Type checking runs through `uv run pyright`; the project is tightening this as a strict-inference ratchet over time.
-- **Python tests.** The suite is offline and runs in parallel by default via [pytest-xdist](https://pypi.org/project/pytest-xdist/) (`-n auto` in `pyproject.toml`): over 600 tests in ~20-30 seconds, reporting around 90% coverage in the default CI environment (`--extra qc`). Disable parallelism for a single serial run with `pytest -n 0`.
+- **Python tests.** The suite is offline and runs in parallel by default via [pytest-xdist](https://pypi.org/project/pytest-xdist/) (`-n auto` in `pyproject.toml`): over 600 tests in ~20-30 seconds, reporting around 90% coverage in the default CI environment (`--extra qc`). Disable parallelism for a single serial run with `pytest -n 0`. In CI the suite is additionally split across four runners with [pytest-split](https://pypi.org/project/pytest-split/), which balances shards using the committed `.test_durations` file; a separate `coverage` job combines the per-shard data and reports the total. Regenerate the balance file with `uv run pytest --store-durations` after a change that shifts the suite's timing substantially.
 - **Rust tests.** `cargo test --manifest-path rust/Cargo.toml` currently runs 46 Rust unit tests for the extension.
 - **Rust style and lints.** `cargo fmt --check` enforces formatting; clippy runs all targets with warnings denied.
 
 ## Pre-commit hooks
 
-Install hooks after setup to run the fast, auto-fixing checks automatically on every commit. The slower whole-repo gates (pyright, the full pytest suite, cargo-clippy, cargo-test) are intentionally **not** pre-commit hooks — they run in CI on every pull request instead, so committing stays fast.
+Install hooks after setup. The `--install-hooks` flag matters: the config registers a **pre-push** stage as well as pre-commit, and without it only the pre-commit hooks are wired up.
 
 ```bash
-uv run pre-commit install
+uv run pre-commit install --install-hooks
 ```
 
-Configured hooks:
+Hooks are split across two stages so that committing stays cheap while the checks that most often break CI still run before anything leaves your machine.
 
-- `ruff`: fixes lint issues in `src/` and `tests/` when possible.
-- `ruff-format`: formats Python files in `src/` and `tests/`.
+On every **commit** — fast, auto-fixing:
+
+- `ruff`: fixes lint issues where possible.
+- `ruff-format`: formats Python files.
 - `cargo-fmt`: runs `cargo fmt --check --manifest-path rust/Cargo.toml`.
+- `uv-lock-check`: runs `uv lock --check` when `pyproject.toml` or `uv.lock` changes, so a dependency edit that was never relocked fails here instead of as an opaque CI sync error.
+
+On every **push** — the whole-repo gates:
+
+- `pyright`: the same type check CI runs.
+- `cargo-clippy`: all targets, warnings denied.
+
+The ruff hooks cover the **whole tree**, matching CI's `ruff check .`. They used to be scoped to `src/` and `tests/`, which meant `examples/` could only ever fail in CI.
+
+The full pytest suite and `cargo test` are deliberately in neither stage — they rebuild the Rust extension, and CI shards them across four runners far faster than a local serial run. Use `make check` when you want everything locally.
 
 ## Running subsets
 

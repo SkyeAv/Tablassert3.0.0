@@ -13,9 +13,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          prune-cache: true
+          cache-suffix: docs
+      # No mkdocs plugin imports tablassert (the API pages are hand-written markdown), so the
+      # site builds without installing the project -- which skips the whole maturin/Rust build.
+      - name: Sync docs dependencies
+        run: uv sync --frozen --no-default-groups --group docs --no-install-project
       - name: Build documentation
-        run: uv run --group dev mkdocs build --strict
+        run: uv run --no-sync mkdocs build --strict
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:

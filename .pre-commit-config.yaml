@@ -1,15 +1,24 @@
-# Fast, auto-fixing checks only. Slow, whole-repo gates (pyright, the full pytest
-# suite, cargo-clippy, cargo-test) run in CI on every PR instead — running them in a
-# pre-commit hook rebuilds the Rust extension and runs the whole suite on every commit.
+# Two stages, by design:
+#
+# pre-commit -- fast, auto-fixing checks only. Committing must stay cheap.
+# pre-push   -- the whole-repo gates that most often break CI (pyright, clippy). These run
+#               once per push instead of once per commit, so they catch a red build before
+#               it reaches a PR without taxing the edit/commit loop.
+#
+# The full pytest suite and cargo-test are deliberately in NEITHER: they rebuild the Rust
+# extension, and CI shards them across runners far faster than a local serial run.
+default_install_hook_types: [pre-commit, pre-push]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in sync with the ruff pin resolved in uv.lock, which CI reads via `version-file`.
     rev: v0.15.12
     hooks:
-      - id: ruff
+      # No `files:` filter: CI runs `ruff check .` over the whole tree, so scoping these to
+      # src/ and tests/ meant examples/agent/qc/*.py could only ever fail in CI. Ruff's own
+      # config already decides what is in scope.
+      - id: ruff-check
         args: [--fix]
-        files: ^(src|tests)/.*\.py$
       - id: ruff-format
-        files: ^(src|tests)/.*\.py$
   - repo: local
     hooks:
       - id: cargo-fmt
@@ -19,3 +28,26 @@ repos:
         types: [rust]
         files: ^rust/
         pass_filenames: false
+      # Catches a pyproject.toml edit that was never relocked -- otherwise the failure
+      # surfaces much later, as a confusing `uv sync --frozen` error in CI.
+      - id: uv-lock-check
+        name: uv-lock-check
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        stages: [pre-push]
+      - id: cargo-clippy
+        name: cargo-clippy
+        entry: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        files: ^rust/
+        pass_filenames: false
+        stages: [pre-push]

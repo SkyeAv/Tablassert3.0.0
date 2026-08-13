@@ -96,16 +96,35 @@ optimize = [
 ]
 
 [dependency-groups]
-dev = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.6.0",
+test = [
     "maturin>=1.10,<2.0",
-    "pre-commit>=4.5.1",
-    "pyright>=1.1.411",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
-    "ruff>=0.15.6",
     "pytest-xdist>=3.8.0",
+    "pytest-split>=0.11.0",
+]
+typecheck = [
+    "pyright>=1.1.411",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.0",
+]
+# The EXACT set both CI Python jobs install. Keeping `python-type` and `python-test` on one
+# identical sync is deliberate: `astral-sh/setup-uv` keys its cache on the lockfile, so jobs
+# with different dependency sets race to save a cache the others then restore and miss on.
+# One shared set means one genuinely warm cache. Excludes docs/pre-commit/ruff, which no CI
+# job that syncs needs (lint runs ruff standalone; docs uses `--group docs`).
+ci = [
+    { include-group = "test" },
+    { include-group = "typecheck" },
+]
+# Superset for local development, so `make setup` still installs everything.
+dev = [
+    { include-group = "ci" },
+    { include-group = "docs" },
+    "pre-commit>=4.5.1",
+    "ruff>=0.15.6",
 ]
 
 [tool.pytest.ini_options]
@@ -117,6 +136,10 @@ markers = ["network: requires internet"]
 
 [tool.coverage.run]
 source = ["src/tablassert"]
+# CI shards the suite across runners and combines the per-shard data files afterwards.
+# Recording paths relative to the project root is what lets `coverage combine` match a
+# module measured on one runner with the same module measured on another.
+relative_files = true
 
 [tool.ruff]
 line-length = 150
