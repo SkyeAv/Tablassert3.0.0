@@ -174,7 +174,7 @@ def test_tcode_collect_quick_exit_returns_existing_store(fixtures_path: Path, tm
     assert result == store
 
 
-def test_compile_graph_unlinks_stale_tmp_outputs(monkeypatch: Any, tmp_path: Path) -> None:
+def test_compile_graph_unlinks_stale_tmp_outputs(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """Lines 1145 & 1149: ``compile_graph`` deletes pre-existing ``.tmp`` outputs first.
 
     The existing suite always runs against a clean cwd, so the ``if e.exists()`` /
@@ -200,7 +200,20 @@ def test_compile_graph_unlinks_stale_tmp_outputs(monkeypatch: Any, tmp_path: Pat
             "object_source": [None],
             "object_source_version": [None],
             "object_pre_resolution": ["X"],
-            "predicate": ["r"],
+            "predicate": ["biolink:related_to"],
+            "knowledge_level": ["knowledge_assertion"],
+            "agent_type": ["manual_agent"],
+            "primary_knowledge_source": ["infores:un-kg"],
+            "sources": [
+                [
+                    {
+                        "id": "infores:un-kg",
+                        "resource_id": "infores:un-kg",
+                        "resource_role": "primary_knowledge_source",
+                        "source_record_urls": ["https://example.org/un.tsv"],
+                    }
+                ]
+            ],
         }
     ).write_parquet(sub)
 
@@ -209,7 +222,7 @@ def test_compile_graph_unlinks_stale_tmp_outputs(monkeypatch: Any, tmp_path: Pat
     stale_edges.write_text('{"sentinel":"STALE_EDGES"}\n')
     stale_nodes.write_text('{"sentinel":"STALE_NODES"}\n')
 
-    lib.compile_graph([sub], "un", "1.0.0")
+    lib.compile_graph([sub], "un", "1.0.0", rig_factory(tmp_path, infores_id="infores:un-kg"))
 
     edges: str = (tmp_path / "un_1.0.0.edges.ndjson").read_text()
     nodes: str = (tmp_path / "un_1.0.0.nodes.ndjson").read_text()

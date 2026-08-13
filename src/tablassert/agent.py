@@ -1313,12 +1313,34 @@ def build_and_audit(
         table_cfg: dict[str, object] = data if ("template" in data or "sections" in data) else {"template": data}
 
         (root / "table.yaml").write_text(yaml.safe_dump(table_cfg, sort_keys=False))
+        # The measurement build still emits a RIG (every build does), so it carries an
+        # honest minimal rig block: the agent only mines PMC open-access tables, and the
+        # artifacts live in this throwaway workdir (file:// base = unpublished).
+        resolved_root: str = str(root.resolve())
         graph_cfg: dict[str, object] = {
             "name": name,
             "version": version,
-            "description": f"Agent-built graph for {name}",
             "tables": ["table.yaml"],  # relative to workdir (the pipelines chdir there)
             "fullmap": str(fullmap),
+            "rig": {
+                "source_info": {
+                    "infores_id": f"infores:{name.lower().replace('_', '-')}",
+                    "name": f"Agent-built measurement graph {name}",
+                    "terms_of_use_info": {
+                        "terms_of_use_url": "https://pmc.ncbi.nlm.nih.gov/about/copyright/",
+                        "terms_of_use_description": "PubMed Central open-access supplementary table; individual article licenses apply.",
+                    },
+                    "data_access_locations": ["PubMed Central - https://pmc.ncbi.nlm.nih.gov/"],
+                    "source_status": "unknown",
+                },
+                "ingest_info": {
+                    "utility": f"Transient measurement graph used to score agent-derived table configs for {name}.",
+                    "scope": "Associations mined from one PMC supplementary table config under audit.",
+                },
+                "provenance_info": {"contributions": ["Tablassert agent: automated config derivation and measurement build"]},
+                "artifact_base_url": f"file://{resolved_root}",
+                "artifact_base_path": resolved_root,
+            },
         }
         (root / "graph.yaml").write_text(yaml.safe_dump(graph_cfg, sort_keys=False))
 

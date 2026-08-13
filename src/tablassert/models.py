@@ -20,7 +20,21 @@ from tablassert.biolink import (
     Qualifiers,
 )
 from tablassert.coerce import effect_size_target, effect_type_target, pvalue_target, study_size_target
-from tablassert.enums import Comparisons, EncodingMethods, Files, FillMethods, Functions, Repositories, Tokens
+from tablassert.enums import (
+    Comparisons,
+    ContentCategories,
+    DataFormats,
+    EncodingMethods,
+    Files,
+    FillMethods,
+    Functions,
+    IngestCategories,
+    ModelingCategories,
+    ProvisionMechanisms,
+    Repositories,
+    SourceStatuses,
+    Tokens,
+)
 from tablassert.errors import BiolinkRelocationWarning, TablassertErrorCodes, TablassertValidationError
 
 if TYPE_CHECKING:
@@ -404,8 +418,8 @@ class ManualProvenance(TablaBase):
     When present under :class:`Provenance`, these values replace the legacy
     repo/publication-derived provenance while keeping the same KL/AT defaults.
     The primary ``sources`` entry (``resource_role: primary_knowledge_source``)
-    always derives from the graph-level ``infores`` (or ``infores:<graph-name>``);
-    manual infores CURIEs belong in ``upstream_resource_ids``.
+    always derives from the graph-level ``rig.source_info.infores_id``; manual
+    infores CURIEs belong in ``upstream_resource_ids``.
     """
 
     upstream_resource_ids: list[str] = Field(
@@ -549,6 +563,245 @@ class Section(TablaBase):
     annotations: list[Annotation] | None = Field(None, description="Optional extra encoded columns added to each row.")
 
 
+# --- Resource Ingest Guide configuration ----------------------------------- #
+# The `rig:` graph-config section. The nested shape mirrors the released RIG
+# schema (biolink/resource-ingest-guide-schema) so a generated `.RIG.yaml` is
+# always schema-shaped; fields the generator derives at build time (target
+# edge/node summaries, generated artifact file entries) live outside these
+# models and are composed by `tablassert.rig`.
+
+
+def _contains_url(value: str) -> bool:
+    """Whether a free-text RIG location string carries an http(s) or file URL.
+
+    ``file://`` is accepted because unpublished/local artifact bases (agent
+    measurement builds) are honest local URIs; a PR to upstream should swap them
+    for public https locations, which the docs call out.
+    """
+    return "http://" in value or "https://" in value or "file://" in value
+
+
+class RIGTermsOfUseInfo(TablaBase):
+    """Terms-of-use / license assessment for the ingested source.
+
+    Mirrors the RIG schema's ``TermsOfUseInformation``. At least one field must
+    carry a real assessment -- an all-empty object is rejected so a generated
+    RIG can never ship without a documented terms position.
+    """
+
+    terms_of_use_url: str | None = Field(
+        None, description="URL of the source's terms-of-use or license page.", examples=["https://ctdbase.org/about/legal.jsp"]
+    )
+    terms_of_use_description: str | None = Field(None, description="Free-text summary of the source's terms of use.")
+    license_name: str | None = Field(None, description="Name of an established license used by the source.", examples=["CC BY 4.0"])
+    license_url: str | None = Field(None, description="URL of the established license.", examples=["https://creativecommons.org/licenses/by/4.0/"])
+
+    @model_validator(mode="after")
+    def non_empty_assessment(self: Self) -> Self:
+        for url in (self.terms_of_use_url, self.license_url):
+            if url is not None and not _contains_url(str(url)):
+                raise TablassertValidationError(f"RIG terms-of-use URLs must be http(s) URLs, got {url!r}.", code="rig-terms-empty")
+        if not any(
+            v is not None and str(v).strip() for v in (self.terms_of_use_url, self.terms_of_use_description, self.license_name, self.license_url)
+        ):
+            raise TablassertValidationError(
+                "rig.source_info.terms_of_use_info needs at least one of terms_of_use_url, terms_of_use_description, "
+                "license_name, or license_url; assess the upstream source terms before building a PR-worthy RIG.",
+                code="rig-terms-empty",
+            )
+        return self
+
+
+class RIGSourceInfo(TablaBase):
+    """``source_info`` section of the generated RIG."""
+
+    infores_id: str = Field(
+        ...,
+        description="Infores CURIE of the source this graph ingests (also the default edge primary_knowledge_source).",
+        examples=["infores:my-kg"],
+    )
+    name: str | None = Field(None, description="Human-readable name of the source.")
+    description: str | None = Field(None, description="Description of the source, its scope, and how its knowledge is produced.")
+    citations: list[str] | None = Field(None, description="Citations (PMIDs, DOIs, URLs, or free text) describing the source.")
+    terms_of_use_info: RIGTermsOfUseInfo = Field(..., description="Terms-of-use / license assessment for the source.")
+    data_access_locations: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Where the upstream source data can be accessed; one or more entries, each containing an http(s) or file URL.",
+        examples=[["Source downloads - https://example.org/downloads/"]],
+    )
+    data_provision_mechanisms: list[ProvisionMechanisms] | None = Field(None, description="How the source distributes its data.")
+    data_formats: list[DataFormats] | None = Field(None, description="Serialization formats of the source data.")
+    data_versioning_and_releases: str | None = Field(None, description="How the source versions and releases its data.")
+    source_status: SourceStatuses = Field(..., description="Maintenance status of the source.")
+    additional_notes: list[str] | None = Field(None, description="Additional source notes not captured by dedicated fields.")
+
+    @field_validator("infores_id", mode="after")
+    @classmethod
+    def infores_curie(cls, value: str) -> str:
+        return validate_infores_curie(value, "rig-bad-infores")
+
+    @field_validator("data_access_locations", mode="after")
+    @classmethod
+    def locations_carry_urls(cls, values: list[str]) -> list[str]:
+        for value in values:
+            if not str(value).strip() or not _contains_url(str(value)):
+                raise TablassertValidationError(
+                    f"rig.source_info.data_access_locations entries must each contain an http(s) or file URL, got {value!r}.",
+                    code="rig-bad-access-location",
+                )
+        return values
+
+
+class RIGRelevantFile(TablaBase):
+    """One ``relevant_files`` entry (RIG schema ``RelevantFiles``)."""
+
+    file_name: str = Field(..., min_length=1, description="Name of the file (or endpoint/table).")
+    location: str = Field(..., description="URL where the file was accessed.")
+    description: str | None = Field(None, description="Brief description of the file's content and utility.")
+
+    @field_validator("location", mode="after")
+    @classmethod
+    def location_is_url(cls, value: str) -> str:
+        if not _contains_url(str(value)):
+            raise TablassertValidationError(
+                f"RIG relevant-file locations must be http(s) or file URLs, got {value!r}.", code="rig-bad-access-location"
+            )
+        return value
+
+
+class RIGIncludedContent(TablaBase):
+    """One ``included_content`` entry (RIG schema ``IncludedContent``)."""
+
+    file_name: str = Field(..., min_length=1, description="Name of the file content is included from.")
+    included_records: str = Field(..., min_length=1, description="Description of the record types included in the ingest.")
+    fields_used: str | None = Field(None, description="Source fields that are part of or inform the ingest.")
+
+
+class RIGFilteredContent(TablaBase):
+    """One ``filtered_content`` entry (RIG schema ``FilteredContent``)."""
+
+    file_name: str = Field(..., min_length=1, description="Name of the file content was filtered from.")
+    filtered_records: str = Field(..., min_length=1, description="Description of the excluded record types.")
+    rationale: str = Field(..., min_length=1, description="Rationale for excluding the indicated content.")
+
+
+class RIGFutureContentConsideration(TablaBase):
+    """One ingest-level ``future_considerations`` entry."""
+
+    category: ContentCategories = Field(..., description="Graph representation the considered content maps to.")
+    consideration: str = Field(..., min_length=1, description="What additional content should be considered and why.")
+    relevant_files: str | None = Field(None, description="Source file(s) providing the considered content.")
+
+
+class RIGFutureModelingConsideration(TablaBase):
+    """One target-level ``future_considerations`` entry."""
+
+    category: ModelingCategories | None = Field(None, description="General category of the modeling consideration.")
+    consideration: str = Field(..., min_length=1, description="The modeling change to consider, and why.")
+
+
+class RIGIngestInfo(TablaBase):
+    """``ingest_info`` section of the generated RIG.
+
+    ``utility`` and ``scope`` are semantic claims about the graph and must be
+    authored, not invented. ``relevant_files`` and ``included_content`` entries
+    for the GENERATED KGX artifacts are composed by the RIG generator from
+    ``artifact_base_url`` / ``artifact_base_path`` plus the observed graph; entries
+    listed here are preserved alongside them (use them for upstream source files).
+    """
+
+    ingest_categories: list[IngestCategories] = Field(
+        default_factory=lambda: [IngestCategories.TRANSLATOR_KNOWLEDGE_CREATOR],
+        min_length=1,
+        description="Type of source being ingested, from the ingesting system's perspective.",
+    )
+    utility: str = Field(..., min_length=1, description="Why the source was ingested and its utility for Translator use cases.")
+    scope: str = Field(..., min_length=1, description="High-level narrative of the knowledge included and excluded in this ingest.")
+    relevant_files: list[RIGRelevantFile] | None = Field(None, description="Upstream source files in scope for the ingest.")
+    included_content: list[RIGIncludedContent] | None = Field(None, description="Record types included from the relevant files.")
+    filtered_content: list[RIGFilteredContent] | None = Field(None, description="Record types filtered out, and why.")
+    future_considerations: list[RIGFutureContentConsideration] | None = Field(None, description="Content additions/changes for future iterations.")
+    additional_notes: list[str] | None = Field(None, description="Additional ingest notes not captured by dedicated fields.")
+
+
+class RIGSupportingDataSourceInfo(TablaBase):
+    """One ``supporting_data_source_info`` entry for data-derived graphs."""
+
+    infores_id: str = Field(..., description="Infores CURIE of the upstream supporting data source.")
+    name: str | None = Field(None, description="Human-readable name of the supporting data source.")
+    description: str | None = Field(None, description="Brief description of the supporting data source.")
+    terms_of_use_info: RIGTermsOfUseInfo = Field(..., description="Terms-of-use assessment for the supporting data source.")
+    relevant_files: list[RIGRelevantFile] = Field(..., min_length=1, description="Source files (or endpoints) supplying the supporting data.")
+
+    @field_validator("infores_id", mode="after")
+    @classmethod
+    def infores_curie(cls, value: str) -> str:
+        return validate_infores_curie(value, "rig-bad-infores")
+
+
+class RIGTargetInfoExtras(TablaBase):
+    """Target-level notes; edge/node type summaries are always generated."""
+
+    future_considerations: list[RIGFutureModelingConsideration] | None = Field(None, description="Modeling changes to consider in future iterations.")
+    additional_notes: list[str] | None = Field(None, description="Additional mapping/modeling notes.")
+
+
+class RIGProvenanceInfo(TablaBase):
+    """``provenance_info`` section of the generated RIG."""
+
+    contributions: list[str] = Field(
+        ..., min_length=1, description='Contributor statements: who contributed and how (e.g. "Name - code author, data modeling").'
+    )
+    artifacts: list[str] | None = Field(None, description="Links/descriptions of external provenance artifacts (tickets, surveys, repos).")
+
+
+class RIGConfig(TablaBase):
+    """The required ``rig:`` graph-config section driving `.RIG.yaml` generation.
+
+    Carries every human-authored RIG fact. The generator derives only the
+    mechanical pieces (generated artifact file entries, observed target
+    summaries) and validates the composed document before writing it, so no
+    invalid or placeholder-laden RIG is ever emitted.
+    """
+
+    name: str | None = Field(None, description="Human-readable RIG name; defaults to '<graph name> v<version> Resource Ingest Guide'.")
+    supporting_data_source_info: list[RIGSupportingDataSourceInfo] | None = Field(
+        None, description="Upstream data sources a data-derived graph derives its knowledge from."
+    )
+    source_info: RIGSourceInfo = Field(..., description="Information about the source of the ingest.")
+    ingest_info: RIGIngestInfo = Field(..., description="Rationale and scope of the ingest, including included/excluded content.")
+    target_info: RIGTargetInfoExtras | None = Field(None, description="Optional target-level future considerations and notes.")
+    ui_explanation: str | None = Field(
+        None,
+        description=(
+            "Optional per-edge-type UI explanation prefix. The built-in Tablassert explanation is ALWAYS appended "
+            "after it, so the generated text is this value followed by the default provenance explanation."
+        ),
+    )
+    provenance_info: RIGProvenanceInfo = Field(..., description="Who contributed to the ingest and how.")
+    artifact_base_url: str = Field(
+        ...,
+        description="Public URL prefix for the generated KGX artifacts; each `.nodes.ndjson`/`.edges.ndjson` name is appended to build RIG file locations.",
+        examples=["https://example.org/translator-ingests/my-kg"],
+    )
+    artifact_base_path: Path = Field(
+        ...,
+        description="Local output directory the generated KGX artifacts are written to; each artifact name is appended for the output path cross-check.",
+        examples=["./published/translator-ingests/my-kg"],
+    )
+
+    @field_validator("artifact_base_url", mode="after")
+    @classmethod
+    def artifact_url_is_url(cls, value: str) -> str:
+        text: str = str(value).strip()
+        if not text.startswith(("http://", "https://", "file://")):
+            raise TablassertValidationError(
+                f"rig.artifact_base_url must start with http://, https://, or file://, got {value!r}.", code="rig-bad-artifact-url"
+            )
+        return text.rstrip("/")
+
+
 DEFAULT_RIG_CONTRIBUTIONS: list[str] = ["Tablassert: KGX and RIG generation"]
 DEFAULT_RIG_UI_EXPLANATION: str = (
     "Source Tablassert data provides assertions derived from configured tabular records. "
@@ -562,27 +815,48 @@ def default_rig_contributions() -> list[str]:
     return DEFAULT_RIG_CONTRIBUTIONS.copy()
 
 
+#: Top-level graph keys that moved under `rig:`. Their presence is a hard error:
+#: silently mapping them would hide which of the two spellings a config means, and a
+#: half-migrated graph would build a RIG missing fields the author thinks they set.
+LEGACY_RIG_KEYS: dict[str, str] = {
+    "description": "rig.source_info.description",
+    "contributions": "rig.provenance_info.contributions",
+    "ui_explanation": "rig.ui_explanation",
+    "infores": "rig.source_info.infores_id",
+}
+
+
 class Graph(TablaBase):
     """Pydantic graph configuration model."""
 
     name: str = Field(..., description="Graph name written into output metadata.")
     version: str = Field(..., description="Graph version label.")
-    description: str = Field(..., description="Source scope description written into generated Resource Ingest Guides.")
-    contributions: list[str] = Field(
-        default_factory=default_rig_contributions, description="Resource Ingest Guide contribution statements for graph provenance."
-    )
-    ui_explanation: str = Field(DEFAULT_RIG_UI_EXPLANATION, description="Resource Ingest Guide explanation applied to generated edge type metadata.")
-    infores: str | None = Field(
-        None,
-        description="Graph-level infores CURIE emitted as the primary entry of the edge `sources` list and as the RIG source_info.infores_id; defaults to infores:<kebab-name> when omitted.",
-        examples=["infores:my-kg"],
-    )
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
     fullmap: Path = Field(..., description="Base fullmap directory or fullmap redb file for entity resolution.", examples=[".fullmap"])
+    rig: RIGConfig = Field(..., description="Resource Ingest Guide metadata emitted as <name>_<version>.RIG.yaml.")
 
-    @field_validator("infores", mode="after")
+    @model_validator(mode="before")
     @classmethod
-    def infores_curie(cls, infores: str | None) -> str | None:
-        if infores is None:
-            return None
-        return validate_infores_curie(infores, "graph-bad-infores")
+    def reject_legacy_rig_keys(cls, data: Any) -> Any:
+        """Fail configs still carrying RIG metadata at the top level.
+
+        Runs before field validation. ``extra='forbid'`` alone would reject these keys
+        too, but with a generic 'extra fields not permitted' message; this hook names
+        each stale key and its new home under ``rig:`` so migration is mechanical.
+        """
+        if isinstance(data, dict):
+            found: list[str] = sorted(k for k in data if k in LEGACY_RIG_KEYS)
+            if found:
+                moves: str = "; ".join(f"`{k}` -> `{LEGACY_RIG_KEYS[k]}`" for k in found)
+                raise TablassertValidationError(
+                    f"RIG metadata moved under the required `rig:` section: {moves}. "
+                    "Top-level placement is rejected so a build can never emit a RIG that "
+                    "silently disagrees with its graph config.",
+                    code="rig-legacy-keys",
+                )
+        return data
+
+    @property
+    def infores_id(self) -> str:
+        """Graph-level primary knowledge source infores (from ``rig.source_info.infores_id``)."""
+        return self.rig.source_info.infores_id

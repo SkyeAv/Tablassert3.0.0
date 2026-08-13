@@ -54,13 +54,13 @@ class _FakeResponse:
 def test_validate_graph_pipeline_rejects_malformed_graph(tmp_path: Path) -> None:
     """Cover cli.py:314-315 — ``validate_graph_pipeline`` raises ``GraphValidationError``.
 
-    A graph YAML missing required keys (``tables``/``fullmap``) fails ``Graph.model_validate``,
+    A graph YAML missing required keys (``tables``/``fullmap``/``rig``) fails ``Graph.model_validate``,
     hitting the ``except pydantic.ValidationError`` -> ``raise GraphValidationError`` path that
     ``validate``'s graph branch delegates to. Existing tests only reach this via ``build_pipeline``
     (``_load_graph``) or via an invalid *table*; this drives the validate-graph path directly.
     """
     graph_file: Path = tmp_path / "graph.yaml"
-    to_yaml(graph_file, {"name": "TEST", "version": "1.0.0", "description": "missing tables and fullmap"})
+    to_yaml(graph_file, {"name": "TEST", "version": "1.0.0"})
     with pytest.raises(GraphValidationError) as exc_info:
         validate_graph_pipeline(graph_file, PipelineProgress(total_stages=2))
     assert exc_info.value.code == "graph-validation-failed"

@@ -94,18 +94,37 @@ Create `tutorial-graph.yaml`. The shipped, test-validated version lives at
 ```yaml
 name: TUTORIAL_KG
 version: 1.0.0
-description: Tutorial knowledge graph built from configured tabular source data.
 tables:
   - ./docs/examples/tutorial-table.yaml
 fullmap: /path/to/fullmap
+rig:
+  source_info:
+    infores_id: infores:tutorial-kg
+    name: Tutorial tabular source
+    description: Example source data used by the Tablassert tutorial graph.
+    terms_of_use_info:
+      license_name: CC0 1.0 Universal
+      license_url: https://creativecommons.org/publicdomain/zero/1.0/
+    data_access_locations:
+      - Tutorial data - https://example.com/data.csv
+    source_status: unknown
+  ingest_info:
+    utility: Demonstrates how Tablassert turns configured tabular records into Translator-ready KGX.
+    scope: Gene-disease associations from the tutorial table, one edge per configured row.
+  provenance_info:
+    contributions:
+      - "Tutorial author: config author, data modeling"
+  artifact_base_url: https://example.com/tutorial-kg
+  artifact_base_path: ./tutorial-output
 ```
 
 **Important:** Replace `fullmap` with the path to your fullmap redb (and adjust `tables` if your table
-config lives elsewhere).
+config lives elsewhere). The `rig:` section is required — see the
+[Graph configuration reference](configuration/graph.md) for every field.
 
 **What this does:**
-- **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson`, `TUTORIAL_KG_1.0.0.edges.ndjson`, and `TUTORIAL_KG_1.0.0.RIG.yaml`
-- **description**: Source-scope description written into the generated Resource Ingest Guide (required)
+- **name/version**: Output files will be `TUTORIAL_KG_1.0.0.nodes.ndjson`, `TUTORIAL_KG_1.0.0.edges.ndjson`, and `TUTORIAL_KG_1.0.0.RIG.yaml` (written into `rig.artifact_base_path`, here `./tutorial-output/`)
+- **rig**: Resource Ingest Guide metadata (source info, utility/scope, provenance, artifact bases) emitted as the `.RIG.yaml`
 - **tables**: List of table configurations to process
 - **fullmap**: Path to the fullmap redb file (or base directory) for entity resolution
 
@@ -137,7 +156,7 @@ tablassert build-kg tutorial-graph.yaml --qc --log
 **Nodes file:**
 
 ```bash
-head -n 3 TUTORIAL_KG_1.0.0.nodes.ndjson
+head -n 3 tutorial-output/TUTORIAL_KG_1.0.0.nodes.ndjson
 ```
 
 Example output:
@@ -150,7 +169,7 @@ Example output:
 **Edges file:**
 
 ```bash
-head -n 2 TUTORIAL_KG_1.0.0.edges.ndjson
+head -n 2 tutorial-output/TUTORIAL_KG_1.0.0.edges.ndjson
 ```
 
 Example output (numeric annotation columns are emitted as controlled-notation strings — p-values in scientific notation):
@@ -162,10 +181,10 @@ Example output (numeric annotation columns are emitted as controlled-notation st
 **RIG file:**
 
 ```bash
-cat TUTORIAL_KG_1.0.0.RIG.yaml
+cat tutorial-output/TUTORIAL_KG_1.0.0.RIG.yaml
 ```
 
-The Resource Ingest Guide records the graph's source scope (`description`), provenance (`contributions`), and a summary of its node and edge types for NCATS Translator registration.
+The Resource Ingest Guide records the graph's source metadata and terms of use (`rig.source_info`), ingest utility and scope (`rig.ingest_info`), provenance (`rig.provenance_info`), the generated artifact locations, and a summary of the emitted node and edge types — all validated in memory before the file is written, for NCATS Translator registration.
 
 ## Understanding the Transformation
 

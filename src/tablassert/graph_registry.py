@@ -36,9 +36,40 @@ TMP_NAME: str = f"{GRAPH_YAML}.tmp"
 CORRUPT_PREFIX: str = f"{GRAPH_YAML}.corrupt-"
 GRAPH_NAME: str = "tablassert-agent"
 GRAPH_VERSION: str = "1"
-GRAPH_DESCRIPTION: str = "Aggregate graph of agent-built PMC table configs"
 #: Record statuses whose best config self-registers (both are SUCCESSFUL builds).
 REGISTERED_STATUSES: frozenset[str] = frozenset({"MAPPED", "BUILT_UNMEASURED"})
+
+
+def _registry_rig(state_dir: Path) -> dict[str, Any]:
+    """The honest ``rig:`` block for the aggregate agent registry graph.
+
+    Every fact here is mechanical: the agent only mines PubMed Central
+    open-access supplementary tables, so source terms/access describe PMC, and
+    the artifact bases point at the state directory itself (a ``file://`` base
+    is a valid unpublished URI; swap it for a public https base before sending
+    the generated RIG anywhere).
+    """
+    resolved: str = str(state_dir.resolve())
+    return {
+        "source_info": {
+            "infores_id": "infores:tablassert-agent",
+            "name": "PubMed Central open-access supplementary tables",
+            "description": "Aggregate of tabular associations mined from PubMed Central open-access supplementary files by the Tablassert agent.",
+            "terms_of_use_info": {
+                "terms_of_use_url": "https://pmc.ncbi.nlm.nih.gov/about/copyright/",
+                "terms_of_use_description": "PubMed Central open-access subset; individual article licenses apply.",
+            },
+            "data_access_locations": ["PubMed Central - https://pmc.ncbi.nlm.nih.gov/"],
+            "source_status": "unknown",
+        },
+        "ingest_info": {
+            "utility": "Aggregates agent-derived tabular knowledge assertions for Translator-style querying.",
+            "scope": "All agent-built table configs registered under this state directory.",
+        },
+        "provenance_info": {"contributions": ["Tablassert agent: automated config derivation and build"]},
+        "artifact_base_url": f"file://{resolved}",
+        "artifact_base_path": resolved,
+    }
 
 
 @contextlib.contextmanager
@@ -58,9 +89,9 @@ def _registry_lock(state_dir: Path) -> Iterator[None]:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-def _fresh_doc() -> dict[str, Any]:
+def _fresh_doc(state_dir: Path) -> dict[str, Any]:
     """A brand-new registry document (``_apply_fullmap`` fills the first-wins ``fullmap``)."""
-    return {"name": GRAPH_NAME, "version": GRAPH_VERSION, "description": GRAPH_DESCRIPTION, "tables": []}
+    return {"name": GRAPH_NAME, "version": GRAPH_VERSION, "tables": [], "rig": _registry_rig(state_dir)}
 
 
 def _quarantine(state_dir: Path, reason: str) -> Path:
@@ -85,20 +116,20 @@ def _load_registry(state_dir: Path) -> dict[str, Any]:
     """
     path: Path = state_dir / GRAPH_YAML
     if not path.is_file():
-        return _fresh_doc()
+        return _fresh_doc(state_dir)
     try:
         data: object = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         _quarantine(state_dir, f"YAML parse error: {exc}")
-        return _fresh_doc()
+        return _fresh_doc(state_dir)
     if not isinstance(data, dict):
         _quarantine(state_dir, f"top level is not a mapping (got {type(data).__name__})")
-        return _fresh_doc()
+        return _fresh_doc(state_dir)
     try:
         Graph.model_validate(data)
     except pydantic.ValidationError as exc:
         _quarantine(state_dir, f"fails Graph.model_validate ({len(exc.errors())} error(s))")
-        return _fresh_doc()
+        return _fresh_doc(state_dir)
     return data
 
 

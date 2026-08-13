@@ -145,9 +145,11 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 tablassert build-kg graph.yaml --qc --log
 ```
 
-Output is written to the current directory as `{name}_{version}.nodes.ndjson`,
+Output is written to `rig.artifact_base_path` (created when missing) as `{name}_{version}.nodes.ndjson`,
 `{name}_{version}.edges.ndjson`, and `{name}_{version}.RIG.yaml`; intermediate parquet lands in
-`.tablassert/store/`. See [Graph Configuration](configuration/graph.md).
+`.tablassert/store/`. The RIG document is audited in memory before it is written — an invalid
+or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is emitted. See
+[Graph Configuration](configuration/graph.md).
 
 ??? info "Build progress & stages"
     The build runs six parallel stages — Loading Tables → Extracting Sections → Building TCode →

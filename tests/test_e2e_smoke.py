@@ -52,7 +52,7 @@ def _build_real_redb(root: Path) -> Path:
     return output
 
 
-def test_build_pipeline_against_real_redb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pipeline_against_real_redb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rig_factory: Any) -> None:
     """SMOKE (i): the six-stage build resolves terms through a REAL fullmap redb end-to-end.
 
     The fullmap lookup is NOT monkeypatched: the only way ``HGNC:1100``/``HGNC:6871`` can
@@ -87,9 +87,9 @@ def test_build_pipeline_against_real_redb(tmp_path: Path, monkeypatch: pytest.Mo
     graph_config: dict[str, Any] = {
         "name": "SMOKE_KG",
         "version": "1.0.0",
-        "description": "e2e smoke graph",
         "tables": [str(table)],
         "fullmap": str(fullmap),
+        "rig": rig_factory(tmp_path, infores_id="infores:smoke-kg", source_info={"description": "e2e smoke graph"}),
     }
     to_yaml(graph, graph_config)
 
@@ -135,7 +135,7 @@ def test_validate_command_happy_path(tmp_path: Path) -> None:
     assert validate(config, schema="table") is None
 
 
-def test_build_pipeline_splits_column_annotation_into_per_row_json_array(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pipeline_splits_column_annotation_into_per_row_json_array(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rig_factory: Any) -> None:
     """``split_by`` turns each cell's own delimited text into a real JSON array.
 
     ``split_by`` is the one multivalued encoding. Here the two rows carry different
@@ -175,9 +175,9 @@ def test_build_pipeline_splits_column_annotation_into_per_row_json_array(tmp_pat
     graph_config: dict[str, Any] = {
         "name": "SPLIT_KG",
         "version": "1.0.0",
-        "description": "split_by annotation smoke graph",
         "tables": [str(table)],
         "fullmap": str(fullmap),
+        "rig": rig_factory(tmp_path, infores_id="infores:split-kg", source_info={"description": "split_by annotation smoke graph"}),
     }
     to_yaml(graph, graph_config)
 
@@ -191,7 +191,7 @@ def test_build_pipeline_splits_column_annotation_into_per_row_json_array(tmp_pat
     assert evidence[("HGNC:6871", "HGNC:1100")] == ["EFO:0003"]
 
 
-def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rig_factory: Any) -> None:
     """The real pipeline normalizes raw statistical column names to canonical Biolink fields.
 
     Declares annotations with non-canonical source spellings (``p value``, ``sample size``,
@@ -236,9 +236,9 @@ def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypa
     graph_config: dict[str, Any] = {
         "name": "COERCE_KG",
         "version": "1.0.0",
-        "description": "coercion smoke graph",
         "tables": [str(table)],
         "fullmap": str(fullmap),
+        "rig": rig_factory(tmp_path, infores_id="infores:coerce-kg", source_info={"description": "coercion smoke graph"}),
     }
     to_yaml(graph, graph_config)
 
@@ -290,7 +290,7 @@ def _build_context_redb(root: Path) -> Path:
     return output
 
 
-def test_nullable_qualifier_keeps_edge_without_key_while_strict_drops(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_nullable_qualifier_keeps_edge_without_key_while_strict_drops(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rig_factory: Any) -> None:
     """A ``nullable`` qualifier keeps a blank-cell row (omitting the key); strict drops it.
 
     Two rows share a dense subject/object; row 1's disease_context_qualifier cell is
@@ -327,7 +327,18 @@ def test_nullable_qualifier_keeps_edge_without_key_while_strict_drops(tmp_path: 
         table: Path = tmp_path / f"{name.lower()}_table.yaml"
         to_yaml(table, _config(nullable))
         graph: Path = tmp_path / f"{name.lower()}_graph.yaml"
-        to_yaml(graph, {"name": name, "version": "1.0.0", "description": "nullable qualifier smoke", "tables": [str(table)], "fullmap": str(fullmap)})
+        to_yaml(
+            graph,
+            {
+                "name": name,
+                "version": "1.0.0",
+                "tables": [str(table)],
+                "fullmap": str(fullmap),
+                "rig": rig_factory(
+                    tmp_path, infores_id=f"infores:{name.lower().replace('_', '-')}", source_info={"description": "nullable qualifier smoke"}
+                ),
+            },
+        )
         build_pipeline(graph, PipelineProgress(total_stages=6))
         edges_path: Path = tmp_path / f"{name}_1.0.0.edges.ndjson"
         return [json.loads(line) for line in edges_path.read_text().splitlines() if line.strip()]

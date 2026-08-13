@@ -32,6 +32,12 @@ TablassertErrorCodes = Literal[
     "qualifier-bad-value",
     "qualifier-unsatisfiable",
     "qualifier-nullable-literal",
+    "rig-bad-infores",
+    "rig-bad-artifact-url",
+    "rig-bad-access-location",
+    "rig-terms-empty",
+    "rig-legacy-keys",
+    "rig-validation-failed",
 ]
 
 
