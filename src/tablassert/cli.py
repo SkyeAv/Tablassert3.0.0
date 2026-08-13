@@ -950,7 +950,7 @@ def _prebuilt_fullmap_urls(babel_version: str) -> tuple[str, str]:
 
     RENCI publishes a prebuilt ``fullmap.tar.zst`` (and a ``sha256sum.txt``) under
     ``{BABEL_BASE}/{babel_version}/fullmap/{tablassert_version}/``, where the version
-    directory is the INSTALLED Tablassert package version (e.g. ``9.1.0``) — resolved from
+    directory is the INSTALLED Tablassert package version (e.g. ``10.0.0``) — resolved from
     installed-package metadata, never hardcoded, so a new release looks itself up.
 
     Args:

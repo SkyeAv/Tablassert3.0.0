@@ -2,7 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 10.0.0 - 2026-08-13
+
+A major bump for one removal: `method: list` is gone, and a table config that still declares it no longer validates. A `~=9.1` pin cannot cross that silently. The other change in the release is purely additive.
+
+### Breaking Changes
+- **`method: list` is removed; use `split_by` instead.** The literal-list encoding — `method: list` with a list `encoding`, added in 9.0.0 as the successor of `Annotation.delimiter` — is gone. Every edge carried the *same* array (the list is fixed at config time), which is exactly the one shape `split_by` subsumes in practice: a multivalued annotation is declared on a column whose cells hold delimited text, and each row splits into its own JSON array. Multivalued annotations now have exactly one encoding:
+
+  ```yaml
+  annotations:
+    - {annotation: has_evidence, method: column, encoding: D, split_by: "|"}
+  ```
+
+  Configs still declaring `method: list` fail at validation with the new `encoding-list-method-removed` code and a pointer to `split_by`, instead of a bare enum error — including under `tablassert agent`, whose error-recovery loop reads coded errors verbatim. The `encoding` field is scalar-only now (`str | int | float`); a list value is rejected by the schema.
+
+  **Accepted caveat:** an array known at config time (identical on every edge) has no literal form anymore — materialize it as a source column (the same delimited value per row) and split it with `split_by`, or record it once as graph-level metadata. This trades a rare literal shape for one multivalued encoding instead of two that overlapped.
 
 ### Added
 - **`nullable` qualifiers — optional per-edge qualifiers without edge loss.** A `method: column` qualifier may now declare `nullable: true` so that a blank or unresolvable cell **keeps the edge and omits the qualifier for that row**, instead of dropping the edge:
@@ -17,18 +31,6 @@ All notable changes to this project are documented in this file.
   `nullable: true` threads a `drop_unresolved=False` flag through `join_matches`/`resolve_batch` for that column alone: the row survives with a null qualifier that the existing null-stripper omits from the edge, subject/object stay strict, and the miss is still reported by `log_unmatched`. QC `fullmap_audit` skips nullable qualifier columns (their nulls are expected, not resolution errors to delete). `nullable` on a literal qualifier (`method: value`) is rejected at config time with `qualifier-nullable-literal`, since a config-time constant can never be null.
 
   Purely additive: existing configs are unaffected, and the default (`false`) is byte-for-byte the previous behavior.
-
-### Breaking Changes
-- **`method: list` is removed; use `split_by` instead.** The literal-list encoding — `method: list` with a list `encoding`, added in 9.0.0 as the successor of `Annotation.delimiter` — is gone. Every edge carried the *same* array (the list is fixed at config time), which is exactly the one shape `split_by` subsumes in practice: a multivalued annotation is declared on a column whose cells hold delimited text, and each row splits into its own JSON array. Multivalued annotations now have exactly one encoding:
-
-  ```yaml
-  annotations:
-    - {annotation: has_evidence, method: column, encoding: D, split_by: "|"}
-  ```
-
-  Configs still declaring `method: list` fail at validation with the new `encoding-list-method-removed` code and a pointer to `split_by`, instead of a bare enum error — including under `tablassert agent`, whose error-recovery loop reads coded errors verbatim. The `encoding` field is scalar-only now (`str | int | float`); a list value is rejected by the schema.
-
-  **Accepted caveat:** an array known at config time (identical on every edge) has no literal form anymore — materialize it as a source column (the same delimited value per row) and split it with `split_by`, or record it once as graph-level metadata. This trades a rare literal shape for one multivalued encoding instead of two that overlapped.
 
 ## 9.1.0 - 2026-08-12
 
