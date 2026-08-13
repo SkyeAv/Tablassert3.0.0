@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Added
+- **`nullable` qualifiers — optional per-edge qualifiers without edge loss.** A `method: column` qualifier may now declare `nullable: true` so that a blank or unresolvable cell **keeps the edge and omits the qualifier for that row**, instead of dropping the edge:
+
+  ```yaml
+  qualifiers:
+    - {qualifier: disease_context_qualifier, method: column, encoding: F, nullable: true}
+  ```
+
+  A qualifier is a node encoding resolved through the fullmap alongside subject/object, and `join_matches` drops any row whose resolved node column is null — the right default for subject/object (an edge with a missing node is meaningless) but a hard constraint on qualifiers: a declared qualifier had to resolve on **every** row or the edge was lost. That forbade per-edge *optional* qualifiers, which downstream builders worked around by only declaring qualifiers backed by dense columns and dropping otherwise-usable context.
+
+  `nullable: true` threads a `drop_unresolved=False` flag through `join_matches`/`resolve_batch` for that column alone: the row survives with a null qualifier that the existing null-stripper omits from the edge, subject/object stay strict, and the miss is still reported by `log_unmatched`. QC `fullmap_audit` skips nullable qualifier columns (their nulls are expected, not resolution errors to delete). `nullable` on a literal qualifier (`method: value`) is rejected at config time with `qualifier-nullable-literal`, since a config-time constant can never be null.
+
+  Purely additive: existing configs are unaffected, and the default (`false`) is byte-for-byte the previous behavior.
+
 ### Breaking Changes
 - **`method: list` is removed; use `split_by` instead.** The literal-list encoding — `method: list` with a list `encoding`, added in 9.0.0 as the successor of `Annotation.delimiter` — is gone. Every edge carried the *same* array (the list is fixed at config time), which is exactly the one shape `split_by` subsumes in practice: a multivalued annotation is declared on a column whose cells hold delimited text, and each row splits into its own JSON array. Multivalued annotations now have exactly one encoding:
 

@@ -335,6 +335,50 @@ def test_tcode_collect_audits_follow_single_resolve_batch_with_qualifiers(fixtur
     assert all(i > batch_idx for i, _ in audit_ops)
 
 
+def test_tcode_collect_threads_nullable_into_resolve_specs(fixtures_path: Path) -> None:
+    """A nullable qualifier's ResolveSpec carries nullable=True; subject/object stay strict."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_nullable_spec.parquet")
+    data["statement"]["qualifiers"] = [
+        {"qualifier": "disease_context_qualifier", "method": "column", "encoding": "C", "nullable": True},
+        {"qualifier": "anatomical_context_qualifier", "method": "column", "encoding": "D"},
+    ]
+
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    batch_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "resolve_batch"]
+    specs: list[ResolveSpec] = batch_ops[0][1][0]
+    by_col: dict[str, ResolveSpec] = {spec.col: spec for spec in specs}
+
+    assert by_col["subject"].nullable is False
+    assert by_col["object"].nullable is False
+    assert by_col["disease_context_qualifier"].nullable is True
+    assert by_col["anatomical_context_qualifier"].nullable is False
+
+
+def test_tcode_collect_excludes_nullable_qualifier_from_audit(fixtures_path: Path) -> None:
+    """QC audit skips a nullable qualifier column (its nulls are expected, not resolution errors)."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_nullable_audit.parquet")
+    data["statement"]["qualifiers"] = [
+        {"qualifier": "disease_context_qualifier", "method": "column", "encoding": "C", "nullable": True},
+        {"qualifier": "anatomical_context_qualifier", "method": "column", "encoding": "D"},
+    ]
+
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "qc": True}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    audit_cols: list[str] = [op[1][0] for op in collected if op[0].__name__ == "fullmap_audit"]
+
+    assert audit_cols == ["subject", "object", "anatomical_context_qualifier"]
+    assert "disease_context_qualifier" not in audit_cols
+
+
 def test_tcode_collect_edge_ops_follow_resolve_batch(fixtures_path: Path) -> None:
     """tcode collect runs predicate/edge_category after the single resolve_batch op."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")

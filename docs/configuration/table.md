@@ -376,12 +376,28 @@ metadata and should not be declared manually.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `qualifier` | String | Yes | Biolink qualifier from the `Qualifiers` enum (e.g., `"anatomical_context_qualifier"`) |
+| `nullable` | Boolean | No | Default `false`. When `true`, a blank or unresolvable `method: column` cell **keeps the edge** and omits the qualifier for that row; when `false` (the default) such a row is dropped, exactly like an unresolved subject/object. Only valid with `method: column` — a literal qualifier can never be null (`qualifier-nullable-literal`). |
 | (inherits NodeEncoding) | | | All NodeEncoding fields available |
 
-**Example:**
+**Example — required qualifier (dense column, default):**
 ```yaml
 qualifiers:
   - {qualifier: anatomical_context_qualifier, method: value, encoding: UBERON:0000061}
+```
+
+**Example — optional qualifier (sparse column, `nullable: true`):**
+
+A qualifier is a node encoding resolved through the fullmap alongside subject/object,
+so by default a blank or unresolved qualifier cell drops the whole edge. That is the
+right default (an edge should not silently lose a declared context), but it forbids
+per-edge *optional* qualifiers — e.g. a `disease_context_qualifier` on conditional
+contraindications where most rows carry no context. Set `nullable: true` on a
+`method: column` qualifier to keep such rows and simply omit the qualifier key for
+them (the null value is stripped from the edge):
+
+```yaml
+qualifiers:
+  - {qualifier: disease_context_qualifier, method: column, encoding: F, nullable: true, prioritize: [Disease]}
 ```
 
 ### Provenance

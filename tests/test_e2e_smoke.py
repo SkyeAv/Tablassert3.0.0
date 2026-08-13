@@ -269,3 +269,78 @@ def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypa
     assert "statistical_significance_qualifier" not in edge
     assert "supporting_study_size=450" in edge_text
     assert "statistical_significance_qualifier=biolink:strongly_significant" in edge_text
+
+
+def _build_context_redb(root: Path) -> Path:
+    """Tiny real redb: SmallMolecule/Disease terms for a sparse disease_context_qualifier."""
+    root.mkdir(parents=True, exist_ok=True)
+    classes: Path = _write_jsonl(root / "classes.ndjson", [_class_row("CHEBI:1", ["DRUGBANK:1"]), _class_row("CHEBI:2", ["DRUGBANK:2"])])
+    synonyms: Path = _write_jsonl(
+        root / "synonyms.ndjson",
+        [
+            _synonym_row("CHEBI:1", "Aspirin", ["aspirin"], "SmallMolecule"),
+            _synonym_row("CHEBI:2", "Ibuprofen", ["ibuprofen"], "SmallMolecule"),
+            _synonym_row("MONDO:1", "Headache", ["headache"], "Disease"),
+            _synonym_row("MONDO:3", "Migraine", ["migraine"], "Disease"),
+            _synonym_row("MONDO:2", "Influenza", ["flu"], "Disease"),
+        ],
+    )
+    output: Path = root / "data" / "fullmap.redb"
+    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    return output
+
+
+def test_nullable_qualifier_keeps_edge_without_key_while_strict_drops(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ``nullable`` qualifier keeps a blank-cell row (omitting the key); strict drops it.
+
+    Two rows share a dense subject/object; row 1's disease_context_qualifier cell is
+    populated (resolves), row 2's is blank. Strict resolution drops row 2's edge;
+    ``nullable: true`` keeps it and the null-stripper omits the qualifier key for it.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
+
+    fullmap: Path = _build_context_redb(tmp_path / "fullmap")
+
+    # Column C (disease_context) is blank on the second row.
+    data: Path = tmp_path / "data.tsv"
+    data.write_text("aspirin\theadache\tflu\nibuprofen\tmigraine\t\n")
+
+    def _config(nullable: bool) -> dict[str, Any]:
+        qualifier: dict[str, Any] = {"qualifier": "disease_context_qualifier", "method": "column", "encoding": "C", "taxon": None}
+        if nullable:
+            qualifier["nullable"] = True
+        return {
+            "template": {
+                "source": {"kind": "text", "local": str(data), "url": ["https://example.com/data.tsv"], "delimiter": "\t"},
+                "statement": {
+                    "subject": {"method": "column", "encoding": "A", "taxon": None},
+                    "predicate": "associated_with",
+                    "object": {"method": "column", "encoding": "B", "taxon": None},
+                    "qualifiers": [qualifier],
+                },
+                "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+            }
+        }
+
+    def _build(name: str, nullable: bool) -> list[dict[str, Any]]:
+        table: Path = tmp_path / f"{name.lower()}_table.yaml"
+        to_yaml(table, _config(nullable))
+        graph: Path = tmp_path / f"{name.lower()}_graph.yaml"
+        to_yaml(graph, {"name": name, "version": "1.0.0", "description": "nullable qualifier smoke", "tables": [str(table)], "fullmap": str(fullmap)})
+        build_pipeline(graph, PipelineProgress(total_stages=6))
+        edges_path: Path = tmp_path / f"{name}_1.0.0.edges.ndjson"
+        return [json.loads(line) for line in edges_path.read_text().splitlines() if line.strip()]
+
+    strict_edges: list[dict[str, Any]] = _build("STRICT_KG", nullable=False)
+    nullable_edges: list[dict[str, Any]] = _build("NULLABLE_KG", nullable=True)
+
+    # Strict: the blank-qualifier row is dropped at resolution; only the resolved row survives.
+    assert len(strict_edges) == 1
+    assert strict_edges[0]["disease_context_qualifier"] == "MONDO:2"
+
+    # Nullable: both rows survive. The resolved row carries the qualifier; the blank row omits it.
+    assert len(nullable_edges) == 2
+    by_subject: dict[str, dict[str, Any]] = {edge["subject"]: edge for edge in nullable_edges}
+    assert by_subject["CHEBI:1"]["disease_context_qualifier"] == "MONDO:2"
+    assert "disease_context_qualifier" not in by_subject["CHEBI:2"]

@@ -286,6 +286,15 @@ class Qualifier(NodeEncoding):
         description="Qualifier predicate key used as the output qualifier column.",
         examples=[Qualifiers.OBJECT_DIRECTION_QUALIFIER, Qualifiers.SUBJECT_CONTEXT_QUALIFIER],
     )
+    nullable: bool = Field(
+        False,
+        description=(
+            "When True, a blank or unresolvable ``method: column`` cell keeps the edge and omits the "
+            "qualifier for that row (the column stays null and the null-stripper drops the key); when "
+            "False (default) such a row is dropped, exactly like an unresolved subject/object. Only "
+            "meaningful for ``method: column`` — a literal qualifier can never be null."
+        ),
+    )
 
     @property
     def vocabulary(self: Self) -> frozenset[str] | None:
@@ -353,6 +362,23 @@ class Qualifier(NodeEncoding):
             raise TablassertValidationError(
                 f"{self.qualifier} has a closed Biolink vocabulary; got {literal!r}. Permitted values include: {preview}...",
                 code="qualifier-bad-value",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def reject_nullable_literal_qualifiers(self: Self) -> Self:
+        """Reject ``nullable: true`` on literal qualifiers.
+
+        ``nullable`` only has meaning for a ``method: column`` qualifier: a blank or
+        unresolved cell keeps the edge and the qualifier is omitted for that row. A
+        ``method: value`` qualifier is a config-time constant that can never be blank,
+        so ``nullable`` would be dead config that misleads the reader. Fail loudly at
+        config time instead (the removed ``method: list`` is already rejected upstream
+        by :meth:`Encoding.reject_removed_list_method`).
+        """
+        if self.nullable and self.method != EncodingMethods.COLUMN:
+            raise TablassertValidationError(
+                "`nullable` only applies to `method: column` qualifiers; a literal qualifier can never be null.", code="qualifier-nullable-literal"
             )
         return self
 

@@ -509,6 +509,38 @@ def test_resolve_batch_handles_asymmetric_term_sets(fullmap_db: Path) -> None:
     assert result[0]["object"] == "HGNC:6871"
 
 
+def test_join_matches_drop_unresolved_false_keeps_null_row(fullmap_db: Path) -> None:
+    """drop_unresolved=False keeps an unresolved row with a null column (nullable qualifier path)."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1", "not-a-real-term"], "subject_two": ["brca1", "not-a-real-term"]}).lazy()
+    terms: pl.DataFrame = pl.DataFrame({"term": ["brca1", "not-a-real-term"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(rs.lookup_fullmap_terms(fullmap_db, ["brca1", "not-a-real-term"]))
+    matches: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, True)
+
+    strict: list[dict[str, Any]] = join_matches(lf, "subject", matches).collect().to_dicts()
+    kept: list[dict[str, Any]] = join_matches(lf, "subject", matches, drop_unresolved=False).collect().to_dicts()
+
+    # Strict (default): the unresolved row is dropped.
+    assert len(strict) == 1
+    assert strict[0]["subject"] == "HGNC:1100"
+    # Nullable: both rows survive; the unresolved cell stays null for the null-stripper.
+    assert len(kept) == 2
+    assert kept[0]["subject"] == "HGNC:1100"
+    assert kept[1]["subject"] is None
+
+
+def test_resolve_batch_nullable_spec_keeps_unresolved_row(fullmap_db: Path) -> None:
+    """A nullable ResolveSpec keeps rows whose value fails to resolve; a strict spec drops them."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1", "not-a-real-term"], "subject_two": ["brca1", "not-a-real-term"]}).lazy()
+
+    strict: list[dict[str, Any]] = resolve_batch(lf, [ResolveSpec("subject")], fullmap_db, log=False).collect().to_dicts()
+    nullable: list[dict[str, Any]] = resolve_batch(lf, [ResolveSpec("subject", nullable=True)], fullmap_db, log=False).collect().to_dicts()
+
+    assert len(strict) == 1
+    assert strict[0]["subject"] == "HGNC:1100"
+    assert len(nullable) == 2
+    assert {row["subject"] for row in nullable} == {"HGNC:1100", None}
+
+
 def test_resolve_batch_applies_each_specs_filters_independently(fullmap_db: Path) -> None:
     """resolve_batch applies each spec's own avoid/taxon/prioritize filters independently (no cross-column leakage)."""
     lf: pl.LazyFrame = pl.DataFrame(
