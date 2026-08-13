@@ -1631,7 +1631,7 @@ distribution <strong>and</strong> the command that fixes it:</p>
 <tr>
 <td><code>build-kg --qc</code></td>
 <td><code>[qc]</code></td>
-<td>Before the build starts — the QC audit is the pipeline's LAST stage, so a late failure would cost the entire entity-resolution pass</td>
+<td>Before the build starts — the QC audit runs at the very end of the build, so a late failure would cost the entire entity-resolution pass</td>
 </tr>
 <tr>
 <td><code>tablassert agent</code></td>

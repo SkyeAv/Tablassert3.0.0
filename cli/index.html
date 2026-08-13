@@ -1399,7 +1399,7 @@ for the live surface.</p>
 <tbody>
 <tr>
 <td><code>--version</code></td>
-<td>Print the installed package version as <code>tablassert &lt;version&gt;</code> (e.g. <code>tablassert 10.0.0</code>) and exit</td>
+<td>Print the installed package version as <code>tablassert &lt;version&gt;</code> (e.g. <code>tablassert 10.1.0</code>) and exit</td>
 </tr>
 <tr>
 <td><code>--help</code>, <code>-h</code></td>
@@ -1738,8 +1738,9 @@ YAML configuration file.</p>
 <details class="info">
 <summary>Build progress &amp; stages</summary>
 <p>The build runs six parallel stages — Loading Tables → Extracting Sections → Building TCode →
-Collecting Instructions → Building Subgraphs → Compiling Graph — under a three-row live progress
-block (stage header; section bar with count/elapsed/ETA; in-flight item detail). Each completed
+Collecting Instructions → Building Subgraphs → Compiling Graph — plus a seventh, Studying Graph,
+only when <code>--qc</code> is passed. They run under a three-row live progress block (stage header;
+section bar with count/elapsed/ETA; in-flight item detail). Each completed
 stage prints a green <code>✓ Stage N · NAME · elapsed</code> line above the live block. During Building
 Subgraphs the detail line also shows the per-section phase (<code>load</code>, <code>filter</code>, <code>clean</code>, <code>encode</code>,
 <code>resolve</code>, <code>qc</code>, <code>edge</code>, <code>provenance</code>, <code>significance</code>, <code>finalize</code>, <code>write</code>).</p>
