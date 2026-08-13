@@ -4147,6 +4147,13 @@ rt = [
 ]
 
 [package.dev-dependencies]
+ci = [
+    { name = "maturin" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+]
 dev = [
     { name = "maturin" },
     { name = "mkdocs" },
@@ -4157,6 +4164,19 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-material" },
+]
+test = [
+    { name = "maturin" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+]
+typecheck = [
+    { name = "pyright" },
 ]
 
 [package.metadata]
@@ -4182,6 +4202,13 @@ requires-dist = [
 provides-extras = ["rt", "aria2", "qc", "agent", "optimize"]
 
 [package.metadata.requires-dev]
+ci = [
+    { name = "maturin", specifier = ">=1.10,<2.0" },
+    { name = "pyright", specifier = ">=1.1.411" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+]
 dev = [
     { name = "maturin", specifier = ">=1.10,<2.0" },
     { name = "mkdocs", specifier = ">=1.6.1" },
@@ -4193,6 +4220,17 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.15.6" },
 ]
+docs = [
+    { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs-material", specifier = ">=9.6.0" },
+]
+test = [
+    { name = "maturin", specifier = ">=1.10,<2.0" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+]
+typecheck = [{ name = "pyright", specifier = ">=1.1.411" }]
 
 [[package]]
 name = "tenacity"
