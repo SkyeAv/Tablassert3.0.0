@@ -1732,9 +1732,11 @@ YAML configuration file.</p>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>graph.yaml<span class="w"> </span>--qc<span class="w"> </span>--log
 </code></pre></div>
-<p>Output is written to the current directory as <code>{name}_{version}.nodes.ndjson</code>,
+<p>Output is written to <code>rig.artifact_base_path</code> (created when missing) as <code>{name}_{version}.nodes.ndjson</code>,
 <code>{name}_{version}.edges.ndjson</code>, and <code>{name}_{version}.RIG.yaml</code>; intermediate parquet lands in
-<code>.tablassert/store/</code>. See <a href="../configuration/graph/">Graph Configuration</a>.</p>
+<code>.tablassert/store/</code>. The RIG document is audited in memory before it is written — an invalid
+or incomplete RIG fails the build with <code>[rig-validation-failed]</code> and nothing is emitted. See
+<a href="../configuration/graph/">Graph Configuration</a>.</p>
 <details class="info">
 <summary>Build progress &amp; stages</summary>
 <p>The build runs six parallel stages — Loading Tables → Extracting Sections → Building TCode →

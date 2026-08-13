@@ -824,10 +824,22 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#optional-fields" class="md-nav__link">
+  <a href="#the-rig-section" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Optional Fields
+        The rig: section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The rig: section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rigsource_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rig.source_info
       
     </span>
   </a>
@@ -835,10 +847,48 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#field-details" class="md-nav__link">
+  <a href="#rigingest_info" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Field Details
+        rig.ingest_info
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rigprovenance_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rig.provenance_info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-generator-derives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the generator derives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-in-rig-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in RIG validation
       
     </span>
   </a>
@@ -895,10 +945,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#real-world-example" class="md-nav__link">
+  <a href="#pr-readiness-for-translator-ingests" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Real-World Example
+        PR-readiness for Translator Ingests
       
     </span>
   </a>
@@ -1274,10 +1324,22 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#optional-fields" class="md-nav__link">
+  <a href="#the-rig-section" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Optional Fields
+        The rig: section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The rig: section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rigsource_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rig.source_info
       
     </span>
   </a>
@@ -1285,10 +1347,48 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#field-details" class="md-nav__link">
+  <a href="#rigingest_info" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Field Details
+        rig.ingest_info
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rigprovenance_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rig.provenance_info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-generator-derives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the generator derives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-in-rig-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in RIG validation
       
     </span>
   </a>
@@ -1345,10 +1445,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#real-world-example" class="md-nav__link">
+  <a href="#pr-readiness-for-translator-ingests" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Real-World Example
+        PR-readiness for Translator Ingests
       
     </span>
   </a>
@@ -1389,11 +1489,13 @@
 <h1 id="graph-configuration-reference">Graph Configuration Reference<a class="headerlink" href="#graph-configuration-reference" title="Permanent link">&para;</a></h1>
 <p>Graph configurations orchestrate one or more <a href="../table/">table configurations</a> into a single knowledge-graph build — author one to produce KGX output with <code>tablassert build-kg</code> (see the <a href="../../cli/#build-kg">CLI reference</a>). To check a single table config on its own, use <code>tablassert validate &lt;table.yaml&gt; --schema table</code>.</p>
 <h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
-<p>A graph configuration file specifies:
-- Output knowledge graph name, version, and description
-- List of table configurations to process
-- Database location for entity resolution
-- Resource Ingest Guide (RIG) metadata (contributions and UI explanation)</p>
+<p>A graph configuration file specifies:</p>
+<ul>
+<li>Output knowledge graph name and version</li>
+<li>List of table configurations to process</li>
+<li>Database location for entity resolution</li>
+<li>The <strong>required <code>rig:</code> section</strong>: all Resource Ingest Guide (RIG) metadata emitted as <code>&lt;name&gt;_&lt;version&gt;.RIG.yaml</code></li>
+</ul>
 <p>QC auditing and verbose logging are controlled at build time via the <code>build-kg --qc</code> and <code>build-kg --log</code> flags — they are <strong>not</strong> graph-config fields.</p>
 <h2 id="schema">Schema<a class="headerlink" href="#schema" title="Permanent link">&para;</a></h2>
 <h3 id="required-fields">Required Fields<a class="headerlink" href="#required-fields" title="Permanent link">&para;</a></h3>
@@ -1417,11 +1519,6 @@
 <td>Knowledge graph version (used in output filenames)</td>
 </tr>
 <tr>
-<td><code>description</code></td>
-<td>String</td>
-<td>Source-scope description written into the generated RIG</td>
-</tr>
-<tr>
 <td><code>tables</code></td>
 <td>List[Path]</td>
 <td>Paths to table configuration YAML files</td>
@@ -1431,14 +1528,230 @@
 <td>Path</td>
 <td>Path to the fullmap redb file, or a base directory containing it</td>
 </tr>
+<tr>
+<td><code>rig</code></td>
+<td>RIGConfig</td>
+<td>Resource Ingest Guide metadata (see below)</td>
+</tr>
 </tbody>
 </table>
-<h3 id="optional-fields">Optional Fields<a class="headerlink" href="#optional-fields" title="Permanent link">&para;</a></h3>
+<p>The legacy top-level RIG fields (<code>description</code>, <code>contributions</code>, <code>ui_explanation</code>, <code>infores</code>) are <strong>rejected</strong> with a migration pointer; they now live under <code>rig:</code>.</p>
+<h3 id="the-rig-section">The <code>rig:</code> section<a class="headerlink" href="#the-rig-section" title="Permanent link">&para;</a></h3>
+<p>The <code>rig:</code> section carries every human-authored RIG fact. Its shape mirrors the released <a href="https://github.com/biolink/resource-ingest-guide-schema">RIG schema</a>, so the generated <code>.RIG.yaml</code> is always schema-shaped. The generator derives only mechanical facts from the build (generated artifact file entries, observed edge/node type summaries) and <strong>validates the complete document before writing anything</strong> — a build never leaves behind an invalid or incomplete RIG.</p>
 <table>
 <thead>
 <tr>
 <th>Field</th>
 <th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rig.name</code></td>
+<td>String</td>
+<td>No</td>
+<td>RIG display name; defaults to <code>&lt;name&gt; v&lt;version&gt; Resource Ingest Guide</code></td>
+</tr>
+<tr>
+<td><code>rig.source_info</code></td>
+<td>Object</td>
+<td>Yes</td>
+<td>Information about the source being ingested (see below)</td>
+</tr>
+<tr>
+<td><code>rig.ingest_info</code></td>
+<td>Object</td>
+<td>Yes</td>
+<td>Rationale and scope of the ingest (see below)</td>
+</tr>
+<tr>
+<td><code>rig.target_info</code></td>
+<td>Object</td>
+<td>No</td>
+<td>Target-level <code>future_considerations</code> and <code>additional_notes</code> (edge/node type summaries are always generated)</td>
+</tr>
+<tr>
+<td><code>rig.ui_explanation</code></td>
+<td>String</td>
+<td>No</td>
+<td>Per-edge-type UI explanation <strong>prefix</strong>; the built-in Tablassert explanation is always appended after it</td>
+</tr>
+<tr>
+<td><code>rig.provenance_info</code></td>
+<td>Object</td>
+<td>Yes</td>
+<td>Contributor statements and provenance artifacts</td>
+</tr>
+<tr>
+<td><code>rig.supporting_data_source_info</code></td>
+<td>List[Object]</td>
+<td>No</td>
+<td>Upstream data sources for data-derived graphs (each needs <code>infores_id</code>, <code>terms_of_use_info</code>, and <code>relevant_files</code>)</td>
+</tr>
+<tr>
+<td><code>rig.artifact_base_url</code></td>
+<td>String</td>
+<td>Yes</td>
+<td>Public URL prefix for the generated KGX artifacts; each <code>.nodes.ndjson</code>/<code>.edges.ndjson</code> name is appended to build RIG <code>relevant_files</code> locations</td>
+</tr>
+<tr>
+<td><code>rig.artifact_base_path</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>Output directory the generated artifacts (and the RIG) are written into; created when missing</td>
+</tr>
+</tbody>
+</table>
+<h4 id="rigsource_info"><code>rig.source_info</code><a class="headerlink" href="#rigsource_info" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>infores_id</code></td>
+<td><code>infores:</code> CURIE</td>
+<td>Yes</td>
+<td>Infores of the source this graph ingests; also emitted as the edge <code>primary_knowledge_source</code> and node <code>provided_by</code>. There is no implicit derivation from the graph name</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>String</td>
+<td>No</td>
+<td>Human-readable source name</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>String</td>
+<td>No</td>
+<td>What the source contains and how its knowledge is produced</td>
+</tr>
+<tr>
+<td><code>citations</code></td>
+<td>List[String]</td>
+<td>No</td>
+<td>PMIDs, DOIs, URLs, or free-text citations</td>
+</tr>
+<tr>
+<td><code>terms_of_use_info</code></td>
+<td>Object</td>
+<td>Yes</td>
+<td>At least one of <code>terms_of_use_url</code>, <code>terms_of_use_description</code>, <code>license_name</code>, <code>license_url</code> must carry a real assessment</td>
+</tr>
+<tr>
+<td><code>data_access_locations</code></td>
+<td>List[String]</td>
+<td>Yes</td>
+<td>Where the upstream source data is accessed; each entry must contain an http(s) or file URL</td>
+</tr>
+<tr>
+<td><code>data_provision_mechanisms</code></td>
+<td>List[Enum]</td>
+<td>No</td>
+<td><code>file_download</code>, <code>api_endpoint</code>, <code>database_dump</code>, <code>other</code></td>
+</tr>
+<tr>
+<td><code>data_formats</code></td>
+<td>List[Enum]</td>
+<td>No</td>
+<td><code>tsv</code>, <code>csv</code>, <code>xml</code>, <code>json</code>, <code>yaml</code>, <code>obo</code>, <code>protobuff</code>, <code>kgx</code>, <code>mysql</code>, <code>postgresql</code>, <code>sqlite</code>, <code>other</code></td>
+</tr>
+<tr>
+<td><code>data_versioning_and_releases</code></td>
+<td>String</td>
+<td>No</td>
+<td>How the source versions/releases its data</td>
+</tr>
+<tr>
+<td><code>source_status</code></td>
+<td>Enum</td>
+<td>Yes</td>
+<td><code>maintained_regular_updates</code>, <code>maintained_as_needed_updates</code>, <code>not_maintained</code>, <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>additional_notes</code></td>
+<td>List[String]</td>
+<td>No</td>
+<td>Anything not captured by dedicated fields</td>
+</tr>
+</tbody>
+</table>
+<h4 id="rigingest_info"><code>rig.ingest_info</code><a class="headerlink" href="#rigingest_info" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingest_categories</code></td>
+<td>List[Enum]</td>
+<td>No</td>
+<td>Defaults to <code>[translator_knowledge_creator]</code>; also <code>primary_knowledge_provider</code>, <code>aggregation_provider</code>, <code>aggregation_interpreter</code>, <code>supporting_data_provider</code>, <code>ontology_provider</code>, <code>node_property_only_provider</code>, <code>other</code></td>
+</tr>
+<tr>
+<td><code>utility</code></td>
+<td>String</td>
+<td>Yes</td>
+<td>Why the source is ingested and its utility for Translator use cases</td>
+</tr>
+<tr>
+<td><code>scope</code></td>
+<td>String</td>
+<td>Yes</td>
+<td>High-level narrative of what is included and excluded</td>
+</tr>
+<tr>
+<td><code>relevant_files</code></td>
+<td>List[Object]</td>
+<td>No</td>
+<td><strong>Upstream</strong> source files: <code>file_name</code>, <code>location</code> (URL), optional <code>description</code>. Entries are cross-checked against the table configs' source URLs/local files — an entry matching no configured source fails the build</td>
+</tr>
+<tr>
+<td><code>included_content</code></td>
+<td>List[Object]</td>
+<td>No</td>
+<td>Upstream <code>file_name</code> / <code>included_records</code> / optional <code>fields_used</code> entries</td>
+</tr>
+<tr>
+<td><code>filtered_content</code></td>
+<td>List[Object]</td>
+<td>No</td>
+<td><code>file_name</code> / <code>filtered_records</code> / <code>rationale</code> entries</td>
+</tr>
+<tr>
+<td><code>future_considerations</code></td>
+<td>List[Object]</td>
+<td>No</td>
+<td><code>category</code> (<code>edge_content</code>, <code>node_property_content</code>, <code>edge_property_content</code>, <code>other</code>), <code>consideration</code>, optional <code>relevant_files</code></td>
+</tr>
+<tr>
+<td><code>additional_notes</code></td>
+<td>List[String]</td>
+<td>No</td>
+<td>Extra ingest notes</td>
+</tr>
+</tbody>
+</table>
+<p>The generator <strong>prepends</strong> two <code>relevant_files</code> entries and two <code>included_content</code> entries for the generated artifacts (<code>&lt;name&gt;_&lt;version&gt;.nodes.ndjson</code> and <code>.edges.ndjson</code>) with their exact output names, the composed <code>artifact_base_url</code> locations, and observed record counts/fields.</p>
+<h4 id="rigprovenance_info"><code>rig.provenance_info</code><a class="headerlink" href="#rigprovenance_info" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
 <th>Description</th>
 </tr>
 </thead>
@@ -1446,51 +1759,103 @@
 <tr>
 <td><code>contributions</code></td>
 <td>List[String]</td>
-<td>RIG contribution statements for graph provenance. Defaults to <code>["Tablassert: KGX and RIG generation"]</code></td>
+<td>Yes</td>
+<td>Who contributed and how (e.g. <code>"Name - code author, data modeling"</code>)</td>
 </tr>
 <tr>
-<td><code>ui_explanation</code></td>
-<td>String</td>
-<td>RIG explanation applied to generated edge-type metadata. Defaults to a built-in description of how Tablassert transforms source records into Biolink associations</td>
-</tr>
-<tr>
-<td><code>infores</code></td>
-<td>String</td>
-<td>Graph-level <code>infores:</code> CURIE emitted as the primary entry of each edge's <code>sources</code> list (<code>resource_role: primary_knowledge_source</code>) and as the RIG <code>source_info.infores_id</code>. Defaults to <code>infores:&lt;kebab-name&gt;</code> derived from <code>name</code></td>
+<td><code>artifacts</code></td>
+<td>List[String]</td>
+<td>No</td>
+<td>Links/descriptions of external provenance artifacts (tickets, surveys, repos)</td>
 </tr>
 </tbody>
 </table>
-<h3 id="field-details">Field Details<a class="headerlink" href="#field-details" title="Permanent link">&para;</a></h3>
-<p>Notes beyond the tables above:</p>
+<h3 id="what-the-generator-derives">What the generator derives<a class="headerlink" href="#what-the-generator-derives" title="Permanent link">&para;</a></h3>
+<p>Everything under <code>target_info.edge_type_info</code> and <code>target_info.node_type_info</code> is computed from the <strong>final emitted KGX files</strong> after deduplication:</p>
 <ul>
-<li><strong><code>version</code></strong> — common values: <code>"1.0.0"</code>, <code>"UNSTABLE"</code>, <code>"BETA"</code>.</li>
-<li><strong><code>infores</code></strong> — must start with <code>infores:</code>; a name like <code>MULTIOMICS_KG</code> derives <code>infores:multiomics-kg</code>. Set it when the graph's Translator information resource differs from the output name, or a non-PMC/PMID source KG needs a stable manually-curated infores.</li>
-<li><strong><code>tables</code></strong> — paths are absolute or relative to the process CWD (not the graph-config file location; there is no config-relative resolver). See <a href="../table/">Table Configuration</a>.</li>
-<li><strong><code>fullmap</code></strong> — a redb file or a base directory containing it, resolved via <code>fullmap_db_path()</code>. See <a href="../../fullmap/">Fullmap</a> for build commands and schema.</li>
+<li><strong>Edge types</strong> (one per observed predicate): subject/object categories resolved from the emitted nodes, list-valued <code>knowledge_level</code>/<code>agent_type</code>, role-separated <code>primary_knowledge_sources</code> / <code>supporting_data_sources</code> / <code>aggregator_knowledge_sources</code> from each edge's <code>sources</code> retrieval provenance, observed <code>edge_properties</code>, qualifier shapes (enumerated literal values or identifier prefixes for CURIE-valued qualifiers), and <code>source_files</code> taken from the upstream <code>source_record_urls</code> (never the output filenames).</li>
+<li><strong>Node types</strong>: observed categories and the identifier prefixes actually emitted (<code>source_identifier_types</code>); categories with prefix-less identifiers get a factual free-text entry.</li>
+<li><strong>UI explanation</strong>: <code>rig.ui_explanation</code> (when set) followed by the built-in Tablassert explanation — the default text is always present.</li>
 </ul>
+<h3 id="built-in-rig-validation">Built-in RIG validation<a class="headerlink" href="#built-in-rig-validation" title="Permanent link">&para;</a></h3>
+<p>Before the <code>.RIG.yaml</code> is written, the build audits the assembled document and fails with <code>[rig-validation-failed]</code> (writing nothing) when:</p>
+<ul>
+<li>any required field is missing/empty or outside the RIG schema's enums;</li>
+<li>the generated artifact entries are missing or their locations disagree with <code>artifact_base_url</code>;</li>
+<li>edge/node summaries disagree with the observed graph (categories, predicates, KL/AT values, infores CURIEs);</li>
+<li>a configured upstream <code>relevant_files</code> entry matches no table source file or URL.</li>
+</ul>
+<p>This is what makes every emitted RIG PR-worthy by construction: placeholders and silent gaps fail the build instead of shipping.</p>
 <h2 id="minimal-example">Minimal Example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MY_GRAPH</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0.0</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Knowledge graph built from configured tabular source data.</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">infores</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:my-graph</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">tables</span><span class="p">:</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-table.yaml</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/fullmap</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-table.yaml</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/fullmap</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">rig</span><span class="p">:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">source_info</span><span class="p">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">infores_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:my-graph</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">terms_of_use_info</span><span class="p">:</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">terms_of_use_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/terms</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">data_access_locations</span><span class="p">:</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">My source downloads - https://example.org/downloads</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">source_status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">maintained_regular_updates</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">ingest_info</span><span class="p">:</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">utility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Why this content matters for Translator queries.</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">What this graph includes and excludes.</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">  </span><span class="nt">provenance_info</span><span class="p">:</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nt">contributions</span><span class="p">:</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Author</span><span class="nv"> </span><span class="s">Name</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">code</span><span class="nv"> </span><span class="s">author,</span><span class="nv"> </span><span class="s">data</span><span class="nv"> </span><span class="s">modeling&quot;</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">  </span><span class="nt">artifact_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/my-graph</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./published/my-graph</span>
 </code></pre></div>
 <h2 id="multi-table-example">Multi-Table Example<a class="headerlink" href="#multi-table-example" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MULTIOMICS_KG</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UNSTABLE</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multi-omics knowledge graph integrating gene-disease, drug-target, and protein-interaction tables.</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">tables</span><span class="p">:</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/gene-disease-associations.yaml</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/drug-targets.yaml</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/protein-interactions.yaml</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/databases/fullmap</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/gene-disease-associations.yaml</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/drug-targets.yaml</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/protein-interactions.yaml</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/databases/fullmap</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nt">rig</span><span class="p">:</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="nt">source_info</span><span class="p">:</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">infores_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:multiomics-kg</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multiomics supplementary tables</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multi-omics associations mined from curated supplementary tables.</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="nt">citations</span><span class="p">:</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://doi.org/10.3389/fsysb.2025.1544432</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span><span class="nt">terms_of_use_info</span><span class="p">:</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">      </span><span class="nt">terms_of_use_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://pmc.ncbi.nlm.nih.gov/about/copyright/</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">      </span><span class="nt">terms_of_use_description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PubMed Central open-access subset; individual article licenses apply.</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">    </span><span class="nt">data_access_locations</span><span class="p">:</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PubMed Central - https://pmc.ncbi.nlm.nih.gov/</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="w">    </span><span class="nt">data_provision_mechanisms</span><span class="p">:</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">file_download</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="w">    </span><span class="nt">data_formats</span><span class="p">:</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kgx</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="w">    </span><span class="nt">source_status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">maintained_as_needed_updates</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="w">  </span><span class="nt">ingest_info</span><span class="p">:</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="w">    </span><span class="nt">ingest_categories</span><span class="p">:</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">translator_knowledge_creator</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">    </span><span class="nt">utility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Statistical associations supporting hypothesis generation for gene-disease and drug-target queries.</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="w">    </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Gene-disease, drug-target, and protein-interaction assertions from the three configured tables.</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="w">    </span><span class="nt">relevant_files</span><span class="p">:</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">file_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gene-disease.tsv</span>
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a><span class="w">        </span><span class="nt">location</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/gene-disease.tsv</span>
+<a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="w">        </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Gene-disease association table.</span>
+<a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a><span class="w">  </span><span class="nt">ui_explanation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Microbiome-host associations derived from multi-omics supplementary tables.</span>
+<a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a><span class="w">  </span><span class="nt">provenance_info</span><span class="p">:</span>
+<a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a><span class="w">    </span><span class="nt">contributions</span><span class="p">:</span>
+<a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Author</span><span class="nv"> </span><span class="s">Name</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">code</span><span class="nv"> </span><span class="s">author,</span><span class="nv"> </span><span class="s">data</span><span class="nv"> </span><span class="s">modeling&quot;</span>
+<a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a><span class="w">    </span><span class="nt">artifacts</span><span class="p">:</span>
+<a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Ingest</span><span class="nv"> </span><span class="s">ticket:</span><span class="nv"> </span><span class="s">https://github.com/NCATSTranslator/Data-Ingest-Coordination-Working-Group/issues/1&quot;</span>
+<a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a><span class="w">  </span><span class="nt">artifact_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/multiomics-kg</span>
+<a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/published/multiomics-kg</span>
 </code></pre></div>
 <h2 id="processing-flow">Processing Flow<a class="headerlink" href="#processing-flow" title="Permanent link">&para;</a></h2>
 <p>When you run <code>tablassert build-kg graph.yaml</code>:</p>
 <ol>
-<li><strong>Load graph configuration</strong> - Parse YAML, validate schema</li>
+<li><strong>Load graph configuration</strong> - Parse YAML, validate schema (including the full <code>rig:</code> section)</li>
 <li><strong>Load table configurations</strong> - Parse each YAML in <code>tables</code></li>
 <li><strong>Extract sections</strong> - Expand templates into per-section <code>Tcode</code> instances</li>
 <li><strong>Collect instructions (per section):</strong></li>
@@ -1498,27 +1863,31 @@
 <li>Apply transformations and resolve entities using <code>fullmap</code></li>
 <li>Validate with the QC audit when <code>build-kg --qc</code> is passed</li>
 <li><strong>Build subgraphs</strong> - Compile each section's resolved data into a parquet file</li>
-<li><strong>Compile graph</strong> - Aggregate all subgraph parquets and export <code>{name}_{version}.nodes.ndjson</code> / <code>.edges.ndjson</code> / <code>.RIG.yaml</code></li>
+<li><strong>Compile graph</strong> - Aggregate all subgraph parquets, export <code>{name}_{version}.nodes.ndjson</code> / <code>.edges.ndjson</code> into <code>rig.artifact_base_path</code>, summarize the final graph, audit the RIG document, and write <code>{name}_{version}.RIG.yaml</code></li>
 </ol>
 <h2 id="output-files">Output Files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
-<p>Given this configuration:
+<p>Given this configuration:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">EXAMPLE_KG</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.0.0</span>
-</code></pre></div></p>
-<p>Produces:
-- <code>EXAMPLE_KG_2.0.0.nodes.ndjson</code>
-- <code>EXAMPLE_KG_2.0.0.edges.ndjson</code>
-- <code>EXAMPLE_KG_2.0.0.RIG.yaml</code></p>
-<h2 id="real-world-example">Real-World Example<a class="headerlink" href="#real-world-example" title="Permanent link">&para;</a></h2>
-<p>From MOKGV6.yaml:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MULTIOMICS_KG</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UNSTABLE</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multi-omics knowledge graph derived from the ALAMV6 tabular source.</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">tables</span><span class="p">:</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/local_raid1/sgoetz/STORE/CONFIG/TABLASSERT/TABLE/V6/ALAMV6.yaml</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/local_raid1/sgoetz/CODE/FULLMAP/fullmap</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">rig</span><span class="p">:</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./published/example-kg</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="c1"># ...</span>
 </code></pre></div>
-<p>This processes a single table configuration (ALAMV6.yaml) into a knowledge graph named <code>MULTIOMICS_KG_UNSTABLE</code>.</p>
+<p>Produces (inside <code>./published/example-kg/</code>):</p>
+<ul>
+<li><code>EXAMPLE_KG_2.0.0.nodes.ndjson</code></li>
+<li><code>EXAMPLE_KG_2.0.0.edges.ndjson</code></li>
+<li><code>EXAMPLE_KG_2.0.0.RIG.yaml</code></li>
+</ul>
+<h2 id="pr-readiness-for-translator-ingests">PR-readiness for Translator Ingests<a class="headerlink" href="#pr-readiness-for-translator-ingests" title="Permanent link">&para;</a></h2>
+<p>When the generated RIG will back a PR to <a href="https://github.com/NCATSTranslator/translator-ingests"><code>NCATSTranslator/translator-ingests</code></a>:</p>
+<ul>
+<li>Use an <strong>infores that is registered</strong> (or being registered) in the <a href="https://github.com/biolink/information-resource-registry">information resource registry</a>.</li>
+<li>Replace any <code>file://</code> artifact base with the <strong>public https location</strong> where the KGX files will be served.</li>
+<li>Fill <code>terms_of_use_info</code> with the source's actual license/terms assessment, and <code>data_versioning_and_releases</code> with how the upstream source releases data.</li>
+<li>Describe upstream source files in <code>rig.ingest_info.relevant_files</code> / <code>included_content</code> / <code>filtered_content</code> — the generator cross-checks them against your table configs but the semantics are yours.</li>
+<li>Give every edge type's provenance real contributors under <code>rig.provenance_info.contributions</code>.</li>
+</ul>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><a href="../table/">Table Configuration</a></strong> - Learn how to define table transformations</li>
