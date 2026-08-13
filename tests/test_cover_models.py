@@ -10,7 +10,7 @@ never run their after-validators), which the happy-path tests never do.
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -30,16 +30,18 @@ def test_manual_provenance_explicit_none_publications_short_circuits() -> None:
     assert override.publications is None
 
 
-def test_graph_explicit_none_infores_short_circuits() -> None:
-    """``models.py:426`` — ``Graph.infores_curie`` returns ``None`` for an explicit ``None``.
+def test_graph_explicit_none_rig_ui_explanation_short_circuits(rig_factory: Any) -> None:
+    """an explicit ``ui_explanation: null`` stays ``None`` (the composer keeps only the default).
 
-    Passing ``infores=None`` explicitly runs the after-validator's ``None`` branch (line 426),
-    which the default-omission path in ``test_graph_rig_defaults`` never exercises.
+    Passing ``None`` explicitly exercises the optional field's ``None`` branch, which the
+    default-omission path never distinguishes — both must produce the default-only explanation.
     """
-    graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", description="Test graph", infores=None, tables=[Path("./table.yaml")], fullmap=Path("./fullmap")
+    rig_data: dict[str, Any] = rig_factory()
+    rig_data["ui_explanation"] = None
+    graph: Graph = Graph.model_validate(  # pyright: ignore
+        {"name": "TEST", "version": "1.0.0", "tables": ["./table.yaml"], "fullmap": "./fullmap", "rig": rig_data}
     )
-    assert graph.infores is None
+    assert graph.rig.ui_explanation is None
 
 
 def test_build_str_enum_raises_on_duplicate_member_name() -> None:

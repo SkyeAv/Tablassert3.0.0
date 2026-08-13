@@ -110,7 +110,7 @@ def test_study_final_ndjson_exits_on_violations(monkeypatch: Any, tmp_path: Path
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(study, "study_kgx", lambda *args: [study.StudyViolation("isolated-nodes", "nodes", 1, ["HGNC:7"])])
     with pytest.raises(SystemExit) as excinfo:
-        cli.study_final_ndjson("g", "1")
+        cli.study_final_ndjson("g", "1", tmp_path)
     assert excinfo.value.code == 1
     assert "no edge" in capsys.readouterr().err
 
@@ -119,4 +119,4 @@ def test_study_final_ndjson_passes_clean(monkeypatch: Any, tmp_path: Path) -> No
     """The --qc build stage returns normally when every assertion passes."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(study, "study_kgx", lambda *args: [])
-    cli.study_final_ndjson("g", "1")
+    cli.study_final_ndjson("g", "1", tmp_path)

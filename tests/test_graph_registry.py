@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from tablassert.agent import ConfigRecord, SupervisorState, save_state
-from tablassert.graph_registry import GRAPH_DESCRIPTION, GRAPH_NAME, GRAPH_VERSION, rebuild_graph, register_build
+from tablassert.graph_registry import GRAPH_NAME, GRAPH_VERSION, _registry_rig, rebuild_graph, register_build
 from tablassert.models import Graph
 
 
@@ -54,7 +54,7 @@ def test_register_build_creates_fresh_registry(tmp_path: Path) -> None:
     data: dict[str, Any] = _read_registry(state_dir)
     assert data["name"] == GRAPH_NAME
     assert data["version"] == GRAPH_VERSION
-    assert data["description"] == GRAPH_DESCRIPTION
+    assert data["rig"]["source_info"]["infores_id"] == "infores:tablassert-agent"
     assert data["tables"] == [str(config.resolve())]
     assert Path(data["tables"][0]).is_absolute()
     assert data["fullmap"] == str(fullmap.resolve())
@@ -94,9 +94,9 @@ def test_register_build_preserves_unrelated_entries(tmp_path: Path) -> None:
     seed: dict[str, Any] = {
         "name": GRAPH_NAME,
         "version": GRAPH_VERSION,
-        "description": GRAPH_DESCRIPTION,
         "tables": [str(foreign.resolve())],
         "fullmap": str(fullmap.resolve()),
+        "rig": _registry_rig(state_dir),
     }
     (state_dir / "graph.yaml").write_text(yaml.safe_dump(seed, sort_keys=False))
 
@@ -243,9 +243,9 @@ def test_rebuild_graph_prunes_and_excludes(tmp_path: Path) -> None:
     seed: dict[str, Any] = {
         "name": GRAPH_NAME,
         "version": GRAPH_VERSION,
-        "description": GRAPH_DESCRIPTION,
         "tables": [str(stale.resolve())],
         "fullmap": str(fullmap.resolve()),
+        "rig": _registry_rig(state_dir),
     }
     (state_dir / "graph.yaml").write_text(yaml.safe_dump(seed, sort_keys=False))
 

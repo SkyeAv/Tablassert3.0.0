@@ -13,7 +13,6 @@ from tablassert.enums import Comparisons, EncodingMethods, Repositories
 from tablassert.errors import BiolinkRelocationWarning
 from tablassert.ingests import from_yaml, to_sections
 from tablassert.models import (
-    DEFAULT_RIG_UI_EXPLANATION,
     Annotation,
     Encoding,
     Excel,
@@ -45,23 +44,44 @@ def test_section_from_minimal_yaml(fixtures_path: Path) -> None:
     assert section.provenance.repo == "PMC"
 
 
-def test_graph_rig_defaults() -> None:
-    """graph RIG defaults are declared in the model."""
+def test_graph_rig_section_is_required_and_defaults_apply(rig_factory: Any) -> None:
+    """the required rig: section validates, with RIG-schema defaults where honest."""
     graph: Graph = Graph(  # pyright: ignore
-        name="TEST", version="1.0.0", description="Test graph", tables=[Path("./table.yaml")], fullmap=Path("./fullmap")
+        name="TEST", version="1.0.0", tables=[Path("./table.yaml")], fullmap=Path("./fullmap"), rig=rig_factory()
     )
-    assert graph.contributions == ["Tablassert: KGX and RIG generation"]
-    assert graph.ui_explanation == DEFAULT_RIG_UI_EXPLANATION
+    assert graph.infores_id == "infores:test-kg"
+    # Default ingest category reflects what Tablassert builds: knowledge from tables.
+    assert graph.rig.ingest_info.ingest_categories == ["translator_knowledge_creator"]
+    # The UI prefix is optional; compose_ui_explanation always keeps the default text.
+    assert graph.rig.ui_explanation is None
 
 
-def test_graph_rejects_removed_enrichment_databases() -> None:
+def test_graph_rejects_missing_rig_section() -> None:
+    """a graph without a rig: section cannot build a PR-worthy RIG and is rejected."""
+    data: dict[str, Any] = {"name": "TEST", "version": "1.0.0", "tables": [Path("./table.yaml")], "fullmap": Path("./fullmap")}
+    with pytest.raises(ValidationError):
+        Graph.model_validate(data)
+
+
+def test_graph_rejects_legacy_top_level_rig_keys(rig_factory: Any) -> None:
+    """old top-level RIG fields are rejected with a migration pointer, never silently mapped."""
+    base: dict[str, Any] = {"name": "TEST", "version": "1.0.0", "tables": [Path("./table.yaml")], "fullmap": Path("./fullmap"), "rig": rig_factory()}
+    for legacy_key in ("description", "contributions", "ui_explanation", "infores"):
+        data: dict[str, Any] = {**base, legacy_key: "legacy value"}
+        with pytest.raises(ValidationError) as exc_info:
+            Graph.model_validate(data)
+        assert "rig-legacy-keys" in str(exc_info.value)
+        assert "rig:" in str(exc_info.value)
+
+
+def test_graph_rejects_removed_enrichment_databases(rig_factory: Any) -> None:
     """graph rejects removed enrichment databases."""
     data: dict[str, Any] = {
         "name": "TEST",
         "version": "1.0.0",
-        "description": "Test graph",
         "tables": [Path("./table.yaml")],
         "fullmap": Path("./fullmap"),
+        "rig": rig_factory(),
         "pubmed_db": Path("./PubMed.db"),
         "pmc_db": Path("./PMCSuppCaptions.db"),
     }
@@ -69,14 +89,14 @@ def test_graph_rejects_removed_enrichment_databases() -> None:
         Graph.model_validate(data)
 
 
-def test_graph_rejects_qc_and_log_keys() -> None:
+def test_graph_rejects_qc_and_log_keys(rig_factory: Any) -> None:
     """graph rejects QC and log keys (moved to `build-kg` CLI flags)."""
     data: dict[str, Any] = {
         "name": "TEST",
         "version": "1.0.0",
-        "description": "Test graph",
         "tables": [Path("./table.yaml")],
         "fullmap": Path("./fullmap"),
+        "rig": rig_factory(),
         "qc": True,
         "log": True,
     }
@@ -401,20 +421,17 @@ def test_provenance_override_replaces_publication_requirement() -> None:
     assert "provenance-publication-and-override" in str(exc_info.value)
 
 
-def test_graph_infores_validates_infores_prefix() -> None:
-    """graph-level infores must be an infores CURIE when provided."""
+def test_graph_rig_infores_validates_infores_prefix(rig_factory: Any) -> None:
+    """rig.source_info.infores_id must be an infores CURIE."""
     graph = Graph(  # pyright: ignore
-        name="TEST",
-        version="1.0.0",
-        description="Test graph",
-        infores="infores:external-kg",
-        tables=[Path("./table.yaml")],
-        fullmap=Path("./fullmap"),
+        name="TEST", version="1.0.0", tables=[Path("./table.yaml")], fullmap=Path("./fullmap"), rig=rig_factory(infores_id="infores:external-kg")
     )
-    assert graph.infores == "infores:external-kg"
+    assert graph.infores_id == "infores:external-kg"
     with pytest.raises(ValidationError) as exc_info:
-        Graph(name="TEST", version="1.0.0", description="Test graph", infores="external-kg", tables=[Path("./table.yaml")], fullmap=Path("./fullmap"))  # pyright: ignore
-    assert "graph-bad-infores" in str(exc_info.value)
+        Graph(  # pyright: ignore
+            name="TEST", version="1.0.0", tables=[Path("./table.yaml")], fullmap=Path("./fullmap"), rig=rig_factory(infores_id="external-kg")
+        )
+    assert "rig-bad-infores" in str(exc_info.value)
 
 
 def test_annotation_valid() -> None:

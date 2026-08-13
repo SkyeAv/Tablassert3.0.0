@@ -164,10 +164,25 @@ directory. Tablassert resolves it via `fullmap_db_path()`:
 # graph-config.yaml
 name: my-graph
 version: "1.0"
-description: Example graph backed by a fullmap entity-resolution database.
 fullmap: /path/to/fullmap/   # directory containing data/fullmap.redb, or a direct .redb file
 tables:
   - ./TABLE/my-table.yaml
+rig:
+  source_info:
+    infores_id: infores:my-graph
+    terms_of_use_info:
+      terms_of_use_url: https://example.org/terms
+    data_access_locations:
+      - My source downloads - https://example.org/downloads
+    source_status: unknown
+  ingest_info:
+    utility: Example graph backed by a fullmap entity-resolution database.
+    scope: Example scope for the graph.
+  provenance_info:
+    contributions:
+      - "Author Name - code author"
+  artifact_base_url: https://example.org/my-graph
+  artifact_base_path: ./published/my-graph
 ```
 
 ## Programmatic Usage

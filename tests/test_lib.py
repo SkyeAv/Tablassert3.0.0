@@ -42,6 +42,7 @@ from tablassert.lib import (
     strip_nulls,
     study_size_target,
 )
+from tablassert.models import DEFAULT_RIG_UI_EXPLANATION
 
 
 def fake_fullmap_row(term: str, curie: str, name: str, category: str, taxon: int = 0) -> dict[str, object]:
@@ -508,7 +509,7 @@ def test_tcode_collect_nests_upstream_resource_ids_in_sources(fixtures_path: Pat
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG"}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG", "infores": "infores:graph-kg"}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
@@ -568,12 +569,12 @@ def test_derive_species_context_coalesces_taxon() -> None:
     assert result == ["NCBITaxon:9606", "NCBITaxon:9606", None]
 
 
-def test_tcode_collect_emits_primary_knowledge_source_when_named(fixtures_path: Path) -> None:
-    """tcode collect emits primary_knowledge_source op when graph name is provided."""
+def test_tcode_collect_emits_primary_knowledge_source_from_explicit_infores(fixtures_path: Path) -> None:
+    """tcode collect emits the primary_knowledge_source op from the explicit graph infores."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "MULTIOMICS_KG"}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "MULTIOMICS_KG", "infores": "infores:multiomics-kg"}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
@@ -585,8 +586,8 @@ def test_tcode_collect_emits_primary_knowledge_source_when_named(fixtures_path: 
     assert pks_ops[0][1] == ("primary_knowledge_source", "infores:multiomics-kg")
 
 
-def test_tcode_collect_omits_primary_knowledge_source_when_unnamed(fixtures_path: Path) -> None:
-    """tcode collect omits primary_knowledge_source op when graph name is absent (validate path)."""
+def test_tcode_collect_omits_primary_knowledge_source_without_infores(fixtures_path: Path) -> None:
+    """tcode collect omits primary_knowledge_source when no infores is configured (validate path)."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -632,7 +633,7 @@ def test_tcode_collect_manual_provenance_overrides_auto_sources(fixtures_path: P
 
 
 def test_tcode_collect_uses_graph_infores_when_no_section_override(fixtures_path: Path) -> None:
-    """graph infores overrides the derived infores(name) primary knowledge source."""
+    """the explicit graph infores is the edge primary knowledge source verbatim."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -650,7 +651,7 @@ def test_tcode_collect_nests_source_record_urls_in_sources(fixtures_path: Path) 
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG"}
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG", "infores": "infores:graph-kg"}
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
@@ -1040,10 +1041,18 @@ def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
     assert rows[1]["effect_size"] == "0.42"
 
 
-def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
-    """compile_graph emits edges and nodes after float formatting config removal."""
+def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
+    """compile_graph emits edges and nodes plus a schema-shaped, audited RIG."""
     monkeypatch.chdir(tmp_path)
     sub: Path = tmp_path / "sub.parquet"
+    primary: dict[str, Any] = {
+        "id": "infores:smoke",
+        "resource_id": "infores:smoke",
+        "resource_role": "primary_knowledge_source",
+        "upstream_resource_ids": ["infores:pubmed-central"],
+        "source_record_urls": ["https://pmc.ncbi.nlm.nih.gov/bin/table1.xlsx"],
+    }
+    supporting: dict[str, Any] = {"id": "infores:pubmed-central", "resource_id": "infores:pubmed-central", "resource_role": "supporting_data_source"}
     pl.DataFrame(
         {
             "subject": ["A", "B"],
@@ -1060,45 +1069,66 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path) -> None:
             "object_source": [None, None],
             "object_source_version": [None, None],
             "object_pre_resolution": ["X", "Y"],
-            "predicate": ["r", "r"],
-            "upstream_resource_ids": [["infores:pubmed-central"], ["infores:pubmed-central"]],
+            "predicate": ["biolink:related_to", "biolink:related_to"],
             "knowledge_level": ["knowledge_assertion", "knowledge_assertion"],
             "agent_type": ["manual_agent", "manual_agent"],
-            "primary_knowledge_source": [["infores:smoke"], ["infores:smoke"]],
+            "primary_knowledge_source": ["infores:smoke", "infores:smoke"],
+            "sources": [[primary, supporting], [primary, supporting]],
             "p_value": ["1.0000e-08", "5.0000e-02"],
         }
     ).write_parquet(sub)
-    lib.compile_graph([sub], "smoke", "1.0.0", "Smoke graph", None, "Custom UI explanation", None)
+    rig = rig_factory(tmp_path, infores_id="infores:smoke", source_info={"description": "Smoke graph"}, ui_explanation="Custom UI explanation.")
+    lib.compile_graph([sub], "smoke", "1.0.0", rig)
     edges: list[str] = (tmp_path / "smoke_1.0.0.edges.ndjson").read_text().strip().splitlines()
     nodes: list[str] = (tmp_path / "smoke_1.0.0.nodes.ndjson").read_text().strip().splitlines()
-    rig: dict[str, Any] = lib.strip_nulls(from_yaml(tmp_path / "smoke_1.0.0.RIG.yaml"))
+    rig_doc: dict[str, Any] = lib.strip_nulls(from_yaml(tmp_path / "smoke_1.0.0.RIG.yaml"))
     assert len(edges) == 2
     assert all('"id"' in line for line in edges)
     flat: str = "\n".join(edges)
-    assert '"p_value":"1.0000e-08"' in flat
+    assert '"p_value":1e-8' in flat or '"p_value":"1.0000e-08"' in flat
     # Retrieval provenance is nested under `sources`, never flat on the edge.
-    assert '"upstream_resource_ids":["infores:pubmed-central"]' not in flat
+    assert '"upstream_resource_ids":["infores:pubmed-central"]' in flat  # inside the sources struct
     # internal pre-resolution snapshot is stripped from final edges
     assert "_pre_resolution" not in flat
     assert len(nodes) >= 1
-    assert rig["name"] == "smoke v1.0.0"
-    assert rig["source_info"]["infores_id"] == "infores:smoke"  # pyright: ignore
-    assert rig["source_info"]["description"] == "Smoke graph"  # pyright: ignore
-    assert rig["source_info"]["data_access_locations"] == ["smoke_1.0.0.nodes.ndjson", "smoke_1.0.0.edges.ndjson"]  # pyright: ignore
-    assert rig["ingest_info"]["relevant_files"] == ["smoke_1.0.0.nodes.ndjson", "smoke_1.0.0.edges.ndjson"]  # pyright: ignore
-    assert rig["provenance_info"]["contributions"] == ["Tablassert: KGX and RIG generation"]  # pyright: ignore
-    edge_type: dict[str, Any] = rig["target_info"]["edge_type_info"][0]  # pyright: ignore
+
+    # The RIG document: config semantics verbatim, mechanics derived from the build.
+    assert rig_doc["name"] == "smoke v1.0.0 Resource Ingest Guide"
+    assert rig_doc["source_info"]["infores_id"] == "infores:smoke"  # pyright: ignore
+    assert rig_doc["source_info"]["description"] == "Smoke graph"  # pyright: ignore
+    assert rig_doc["source_info"]["data_access_locations"] == ["Test source - https://example.org/data"]  # pyright: ignore
+    assert rig_doc["provenance_info"]["contributions"] == ["Test author - code author"]  # pyright: ignore
+
+    # Generated artifact entries carry the exact output names at the configured URL base.
+    relevant: list[dict[str, Any]] = rig_doc["ingest_info"]["relevant_files"]  # pyright: ignore
+    by_name: dict[str, dict[str, Any]] = {entry["file_name"]: entry for entry in relevant}
+    assert by_name["smoke_1.0.0.nodes.ndjson"]["location"] == "https://example.org/smoke/smoke_1.0.0.nodes.ndjson"
+    assert by_name["smoke_1.0.0.edges.ndjson"]["location"] == "https://example.org/smoke/smoke_1.0.0.edges.ndjson"
+    included: list[dict[str, Any]] = rig_doc["ingest_info"]["included_content"]  # pyright: ignore
+    assert {entry["file_name"] for entry in included} == {"smoke_1.0.0.nodes.ndjson", "smoke_1.0.0.edges.ndjson"}
+    assert all(entry["included_records"] for entry in included)
+
+    # Edge summaries come from the FINAL graph: role-separated sources, list KL/AT,
+    # observed properties, upstream source files (not the output NDJSON names).
+    edge_type: dict[str, Any] = rig_doc["target_info"]["edge_type_info"][0]  # pyright: ignore
     assert edge_type["subject_categories"] == ["biolink:gene"]
-    assert edge_type["predicates"] == ["r"]
+    assert edge_type["predicates"] == ["biolink:related_to"]
     assert edge_type["object_categories"] == ["biolink:disease"]
-    assert edge_type["primary_knowledge_sources"] == ["infores:pubmed-central", "infores:smoke"]
-    assert edge_type["ui_explanation"] == "Custom UI explanation"
-    node_types: list[dict[str, Any]] = rig["target_info"]["node_type_info"]  # pyright: ignore
+    assert edge_type["knowledge_level"] == ["knowledge_assertion"]
+    assert edge_type["agent_type"] == ["manual_agent"]
+    assert edge_type["primary_knowledge_sources"] == ["infores:smoke"]
+    assert edge_type["supporting_data_sources"] == ["infores:pubmed-central"]
+    assert "biolink:p_value" in edge_type["edge_properties"]
+    assert edge_type["source_files"] == ["table1.xlsx"]
+    # Custom UI prefix first, built-in explanation always appended.
+    assert edge_type["ui_explanation"].startswith("Custom UI explanation. ")
+    assert DEFAULT_RIG_UI_EXPLANATION in edge_type["ui_explanation"]
+    node_types: list[dict[str, Any]] = rig_doc["target_info"]["node_type_info"]  # pyright: ignore
     assert {x["node_category"] for x in node_types} == {"biolink:gene", "biolink:disease"}
     assert any(x["source_identifier_types"] == ["HGNC"] for x in node_types)
 
 
-def test_compile_graph_opens_ndjson_outputs_as_utf8(monkeypatch: Any, tmp_path: Path) -> None:
+def test_compile_graph_opens_ndjson_outputs_as_utf8(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """compile_graph passes UTF-8 file handles to Polars NDJSON writers."""
     monkeypatch.chdir(tmp_path)
     original_open: Any = Path.open
@@ -1130,18 +1160,31 @@ def test_compile_graph_opens_ndjson_outputs_as_utf8(monkeypatch: Any, tmp_path: 
             "object_source": [None],
             "object_source_version": [None],
             "object_pre_resolution": ["Xräy"],
-            "predicate": ["r"],
+            "predicate": ["biolink:related_to"],
+            "knowledge_level": ["knowledge_assertion"],
+            "agent_type": ["manual_agent"],
+            "primary_knowledge_source": ["infores:utf8-kg"],
+            "sources": [
+                [
+                    {
+                        "id": "infores:utf8-kg",
+                        "resource_id": "infores:utf8-kg",
+                        "resource_role": "primary_knowledge_source",
+                        "source_record_urls": ["https://example.org/utf8.tsv"],
+                    }
+                ]
+            ],
         }
     ).write_parquet(sub)
 
-    lib.compile_graph([sub], "utf8", "1.0.0")
+    lib.compile_graph([sub], "utf8", "1.0.0", rig_factory(tmp_path, infores_id="infores:utf8-kg"))
 
     assert append_encodings == [("utf8_1.0.0.nodes.ndjson.tmp", "utf-8"), ("utf8_1.0.0.edges.ndjson.tmp", "utf-8")]
     assert "Alpha-é" in (tmp_path / "utf8_1.0.0.nodes.ndjson").read_text(encoding="utf-8")
     assert "A-é" in (tmp_path / "utf8_1.0.0.edges.ndjson").read_text(encoding="utf-8")
 
 
-def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatch: Any, tmp_path: Path) -> None:
+def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """compile_graph threads on_phase/on_subgraph: ordered phases, one tick per subgraph, output unchanged."""
     monkeypatch.chdir(tmp_path)
 
@@ -1162,7 +1205,20 @@ def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatc
                 "object_source": [None],
                 "object_source_version": [None],
                 "object_pre_resolution": [obj],
-                "predicate": ["r"],
+                "predicate": ["biolink:related_to"],
+                "knowledge_level": ["knowledge_assertion"],
+                "agent_type": ["manual_agent"],
+                "primary_knowledge_source": ["infores:cb-kg"],
+                "sources": [
+                    [
+                        {
+                            "id": "infores:cb-kg",
+                            "resource_id": "infores:cb-kg",
+                            "resource_role": "primary_knowledge_source",
+                            "source_record_urls": ["https://example.org/cb.tsv"],
+                        }
+                    ]
+                ],
             }
         ).write_parquet(p)
 
@@ -1173,7 +1229,14 @@ def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatc
 
     phases: list[str] = []
     ticks: list[None] = []
-    lib.compile_graph([sub_a, sub_b], "cb", "1.0.0", on_phase=phases.append, on_subgraph=lambda: ticks.append(None))
+    lib.compile_graph(
+        [sub_a, sub_b],
+        "cb",
+        "1.0.0",
+        rig_factory(tmp_path, infores_id="infores:cb-kg"),
+        on_phase=phases.append,
+        on_subgraph=lambda: ticks.append(None),
+    )
 
     # scan/normalize fire once per subgraph, then the shared write phases in order.
     assert phases == ["scan", "normalize", "scan", "normalize", "write-nodes", "write-edges", "dedup", "rig"]
@@ -1181,12 +1244,12 @@ def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatc
     assert len(ticks) == 2
 
     # Callbacks are pure observation: KGX output is byte-identical to a no-callback run.
-    lib.compile_graph([sub_a, sub_b], "cb2", "1.0.0")
+    lib.compile_graph([sub_a, sub_b], "cb2", "1.0.0", rig_factory(tmp_path, infores_id="infores:cb-kg"))
     for stem in ("edges.ndjson", "nodes.ndjson"):
         assert (tmp_path / f"cb_1.0.0.{stem}").read_bytes() == (tmp_path / f"cb2_1.0.0.{stem}").read_bytes()
 
 
-def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: Any, tmp_path: Path) -> None:
+def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """compile_graph keeps qualifier and publication columns on edges, out of nodes."""
     monkeypatch.chdir(tmp_path)
     sub: Path = tmp_path / "sub.parquet"
@@ -1200,13 +1263,29 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
             "subject_source_version": [None],
             "subject_pre_resolution": ["A"],
             "object": ["X"],
-            "predicate": ["r"],
+            "object_name": ["Xray"],
+            "object_category": ["disease"],
+            "object_pre_resolution": ["X"],
+            "predicate": ["biolink:related_to"],
+            "knowledge_level": ["knowledge_assertion"],
+            "agent_type": ["manual_agent"],
+            "primary_knowledge_source": ["infores:qual-kg"],
+            "sources": [
+                [
+                    {
+                        "id": "infores:qual-kg",
+                        "resource_id": "infores:qual-kg",
+                        "resource_role": "primary_knowledge_source",
+                        "source_record_urls": ["https://example.org/qual.tsv"],
+                    }
+                ]
+            ],
             "disease_context_qualifier": ["MONDO:0005148"],
             "disease_context_qualifier_pre_resolution": ["MONDO:0005148"],
             "publications": [["PMID:123"]],
         }
     ).write_parquet(sub)
-    lib.compile_graph([sub], "qual", "1.0.0")
+    lib.compile_graph([sub], "qual", "1.0.0", rig_factory(tmp_path, infores_id="infores:qual-kg"))
     edges: str = (tmp_path / "qual_1.0.0.edges.ndjson").read_text()
     nodes: str = (tmp_path / "qual_1.0.0.nodes.ndjson").read_text()
     # qualifier and publications stay on edges
@@ -2182,22 +2261,39 @@ def test_allowed_edge_fields_tracks_supporting_study_slots_of_installed_model() 
         assert (col in ALLOWED_EDGE_FIELDS) is (col not in UNSATISFIABLE_EDGE_FIELDS), col
 
 
-def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatch: Any, tmp_path: Path) -> None:
+def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """compile_graph folds non allow list annotation columns into supporting_text on edges."""
     monkeypatch.chdir(tmp_path)
     sub: Path = tmp_path / "sub.parquet"
     pl.DataFrame(
         {
             "subject": ["A"],
+            "subject_category": ["gene"],
+            "subject_pre_resolution": ["A"],
             "object": ["X"],
-            "predicate": ["related_to"],
+            "object_category": ["disease"],
+            "object_pre_resolution": ["X"],
+            "predicate": ["biolink:related_to"],
+            "knowledge_level": ["knowledge_assertion"],
+            "agent_type": ["manual_agent"],
+            "primary_knowledge_source": ["infores:fold-kg"],
+            "sources": [
+                [
+                    {
+                        "id": "infores:fold-kg",
+                        "resource_id": "infores:fold-kg",
+                        "resource_role": "primary_knowledge_source",
+                        "source_record_urls": ["https://example.org/fold.tsv"],
+                    }
+                ]
+            ],
             "miscellaneous_notes": ["see smith et al"],
             "extracted_from_row_number": ["7"],
             "p_value": [0.01],
             "publications": [["PMID:1"]],
         }
     ).write_parquet(sub)
-    lib.compile_graph([sub], "fold", "1.0.0")
+    lib.compile_graph([sub], "fold", "1.0.0", rig_factory(tmp_path, infores_id="infores:fold-kg"))
     edges: str = (tmp_path / "fold_1.0.0.edges.ndjson").read_text()
     # folded columns no longer appear as top level JSON keys on the edge object
     assert '"miscellaneous_notes":' not in edges
@@ -2236,7 +2332,7 @@ def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Pa
     )
     data: Any = from_yaml(table_path)
     store: Path = tmp_path / "value_nodes.parquet"
-    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "TEST_KG"})  # pyright: ignore
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "TEST_KG", "infores": "infores:test-kg"})  # pyright: ignore
 
     result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
     result: dict[str, Any] = pl.read_parquet(result_path).row(0, named=True)
@@ -2369,7 +2465,7 @@ def test_compile_subgraph_e2e_head_caps_rows_to_five(monkeypatch: Any, tmp_path:
     assert diseases <= {f"disease{i}" for i in range(1, 9)}
 
 
-def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypatch: Any, tmp_path: Path) -> None:
+def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """auto-derived species context survives graph export as an edge attribute without creating nodes."""
     monkeypatch.chdir(tmp_path)
     rows: dict[str, list[dict[str, object]]] = {
@@ -2393,7 +2489,7 @@ def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypat
     )
     data: Any = from_yaml(table_path)
     store: Path = tmp_path / "qualifier.parquet"
-    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "QUAL_KG"})  # pyright: ignore
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "QUAL_KG", "infores": "infores:qual-kg"})  # pyright: ignore
 
     subgraph: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
     # `biolink:Association` has no species_context_qualifier slot, so the value is
@@ -2407,7 +2503,7 @@ def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypat
         ]
     )
 
-    lib.compile_graph([subgraph], "qual", "1.0.0")
+    lib.compile_graph([subgraph], "qual", "1.0.0", rig_factory(tmp_path, infores_id="infores:qual-kg"))
     edges: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.edges.ndjson").read_text().splitlines()]
     nodes: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.nodes.ndjson").read_text().splitlines()]
 
@@ -2420,7 +2516,7 @@ def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypat
     assert "NCBITaxon:9606" not in {node["id"] for node in nodes}
 
 
-def test_node_output_reflects_disease_taxon(monkeypatch: Any, tmp_path: Path) -> None:
+def test_node_output_reflects_disease_taxon(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """Taxon-bearing disease nodes surface their taxon in KGX nodes NDJSON."""
     monkeypatch.chdir(tmp_path)
     rows: dict[str, list[dict[str, object]]] = {
@@ -2439,17 +2535,19 @@ def test_node_output_reflects_disease_taxon(monkeypatch: Any, tmp_path: Path) ->
     )
     data: Any = from_yaml(table_path)
     store: Path = tmp_path / "disease_taxon_node.parquet"
-    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "DISEASE_TAXON_KG"})  # pyright: ignore
+    tcode_model: Tcode = Tcode.model_validate(
+        {**data, "config": table_path, "store": store, "name": "DISEASE_TAXON_KG", "infores": "infores:disease-taxon-kg"}
+    )  # pyright: ignore
 
     subgraph: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
-    lib.compile_graph([subgraph], "disease_taxon", "1.0.0")
+    lib.compile_graph([subgraph], "disease_taxon", "1.0.0", rig_factory(tmp_path, infores_id="infores:disease-taxon-kg"))
     nodes: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "disease_taxon_1.0.0.nodes.ndjson").read_text().splitlines()]
 
     disease_node: dict[str, Any] = next(node for node in nodes if node["id"] == "MONDO:50")
     assert disease_node["in_taxon"] == ["NCBITaxon:9606"]
 
 
-def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, tmp_path: Path) -> None:
+def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """build_pipeline runs all six stages and emits KGX/RIG using a monkeypatched fullmap DB."""
     from tablassert.ingests import to_yaml
 
@@ -2478,9 +2576,9 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
         {
             "name": "PIPELINE_KG",
             "version": "0.1.0",
-            "description": "Pipeline smoke graph.",
             "tables": [str(table_path)],
             "fullmap": str(tmp_path / "fullmap.redb"),
+            "rig": rig_factory(tmp_path, infores_id="infores:pipeline-kg", source_info={"description": "Pipeline smoke graph."}),
         },
     )
     progress: DummyProgress = DummyProgress()
@@ -2505,9 +2603,18 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
     assert primary_source["upstream_resource_ids"] == ["infores:pubmed-central"]
     assert edge_rows[0]["primary_knowledge_source"] == "infores:pipeline-kg"
     assert {row["id"] for row in node_rows} == {"HGNC:1100", "HGNC:11998"}
-    assert rig["name"] == "PIPELINE_KG v0.1.0"
+    assert rig["name"] == "PIPELINE_KG v0.1.0 Resource Ingest Guide"
+    assert rig["source_info"]["infores_id"] == "infores:pipeline-kg"  # pyright: ignore
+    # Generated artifacts are documented at the configured URL base.
+    locations: list[str] = [entry["location"] for entry in rig["ingest_info"]["relevant_files"]]  # pyright: ignore
+    assert "https://example.org/pipeline-kg/PIPELINE_KG_0.1.0.nodes.ndjson" in locations
+    assert "https://example.org/pipeline-kg/PIPELINE_KG_0.1.0.edges.ndjson" in locations
     edge_type: dict[str, Any] = rig["target_info"]["edge_type_info"][0]  # pyright: ignore
-    assert edge_type["primary_knowledge_sources"] == ["infores:pipeline-kg", "infores:pubmed-central"]
+    # Role separation: the graph infores is the primary source; PMC is supporting data.
+    assert edge_type["primary_knowledge_sources"] == ["infores:pipeline-kg"]
+    assert edge_type["supporting_data_sources"] == ["infores:pubmed-central"]
+    # Source files name the upstream table URL, not the generated NDJSON outputs.
+    assert edge_type["source_files"] == ["pipeline_table.tsv"]
 
     # The gate: every emitted record must construct as its own Biolink class. Without
     # this, a build can (and previously did) ship files where no record validated.
@@ -2517,7 +2624,7 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
     assert report["nodes"]["valid"] == report["nodes"]["total"] == 2
 
 
-def test_build_pipeline_head_mode_isolates_store_and_caps_rows(monkeypatch: Any, tmp_path: Path) -> None:
+def test_build_pipeline_head_mode_isolates_store_and_caps_rows(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
     """--head caches subgraphs to .head.parquet (never clobbering a full build) and caps to 5 rows."""
     from tablassert.ingests import to_yaml
 
@@ -2546,9 +2653,9 @@ def test_build_pipeline_head_mode_isolates_store_and_caps_rows(monkeypatch: Any,
         {
             "name": "HEAD_KG",
             "version": "0.1.0",
-            "description": "Head preview graph.",
             "tables": [str(table_path)],
             "fullmap": str(tmp_path / "fullmap.redb"),
+            "rig": rig_factory(tmp_path, infores_id="infores:head-kg", source_info={"description": "Head preview graph."}),
         },
     )
     progress: DummyProgress = DummyProgress()

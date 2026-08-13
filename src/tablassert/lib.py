@@ -40,7 +40,7 @@ from tablassert.coerce import (
 from tablassert.enums import EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
-from tablassert.models import Encoding, NodeEncoding, Qualifier, Section
+from tablassert.models import Encoding, NodeEncoding, Qualifier, RIGConfig, Section
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
 from tablassert.rig import (
@@ -1083,7 +1083,10 @@ class Tcode(Section):
             then the trim/format/write finalize ops.
         """
         override = self.provenance.override
-        primary_knowledge_source: str | None = self.infores or (infores(self.name) if self.name else None)
+        # The edge primary knowledge source is ALWAYS the explicit graph-level infores
+        # (rig.source_info.infores_id); there is no implicit derivation from the graph
+        # name, so a RIG and its edges can never disagree about the source identity.
+        primary_knowledge_source: str | None = self.infores
         upstream_ids = override.upstream_resource_ids if override else upstream_resource_ids(self.provenance.repo)
         knowledge_level = override.knowledge_level if override else self.provenance.knowledge_level
         agent_type = override.agent_type if override else self.provenance.agent_type
@@ -1385,13 +1388,8 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _collect_subframes(
-    subgraphs: list[Path],
-    edges_tmp: Path,
-    ui_explanation: str | None,
-    on_phase: Callable[[str], None] | None = None,
-    on_subgraph: Callable[[], None] | None = None,
-    infores_id: str | None = None,
-) -> tuple[list[pl.LazyFrame], list[pl.LazyFrame], list[dict[str, object]]]:
+    subgraphs: list[Path], on_phase: Callable[[str], None] | None = None, on_subgraph: Callable[[], None] | None = None, infores_id: str | None = None
+) -> tuple[list[pl.LazyFrame], list[pl.LazyFrame]]:
     """Scan and normalize subgraph parquets into node/edge subframes.
 
     Covers the ``scan`` and ``normalize`` phases of ``compile_graph``; the
@@ -1400,27 +1398,24 @@ def _collect_subframes(
 
     Args:
         subgraphs: Section parquet paths to merge.
-        edges_tmp: Working ``.edges.ndjson.tmp`` path (its de-suffixed name is
-            recorded under edge type info ``source_files``).
-        ui_explanation: Optional UI explanation for the RIG edge type info.
         on_phase: Optional callback fired with ``"scan"`` then ``"normalize"``
             for each subgraph, used to drive progress UX.
         on_subgraph: Optional callback fired once after each subgraph is
             processed, used to tick the progress bar.
+        infores_id: Graph-level infores CURIE recorded as node ``provided_by``.
 
     Returns:
-        Tuple of ``(subnodes, subedges, edge_type_info)``: per-section node and
-        edge LazyFrames plus the accumulated RIG edge type summaries.
+        Tuple of ``(subnodes, subedges)``: per-section node and edge
+        LazyFrames. RIG summaries are computed later from the FINAL emitted
+        KGX files, never from these intermediate frames.
     """
     subnodes: list[pl.LazyFrame] = []
     subedges: list[pl.LazyFrame] = []
-    edge_type_info: list[dict[str, object]] = []
     for s in subgraphs:
         # Phase: scan.
         if on_phase is not None:
             on_phase("scan")
         lf: pl.LazyFrame = pl.scan_parquet(s)
-        edge_type_info.extend(rig_edge_type_info(lf, edges_tmp.with_suffix(""), ui_explanation))
 
         # Phase: normalize. Only subject and object become nodes; qualifier columns stay as edge attributes.
         if on_phase is not None:
@@ -1436,22 +1431,18 @@ def _collect_subframes(
         subedges.append(lf)
         if on_subgraph is not None:
             on_subgraph()
-    return subnodes, subedges, edge_type_info
+    return subnodes, subedges
 
 
 def _write_ndjson(
     subnodes: list[pl.LazyFrame],
     subedges: list[pl.LazyFrame],
-    edge_type_info: list[dict[str, object]],
     nodes_tmp: Path,
     edges_tmp: Path,
     name: str,
     version: str,
-    description: str | None,
-    contributions: list[str] | None,
-    ui_explanation: str | None,
-    tables: list[Path] | None,
-    infores_id: str | None,
+    rig: RIGConfig,
+    section_sources: list[dict[str, object]] | None,
     on_phase: Callable[[str], None] | None = None,
 ) -> None:
     """Write, dedup, and RIG the KGX NDJSON outputs.
@@ -1463,16 +1454,13 @@ def _write_ndjson(
     Args:
         subnodes: Per-section node LazyFrames from ``_collect_subframes``.
         subedges: Per-section edge LazyFrames from ``_collect_subframes``.
-        edge_type_info: Accumulated RIG edge type summaries.
         nodes_tmp: Working ``.nodes.ndjson.tmp`` output path.
         edges_tmp: Working ``.edges.ndjson.tmp`` output path.
         name: Graph name (output stems and RIG).
         version: Graph version string.
-        description: Optional RIG description.
-        contributions: Optional RIG contributor list.
-        ui_explanation: Optional RIG UI explanation.
-        tables: Optional RIG source table list.
-        infores_id: Optional graph-level infores CURIE for the RIG.
+        rig: Validated ``rig:`` graph-config section driving the RIG.
+        section_sources: Per-section source descriptors for the RIG
+            relevant-file cross-check.
         on_phase: Optional callback fired with ``"write-nodes"``,
             ``"write-edges"``, ``"dedup"`` and ``"rig"`` at each phase
             boundary, used to drive progress UX.
@@ -1480,11 +1468,9 @@ def _write_ndjson(
     # Phase: write-nodes. Collection point: appending to output files.
     if on_phase is not None:
         on_phase("write-nodes")
-    node_rows: list[dict[str, object]] = []
     with nodes_tmp.open("a", encoding="utf-8") as f:
         for subnode in subnodes:
             eagernode: pl.DataFrame = subnode.collect().unique()
-            node_rows.extend(eagernode.to_dicts())
             eagernode.write_ndjson(f)
 
     # Phase: write-edges.
@@ -1501,33 +1487,19 @@ def _write_ndjson(
     dedup_stream(edges_tmp, is_edges=True)
     dedup_stream(nodes_tmp, is_edges=False)
 
-    # Phase: rig.
+    # Phase: rig. Summaries come from the FINAL deduplicated KGX files, and the
+    # assembled document is audited before anything is written.
     if on_phase is not None:
         on_phase("rig")
-    compile_rig(
-        name,
-        version,
-        description,
-        contributions,
-        ui_explanation,
-        tables,
-        nodes_tmp.with_suffix(""),
-        edges_tmp.with_suffix(""),
-        rig_node_type_info(node_rows),
-        unique_dicts(edge_type_info),
-        infores_id,
-    )
+    compile_rig(name, version, rig, section_sources, nodes_tmp.with_suffix(""), edges_tmp.with_suffix(""))
 
 
 def compile_graph(
     subgraphs: list[Path],
     name: str,
     version: str,
-    description: str | None = None,
-    contributions: list[str] | None = None,
-    ui_explanation: str | None = None,
-    tables: list[Path] | None = None,
-    infores_id: str | None = None,
+    rig: RIGConfig | dict[str, Any],
+    section_sources: list[dict[str, object]] | None = None,
     on_phase: Callable[[str], None] | None = None,
     on_subgraph: Callable[[], None] | None = None,
 ) -> None:
@@ -1537,11 +1509,12 @@ def compile_graph(
         subgraphs: List of section parquet paths to merge.
         name: Graph name (used for output file stems and the RIG).
         version: Graph version string.
-        description: Optional human-readable description for the RIG.
-        contributions: Optional contributor list for the RIG.
-        ui_explanation: Optional UI explanation for the RIG.
-        tables: Optional source table list for the RIG.
-        infores_id: Optional graph-level infores CURIE for the RIG.
+        rig: The ``rig:`` graph-config section driving the generated
+            ``.RIG.yaml`` (source metadata, artifact bases, provenance).
+            A plain dict is validated as :class:`RIGConfig` first, so
+            programmatic callers get the same config-time errors as YAML.
+        section_sources: Per-section source descriptors (``local``, ``urls``)
+            used to cross-check configured RIG relevant-file entries.
         on_phase: Optional callback fired with the current phase label
             (``scan`` / ``normalize`` per subgraph, then ``write-nodes`` /
             ``write-edges`` / ``dedup`` / ``rig``), used to drive progress UX.
@@ -1551,9 +1524,16 @@ def compile_graph(
     Returns:
         ``None``; writes ``<name>_<version>.nodes.ndjson``,
         ``<name>_<version>.edges.ndjson``, and ``<name>_<version>.RIG.yaml``
-        in the current working directory.
+        into ``rig.artifact_base_path`` (created when missing).
+
+    Raises:
+        TablassertError: With code ``rig-validation-failed`` when the
+            generated RIG fails its built-in audit (nothing is then written).
     """
-    p: Path = Path(f"./{name}_{version}.tmp")
+    rig_cfg: RIGConfig = rig if isinstance(rig, RIGConfig) else RIGConfig.model_validate(rig)
+    out_dir: Path = Path(rig_cfg.artifact_base_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    p: Path = out_dir / f"{name}_{version}.tmp"
 
     e: Path = p.with_suffix(".edges.ndjson.tmp")  # For labeling.
     if e.exists():
@@ -1565,9 +1545,8 @@ def compile_graph(
 
     subnodes: list[pl.LazyFrame]
     subedges: list[pl.LazyFrame]
-    edge_type_info: list[dict[str, object]]
-    subnodes, subedges, edge_type_info = _collect_subframes(subgraphs, e, ui_explanation, on_phase, on_subgraph, infores_id)
-    _write_ndjson(subnodes, subedges, edge_type_info, n, e, name, version, description, contributions, ui_explanation, tables, infores_id, on_phase)
+    subnodes, subedges = _collect_subframes(subgraphs, on_phase, on_subgraph, rig_cfg.source_info.infores_id)
+    _write_ndjson(subnodes, subedges, n, e, name, version, rig_cfg, section_sources, on_phase)
 
 
 def resolve_many(

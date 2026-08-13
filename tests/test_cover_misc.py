@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import polars as pl
-
 from tablassert.coerce import STUDY_SIZE_COUNT_PATTERN, STUDY_SIZE_SUFFIX_PATTERN, study_size_target
 from tablassert.ingests import fastmerge
 from tablassert.progress import _truncate
@@ -29,10 +27,11 @@ def test_clean_values_skips_empty_and_placeholder_tokens() -> None:
     assert clean_values(["", "   ", "NA", "nan", "null", "none", "real"]) == ["real"]
 
 
-def test_rig_edge_type_info_empty_without_expected_columns(tmp_path: Path) -> None:
-    """rig.py:156 — returns ``[]`` when none of the expected edge columns exist."""
-    lf: pl.LazyFrame = pl.LazyFrame({"unrelated": [1, 2]})
-    assert rig_edge_type_info(lf, tmp_path / "edges.tsv", None) == []
+def test_rig_edge_type_info_empty_for_an_empty_edges_file(tmp_path: Path) -> None:
+    """an empty final edges file yields no edge types, fields, or predicates."""
+    edges: Path = tmp_path / "edges.ndjson"
+    edges.write_text("")
+    assert rig_edge_type_info(edges, {}, "explanation") == ([], [], 0, set())
 
 
 def test_study_size_suffix_pattern_is_shadowed_by_count() -> None:

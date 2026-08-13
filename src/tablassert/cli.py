@@ -168,6 +168,12 @@ def build_pipeline(
             advance()
     sections: list[dict[str, Any]] = list(chain.from_iterable(temp))
     n: int = len(sections)
+    # Per-section source descriptors for the generated RIG's relevant-file cross-check:
+    # each entry records the section's local file name and its validated source URLs.
+    section_sources: list[dict[str, Any]] = []
+    for s in sections:
+        src: dict[str, Any] = s.get("source") or {}
+        section_sources.append({"local": str(src.get("local") or ""), "urls": [str(u) for u in src.get("url") or []]})
 
     # Stage 3/6: build Tcode.
     progress.stage("Building TCode")
@@ -181,7 +187,16 @@ def build_pipeline(
         try:
             tcode.append(
                 Tcode.model_validate(
-                    {**s, "store": store, "log": log, "qc": qc, "release": release, "head": head, "name": g.name, "infores": g.infores}
+                    {
+                        **s,
+                        "store": store,
+                        "log": log,
+                        "qc": qc,
+                        "release": release,
+                        "head": head,
+                        "name": g.name,
+                        "infores": g.rig.source_info.infores_id,
+                    }
                 )
             )
         except pydantic.ValidationError as e:
@@ -216,31 +231,31 @@ def build_pipeline(
     start(f"{g.name} · v{g.version}")
     # on_phase drives the phase tag (scan → normalize → write-nodes → write-edges → dedup → rig);
     # on_subgraph ticks the bar once per subgraph, so the total is len(subgraphs).
-    compile_graph(
-        subgraphs, g.name, g.version, g.description, g.contributions, g.ui_explanation, g.tables, g.infores, on_phase=sub_step, on_subgraph=advance
-    )
+    compile_graph(subgraphs, g.name, g.version, g.rig, section_sources, on_phase=sub_step, on_subgraph=advance)
 
     # Stage 7/7 (only with --qc): assert over the final NDJSON files.
     if qc:
         progress.stage("Studying Graph")
-        study_final_ndjson(g.name, g.version)
+        study_final_ndjson(g.name, g.version, Path(g.rig.artifact_base_path))
 
     logger.info("Built graph {name} v{version}: {n} sections", name=g.name, version=g.version, n=n)
 
 
-def study_final_ndjson(name: str, version: str) -> None:
+def study_final_ndjson(name: str, version: str, out_dir: Path) -> None:
     """Run study assertions over a build's final NDJSON files (the ``--qc`` stage 7).
 
     Args:
-        name: Graph name, used to locate ``./<name>_<version>.nodes.ndjson``.
-        version: Graph version, used to locate ``./<name>_<version>.edges.ndjson``.
+        name: Graph name, used to locate ``<name>_<version>.nodes.ndjson``.
+        version: Graph version, used to locate ``<name>_<version>.edges.ndjson``.
+        out_dir: Artifact directory the build wrote into
+            (``rig.artifact_base_path``).
 
     Raises:
         SystemExit: With status 1 when any study assertion is violated.
     """
     from tablassert.study import format_violations, study_kgx
 
-    violations = study_kgx(Path(f"./{name}_{version}.nodes.ndjson"), Path(f"./{name}_{version}.edges.ndjson"))
+    violations = study_kgx(out_dir / f"{name}_{version}.nodes.ndjson", out_dir / f"{name}_{version}.edges.ndjson")
     if violations:
         summary: str = format_violations(violations)
         print(summary, file=sys.stderr)

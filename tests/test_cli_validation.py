@@ -25,7 +25,7 @@ def test_validate_pipeline_rejects_section_missing_source(fixtures_path: Path) -
     assert exc_info.value.code == "section-validation-failed"
 
 
-def test_build_pipeline_rejects_graph_referencing_invalid_section(tmp_path: Path, fixtures_path: Path) -> None:
+def test_build_pipeline_rejects_graph_referencing_invalid_section(tmp_path: Path, fixtures_path: Path, rig_factory: Any) -> None:
     """Guard: `build-kg` fails fast when a referenced table has an invalid section.
 
     A graph that points at a malformed table would otherwise fail deep inside a
@@ -33,7 +33,7 @@ def test_build_pipeline_rejects_graph_referencing_invalid_section(tmp_path: Path
     """
     bad_table: Path = fixtures_path / "invalid_section_missing_source.yaml"
     graph_file: Path = tmp_path / "graph.yaml"
-    graph: dict[str, Any] = {"name": "TEST", "version": "1.0.0", "description": "test graph", "tables": [str(bad_table)], "fullmap": ".fullmap"}
+    graph: dict[str, Any] = {"name": "TEST", "version": "1.0.0", "tables": [str(bad_table)], "fullmap": ".fullmap", "rig": rig_factory(tmp_path)}
     to_yaml(graph_file, graph)
     with pytest.raises(SectionValidationError) as exc_info:
         build_pipeline(graph_file, PipelineProgress(total_stages=6))
@@ -43,11 +43,11 @@ def test_build_pipeline_rejects_graph_referencing_invalid_section(tmp_path: Path
 def test_build_pipeline_rejects_malformed_graph(tmp_path: Path) -> None:
     """Guard: `build-kg` fails fast on a graph config missing required keys.
 
-    A graph without `tables`/`fullmap` cannot build; rejecting it at validation avoids
+    A graph without `tables`/`fullmap`/`rig` cannot build; rejecting it at validation avoids
     a confusing failure deep inside a multi-hour build.
     """
     graph_file: Path = tmp_path / "graph.yaml"
-    graph: dict[str, Any] = {"name": "TEST", "version": "1.0.0", "description": "test graph"}
+    graph: dict[str, Any] = {"name": "TEST", "version": "1.0.0"}
     to_yaml(graph_file, graph)
     with pytest.raises(GraphValidationError) as exc_info:
         build_pipeline(graph_file, PipelineProgress(total_stages=6))
@@ -65,7 +65,7 @@ def _valid_table_config() -> dict[str, Any]:
     }
 
 
-def test_validate_command_selects_schema_explicitly(tmp_path: Path) -> None:
+def test_validate_command_selects_schema_explicitly(tmp_path: Path, rig_factory: Any) -> None:
     """Guard: `validate` checks a file against the schema the caller selects via `--schema`.
 
     `--schema table` validates section syntax only; `--schema graph` validates the Graph model
@@ -78,7 +78,7 @@ def test_validate_command_selects_schema_explicitly(tmp_path: Path) -> None:
     assert validate(table, schema="table") is None
     # Graph schema: validates the graph and its referenced tables.
     graph_file: Path = tmp_path / "graph.yaml"
-    to_yaml(graph_file, {"name": "TEST", "version": "1.0.0", "description": "test graph", "tables": [str(table)], "fullmap": ".fullmap"})
+    to_yaml(graph_file, {"name": "TEST", "version": "1.0.0", "tables": [str(table)], "fullmap": ".fullmap", "rig": rig_factory(tmp_path)})
     assert validate(graph_file, schema="graph") is None
 
 
@@ -102,11 +102,11 @@ def test_validate_schema_flag_parses_and_is_required(tmp_path: Path) -> None:
         parse(["validate", str(config)])
 
 
-def test_validate_command_graph_branch_rejects_invalid_table(tmp_path: Path, fixtures_path: Path) -> None:
+def test_validate_command_graph_branch_rejects_invalid_table(tmp_path: Path, fixtures_path: Path, rig_factory: Any) -> None:
     """Guard: `validate --schema graph` fails fast when a referenced table is invalid."""
     bad_table: Path = fixtures_path / "invalid_section_missing_source.yaml"
     graph_file: Path = tmp_path / "graph.yaml"
-    to_yaml(graph_file, {"name": "TEST", "version": "1.0.0", "description": "test graph", "tables": [str(bad_table)], "fullmap": ".fullmap"})
+    to_yaml(graph_file, {"name": "TEST", "version": "1.0.0", "tables": [str(bad_table)], "fullmap": ".fullmap", "rig": rig_factory(tmp_path)})
     with pytest.raises(SectionValidationError) as exc_info:
         validate(graph_file, schema="graph")
     assert exc_info.value.code == "section-validation-failed"

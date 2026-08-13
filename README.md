@@ -44,15 +44,31 @@ template:
     - { annotation: supporting_study_size, method: column, encoding: D }
 ```
 
-Wrap it in a graph config (`graph.yaml`) pointing at your fullmap entity-resolution database:
+Wrap it in a graph config (`graph.yaml`) pointing at your fullmap entity-resolution database
+and carrying the required `rig:` metadata for the generated Resource Ingest Guide:
 
 ```yaml
 name: MY_KG
 version: 1.0.0
-description: Gene–disease associations extracted from tabular sources.
 tables:
   - ./table.yaml
 fullmap: /path/to/fullmap
+rig:
+  source_info:
+    infores_id: infores:my-kg
+    terms_of_use_info:
+      terms_of_use_url: https://example.org/terms
+    data_access_locations:
+      - My source downloads - https://example.org/downloads
+    source_status: maintained_regular_updates
+  ingest_info:
+    utility: Gene-disease associations support Translator disease-mechanism queries.
+    scope: Gene-disease associations extracted from tabular sources.
+  provenance_info:
+    contributions:
+      - "Author Name - code author, data modeling"
+  artifact_base_url: https://example.org/my-kg
+  artifact_base_path: ./published/my-kg
 ```
 
 Build the knowledge graph:
