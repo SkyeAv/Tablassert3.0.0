@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Self, cast
 
 import polars as pl
+import pytest
+from pydantic import ValidationError
 
 import tablassert.cli as cli
 import tablassert.lib as lib
@@ -291,6 +293,25 @@ def test_tcode_collect_omits_drop_not_significant_without_release(fixtures_path:
 
     assert "drop_not_significant" not in names
     assert names.index("sig") < names.index("resolve_batch")
+
+
+def test_tcode_model_validate_rejects_duplicate_qualifier_keys(fixtures_path: Path) -> None:
+    """Tcode construction rejects a section whose statement repeats a qualifier key.
+
+    The duplicate would otherwise survive into ``collect`` as two ResolveSpecs for
+    one column and crash the second fullmap join pass mid-build; failing at
+    ``model_validate`` catches it for every entry point (validate, build_pipeline).
+    """
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    data["statement"]["qualifiers"] = [
+        {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"},
+        {"qualifier": "anatomical_context_qualifier", "method": "column", "encoding": "A"},
+    ]
+    with pytest.raises(ValidationError) as exc_info:
+        Tcode.model_validate(  # pyright: ignore
+            {**data, "config": fixtures_path / "minimal_section.yaml", "store": Path("/tmp/sectionhash_dup_qualifier.parquet")}
+        )
+    assert "qualifier-duplicated" in str(exc_info.value)
 
 
 def test_tcode_collect_emits_single_resolve_batch_for_all_node_columns(fixtures_path: Path) -> None:
