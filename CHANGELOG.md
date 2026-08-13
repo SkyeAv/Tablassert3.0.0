@@ -19,6 +19,7 @@ A major bump for one removal: `method: list` is gone, and a table config that st
   **Accepted caveat:** an array known at config time (identical on every edge) has no literal form anymore — materialize it as a source column (the same delimited value per row) and split it with `split_by`, or record it once as graph-level metadata. This trades a rare literal shape for one multivalued encoding instead of two that overlapped.
 
 ### Added
+- **`build-kg --qc` now studies the final KGX NDJSON and fails the build on violations.** After the graph is compiled, a seventh stage (only with `--qc`) streams the emitted `{name}_{version}.nodes.ndjson` / `.edges.ndjson` and asserts, in the spirit of the legacy `studyKGtsvs.pl` QC script: no duplicate node ids (Rust dedup only removes byte-identical lines, so same-id/different-content nodes are caught here), no nodes referenced by edges but never declared, no declared nodes participating in no edge, no empty/malformed JSON lines, and no string values with leading/trailing whitespace. Violations print a one-line-per-assertion summary with examples to stderr and exit non-zero, so a build can be gated in CI; a clean study logs and continues. The stage is stdlib-only — it rides the existing `--qc` flag but needs nothing from the `[qc]` extra itself.
 - **`nullable` qualifiers — optional per-edge qualifiers without edge loss.** A `method: column` qualifier may now declare `nullable: true` so that a blank or unresolvable cell **keeps the edge and omits the qualifier for that row**, instead of dropping the edge:
 
   ```yaml
