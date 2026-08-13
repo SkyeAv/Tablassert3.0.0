@@ -182,10 +182,7 @@ def main() -> None:
             lines.append("```json")
             for ed in edges:
                 compact = {k: ed.get(k) for k in ("subject", "predicate", "object", "relation") if k in ed}
-                primary = next(
-                    (s for s in ed.get("sources") or [] if s.get("resource_role") == "primary_knowledge_source"),
-                    None,
-                )
+                primary = next((s for s in ed.get("sources") or [] if s.get("resource_role") == "primary_knowledge_source"), None)
                 if primary:
                     compact["primary_knowledge_source"] = primary.get("resource_id")
                 lines.append(json.dumps(compact))
