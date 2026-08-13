@@ -640,13 +640,17 @@ def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
     # Attached to no Biolink class -> routed onto the inlined StudyResult.
     with pytest.warns(BiolinkRelocationWarning, match="attached to no association class"):
         Annotation.model_validate({"annotation": "supporting_study_size", "method": "column", "encoding": "D"})
-    # Not an association slot at all -> folded into supporting_text.
+    # An alias the clean-phase coercions rename to an unsatisfiable slot names the coerced target.
+    with pytest.warns(BiolinkRelocationWarning, match="coerced to `supporting_study_size`"):
+        Annotation.model_validate({"annotation": "sample size", "method": "column", "encoding": "F"})
+    # Not an association slot at all, and no statistical coercion claims it -> folded into supporting_text.
     with pytest.warns(BiolinkRelocationWarning, match="folded into `supporting_text`"):
-        Annotation.model_validate({"annotation": "q_value", "method": "column", "encoding": "E"})
-    # Real association slots, and the deliberate pending extras, are silent.
+        Annotation.model_validate({"annotation": "overlap", "method": "column", "encoding": "E"})
+    # Real association slots, the deliberate pending extras, and aliases the coercions rename to a
+    # canonical slot (the pipeline emits those on the edge) are silent.
     with warnings.catch_warnings():
         warnings.simplefilter("error", BiolinkRelocationWarning)
-        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type"):
+        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "adjusted p value", "odds ratio", "q_value"):
             Annotation.model_validate({"annotation": name, "method": "column", "encoding": "C"})
 
 
