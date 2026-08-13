@@ -1033,8 +1033,20 @@ class Tcode(Section):
             *[(x, x.qualifier) for x in qualifiers if x.resolved],
         ]
         literals: list[Qualifier] = [x for x in qualifiers if not x.resolved]
+        # A nullable qualifier keeps its edge when the cell is blank or unresolvable (the
+        # column stays null and the null-stripper omits the key); subject/object and
+        # strict qualifiers drop the row as before.
         specs: list[ResolveSpec] = [
-            ResolveSpec(col, str(x.taxon) if x.taxon else None, x.prioritize, x.avoid, x.exclude_prefixes, x.exclude_regex) for x, col in node_columns
+            ResolveSpec(
+                col,
+                str(x.taxon) if x.taxon else None,
+                x.prioritize,
+                x.avoid,
+                x.exclude_prefixes,
+                x.exclude_regex,
+                x.nullable if isinstance(x, Qualifier) else False,
+            )
+            for x, col in node_columns
         ]
         return [
             [self.node_prep(x, col) for x, col in node_columns],
@@ -1042,7 +1054,15 @@ class Tcode(Section):
             # which exist to feed entity resolution these columns never undergo.
             [self.encoding(x, x.qualifier) for x in literals],
             (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
-            [(fullmap_audit, (col, self.store.stem, self.config.name, "passed", True)) for _, col in node_columns] if self.qc else None,
+            # QC audits only the strict columns: a nullable qualifier's nulls are expected
+            # (blank cell / no match), not resolution errors for the audit to delete.
+            [
+                (fullmap_audit, (col, self.store.stem, self.config.name, "passed", True))
+                for x, col in node_columns
+                if not (isinstance(x, Qualifier) and x.nullable)
+            ]
+            if self.qc
+            else None,
         ]
 
     def _provenance_ops(self: Self) -> list[Any]:

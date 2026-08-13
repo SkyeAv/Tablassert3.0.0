@@ -473,7 +473,7 @@ def _coalesce_expr(col: str, suffix: str, base: str, prefix: str, cast_str: bool
     return pl.when(pl.col(base).is_not_null()).then(l1).otherwise(l2).alias(col + suffix)
 
 
-def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "_two") -> pl.LazyFrame:
+def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "_two", drop_unresolved: bool = True) -> pl.LazyFrame:
     """Join ranked fullmap matches back into ``lf`` for one column.
 
     Coalesces level-one and level-two hits per row (level one wins when
@@ -486,10 +486,15 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
         col: Column being resolved.
         matches: Ranked matches for this column from ``filter_and_rank``.
         tag: Suffix used to derive the level-two column name.
+        drop_unresolved: When True (default) rows whose ``col`` did not match are
+            dropped — the behavior subject/object require. When False the row is
+            kept and the column (plus its derived ``<col>_*`` columns) stays null;
+            used by ``nullable`` qualifiers so a blank/unresolvable cell keeps the
+            edge and the null-stripper omits the qualifier key.
 
     Returns:
         New LazyFrame with resolved columns; rows whose ``col`` did not match
-        are dropped.
+        are dropped unless ``drop_unresolved`` is False.
 
     Notes:
         Split out of ``resolve`` so ``resolve_batch`` can apply per-column
@@ -511,7 +516,10 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
     result = result.select(pl.exclude(r"^(CURIE|PREFERRED_NAME|CATEGORY_NAME|TAXON_ID|SOURCE_NAME|SOURCE_VERSION|NLP_LEVEL|PR|FREQUENCY)(_l2)?$"))
     result = result.select(pl.exclude(col + tag))
     result = result.with_columns(pl.col(f"{col}_taxon").replace("NCBITaxon:0", None))
-    result = result.filter(pl.col(col).is_not_null())
+    if drop_unresolved:
+        # Subject/object (and strict qualifiers) drop rows that failed resolution; a
+        # nullable qualifier keeps the edge and leaves the column null for the null-stripper.
+        result = result.filter(pl.col(col).is_not_null())
 
     return result.lazy()
 
@@ -525,6 +533,12 @@ class ResolveSpec(NamedTuple):
     avoid: list[Categories] | None = None
     exclude_prefixes: list[str] | None = None
     exclude_regex: list[str] | None = None
+    nullable: bool = False
+    """When True, an unresolved/blank cell keeps its row instead of dropping the edge.
+
+    Set only for ``nullable`` qualifiers; subject/object always resolve strict so an
+    edge with a missing node is dropped, never emitted.
+    """
 
 
 def resolve_batch(
@@ -585,7 +599,7 @@ def resolve_batch(
         )
         if log:
             log_unmatched(spec.col, terms_by_col[spec.col], matches, section_hash, config_file)
-        result = join_matches(result, spec.col, matches, tag)
+        result = join_matches(result, spec.col, matches, tag, drop_unresolved=not spec.nullable)
 
     return result
 

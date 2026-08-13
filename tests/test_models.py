@@ -217,6 +217,29 @@ def test_qualifier_rejects_species_context_qualifier() -> None:
     assert "qualifier-auto-derived" in str(exc_info.value)
 
 
+def test_qualifier_nullable_defaults_false() -> None:
+    """nullable defaults to False so existing strict edge-drop behavior is unchanged."""
+    qualifier: Qualifier = Qualifier(qualifier="disease_context_qualifier", method="column", encoding="A")  # pyright: ignore
+    assert qualifier.nullable is False
+
+
+def test_qualifier_nullable_accepted_on_column() -> None:
+    """nullable: true is accepted for a method: column qualifier (the only meaningful case)."""
+    qualifier: Qualifier = Qualifier(  # pyright: ignore
+        qualifier="disease_context_qualifier", method="column", encoding="A", nullable=True
+    )
+    assert qualifier.nullable is True
+
+
+def test_qualifier_nullable_rejected_on_literal() -> None:
+    """nullable: true on a literal qualifier can never be null and is rejected at config time."""
+    with pytest.raises(ValidationError) as exc_info:
+        models.Qualifier(  # pyright: ignore
+            qualifier="disease_context_qualifier", method="value", encoding="MONDO:0000001", nullable=True
+        )
+    assert "qualifier-nullable-literal" in str(exc_info.value)
+
+
 def test_node_encoding_with_prioritize_avoid() -> None:
     """NodeEncoding with prioritize and avoid."""
     node: NodeEncoding = NodeEncoding(  # pyright: ignore

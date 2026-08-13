@@ -31,6 +31,7 @@ TablassertErrorCodes = Literal[
     "qualifier-auto-derived",
     "qualifier-bad-value",
     "qualifier-unsatisfiable",
+    "qualifier-nullable-literal",
 ]
 
 
