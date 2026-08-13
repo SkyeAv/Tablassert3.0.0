@@ -19,7 +19,7 @@ from tablassert.biolink import (
     Predicates,
     Qualifiers,
 )
-from tablassert.coerce import effect_size_target, effect_type_target, pvalue_target, study_size_target
+from tablassert.coerce import coerced_target
 from tablassert.enums import (
     Comparisons,
     ContentCategories,
@@ -48,6 +48,19 @@ else:
 # unchanged — a renamed key that is no longer a valid field is STILL rejected by extra="forbid"
 # unless the future hook also pops/translates it; registering a key here supplies the warning half only.
 DEPRECATED_KEYS: dict[str, str] = {}
+
+
+def _shown(name: str, target: str) -> str:
+    """Render an annotation name for a message, naming its coerced target when it differs.
+
+    Args:
+        name: Raw annotation name as the author wrote it.
+        target: Canonical name from ``coerced_target``.
+
+    Returns:
+        Backtick-quoted name, annotated with the coerced target when coercion renamed it.
+    """
+    return f"`{name}` (coerced to `{target}`)" if target != name else f"`{name}`"
 
 
 class TablaBase(BaseModel):
@@ -533,8 +546,8 @@ class Annotation(Encoding):
         # statistical aliases to their canonical slot before any relocation runs, so
         # `adjusted p value` reaches the edge as `adjusted_p_value` and warning on the alias
         # is a false positive.
-        target: str = pvalue_target(name) or study_size_target(name) or effect_size_target(name) or effect_type_target(name) or name
-        shown: str = f"`{name}` (coerced to `{target}`)" if target != name else f"`{name}`"
+        target: str = coerced_target(name)
+        shown: str = _shown(name, target)
         if target in UNSATISFIABLE_EDGE_FIELDS:
             warnings.warn(
                 f"{shown} is declared in biolink-model {BIOLINK_VERSION} but attached to no association class, "
@@ -561,6 +574,48 @@ class Section(TablaBase):
     statement: Statement = Field(..., description="Subject-object statement mapping for this section.")
     provenance: Provenance = Field(..., description="Provenance metadata applied to all produced edges.")
     annotations: list[Annotation] | None = Field(None, description="Optional extra encoded columns added to each row.")
+
+    @model_validator(mode="after")
+    def effect_size_and_type_travel_together(self) -> Self:
+        """Enforce that ``effect_size`` and ``effect_type`` are declared as a pair.
+
+        A bare effect size is uninterpretable -- 0.85 of *what*, an odds ratio or a Spearman
+        rho? -- and Biolink PR #1774 only populates ``effect_type`` alongside a numeric
+        ``effect_size``, so the build nulls an unpaired type outright (see
+        ``coerce.coerce_effect_type_columns``). Unlike the ``Annotation`` relocation warnings,
+        this raises: neither half carries meaning without the other, and an unpaired value is
+        discarded rather than merely relocated.
+
+        Lives on ``Section`` rather than ``Annotation`` because an annotation cannot see its
+        siblings. Validation runs after ``ingests.to_sections`` expands ``template``/``sections``,
+        so a constant declared once on the template pairs with every section's own column.
+
+        Names are judged by their coerced target, not their raw spelling, so the aliases the
+        clean phase renames (``odds ratio``, the legacy ``relationship_strength``) are seen
+        exactly as the build sees them.
+        """
+        # First spelling wins: the message echoes what the author actually wrote.
+        declared: dict[str, str] = {}
+        for annotation in self.annotations or []:
+            name: str = str(annotation.annotation)
+            declared.setdefault(coerced_target(name), name)
+
+        size: str | None = declared.get("effect_size")
+        kind: str | None = declared.get("effect_type")
+        if size is not None and kind is None:
+            raise TablassertValidationError(
+                f"{_shown(size, 'effect_size')} requires a sibling `effect_type` annotation; a bare effect size is uninterpretable. "
+                "Add e.g. `{annotation: effect_type, method: value, encoding: spearmans_rho}`.",
+                code="annotation-effect-size-without-type",
+            )
+        if kind is not None and size is None:
+            raise TablassertValidationError(
+                f"{_shown(kind, 'effect_type')} requires a sibling `effect_size` annotation; Biolink PR #1774 only populates an effect "
+                "type alongside a numeric effect size, so the build nulls an unpaired `effect_type`.",
+                code="annotation-effect-type-without-size",
+            )
+
+        return self
 
 
 # --- Resource Ingest Guide configuration ----------------------------------- #

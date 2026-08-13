@@ -97,7 +97,7 @@ instructions: "# ROLE + TASK\nYou are an expert knowledge-graph (KG) engineer. Y
   \ StudyResult. Map such a column onto the nearest real slot (an adjusted p-value -> adjusted_p_value,\n   a beta/fold-change/rho\
   \ -> effect_size with the matching effect_type) rather than inventing a name. For effect_type, use method: column when the\
   \ table provides it, else method: value with a fixed valid\n   Biolink effect type (e.g. spearmans_rho) — emit effect_type\
-  \ ONLY alongside an effect_size annotation. Do NOT silently drop statistical\n   columns — they are part of the evidence.\n\
+  \ and effect_size TOGETHER — either one without the other is a hard validation error. Do NOT silently drop statistical\n   columns — they are part of the evidence.\n\
   4. PICK THE RIGHT OBJECT COLUMN: the object column must actually contain the intended entity. Verify with\n   read_table\
   \ that the column holds the entity type you claim (e.g. a protein-abundance table with UniProt\n   IDs in columns A/B should\
   \ map those, not a gene-symbol column elsewhere).\n5. prioritize GUIDANCE — a wrong prioritize is WORSE than none. Add `prioritize`\

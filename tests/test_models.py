@@ -212,6 +212,71 @@ def test_annotation_split_by_rejects_an_empty_separator() -> None:
         Annotation(annotation="has_evidence", method="column", encoding="D", split_by="")  # pyright: ignore
 
 
+def _section_with(fixtures_path: Path, *annotations: dict[str, Any]) -> Section:
+    """Validate the minimal fixture section carrying the given annotations.
+
+    Args:
+        fixtures_path: Directory holding the shipped test fixtures.
+        annotations: Annotation dicts to attach to the section.
+
+    Returns:
+        The validated Section.
+    """
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    data["annotations"] = list(annotations)
+    return Section.model_validate(data)
+
+
+def test_section_rejects_an_effect_size_without_an_effect_type(fixtures_path: Path) -> None:
+    """A bare effect size is uninterpretable, so the pairing is mandatory."""
+    with pytest.raises(ValidationError) as exc_info:
+        _section_with(fixtures_path, {"annotation": "effect_size", "method": "column", "encoding": "C"})
+    assert "annotation-effect-size-without-type" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("alias", ["odds ratio", "relationship_strength"])
+def test_section_rejects_an_unpaired_effect_size_alias(fixtures_path: Path, alias: str) -> None:
+    """Aliases the clean phase renames to `effect_size` need the pairing too, and the message names both spellings.
+
+    Args:
+        fixtures_path: Directory holding the shipped test fixtures.
+        alias: Source spelling that coerces to ``effect_size`` (including the legacy name).
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        _section_with(fixtures_path, {"annotation": alias, "method": "column", "encoding": "C"})
+    message: str = str(exc_info.value)
+    assert "annotation-effect-size-without-type" in message
+    assert f"`{alias}` (coerced to `effect_size`)" in message
+
+
+def test_section_rejects_an_effect_type_without_an_effect_size(fixtures_path: Path) -> None:
+    """The build nulls an unpaired effect_type outright, so config validation rejects it up front."""
+    with pytest.raises(ValidationError) as exc_info:
+        _section_with(fixtures_path, {"annotation": "effect_type", "method": "value", "encoding": "spearmans_rho"})
+    assert "annotation-effect-type-without-size" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(("size", "kind"), [("effect_size", "effect_type"), ("odds ratio", "effect type"), ("relationship_strength", "effect_type")])
+def test_section_accepts_paired_effect_annotations(fixtures_path: Path, size: str, kind: str) -> None:
+    """Declared as a pair -- canonical or aliased, column or literal -- the section validates.
+
+    Args:
+        fixtures_path: Directory holding the shipped test fixtures.
+        size: Spelling coercing to ``effect_size``.
+        kind: Spelling coercing to ``effect_type``.
+    """
+    section: Section = _section_with(
+        fixtures_path, {"annotation": size, "method": "column", "encoding": "C"}, {"annotation": kind, "method": "value", "encoding": "spearmans_rho"}
+    )
+    assert section.annotations is not None
+
+
+def test_section_without_effect_annotations_is_unaffected(fixtures_path: Path) -> None:
+    """No effect annotation at all -- absent or unrelated -- is not a false positive."""
+    assert Section.model_validate(from_yaml(fixtures_path / "minimal_section.yaml")).annotations is None
+    assert _section_with(fixtures_path, {"annotation": "p_value", "method": "column", "encoding": "C"}).annotations is not None
+
+
 def test_node_encoding_with_taxon() -> None:
     """NodeEncoding with taxon."""
     node: NodeEncoding = NodeEncoding(method="value", encoding="BRCA1", taxon=9606)  # pyright: ignore

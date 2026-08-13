@@ -23,6 +23,7 @@ from tablassert.lib import (
     coerce_effect_type_columns,
     coerce_pvalue_columns,
     coerce_study_size_columns,
+    coerced_target,
     drop_not_significant,
     edge_category,
     edge_tables,
@@ -1755,6 +1756,22 @@ def test_coerce_study_size_columns_keeps_existing_canonical_over_alias() -> None
     assert result.columns == ["supporting_study_size", "supporting study size"]
     assert result["supporting_study_size"].to_list() == [1200]
     assert result["supporting study size"].to_list() == [999]
+
+
+def test_coerced_target_matches_the_clean_phase_rename() -> None:
+    """coerced_target reports the canonical name each clean-phase coercion renames a column to."""
+    expected: dict[str, str] = {
+        "padj": "adjusted_p_value",
+        "p value": "p_value",
+        "sample size": "supporting_study_size",
+        "odds ratio": "effect_size",
+        "relationship_strength": "effect_size",
+        "effect type": "effect_type",
+        # Claimed by no coercion -- returned unchanged.
+        "cohort": "cohort",
+    }
+    for name, target in expected.items():
+        assert coerced_target(name) == target, name
 
 
 # --- Effect-size / effect-type coercion (Biolink PR #1774) --------------------------------------
