@@ -417,6 +417,28 @@ class Statement(TablaBase):
     predicate: Predicates = Field(Predicates.RELATED_TO, description="Predicate connecting subject and object nodes.")
     qualifiers: list[Qualifier] | None = Field(None, description="Optional qualifier nodes attached to the statement.")
 
+    @model_validator(mode="after")
+    def reject_duplicate_qualifiers(self: Self) -> Self:
+        """Reject qualifier keys declared more than once in one statement.
+
+        Every qualifier entry becomes its own ``ResolveSpec`` keyed by the column
+        named after the qualifier key, and the fullmap join drops the ``<col>_two``
+        working column right after the first resolve pass. A duplicated key thus
+        makes the second pass crash on the already-dropped column deep into a
+        multi-hour build, so fail at config time instead.
+        """
+        seen: set[str] = set()
+        for q in self.qualifiers or []:
+            key: str = str(q.qualifier)
+            if key in seen:
+                raise TablassertValidationError(
+                    f"{key} is declared more than once in `qualifiers`; each qualifier key may appear only once per statement, "
+                    "so remove or merge the duplicate entry.",
+                    code="qualifier-duplicated",
+                )
+            seen.add(key)
+        return self
+
 
 def validate_infores_curie(value: str, code: TablassertErrorCodes) -> str:
     """Validate an ``infores:`` CURIE used for Biolink knowledge-source fields."""

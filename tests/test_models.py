@@ -325,6 +325,96 @@ def test_qualifier_nullable_rejected_on_literal() -> None:
     assert "qualifier-nullable-literal" in str(exc_info.value)
 
 
+def test_statement_rejects_duplicate_resolved_qualifiers() -> None:
+    """Declaring the same CURIE-ranged qualifier twice is rejected at config time.
+
+    Two entries emit two ResolveSpecs for the one column; the fullmap join drops
+    ``<col>_two`` after the first pass, so the second crashes mid-build. Failing
+    here turns that into an actionable config error.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"},
+            object={"method": "value", "encoding": "B"},
+            qualifiers=[
+                {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"},
+                {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0001557"},
+            ],
+        )
+    assert "qualifier-duplicated" in str(exc_info.value)
+
+
+def test_statement_rejects_duplicate_literal_qualifiers() -> None:
+    """Duplicate enum-ranged literal qualifiers are rejected exactly like resolved ones.
+
+    Literal qualifiers skip entity resolution, but they still produce one output
+    column per key, so a repeated key corrupts the same join step.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"},
+            object={"method": "value", "encoding": "B"},
+            qualifiers=[
+                {"qualifier": "object_direction_qualifier", "method": "value", "encoding": "increased"},
+                {"qualifier": "object_direction_qualifier", "method": "value", "encoding": "decreased"},
+            ],
+        )
+    assert "qualifier-duplicated" in str(exc_info.value)
+
+
+def test_statement_rejects_mixed_resolved_and_literal_same_key() -> None:
+    """A column-driven and a literal entry under one key are still one key too many.
+
+    Detection keys on the qualifier name alone, regardless of encoding method,
+    because the clash happens at column naming, not at value sourcing.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"},
+            object={"method": "value", "encoding": "B"},
+            qualifiers=[
+                {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"},
+                {"qualifier": "anatomical_context_qualifier", "method": "column", "encoding": "C"},
+            ],
+        )
+    assert "qualifier-duplicated" in str(exc_info.value)
+
+
+def test_statement_accepts_distinct_qualifier_keys() -> None:
+    """Distinct keys — resolved and literal alike — remain valid after the duplicate guard."""
+    stmt: Statement = Statement(  # pyright: ignore
+        subject={"method": "value", "encoding": "A"},
+        object={"method": "value", "encoding": "B"},
+        qualifiers=[
+            {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"},
+            {"qualifier": "object_direction_qualifier", "method": "value", "encoding": "increased"},
+        ],
+    )
+    assert stmt.qualifiers is not None
+    assert len(stmt.qualifiers) == 2
+
+
+def test_statement_accepts_single_empty_and_null_qualifiers() -> None:
+    """A single qualifier, ``qualifiers: []``, and ``qualifiers: null`` all keep validating.
+
+    The duplicate guard must not reject any currently-valid shape, including the
+    empty list that downstream treats identically to None.
+    """
+    single: Statement = Statement(  # pyright: ignore
+        subject={"method": "value", "encoding": "A"},
+        object={"method": "value", "encoding": "B"},
+        qualifiers=[{"qualifier": "disease_context_qualifier", "method": "value", "encoding": "MONDO:0005575"}],
+    )
+    assert single.qualifiers is not None
+    assert len(single.qualifiers) == 1
+
+    empty: Statement = Statement(subject={"method": "value", "encoding": "A"}, object={"method": "value", "encoding": "B"}, qualifiers=[])  # pyright: ignore
+    assert empty.qualifiers == []
+
+    null: Statement = Statement(subject={"method": "value", "encoding": "A"}, object={"method": "value", "encoding": "B"}, qualifiers=None)  # pyright: ignore
+    assert null.qualifiers is None
+
+
 def test_node_encoding_with_prioritize_avoid() -> None:
     """NodeEncoding with prioritize and avoid."""
     node: NodeEncoding = NodeEncoding(  # pyright: ignore

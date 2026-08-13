@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, cast
 from tablassert import rs
 from tablassert._lazy import LazyModule
 from tablassert.biolink import Categories
+from tablassert.errors import TablassertError
 from tablassert.log import cat
 
 logger = cat("FULLMAP")
@@ -575,11 +576,45 @@ def resolve_batch(
 
     Returns:
         LazyFrame with resolved columns added.
+
+    Raises:
+        TablassertError: ``resolve-bad-specs`` when two specs share a column, or a
+            spec's column or its ``<col> + tag`` normalization column is absent from
+            the input schema. Checked schema-only (no ``collect``) before any term
+            extraction or redb access, so bad specs never surface mid-build as a raw
+            polars ``ColumnNotFoundError``.
     """
     # Each column still gets its own taxon/prioritize/avoid filtering and its own join back into lf;
     # only the redb round trip itself (rs.lookup_fullmap_terms) is pooled across columns.
     if not specs:
         return lf
+
+    # Fail loudly on malformed specs BEFORE term collection or any redb access. A duplicated
+    # spec would otherwise die mid-build in its second join_matches pass (the first pass drops
+    # <col> + tag, so the second spec's level-two join hits a raw polars ColumnNotFoundError),
+    # and a spec whose normalization columns were never produced would crash distinct().
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for spec in specs:
+        if spec.col in seen and spec.col not in duplicates:
+            duplicates.append(spec.col)
+        seen.add(spec.col)
+    if duplicates:
+        raise TablassertError(
+            f"resolve_batch received more than one ResolveSpec for column(s) {', '.join(repr(col) for col in duplicates)}; "
+            "each node column may be resolved at most once per batch.",
+            code="resolve-bad-specs",
+        )
+
+    schema: pl.Schema = lf.collect_schema()
+    missing: list[tuple[str, str]] = [(name, spec.col) for spec in specs for name in (spec.col, spec.col + tag) if name not in schema]
+    if missing:
+        detail: str = ", ".join(f"{name!r} (needed by the spec for {col!r})" for name, col in missing)
+        raise TablassertError(
+            f"resolve_batch specs reference column(s) absent from the input schema: {detail}. This usually means a node "
+            "encoding was declared twice or against the wrong column, so its normalization columns were never produced.",
+            code="resolve-bad-specs",
+        )
 
     terms_by_col: dict[str, pl.LazyFrame] = {spec.col: distinct(lf, spec.col, spec.col + tag) for spec in specs}
     collected_terms: dict[str, pl.DataFrame] = {col: terms.collect() for col, terms in terms_by_col.items()}

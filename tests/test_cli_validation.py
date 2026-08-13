@@ -65,6 +65,27 @@ def _valid_table_config() -> dict[str, Any]:
     }
 
 
+def test_validate_pipeline_rejects_duplicate_qualifier_keys(tmp_path: Path) -> None:
+    """Guard: `validate` rejects a statement that declares the same qualifier key twice.
+
+    The duplicate used to slip through config validation and crash a `build-kg` run
+    ~16 minutes in, when the second resolve pass looked for the already-dropped
+    `<col>_two` column. The pre-build check now surfaces it as `qualifier-duplicated`
+    before any work starts.
+    """
+    config: dict[str, Any] = _valid_table_config()
+    config["template"]["statement"]["qualifiers"] = [
+        {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000061"},
+        {"qualifier": "anatomical_context_qualifier", "method": "column", "encoding": "A"},
+    ]
+    table: Path = tmp_path / "duplicate_qualifier.yaml"
+    to_yaml(table, config)
+    with pytest.raises(SectionValidationError) as exc_info:
+        validate_pipeline(table, PipelineProgress(total_stages=3))
+    assert exc_info.value.code == "section-validation-failed"
+    assert "qualifier-duplicated" in str(exc_info.value)
+
+
 def test_validate_command_selects_schema_explicitly(tmp_path: Path, rig_factory: Any) -> None:
     """Guard: `validate` checks a file against the schema the caller selects via `--schema`.
 

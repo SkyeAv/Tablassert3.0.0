@@ -16,6 +16,7 @@ import tablassert.lib as lib
 from tablassert import rs
 from tablassert.biolink import Categories
 from tablassert.cli import build_fullmap
+from tablassert.errors import TablassertError
 from tablassert.fullmap import (
     _TERM_CACHE,
     ResolveSpec,
@@ -928,6 +929,60 @@ def test_resolve_batch_on_phase_fires_per_column_in_order(fullmap_db: Path) -> N
 
     assert phases == ["resolve:subject", "resolve:object"]
     assert with_cb.to_dicts() == without_cb.to_dicts()
+
+
+def test_resolve_batch_rejects_duplicate_spec_columns(tmp_path: Path) -> None:
+    """Two specs for the same column fail fast with the coded ``resolve-bad-specs`` error.
+
+    WHY: the original bug (a duplicated qualifier declaration) built two specs for one
+    column; the first ``join_matches`` pass drops ``<col>_two``, so the second spec's
+    level-two join died mid-build with a raw polars ``ColumnNotFoundError``. US-001 blocks
+    that path at config time, but ``resolve_batch`` itself must fail loudly for ANY caller.
+    Validation precedes term collection and any redb access, so a nonexistent db path is fine.
+    """
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"]}).lazy()
+
+    with pytest.raises(TablassertError) as excinfo:
+        resolve_batch(lf, [ResolveSpec("subject"), ResolveSpec("subject")], tmp_path / "missing.redb", log=False)
+
+    assert excinfo.value.code == "resolve-bad-specs"
+    assert "'subject'" in str(excinfo.value)
+    # The point of the guard: the failure is a coded Tablassert error, not the raw
+    # polars ColumnNotFoundError the duplicated spec used to leak mid-build.
+    assert not isinstance(excinfo.value, pl.exceptions.ColumnNotFoundError)
+
+
+def test_resolve_batch_rejects_specs_missing_normalization_columns(tmp_path: Path) -> None:
+    """A spec whose ``<col> + tag`` normalization column is absent fails with ``resolve-bad-specs``.
+
+    WHY: without the schema guard, ``distinct`` would crash collecting ``pl.col('subject_two')``
+    with a raw polars ``ColumnNotFoundError``. The coded error names the missing column AND the
+    spec that needs it, and points at duplicate/mis-declared node encodings as the usual cause.
+    The check is schema-only (``collect_schema``, no ``collect``) and precedes any redb access,
+    so a nonexistent db path is fine. The final case pins that the level-two name comes from the
+    ``tag`` parameter, never a hardcoded ``"_two"`` suffix.
+    """
+    # Level-two normalization column never produced (e.g. mis-declared node encoding).
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"]}).lazy()
+
+    with pytest.raises(TablassertError) as excinfo:
+        resolve_batch(lf, [ResolveSpec("subject")], tmp_path / "missing.redb", log=False)
+
+    assert excinfo.value.code == "resolve-bad-specs"
+    message: str = str(excinfo.value)
+    assert "'subject_two'" in message  # the missing column...
+    assert "'subject'" in message  # ...and the spec column it belongs to
+    assert not isinstance(excinfo.value, pl.exceptions.ColumnNotFoundError)
+
+    # The level-two name derives from ``tag``: a frame WITH subject_two but WITHOUT
+    # subject_l2 still fails under tag="_l2", naming the tag-derived column.
+    lf_l2: pl.LazyFrame = pl.DataFrame({"subject": ["brca1"], "subject_two": ["brca1"]}).lazy()
+
+    with pytest.raises(TablassertError) as excinfo_l2:
+        resolve_batch(lf_l2, [ResolveSpec("subject")], tmp_path / "missing.redb", log=False, tag="_l2")
+
+    assert excinfo_l2.value.code == "resolve-bad-specs"
+    assert "'subject_l2'" in str(excinfo_l2.value)
 
 
 @pytest.mark.parametrize(
