@@ -377,7 +377,7 @@ def test_manual_provenance_rejects_unprefixed_values() -> None:
 def test_manual_provenance_rejects_infores_key() -> None:
     """manual provenance no longer accepts a per-section ``infores`` key.
 
-    The edge ``primary_knowledge_source`` always derives from the graph-level
+    The primary ``sources`` entry always derives from the graph-level
     infores; manual infores CURIEs belong in ``upstream_resource_ids``. A stray
     ``infores`` key is now an unknown field, and ``TablaBase`` forbids extras.
     """

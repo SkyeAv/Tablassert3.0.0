@@ -521,6 +521,10 @@ def test_tcode_collect_nests_upstream_resource_ids_in_sources(fixtures_path: Pat
     primary: dict[str, Any] = next(s for s in sources if s["resource_role"] == "primary_knowledge_source")
     assert primary["upstream_resource_ids"] == ["infores:pubmed-central"]
     assert {s["resource_id"] for s in sources if s["resource_role"] == "supporting_data_source"} == {"infores:pubmed-central"}
+    # `id` mirrors `resource_id`: RetrievalSource inherits a required `id` from
+    # `entity` in the generated Biolink classes, so it stays until biolink-model
+    # #1706/#1731 land.
+    assert all(s["id"] == s["resource_id"] for s in sources)
 
 
 def test_normalize_category_list_with_biolink_prefix() -> None:
@@ -568,8 +572,8 @@ def test_derive_species_context_coalesces_taxon() -> None:
     assert result == ["NCBITaxon:9606", "NCBITaxon:9606", None]
 
 
-def test_tcode_collect_emits_primary_knowledge_source_when_named(fixtures_path: Path) -> None:
-    """tcode collect emits primary_knowledge_source op when graph name is provided."""
+def test_tcode_collect_emits_primary_sources_entry_when_named(fixtures_path: Path) -> None:
+    """tcode collect routes the graph infores into `sources` when a graph name is provided."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -577,16 +581,19 @@ def test_tcode_collect_emits_primary_knowledge_source_when_named(fixtures_path: 
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    pks_ops: list[tuple[Any, tuple[Any]]] = [
+    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0] is retrieval_sources]
+    flat_ops: list[tuple[Any, tuple[Any]]] = [
         op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "primary_knowledge_source"
     ]
 
-    assert len(pks_ops) == 1
-    assert pks_ops[0][1] == ("primary_knowledge_source", "infores:multiomics-kg")
+    assert len(source_ops) == 1
+    assert source_ops[0][1][0] == "infores:multiomics-kg"
+    # No flat scalar: retrieval provenance lives only in the nested `sources` list.
+    assert flat_ops == []
 
 
-def test_tcode_collect_omits_primary_knowledge_source_when_unnamed(fixtures_path: Path) -> None:
-    """tcode collect omits primary_knowledge_source op when graph name is absent (validate path)."""
+def test_tcode_collect_omits_sources_when_unnamed(fixtures_path: Path) -> None:
+    """tcode collect omits the retrieval_sources op when graph name is absent (validate path)."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -594,11 +601,9 @@ def test_tcode_collect_omits_primary_knowledge_source_when_unnamed(fixtures_path
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    pks_ops: list[tuple[Any, tuple[Any]]] = [
-        op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "primary_knowledge_source"
-    ]
+    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0] is retrieval_sources]
 
-    assert pks_ops == []
+    assert source_ops == []
 
 
 def test_tcode_collect_manual_provenance_overrides_auto_sources(fixtures_path: Path) -> None:
@@ -621,10 +626,12 @@ def test_tcode_collect_manual_provenance_overrides_auto_sources(fixtures_path: P
     values: dict[str, object] = {str(op[1][0]): op[1][1] for op in collected if op[0].__name__ == "value" and len(op[1]) >= 2}
     pub_ops = [op for op in collected if op[0] is publications]
 
-    assert values["primary_knowledge_source"] == "infores:graph-source"
+    # The primary `sources` entry still derives from the graph infores; the override
+    # cannot replace it.
+    source_args: tuple[Any, ...] = next(op[1] for op in collected if op[0] is retrieval_sources)
+    assert source_args[0] == "infores:graph-source"
     # Manual upstream infores reach output nested in `sources`, not flat on the edge.
     assert "upstream_resource_ids" not in values
-    source_args: tuple[Any, ...] = next(op[1] for op in collected if op[0] is retrieval_sources)
     assert source_args[1] == ["infores:upstream-source"]
     assert values["knowledge_level"] == "knowledge_assertion"
     assert values["agent_type"] == "manual_agent"
@@ -640,9 +647,9 @@ def test_tcode_collect_uses_graph_infores_when_no_section_override(fixtures_path
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    pks_ops = [op for op in collected if op[0].__name__ == "value" and len(op[1]) > 0 and op[1][0] == "primary_knowledge_source"]
+    source_ops = [op for op in collected if op[0] is retrieval_sources]
 
-    assert pks_ops[0][1] == ("primary_knowledge_source", "infores:custom-graph")
+    assert source_ops[0][1][0] == "infores:custom-graph"
 
 
 def test_tcode_collect_nests_source_record_urls_in_sources(fixtures_path: Path) -> None:
@@ -663,6 +670,7 @@ def test_tcode_collect_nests_source_record_urls_in_sources(fixtures_path: Path) 
     assert "source_record_urls" not in result.columns
     primary: dict[str, Any] = next(s for s in result["sources"].to_list()[0] if s["resource_role"] == "primary_knowledge_source")
     assert primary["source_record_urls"] == ["https://example.com/test.tsv"]
+    assert primary["id"] == primary["resource_id"]
 
 
 def test_tcode_original_value_before_regex_for_columns(fixtures_path: Path) -> None:
@@ -2250,7 +2258,9 @@ def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Pa
     assert result["object_name"] == "TP53"
     assert result["predicate"] == "biolink:related_to"
     assert result["publications"] == ["PMCID:PMC0000000"]
-    assert result["primary_knowledge_source"] == "infores:test-kg"
+    primary: dict[str, Any] = next(s for s in result["sources"] if s["resource_role"] == "primary_knowledge_source")
+    assert primary["resource_id"] == "infores:test-kg"
+    assert "primary_knowledge_source" not in result
 
 
 def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch: Any, tmp_path: Path) -> None:
@@ -2502,8 +2512,12 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
     assert edge_rows[0]["subject"] == "HGNC:1100"
     assert edge_rows[0]["object"] == "HGNC:11998"
     primary_source: dict[str, Any] = next(x for x in edge_rows[0]["sources"] if x["resource_role"] == "primary_knowledge_source")
+    assert primary_source["resource_id"] == "infores:pipeline-kg"
     assert primary_source["upstream_resource_ids"] == ["infores:pubmed-central"]
-    assert edge_rows[0]["primary_knowledge_source"] == "infores:pipeline-kg"
+    # `id` mirrors `resource_id` (required by the generated Biolink classes), and
+    # no flat scalar duplicates the primary source.
+    assert primary_source["id"] == primary_source["resource_id"]
+    assert "primary_knowledge_source" not in edge_rows[0]
     assert {row["id"] for row in node_rows} == {"HGNC:1100", "HGNC:11998"}
     assert rig["name"] == "PIPELINE_KG v0.1.0"
     edge_type: dict[str, Any] = rig["target_info"]["edge_type_info"][0]  # pyright: ignore

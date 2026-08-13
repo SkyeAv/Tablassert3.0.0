@@ -359,13 +359,15 @@ def derive_species_context(lf: pl.LazyFrame) -> pl.LazyFrame:
 def _retrieval_source(resource_id: str, resource_role: str, upstream: list[str] | None = None, urls: list[str] | None = None) -> pl.Expr:
     """Build one ``RetrievalSource`` struct expression.
 
-    Every entry declares the same four fields so that :func:`retrieval_sources` can
+    Every entry declares the same five fields so that :func:`retrieval_sources` can
     ``concat_list`` them into a single ``list[struct]`` column; absent list fields are
     typed nulls, which the Rust null-stripper removes from the emitted JSON.
     """
     empty: pl.Expr = pl.lit(None, dtype=pl.List(pl.String))
     return pl.struct(
-        # RetrievalSource.id is required; translator-ingests sets it to the resource_id.
+        # `id` duplicates `resource_id`, but RetrievalSource inherits `id` from
+        # `entity` and the generated Pydantic classes require it, so omitting it
+        # fails KGX validation. Stays until biolink-model #1706/#1731 land.
         pl.lit(resource_id).alias("id"),
         pl.lit(resource_id).alias("resource_id"),
         pl.lit(resource_role).alias("resource_role"),
@@ -1099,9 +1101,9 @@ class Tcode(Section):
             (edge_category, ("biolink:" + self.statement.predicate,)),
             (value, ("knowledge_level", knowledge_level)),
             (value, ("agent_type", agent_type)),
-            # Biolink `primary_knowledge_source` is a scalar; `sources` carries the
-            # structured retrieval provenance (roles, upstream ids, record urls).
-            (value, ("primary_knowledge_source", primary_knowledge_source)) if primary_knowledge_source else None,
+            # Retrieval provenance lives only in the nested `sources` list (Biolink
+            # RetrievalSource); current translator-ingests emits no flat
+            # `primary_knowledge_source` scalar, so neither do we.
             (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(u) for u in self.source.url])) if primary_knowledge_source else None,
             (publications, (publication_values,)) if publication_values else None,
             # Prune first so class-rejected values are handed to the study rather than lost.
@@ -1171,7 +1173,7 @@ PHASE_AWARE: frozenset[Callable] = frozenset({resolve_batch, fullmap_audit})
 
 UNKNOWN_PHASE: str = "transform"
 
-_VALUE_PROVENANCE_COLS: frozenset[str] = frozenset({"knowledge_level", "agent_type", "primary_knowledge_source", "sheet_name"})
+_VALUE_PROVENANCE_COLS: frozenset[str] = frozenset({"knowledge_level", "agent_type", "sheet_name"})
 
 
 def _phase_of(fn: Callable, args: tuple[Any, ...]) -> str:

@@ -403,9 +403,9 @@ class ManualProvenance(TablaBase):
 
     When present under :class:`Provenance`, these values replace the legacy
     repo/publication-derived provenance while keeping the same KL/AT defaults.
-    The edge ``primary_knowledge_source`` always derives from the graph-level
-    ``infores`` (or ``infores:<graph-name>``); manual infores CURIEs belong in
-    ``upstream_resource_ids``.
+    The primary ``sources`` entry (``resource_role: primary_knowledge_source``)
+    always derives from the graph-level ``infores`` (or ``infores:<graph-name>``);
+    manual infores CURIEs belong in ``upstream_resource_ids``.
     """
 
     upstream_resource_ids: list[str] = Field(
@@ -574,7 +574,7 @@ class Graph(TablaBase):
     ui_explanation: str = Field(DEFAULT_RIG_UI_EXPLANATION, description="Resource Ingest Guide explanation applied to generated edge type metadata.")
     infores: str | None = Field(
         None,
-        description="Graph-level primary knowledge source infores CURIE; defaults to infores:<kebab-name> when omitted.",
+        description="Graph-level infores CURIE emitted as the primary entry of the edge `sources` list and as the RIG source_info.infores_id; defaults to infores:<kebab-name> when omitted.",
         examples=["infores:my-kg"],
     )
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])

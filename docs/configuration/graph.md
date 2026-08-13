@@ -30,7 +30,7 @@ QC auditing and verbose logging are controlled at build time via the `build-kg -
 |-------|------|-------------|
 | `contributions` | List[String] | RIG contribution statements for graph provenance. Defaults to `["Tablassert: KGX and RIG generation"]` |
 | `ui_explanation` | String | RIG explanation applied to generated edge-type metadata. Defaults to a built-in description of how Tablassert transforms source records into Biolink associations |
-| `infores` | String | Graph-level `infores:` CURIE emitted as the default Biolink `primary_knowledge_source` and RIG `source_info.infores_id`. Defaults to `infores:<kebab-name>` derived from `name` |
+| `infores` | String | Graph-level `infores:` CURIE emitted as the primary entry of each edge's `sources` list (`resource_role: primary_knowledge_source`) and as the RIG `source_info.infores_id`. Defaults to `infores:<kebab-name>` derived from `name` |
 
 ### Field Details
 

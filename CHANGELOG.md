@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+- **Edges no longer carry a flat `primary_knowledge_source` scalar; retrieval provenance lives only in the nested `sources` list.** Each edge emitted the graph infores three times — as the flat `primary_knowledge_source` column, as `sources[0].id`, and as `sources[0].resource_id`. The flat scalar is now gone, matching current `NCATSTranslator/translator-ingests` practice (no ingest sets it anymore; their KGX validation plugin reads only `sources`) and the Biolink Model's direction. The `sources` structure is unchanged: the primary entry (`resource_role: primary_knowledge_source`) carries `upstream_resource_ids` and `source_record_urls`, with one `supporting_data_source` entry per upstream. RIG generation is unaffected — it already read the nested `sources` first and still accepts the flat columns from legacy parquet inputs. Downstream consumers reading the flat column should read the primary `sources` entry's `resource_id` instead.
+
+  `sources[].id` still mirrors `resource_id`: `RetrievalSource` inherits `id` from `entity`, and the LinkML-generated Biolink Pydantic classes (PyPI 4.4.3 and GitHub master 4.4.4 alike) require it, so omitting it fails KGX validation. The mirror disappears once biolink-model [#1706](https://github.com/biolink/biolink-model/issues/1706) / [#1731](https://github.com/biolink/biolink-model/pull/1731) land.
+
 ### Changed
 - **The `build-kg --qc` study no longer flags `original_*` fields for leading/trailing whitespace.** Those slots are verbatim copies of the source-table cell (written by `Tcode.encoding` under an `original_` prefix before any regex/normalization runs), so retaining the cell's whitespace is faithful to the source, not a defect. The whitespace assertion now skips any key prefixed `original_`, while every other field is still checked exactly as before.
 
