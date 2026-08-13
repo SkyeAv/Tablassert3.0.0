@@ -65,7 +65,7 @@ This is useful when resolving a column of related entities (e.g., all genes) —
 
 **`qc: bool` (default: `False`)**
 
-When `True`, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a three-stage audit: exact match, fuzzy matching via rapidfuzz, and BioBERT sentence embeddings with cosine similarity. Mappings that fail all three stages are dropped from the returned list (in addition to the unresolved-entity filtering performed by `resolve()`). Requires the QC runtime to be installed (`tablassert[qc]`); see [Quality Control](qc.md) for the stage thresholds and backend.
+When `True`, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a four-stage audit: exact match, fuzzy matching via rapidfuzz, abbreviation expansion (Schwartz-Hearst), and SapBERT sentence embeddings with cosine similarity. Mappings that fail all four stages are dropped from the returned list (in addition to the unresolved-entity filtering performed by `resolve()`). Requires the QC runtime to be installed (`tablassert[qc]`); see [Quality Control](qc.md) for the stage thresholds and backend.
 
 ### Return Value
 
