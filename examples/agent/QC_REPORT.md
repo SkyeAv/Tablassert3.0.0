@@ -75,11 +75,11 @@ annotations:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:14645", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:434437", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:23934", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:224903", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:12367", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:14645", "primary_knowledge_source": "infores:agent"}
+{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:434437", "primary_knowledge_source": "infores:agent"}
+{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:23934", "primary_knowledge_source": "infores:agent"}
+{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:224903", "primary_knowledge_source": "infores:agent"}
+{"subject": "CHEBI:9168", "predicate": "biolink:increases_amount_or_activity_of", "object": "NCBIGene:12367", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -177,11 +177,11 @@ sections:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "NCBIGene:23467", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:5345", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "UniProtKB:Q9H9K5", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:7076", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "MGI:98863", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "NCBIGene:23467", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:5345", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": "infores:agent"}
+{"subject": "UniProtKB:Q9H9K5", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:7076", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": "infores:agent"}
+{"subject": "MGI:98863", "predicate": "biolink:associated_with", "object": "MONDO:0007739", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -272,11 +272,11 @@ sections:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "UMLS:C2360306", "predicate": "biolink:associated_with", "object": "UMLS:C1706982", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "UMLS:C1171404", "predicate": "biolink:associated_with", "object": "CL:0000556", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "UMLS:C1167975", "predicate": "biolink:associated_with", "object": "UMLS:C1706982", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "UMLS:C0427565", "predicate": "biolink:associated_with", "object": "CL:0000837", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "UMLS:C2360306", "predicate": "biolink:associated_with", "object": "MONDO:0005810", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "UMLS:C2360306", "predicate": "biolink:associated_with", "object": "UMLS:C1706982", "primary_knowledge_source": "infores:agent"}
+{"subject": "UMLS:C1171404", "predicate": "biolink:associated_with", "object": "CL:0000556", "primary_knowledge_source": "infores:agent"}
+{"subject": "UMLS:C1167975", "predicate": "biolink:associated_with", "object": "UMLS:C1706982", "primary_knowledge_source": "infores:agent"}
+{"subject": "UMLS:C0427565", "predicate": "biolink:associated_with", "object": "CL:0000837", "primary_knowledge_source": "infores:agent"}
+{"subject": "UMLS:C2360306", "predicate": "biolink:associated_with", "object": "MONDO:0005810", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -329,11 +329,11 @@ provenance:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "NCBIGene:26470", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:83723", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:654483", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:79008", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:5531", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "NCBIGene:26470", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:83723", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:654483", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:79008", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:5531", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004988", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -388,11 +388,11 @@ sections:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "NCBIGene:1742", "predicate": "biolink:actively_involved_in", "object": "GO:0048813", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:2904", "predicate": "biolink:actively_involved_in", "object": "GO:0098815", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:1742", "predicate": "biolink:actively_involved_in", "object": "GO:0007612", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:7532", "predicate": "biolink:actively_involved_in", "object": "GO:0006469", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:2011", "predicate": "biolink:actively_involved_in", "object": "GO:0035088", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "NCBIGene:1742", "predicate": "biolink:actively_involved_in", "object": "GO:0048813", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:2904", "predicate": "biolink:actively_involved_in", "object": "GO:0098815", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:1742", "predicate": "biolink:actively_involved_in", "object": "GO:0007612", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:7532", "predicate": "biolink:actively_involved_in", "object": "GO:0006469", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:2011", "predicate": "biolink:actively_involved_in", "object": "GO:0035088", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -442,11 +442,11 @@ provenance:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "NCBIGene:25979", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:54531", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:91433", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:255057", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:25825", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "NCBIGene:25979", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:54531", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:91433", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:255057", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:25825", "predicate": "biolink:actively_involved_in", "object": "GO:0008380", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -506,11 +506,11 @@ sections:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "MESH:D002889", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "MESH:D002899", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "MESH:D002889", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "MESH:D002893", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "MESH:D002896", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "MESH:D002889", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": "infores:agent"}
+{"subject": "MESH:D002899", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": "infores:agent"}
+{"subject": "MESH:D002889", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": "infores:agent"}
+{"subject": "MESH:D002893", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": "infores:agent"}
+{"subject": "MESH:D002896", "predicate": "biolink:in_taxon", "object": "NCBITaxon:4530", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -565,11 +565,11 @@ sections:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "NCBIGene:5579", "predicate": "biolink:participates_in", "object": "UMLS:C1513094", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:317", "predicate": "biolink:participates_in", "object": "UMLS:C2062441", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:3592", "predicate": "biolink:participates_in", "object": "MONDO:0004619", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:993", "predicate": "biolink:participates_in", "object": "GO:0090398", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:5606", "predicate": "biolink:participates_in", "object": "MONDO:0043693", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "NCBIGene:5579", "predicate": "biolink:participates_in", "object": "UMLS:C1513094", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:317", "predicate": "biolink:participates_in", "object": "UMLS:C2062441", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:3592", "predicate": "biolink:participates_in", "object": "MONDO:0004619", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:993", "predicate": "biolink:participates_in", "object": "GO:0090398", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:5606", "predicate": "biolink:participates_in", "object": "MONDO:0043693", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -627,11 +627,11 @@ sections:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "NCBIGene:101", "predicate": "biolink:expressed_in", "object": "UBERON:0006618", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:404672", "predicate": "biolink:expressed_in", "object": "UBERON:0002084", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:4927", "predicate": "biolink:expressed_in", "object": "UBERON:0002084", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:100190938", "predicate": "biolink:expressed_in", "object": "UBERON:0002084", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:25770", "predicate": "biolink:expressed_in", "object": "UBERON:0006618", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "NCBIGene:101", "predicate": "biolink:expressed_in", "object": "UBERON:0006618", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:404672", "predicate": "biolink:expressed_in", "object": "UBERON:0002084", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:4927", "predicate": "biolink:expressed_in", "object": "UBERON:0002084", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:100190938", "predicate": "biolink:expressed_in", "object": "UBERON:0002084", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:25770", "predicate": "biolink:expressed_in", "object": "UBERON:0006618", "primary_knowledge_source": "infores:agent"}
 ```
 
 ---
@@ -678,9 +678,9 @@ provenance:
 ### Sample edges (first 5)
 
 ```json
-{"subject": "NCBIGene:392390", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:730291", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:645811", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:85301", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": ["infores:agent"]}
-{"subject": "NCBIGene:23283", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": ["infores:agent"]}
+{"subject": "NCBIGene:392390", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:730291", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:645811", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:85301", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": "infores:agent"}
+{"subject": "NCBIGene:23283", "predicate": "biolink:gene_associated_with_condition", "object": "MONDO:0004992", "primary_knowledge_source": "infores:agent"}
 ```

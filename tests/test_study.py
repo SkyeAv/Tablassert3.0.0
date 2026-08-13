@@ -92,6 +92,24 @@ def test_whitespace_values(tmp_path: Path) -> None:
     assert sorted(violation.examples) == ["id (1)", "name (1)"]
 
 
+def test_whitespace_allowed_in_original_fields(tmp_path: Path) -> None:
+    """`original_*` values keep their source whitespace; only other fields are flagged.
+
+    `original_*` slots are verbatim copies of the source-table cell, so leading/trailing
+    whitespace there is faithful to the input, not a defect. The study must not count it
+    even as the same record carries genuinely padded values on other keys.
+    """
+    nodes: Path = _write_ndjson(
+        tmp_path / "n.ndjson", _records({"id": "HGNC:5", "original_name": " padded source ", "name": " padded"}, {"id": "HGNC:6"})
+    )
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "object": "HGNC:6", "original_subject": " raw gene "}))
+    checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
+    violation: study.StudyViolation = checks["whitespace-values"]
+    # Only the genuinely padded `name` field is flagged; the `original_*` slots are not.
+    assert violation.count == 1
+    assert violation.examples == ["name (1)"]
+
+
 def test_missing_file_is_a_violation(tmp_path: Path) -> None:
     """A missing path must never read as a clean bill of health."""
     nodes, _ = _clean(tmp_path)

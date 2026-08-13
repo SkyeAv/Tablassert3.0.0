@@ -417,9 +417,9 @@ class ManualProvenance(TablaBase):
 
     When present under :class:`Provenance`, these values replace the legacy
     repo/publication-derived provenance while keeping the same KL/AT defaults.
-    The edge ``primary_knowledge_source`` always derives from the graph-level
-    ``rig.source_info.infores_id``; manual infores CURIEs belong in
-    ``upstream_resource_ids``.
+    The primary ``sources`` entry (``resource_role: primary_knowledge_source``)
+    always derives from the graph-level ``rig.source_info.infores_id``; manual
+    infores CURIEs belong in ``upstream_resource_ids``.
     """
 
     upstream_resource_ids: list[str] = Field(

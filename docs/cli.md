@@ -22,7 +22,7 @@ These are flags on the root `tablassert` command, **not** subcommands.
 
 | Flag | Description |
 | --- | --- |
-| `--version` | Print the installed package version as `tablassert <version>` (e.g. `tablassert 10.0.0`) and exit |
+| `--version` | Print the installed package version as `tablassert <version>` (e.g. `tablassert 10.1.0`) and exit |
 | `--help`, `-h` | Show help for the app or a subcommand |
 
 !!! warning "Two different `--version`s"
@@ -137,7 +137,7 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 | --- | --- | --- | --- | --- |
 | `GRAPH-CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph YAML |
 | `--release`, `-r` | Flag | No | `False` | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
-| `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, no undeclared or isolated nodes, no malformed lines or stray whitespace — and fails the build (non-zero exit) on any violation |
+| `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → BioBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, no undeclared or isolated nodes, no malformed lines or stray whitespace (verbatim `original_*` fields excepted, since they are faithful source copies) — and fails the build (non-zero exit) on any violation |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
 
@@ -153,8 +153,9 @@ or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is 
 
 ??? info "Build progress & stages"
     The build runs six parallel stages — Loading Tables → Extracting Sections → Building TCode →
-    Collecting Instructions → Building Subgraphs → Compiling Graph — under a three-row live progress
-    block (stage header; section bar with count/elapsed/ETA; in-flight item detail). Each completed
+    Collecting Instructions → Building Subgraphs → Compiling Graph — plus a seventh, Studying Graph,
+    only when `--qc` is passed. They run under a three-row live progress block (stage header;
+    section bar with count/elapsed/ETA; in-flight item detail). Each completed
     stage prints a green `✓ Stage N · NAME · elapsed` line above the live block. During Building
     Subgraphs the detail line also shows the per-section phase (`load`, `filter`, `clean`, `encode`,
     `resolve`, `qc`, `edge`, `provenance`, `significance`, `finalize`, `write`).

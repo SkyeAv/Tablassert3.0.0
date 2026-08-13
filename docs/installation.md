@@ -111,7 +111,7 @@ Where the gap is knowable up front, it is reported up front rather than mid-run:
 
 | Command | Checked | When |
 |---|---|---|
-| `build-kg --qc` | `[qc]` | Before the build starts — the QC audit is the pipeline's LAST stage, so a late failure would cost the entire entity-resolution pass |
+| `build-kg --qc` | `[qc]` | Before the build starts — the QC audit runs at the very end of the build, so a late failure would cost the entire entity-resolution pass |
 | `tablassert agent` | `[agent]` | After flag validation, before any model is built or any article fetched |
 | `tablassert agent --optimize` | `[agent]` + `[optimize]` | Same point; both are reported at once |
 | `build-fullmap --aria2c` | `[aria2]` | Before any download starts |

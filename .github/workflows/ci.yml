@@ -10,26 +10,30 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Both syncing jobs install this EXACT set, so they share one warm uv cache instead of
+  # racing to save mutually-useless ones. See the `ci` group in pyproject.toml.
+  SYNC_ARGS: --no-default-groups --group ci --extra qc
+
 jobs:
   python-lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Sync dev dependencies
-        run: uv sync --group dev
+      # Ruff runs standalone: `ruff check` measures 0s, so a full `uv sync` in front of it was
+      # ~40s of pure overhead. `version-file` reads the resolved pin (0.15.12) out of uv.lock,
+      # which is the same version .pre-commit-config.yaml pins, so local and CI cannot drift.
       - name: Ruff lint
-        run: uv run ruff check .
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          version-file: uv.lock
+          args: check --output-format=github
       - name: Ruff format check
-        run: uv run ruff format --check .
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          version-file: uv.lock
+          args: format --check
 
   python-type:
     runs-on: ubuntu-latest
@@ -37,18 +41,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-      - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: astral-sh/setup-uv@v10.0.0
         with:
           python-version: "3.13"
+          enable-cache: true
+          # `prune-cache` is NOT on by default; without it the saved cache carries both the
+          # zipped and unzipped copy of every wheel, which matters a lot with the qc extra.
+          prune-cache: true
+          cache-suffix: ci-qc
       - name: Sync dependencies
-        run: uv sync --group dev --extra qc
+        run: uv sync --frozen ${{ env.SYNC_ARGS }}
       - name: Pyright
         run: uv run pyright
 
+  # Deliberately NOT sharded across a matrix. Measured on this repo: ~21s of every pytest
+  # run is fixed overhead (interpreter start, imports, xdist workers, coverage init) against
+  # only ~15s of actual test execution, so a 4-way split saved ~12s of test time while the
+  # slowest-of-four sync straggler plus a coverage-combine job cost ~20s more than it saved.
   python-test:
     runs-on: ubuntu-latest
     steps:
@@ -61,21 +70,19 @@ jobs:
         with:
           workspaces: rust
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-      - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: astral-sh/setup-uv@v10.0.0
         with:
           python-version: "3.13"
+          enable-cache: true
+          prune-cache: true
+          cache-suffix: ci-qc
       - name: Sync dependencies
-        run: uv sync --group dev --extra qc
+        run: uv sync --frozen ${{ env.SYNC_ARGS }}
       - name: Build Rust extension
         run: uv run maturin develop --manifest-path rust/Cargo.toml
+      # `-n auto` comes from the pyproject addopts; coverage is reported inline.
       - name: Run tests
-        # `-n auto` is also set in pyproject [tool.pytest.ini_options] addopts; kept
-        # explicit here so the intent is visible. Ubuntu runners have 2-4 cores.
-        run: uv run pytest -n auto
+        run: uv run pytest
 
   rust:
     runs-on: ubuntu-latest
