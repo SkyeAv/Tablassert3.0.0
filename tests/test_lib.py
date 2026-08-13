@@ -2626,3 +2626,38 @@ def test_predicate_options_answers_which_predicates_keep_the_class() -> None:
     assert "biolink:gene_associated_with_condition" in (predicate_options("SequenceVariant", "Gene") or set())
     # A pair with no specific association class leaves `predicate` open: nothing to demote.
     assert predicate_options("biolink:OrganismTaxon", "biolink:ChemicalEntity") is None
+
+
+def test_prune_to_class_wraps_scalar_for_uniformly_multivalued_slot() -> None:
+    """A scalar bound for a slot every declaring class types multivalued becomes a one-element list.
+
+    Regression: the wrap used to be built per row (``when(class-multivalued).then(concat_list)``),
+    which asks one column for two dtypes and dies in ``strict_cast`` at collect with
+    ``cannot cast List type (inner: 'String', to: 'String')``.
+    """
+    from tablassert.lib import prune_to_class
+
+    lf: pl.LazyFrame = pl.DataFrame({"category": [["biolink:Association"], ["biolink:Association"]], "has_evidence": ["ECO:0000001", None]}).lazy()
+    out: pl.DataFrame = prune_to_class(lf).collect()
+    assert out["has_evidence"].to_list() == [["ECO:0000001"], None]
+
+
+def test_prune_to_class_mixed_class_qualifier_does_not_crash_and_rescues() -> None:
+    """AVUTHU1 regression: a scalar qualifier a row's class refuses is nulled and rescued, not crashed.
+
+    ``anatomical_context_qualifier`` is declared by only some association classes (multivalued
+    on all of them); ``biolink:Association`` is not one. The refused value is preserved in
+    ``_pruned_by_class`` for the inlined StudyResult description; a declaring class keeps the
+    value, wrapped because the slot is multivalued everywhere it is declared.
+    """
+    from tablassert.lib import PRUNED_COLUMN, prune_to_class
+
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "category": [["biolink:Association"], ["biolink:ChemicalAffectsGeneAssociation"]],
+            "anatomical_context_qualifier": ["UBERON:0001555", "UBERON:0001556"],
+        }
+    ).lazy()
+    out: pl.DataFrame = prune_to_class(lf).collect()
+    assert out["anatomical_context_qualifier"].to_list() == [None, ["UBERON:0001556"]]
+    assert out[PRUNED_COLUMN].to_list() == [["anatomical_context_qualifier=UBERON:0001555"], []]

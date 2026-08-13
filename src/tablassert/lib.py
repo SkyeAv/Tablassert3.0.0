@@ -262,8 +262,10 @@ def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     Categories vary per row within a section, so this masks per row rather than
     dropping columns: values are nulled where the row's class rejects them, and the
-    Rust null-stripper then removes the key entirely. Scalars are wrapped where the
-    class declares the slot multivalued.
+    Rust null-stripper then removes the key entirely. Scalars are wrapped into
+    one-element lists when the slot is multivalued on every class that declares it
+    (a column has one dtype, so per-row wrapping is impossible; a slot Biolink
+    declares scalar on some classes and multivalued on others stays scalar).
 
     Args:
         lf: Edges LazyFrame carrying a resolved ``category`` column.
@@ -306,10 +308,18 @@ def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
             # Preserve what the class refuses rather than deleting it outright; the
             # value is real evidence, it just has no slot on this association class.
             rescued.append(pl.when(ok | text.is_null()).then(None).otherwise(pl.concat_str([pl.lit(f"{col}="), text])))
-        # Biolink makes the same slot multivalued on some classes and scalar on others.
-        listed: dict[str, bool] = {cat: is_multivalued(association_class(cat), col) for cat in categories}
-        if any(listed.values()) and not isinstance(schema[col], pl.List):
-            keep = pl.when(first.replace_strict(listed, default=False)).then(pl.concat_list(keep)).otherwise(keep)
+        # A column has one dtype, so the multivalued wrap must be uniform across rows:
+        # wrap every value into a one-element list when every class declaring the slot
+        # types it multivalued. `is_multivalued` is False for classes that do not declare
+        # the slot at all, so the scan is restricted to declaring classes -- including
+        # them is what produced a spuriously mixed per-row wrap that died in
+        # strict_cast at collect. Rows whose class rejects the slot are already null and
+        # stay null. A hypothetically mixed slot keeps its scalar rather than crashing.
+        declaring: list[str] = [cat for cat in categories if accepts[cat]]
+        listed: dict[str, bool] = {cat: is_multivalued(association_class(cat), col) for cat in declaring}
+        if listed and all(listed.values()) and not isinstance(schema[col], pl.List):
+            # concat_list maps null -> [null]; the when preserves real nulls instead.
+            keep = pl.when(keep.is_null()).then(None).otherwise(pl.concat_list(keep))
         updates.append(keep.alias(col))
     if rescued:
         updates.append(pl.concat_list(rescued).list.drop_nulls().alias(PRUNED_COLUMN))
@@ -632,7 +642,7 @@ def split_list(lf: pl.LazyFrame, col: str, delimiter: str) -> pl.LazyFrame:
 
     A column encoding is scalar by construction, so a multivalued Biolink slot such as
     ``has_evidence`` fed from an aggregated cell would otherwise be emitted as a single
-    joined string -- and ``mask_illegal_edge_fields`` wraps that scalar into a
+    joined string -- and ``prune_to_class`` wraps that scalar into a
     one-element list, so the value survives Biolink validation while consumers iterate a
     single ``"a|b|c"`` blob instead of three ids.
 

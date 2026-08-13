@@ -142,7 +142,7 @@ def test_build_pipeline_splits_column_annotation_into_per_row_json_array(tmp_pat
     values AND different lengths — an array that differs per row, which only a
     per-row split can express.
 
-    Without ``split_by`` the joined cell stays a scalar and ``mask_illegal_edge_fields``
+    Without ``split_by`` the joined cell stays a scalar and ``prune_to_class``
     wraps it into a one-element list -- ``["EFO:0001|EFO:0002"]`` passes Biolink
     validation while giving consumers one unusable blob instead of two ids.
     """
