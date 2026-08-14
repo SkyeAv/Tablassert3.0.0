@@ -377,7 +377,7 @@ Never reaches output -- :func:`inline_supporting_study` folds it into the
 """
 
 
-def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None) -> pl.LazyFrame:
+def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None, identified: bool = True) -> pl.LazyFrame:
     """Attach table provenance and homeless statistics as an inlined Biolink ``Study``.
 
     Follows the COHD/ICEES pattern in ``translator-ingests``: the edge carries
@@ -396,21 +396,45 @@ def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None) 
       ``supporting_study_*`` slots become real ``Association`` fields and are left
       flat on the edge instead; nothing here is hardcoded to either state.
 
+    **Nothing to say, nothing emitted.** Biolink defines ``has supporting studies`` as
+    "studies that produced information used as evidence", so the struct has to earn its
+    place. An UNIDENTIFIED section -- one whose ``study_id`` fell back to the config
+    filename because it declares no publication -- with no routed statistics and nothing
+    pruned would otherwise emit a Study named ``my_table.yaml`` whose only StudyResult is a
+    row index into a file the pipeline regenerates. That is a fabricated study on every
+    edge, and no translator-ingests source models evidence that way. In that case the
+    struct is skipped; the routed/sheet/row columns are dropped either way. A section WITH
+    a publication keeps the full struct unchanged -- ``PMID:123#Table_S7 row 12`` is real
+    provenance -- as does any section that has statistics to carry.
+
     ``study_id`` is a per-section constant, so it can key a static struct field.
 
     Args:
         lf: Edges LazyFrame after annotation and provenance ops.
         study_id: Stable study identifier (``"<publication>#<sheet>"``).
         sheet: Worksheet name, when the source is a spreadsheet.
+        identified: Whether ``study_id`` names a real publication rather than falling back
+            to the config filename. ``False`` lets a contentless study be skipped.
 
     Returns:
-        LazyFrame with ``has_supporting_studies`` appended and the routed columns dropped.
+        LazyFrame with ``has_supporting_studies`` appended (when it carries anything) and
+        the routed columns dropped.
     """
     names: list[str] = lf.collect_schema().names()
     routed: list[str] = sorted(c for c in names if c in UNSATISFIABLE_EDGE_FIELDS and c not in DISABLED_EDGE_FIELDS)
     disabled: list[str] = sorted(c for c in names if c in DISABLED_EDGE_FIELDS)
     row: str = "extracted_from_row_number"
     has_row: bool = row in names
+    pruned: bool = PRUNED_COLUMN in names
+    drop: list[str] = [
+        *routed,
+        *disabled,
+        *([row] if has_row else []),
+        *(["sheet_name"] if "sheet_name" in names else []),
+        *([PRUNED_COLUMN] if pruned else []),
+    ]
+    if not identified and not routed and not pruned:
+        return lf.drop(drop)
 
     result_id: pl.Expr = pl.concat_str([pl.lit(f"{study_id}#row"), pl.col(row).cast(pl.String)]) if has_row else pl.lit(f"{study_id}#result")
     label: str = f"{sheet} row " if sheet else "row "
@@ -420,7 +444,6 @@ def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None) 
     # than silently dropped; `StudyResult.has_attribute` is `list[str]` (not inlined),
     # so typed Attributes would require emitting Attribute rows into the nodes file.
     fields: list[pl.Expr] = [result_id.alias("id"), result_name.alias("name")]
-    pruned: bool = PRUNED_COLUMN in names
     if routed or pruned:
         parts: list[pl.Expr] = []
         for col in routed:
@@ -443,13 +466,6 @@ def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None) 
         pl.lit(study_id).alias("id"), pl.lit(sheet or study_id).alias("name"), pl.concat_list(pl.struct(fields)).alias("has_study_results")
     )
     out: pl.LazyFrame = lf.with_columns(pl.struct(study.alias(study_id)).alias("has_supporting_studies"))
-    drop: list[str] = [
-        *routed,
-        *disabled,
-        *([row] if has_row else []),
-        *(["sheet_name"] if "sheet_name" in names else []),
-        *([PRUNED_COLUMN] if pruned else []),
-    ]
     return out.drop(drop)
 
 
@@ -1118,6 +1134,10 @@ class Tcode(Section):
         # The study is the table itself: one publication, one worksheet. Both are
         # section constants, so the study id can key a static struct field.
         sheet: str | None = self.source.sheet if self.source.kind == Files.EXCEL else None  # pyright: ignore
+        # No publication means no study to name: the fallback below is a filename, not an
+        # identifier, so `inline_supporting_study` skips the struct unless it has statistics
+        # to carry.
+        identified: bool = bool(publication_values)
         publication: str = publication_values[0] if publication_values else (self.config.name or "study")
         study_id: str = f"{publication}#{sheet}" if sheet else publication
         return [
@@ -1132,7 +1152,7 @@ class Tcode(Section):
             (publications, (publication_values,)) if publication_values else None,
             # Prune first so class-rejected values are handed to the study rather than lost.
             (prune_to_class, ()),
-            (inline_supporting_study, (study_id, sheet)),
+            (inline_supporting_study, (study_id, sheet, identified)),
             (trim, ()),
             (format_numeric, ()),
             (to_store, (self.store, self.config.name)),

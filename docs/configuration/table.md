@@ -497,6 +497,8 @@ This means nothing in your source data is silently dropped: context that doesn't
 
 In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance. Together with the sheet name it identifies the edge's **inlined supporting study** (`has_supporting_studies`), where it is carried alongside any relocated unsatisfiable slots; neither is folded into `supporting_text`.
 
+The supporting study is only emitted when it carries something. Biolink defines `has supporting studies` as "studies that produced information used as evidence", so a section that declares **no `publications`** and has **no** relocated slots or class-pruned values emits no `has_supporting_studies` at all: its `study_id` would fall back to the config filename, making every edge assert a `Study` named `my_table.yaml` whose only result is a row index. A section with a real publication always keeps the struct — `PMID:123#Table_S7 row 12` is genuine provenance — as does any section with values to preserve. The row and sheet columns are consumed either way.
+
 #### Automatic column coercion
 
 Before the allow-list sweep runs, tablassert renames statistical columns to their canonical Biolink names so source headers do not have to match exactly. Recognition is delimiter-anchored (spaces, `_`, `-`, `.` are interchangeable) and the **best fuzzy match per target wins, with an existing canonical column always preferred** over a higher-scoring spaced alias.

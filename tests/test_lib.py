@@ -2948,3 +2948,50 @@ def test_prune_to_class_preserves_classless_approval_ids() -> None:
     ).lazy()
     out: pl.DataFrame = prune_to_class(lf).collect()
     assert out["approval_ids"].to_list() == ["011111|022222", "033333"]
+
+
+def test_inline_supporting_study_skips_a_study_with_no_identity_and_nothing_to_carry() -> None:
+    """An unpublished section with nothing routed or pruned emits no ``has_supporting_studies``.
+
+    ``study_id`` would be the config filename and the sole StudyResult a row index, so the
+    struct would assert a Study that never existed on every edge. The row and sheet columns
+    are still consumed -- they are never meant to reach the edge.
+    """
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"], "object": ["B"], "extracted_from_row_number": [6848], "sheet_name": ["Table_S7"]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "my_table.yaml", None, False).collect()
+    assert "has_supporting_studies" not in out.columns
+    assert "extracted_from_row_number" not in out.columns
+    assert "sheet_name" not in out.columns
+    assert out["subject"].to_list() == ["A"]
+
+
+def test_inline_supporting_study_keeps_an_unidentified_study_that_carries_statistics() -> None:
+    """Without a publication the struct still survives when it has values to preserve.
+
+    The rescue path is the whole reason the fallback id exists: a class-refused value is real
+    evidence, and losing it would be worse than naming its carrier after a config file.
+    """
+    from tablassert.lib import PRUNED_COLUMN, inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["A"], "extracted_from_row_number": [12], PRUNED_COLUMN: [["species_context_qualifier=NCBITaxon:9606"]]}
+    ).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "my_table.yaml", None, False).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["my_table.yaml"]
+    assert study["has_study_results"][0]["description"] == "species_context_qualifier=NCBITaxon:9606"
+    assert study["has_study_results"][0]["id"] == "my_table.yaml#row12"
+    assert PRUNED_COLUMN not in out.columns
+
+
+def test_inline_supporting_study_keeps_a_published_study_with_no_statistics() -> None:
+    """A real publication earns the struct on its own -- ``PMID:123 row 12`` is real provenance."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"], "extracted_from_row_number": [12]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "PMID:123#Table_S7", "Table_S7", True).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["PMID:123#Table_S7"]
+    assert study["name"] == "Table_S7"
+    assert study["has_study_results"][0]["name"] == "Table_S7 row 12"
+    assert "description" not in study["has_study_results"][0]
