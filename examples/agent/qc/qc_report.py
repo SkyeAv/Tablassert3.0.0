@@ -73,20 +73,23 @@ def load_config(pmc: str) -> tuple[str, dict] | None:
     return None
 
 
-def kg_counts(pmc: str) -> tuple[int, int]:
+def artifact_path(pmc: str, suffix: str) -> Path | None:
+    """Find a generated artifact, preferring the target-identity artifacts directory."""
     bdir = STATE_DIR / "builds" / pmc
-    n = e = 0
-    np_, ep = bdir / "agent_0.0.1.nodes.ndjson", bdir / "agent_0.0.1.edges.ndjson"
-    if np_.is_file():
-        n = sum(1 for line in np_.open() if line.strip())
-    if ep.is_file():
-        e = sum(1 for line in ep.open() if line.strip())
+    candidates = sorted((bdir / "artifacts").glob(f"*.{suffix}")) + sorted(bdir.glob(f"*.{suffix}"))
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def kg_counts(pmc: str) -> tuple[int, int]:
+    np_, ep = artifact_path(pmc, "nodes.ndjson"), artifact_path(pmc, "edges.ndjson")
+    n = sum(1 for line in np_.open() if line.strip()) if np_ else 0
+    e = sum(1 for line in ep.open() if line.strip()) if ep else 0
     return n, e
 
 
 def sample_edges(pmc: str, k: int = 5) -> list[dict]:
-    ep = STATE_DIR / "builds" / pmc / "agent_0.0.1.edges.ndjson"
-    if not ep.is_file():
+    ep = artifact_path(pmc, "edges.ndjson")
+    if ep is None:
         return []
     out = []
     with ep.open() as fh:

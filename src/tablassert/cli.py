@@ -118,24 +118,36 @@ def _load_graph(configuration_file: Path) -> Graph:
 def build_pipeline(
     configuration_file: Path, progress: PipelineProgress, release: bool = False, qc: bool = False, log: bool = False, head: bool = False
 ) -> None:
-    """Build a knowledge graph from a YAML configuration file.
+    """Load a graph YAML and build it through the shared in-process core."""
+    graph: Graph = _load_graph(configuration_file)
+    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head)
 
-    Runs the six-stage build pipeline: load tables → extract sections → build
-    Tcodes → collect instructions → build subgraphs → compile graph. With ``qc``
-    enabled a seventh stage studies the final NDJSON files.
+
+def build_graph_pipeline(
+    graph: Graph,
+    configuration_file: Path,
+    progress: PipelineProgress,
+    release: bool = False,
+    qc: bool = False,
+    log: bool = False,
+    head: bool = False,
+    audit_sources: bool = True,
+) -> None:
+    """Build a validated :class:`Graph` without loading another graph YAML.
+
+    The public ``build-kg`` command uses :func:`build_pipeline`, while agent audits pass
+    a one-table temporary ``Graph`` here.  Keeping the core in-process lets those audits
+    reuse the production stages and metadata without building every table in the caller's
+    target graph.
 
     Args:
-        configuration_file: Path to the graph YAML file.
+        graph: Validated graph model controlling tables, fullmap, identity, and RIG.
+        configuration_file: Logical graph path used in validation error messages.
         progress: Pipeline progress reporter.
         release: When ``True``, emit release-mode artifacts.
-        qc: When ``True``, run quality-control audits on each section and assert
-            over the final NDJSON files (failing the build on any violation).
+        qc: When ``True``, run quality-control audits and final study assertions.
         log: When ``True``, enable per-section verbose logging.
-        head: When ``True``, preview a random sample of up to 5 rows per section (fast schema/shape check).
-
-    Raises:
-        GraphValidationError: If the graph YAML fails Pydantic validation.
-        SectionValidationError: If any section fails Pydantic validation.
+        head: When ``True``, build a random sample of up to five rows per section.
     """
     from tablassert.fullmap import fullmap_db_path
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
@@ -144,7 +156,7 @@ def build_pipeline(
 
     # Stage 1/6: load tables.
     progress.stage("Loading Tables")
-    g: Graph = _load_graph(configuration_file)
+    g: Graph = graph
     # imap_unordered yields in completion order, so each worker carries its input
     # index and we reassemble by index to keep raw[i] aligned with g.tables[i].
     start, advance, _ = progress.section_loop(len(g.tables), "Load")
@@ -231,7 +243,7 @@ def build_pipeline(
     start(f"{g.name} · v{g.version}")
     # on_phase drives the phase tag (scan → normalize → write-nodes → write-edges → dedup → rig);
     # on_subgraph ticks the bar once per subgraph, so the total is len(subgraphs).
-    compile_graph(subgraphs, g.name, g.version, g.rig, section_sources, on_phase=sub_step, on_subgraph=advance)
+    compile_graph(subgraphs, g.name, g.version, g.rig, section_sources if audit_sources else None, on_phase=sub_step, on_subgraph=advance)
 
     # Stage 7/7 (only with --qc): assert over the final NDJSON files.
     if qc:
@@ -711,7 +723,7 @@ def validate_kgx_command(
 def agent(
     pmc_ids: Annotated[list[str], cyclopts.Parameter(allow_leading_hyphen=False)],
     *,
-    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])],
+    graph_configuration_file: Annotated[Path, cyclopts.Parameter(name=["--configuration-file", "-f"])],
     model_id: Annotated[str | None, cyclopts.Parameter(name=["--model-id", "-m"])] = None,
     api_base: Annotated[str | None, cyclopts.Parameter(name=["--api-base", "-ab"])] = None,
     api_key: Annotated[str | None, cyclopts.Parameter(name=["--api-key", "-ak"])] = None,
@@ -740,7 +752,8 @@ def agent(
     supplementary tables -> an inner LLM agent derives a schema-gated Section config -> build_and_audit
     scores it -> a deterministic improve loop proposes/accepts edits IFF strictly better -> the config is
     accepted when coverage reaches ``--map-threshold`` or SKIPPED when the improve budget is exhausted.
-    State checkpoints to ``--state-dir`` so an interrupted batch resumes, skipping finished articles.
+    State checkpoints to ``--state-dir`` for downloads, artifacts, and run history; requested articles
+    are processed again on later invocations so a successful rerun can replace its target-graph entry.
 
     Model config comes from ``--model-id``/``--api-base``/``--api-key`` OR the ``TABLASSERT_AGENT_MODEL_ID``
     / ``TABLASSERT_AGENT_API_BASE`` / ``TABLASSERT_AGENT_API_KEY`` environment variables (explicit flags win).
@@ -749,7 +762,8 @@ def agent(
 
     Args:
         pmc_ids: One or more PMC article ids (positional).
-        fullmap: Fullmap redb file or base directory (required).
+        graph_configuration_file: Caller-owned Graph YAML to validate, use for metadata/fullmap, and
+            update in place after successful article builds.
         model_id: Model id (falls back to ``TABLASSERT_AGENT_MODEL_ID``).
         api_base: API base URL (falls back to ``TABLASSERT_AGENT_API_BASE``).
         api_key: API key (falls back to ``TABLASSERT_AGENT_API_KEY``).
@@ -786,6 +800,9 @@ def agent(
             ``_GEPA_BUILD_LOCK`` (``os.chdir`` is process-global), so more threads do not speed up builds.
     """
     from tablassert import agent as agent_mod
+    from tablassert.graph_target import prepare_graph
+
+    prepared_graph = prepare_graph(graph_configuration_file)
 
     resolved_id, resolved_base, resolved_key = agent_mod.resolve_model_config(model_id, api_base, api_key)
     # Fail loud on any missing secret BEFORE building a model (so this path never touches smolagents).
@@ -915,7 +932,8 @@ def agent(
 
     result: dict[str, object] = agent_mod.run_supervisor(
         list(pmc_ids),
-        fullmap=fullmap,
+        graph=prepared_graph.graph,
+        graph_path=prepared_graph.path,
         build_model_factory=build_model_factory,
         map_threshold=map_threshold,
         max_improve_iters=max_improve_iters,
@@ -947,37 +965,6 @@ def agent(
         f"tablassert agent: processed {len(records)} article(s) ({mapped} mapped, {skipped} skipped); "
         f"mean best coverage {mean_best:.3f}; {total_tokens} tokens over {total_steps} steps."
     )
-
-
-@APP.command(name="rebuild-agent-graph")
-def rebuild_agent_graph(
-    state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir", "-sd"])] = Path(".tablassert") / "agent",
-    *,
-    fullmap: Annotated[Path, cyclopts.Parameter(name=["--fullmap", "-f"])],
-) -> None:
-    """Rebuild the shared agent graph registry from the supervisor checkpoint.
-
-    Reconstructs ``<state-dir>/graph.yaml`` from ``<state-dir>/state.json``: every MAPPED /
-    BUILT_UNMEASURED record whose best config still exists on disk becomes a ``tables`` entry
-    (sorted by pmc id); stale entries (deleted configs, non-registered statuses) are pruned.
-    Parallel ``tablassert agent`` runs maintain the registry incrementally; this command
-    reconstructs it deterministically. Concurrency-safe: the same exclusive ``graph.yaml.lock``
-    flock + atomic write the agent registration uses.
-
-    Args:
-        state_dir: Agent state directory holding ``state.json`` + ``configs/``.
-        fullmap: Fullmap redb file or base directory recorded in the registry (first-wins: an
-            existing registry fullmap that differs is kept with a warning).
-    """
-    import yaml
-
-    from tablassert.graph_registry import rebuild_graph
-
-    graph_path: Path = rebuild_graph(state_dir, fullmap)
-    data: object = yaml.safe_load(graph_path.read_text(encoding="utf-8"))
-    tables: object = data.get("tables", []) if isinstance(data, dict) else []
-    count: int = len(tables) if isinstance(tables, list) else 0
-    print(f"tablassert rebuild-agent-graph: wrote {graph_path} with {count} table config(s).")
 
 
 class PrebuiltFullmapUnavailable(Exception):

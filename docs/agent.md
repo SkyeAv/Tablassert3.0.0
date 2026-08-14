@@ -88,10 +88,10 @@ pipeline on an article you already hold locally (e.g. a non-open-access paper), 
 
 ```bash
 # one directory used for every PMC id
-tablassert agent PMC11708054 --fullmap ./fullmap --local ./payloads/PMC11708054
+tablassert agent PMC11708054 --configuration-file ./graph.yaml --local ./payloads/PMC11708054
 
 # per-article directories
-tablassert agent PMC1 PMC2 --fullmap ./fullmap --local PMC1=./payloads/p1 PMC2=./payloads/p2
+tablassert agent PMC1 PMC2 --configuration-file ./graph.yaml --local PMC1=./payloads/p1 PMC2=./payloads/p2
 ```
 
 A local payload directory holds the table(s) and (optionally) the article main text. When `--local` is
@@ -127,15 +127,16 @@ With network access and a configured endpoint:
 
 ```bash
 tablassert agent PMC11708054 PMC12345678 \
-  --fullmap ./fullmap \
+  --configuration-file ./graph.yaml \
   --map-threshold 0.25 \
   --max-improve-iters 3 \
   --max-steps 20 \
   --state-dir .tablassert/agent
 ```
 
-Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`, `--max-improve-iters`/`-mi`,
-`--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`, plus `--local`/`-l`, `--reflexion`,
+The required target is `--configuration-file`/`-f`; it supplies the fullmap, graph identity, RIG,
+artifact metadata, and existing table list. Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`,
+`--max-improve-iters`/`-mi`, `--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`, plus `--local`/`-l`, `--reflexion`,
 `--judge-model`, `--judge-threshold`, `--biolink-threshold`, and the `--optimize`/`-o` prompt-optimization flags
 (`--instructions-file`, `--instructions-out`, `--max-metric-calls`, `--dataset`).
 The [CLI reference — `agent`](cli.md#agent) is the authoritative flag table; the list here is a compact
@@ -254,92 +255,59 @@ each section independently from its own coverage entry. A single-table paper is 
 one section. State and storage stay **per-paper**: one best config (`configs/<pmc_id>.yaml`) holding
 all sections, with `section_coverages` recorded for visibility.
 
-### Workspace layout & checkpoint / resume
+### Workspace layout, target graph, and checkpoint / rerun
 
-`tablassert agent` uses a **single stable workspace root** — `state_dir` (default `.tablassert/agent`,
-override with `--state-dir`). The CLI never sets a separate artifact root, so the checkpoint, the configs,
-the fetched downloads, and the build outputs **all co-locate** under it:
+`--configuration-file` is the caller-owned Graph YAML that the agent updates in place. Its `fullmap`,
+`name`, `version`, complete `rig:`, and artifact metadata drive every one-table audit. The agent does
+**not** create an aggregate graph under `state_dir`; `state_dir` remains only the checkpoint and working
+artifact directory (default `.tablassert/agent`, override with `--state-dir`):
 
 ```text
-.tablassert/agent/                       # = state_dir (the workspace root)
-  state.json                             # supervisor checkpoint (atomic; unchanged location)
-  graph.yaml                             # SHARED aggregate graph registry (flock-serialized, atomic)
-  graph.yaml.lock                        # sidecar lock file for graph.yaml (exclusive flock)
-  configs/<pmc_id>.yaml                  # best / accepted config (ALL configs in ONE folder)
-  configs/<pmc_id>.derived.yaml          # initial agent-derived config
-  downloads/<pmc_id>/<prefix>/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
-  builds/<pmc_id>/                       # KGX agent_0.0.1.{nodes,edges}.ndjson + table.yaml + graph.yaml + .tablassert/store — stable
+project/graph.yaml                       # caller-owned aggregate graph, updated in place
+.tablassert/agent/                       # checkpoint/artifact workspace
+  state.json                             # supervisor checkpoint (atomic)
+  configs/<pmc_id>.yaml                  # accepted generated table config (absolute source.local)
+  configs/<pmc_id>.derived.yaml          # initial generated config
+  downloads/<pmc_id>/<prefix>/...        # fetched PMC payload; stable across runs
+  builds/<pmc_id>/table.yaml             # temporary one-table audit input
+  builds/<pmc_id>/artifacts/             # <graph-name>_<graph-version>.{nodes,edges}.ndjson + RIG
+  builds/<pmc_id>/.tablassert/store/      # temporary parquet cache
 ```
 
-| Path | Contents | Lifecycle |
-| --- | --- | --- |
-| `state.json` | supervisor checkpoint: `{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path, biolink_valid_pct, demoted_edge_pct}` per record | written **atomically** (tmp write + `os.replace`) after each config and each improve iteration; git-ignored |
-| `graph.yaml` | SHARED aggregate graph registry: one `tables` entry per successful (`MAPPED` / `BUILT_UNMEASURED`) build | maintained under an exclusive `graph.yaml.lock` flock; atomic writes; see [Parallel agents and the shared graph registry](#parallel-agents-and-the-shared-graph-registry) |
-| `graph.yaml.lock` | sidecar lock file serializing registry read-modify-write | created on first registration; never deleted |
-| `configs/<pmc_id>.yaml` | the best / accepted config for the article | the reuse entry point (below) |
-| `configs/<pmc_id>.derived.yaml` | the agent's initial derived config | kept for provenance |
-| `downloads/<pmc_id>/<prefix>/` | fetched PMC payload (main text + metadata + tables) | **stable** — persists across runs |
-| `builds/<pmc_id>/` | KGX artifacts: `agent_0.0.1.{nodes,edges}.ndjson`, `table.yaml`, `graph.yaml`, `.tablassert/store` | **stable** — the built graph for the article |
+Only newly generated agent table configs are normalized: every section's `source.local` is written as
+an absolute local/data-lake path, and the graph's new `tables` entry is an absolute path. Existing
+user-authored table YAMLs and their source paths are not rewritten. The target graph's existing metadata
+and unrelated table entries are preserved.
 
-Re-running the same command **resumes** from the checkpoint: records already `MAPPED`/`SKIPPED` are
-skipped. The `downloads/` payload persists on disk across runs.
+A result is appended to the target graph only when it is `MAPPED` or `BUILT_UNMEASURED`. `SKIPPED`
+articles never append. If the same PMC is processed again, its old table entry is replaced and the new
+absolute config path is appended. Requested PMCs are deliberately processed again even when `state.json`
+contains a terminal record; this makes reruns effective while retaining attempts, coverage history, and
+metrics. A failed rerun does not replace the prior successful config.
 
-### Reusing agent outputs with the full pipeline
-
-The best config's `source.local` points at the downloaded table under `downloads/<pmc_id>/`, so the full
-(non-agent) pipeline can reuse the agent's output **without re-fetching**. The agent already writes a
-ready-to-build `graph.yaml` (wrapping `table.yaml` with the resolved fullmap) into `builds/<pmc_id>/`:
+The agent audits each candidate with a one-table in-process graph, so it does not rebuild every table
+already present in the target graph. The temporary audit inherits the target graph's semantic metadata
+and graph identity but writes physical artifacts to an isolated per-article workspace. Build the complete
+aggregate explicitly after the agent finishes:
 
 ```bash
-cd .tablassert/agent/builds/PMC11708054
-tablassert build-kg -f graph.yaml
+tablassert agent PMC11708054 --configuration-file ./graph.yaml --state-dir .tablassert/agent
+# inspect graph.yaml, then build every existing + generated table together
+tablassert build-kg -f ./graph.yaml
 ```
 
-!!! warning "Not relocatable"
-    `source.local` in the best config is an **absolute** path into `downloads/<pmc_id>/`. The workspace is
-    therefore **not relocatable** — moving or renaming the `.tablassert/agent` folder breaks that reference
-    (re-run the agent, or fix `source.local`, after any move).
+!!! warning "Absolute paths are intentional"
+    Generated `tables` entries and generated `source.local` values are absolute so the target graph can
+    be built from any current working directory. Moving the data lake, downloaded payload, or workspace
+    requires updating those generated paths or rerunning the agent.
 
-### Parallel agents and the shared graph registry
+### Concurrent agents targeting one graph
 
-Several `tablassert agent` processes can run CONCURRENTLY against the SAME shared `--state-dir` and
-each successful build self-registers into ONE aggregate graph config that a single `build-kg` then
-builds as a whole:
-
-```bash
-# fan out over DISJOINT pmc sets, all pointed at one shared state dir
-tablassert agent PMC1 PMC2 --fullmap ./fullmap --state-dir ./shared &
-tablassert agent PMC3 PMC4 --fullmap ./fullmap --state-dir ./shared &
-wait
-
-# one build of the whole registered graph
-tablassert build-kg -f ./shared/graph.yaml
-```
-
-Use **disjoint pmc sets**: each process owns its own ids. The shared registry itself is fully
-cross-process safe, but the per-process checkpoint (`state.json`) read-modify cycle is not
-cross-process locked, so two processes must not own the same pmc id.
-
-**How the registry works.** Every build that ends `MAPPED` or `BUILT_UNMEASURED` (both are
-successful builds) UPSERTS its best config into `<state-dir>/graph.yaml`:
-
-- **Concurrency-safe** — each registration takes an EXCLUSIVE `flock` on the
-  `<state-dir>/graph.yaml.lock` sidecar around the read-modify-write, then persists atomically
-  (tmp file + `os.replace`, the same pattern as `state.json`). No registration can lose or tear
-  another process's entry.
-- **Upsert by pmc id** — a re-run REPLACES the prior entry for the same pmc id (matched by config
-  basename stem); other entries keep their insertion order. Entries are ABSOLUTE paths, so
-  `build-kg` works from any CWD.
-- **`fullmap` is first-wins** — the first fullmap recorded stays; a later run passing a different
-  fullmap keeps the existing value and logs a warning.
-- **Self-healing** — a corrupt registry (bad YAML, not a mapping, or failing `Graph.model_validate`)
-  is renamed `graph.yaml.corrupt-<UTC timestamp>` and rebuilt fresh with a warning, so unattended
-  parallel runs never wedge on a damaged file.
-- **Registered statuses** — only `MAPPED` and `BUILT_UNMEASURED` register; `SKIPPED` never does. A
-  re-run that SKIPS an already-MAPPED pmc keeps the existing entry (resume skips terminal records
-  entirely, so nothing rewrites them). `tablassert rebuild-agent-graph --state-dir ./shared
-  --fullmap ./fullmap` reconstructs the registry from `state.json` and prunes stale entries
-  (deleted configs, non-registered statuses).
+Several agent processes may target the same caller-owned graph. Each successful append takes an exclusive
+`<graph>.lock` sidecar lock and atomically replaces the graph YAML, so distinct PMCs do not lose one
+another's entries and a same-PMC rerun has deterministic last-writer-wins replacement. The checkpoint
+`state.json` read-modify-write is still per-workspace and is not cross-process locked; use separate
+`state_dir` values for concurrent processes unless they intentionally coordinate their article ids.
 
 ## The tools
 
@@ -429,13 +397,13 @@ process-global), so a higher thread count does not speed up the expensive build/
 
 ```bash
 # optimize the agent prompt over a dataset of examples, writing the result to a file
-tablassert agent PMC11708054 --fullmap ./fullmap --optimize \
+tablassert agent PMC11708054 --configuration-file ./graph.yaml --optimize \
   --dataset examples/gepa-dataset.yaml --task-model qwen-flash \
   --max-metric-calls 30 --gepa-threads 4 \
   --instructions-out .tablassert/agent/optimized_instructions.yaml
 
 # later, run the supervisor with the optimized prompt
-tablassert agent PMC11708054 --fullmap ./fullmap \
+tablassert agent PMC11708054 --configuration-file ./graph.yaml \
   --instructions-file .tablassert/agent/optimized_instructions.yaml
 ```
 
