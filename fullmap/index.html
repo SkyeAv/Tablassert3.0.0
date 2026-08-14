@@ -1297,10 +1297,17 @@ and the <code>--force</code> / <code>-f</code> rebuild flag), their defaults, an
 <p>By default, <code>build-fullmap</code> first downloads a <strong>prebuilt</strong> database published for this Tablassert
 version — a <code>fullmap.tar.zst</code> under <code>.../fullmap/&lt;tablassert-version&gt;/</code> (the version directory is the
 installed package version, never hardcoded), verified against a co-published <code>sha256sum.txt</code> and
-stream-extracted beside <code>--output</code>. If none is available for this version it falls back to the
-from-scratch build below; <code>--force</code> / <code>-f</code> skips the prebuilt attempt and always builds. The optional
-<code>--aria2c</code> / <code>-a</code> accelerates <strong>either</strong> download — the multi-GB prebuilt archive is the ideal aria2
-use case.</p>
+extracted beside <code>--output</code> entirely in the Rust extension: it streams the archive through zstd → tar
+(the multi-GB decompressed tar is never materialized on disk) with the GIL released, extracts into a
+temp directory on the output's filesystem, and — before renaming anything into place — validates the
+bundle against the same contract a <code>--force</code> build must satisfy: the <code>meta</code> schema tag is exactly
+<code>tablassert.fullmap.v5</code>, a <code>build_id</code> is recorded, the shard files are exactly the set the primary
+advertises (no gaps, no extras), and every shard's <code>build_id</code> equals the primary's. Only a bundle that
+passes is atomically renamed into place (primary → <code>--output</code>, shards beside it); any failure raises
+and the command falls back to the from-scratch build below. If no prebuilt is published for this
+version it falls back the same way; <code>--force</code> / <code>-f</code> skips the prebuilt attempt and always builds. The
+optional <code>--aria2c</code> / <code>-a</code> accelerates <strong>either</strong> download — the multi-GB prebuilt archive is the ideal
+aria2 use case.</p>
 <p>Two facts matter most when planning a build:</p>
 <ul>
 <li>The BABEL <strong>version</strong> flag selects a RENCI BABEL snapshot date (default <code>2026jul22</code>) — <em>not</em>
