@@ -32,10 +32,17 @@ and the `--force` / `-f` rebuild flag), their defaults, and more examples.
 By default, `build-fullmap` first downloads a **prebuilt** database published for this Tablassert
 version — a `fullmap.tar.zst` under `.../fullmap/<tablassert-version>/` (the version directory is the
 installed package version, never hardcoded), verified against a co-published `sha256sum.txt` and
-stream-extracted beside `--output`. If none is available for this version it falls back to the
-from-scratch build below; `--force` / `-f` skips the prebuilt attempt and always builds. The optional
-`--aria2c` / `-a` accelerates **either** download — the multi-GB prebuilt archive is the ideal aria2
-use case.
+extracted beside `--output` entirely in the Rust extension: it streams the archive through zstd → tar
+(the multi-GB decompressed tar is never materialized on disk) with the GIL released, extracts into a
+temp directory on the output's filesystem, and — before renaming anything into place — validates the
+bundle against the same contract a `--force` build must satisfy: the `meta` schema tag is exactly
+`tablassert.fullmap.v5`, a `build_id` is recorded, the shard files are exactly the set the primary
+advertises (no gaps, no extras), and every shard's `build_id` equals the primary's. Only a bundle that
+passes is atomically renamed into place (primary → `--output`, shards beside it); any failure raises
+and the command falls back to the from-scratch build below. If no prebuilt is published for this
+version it falls back the same way; `--force` / `-f` skips the prebuilt attempt and always builds. The
+optional `--aria2c` / `-a` accelerates **either** download — the multi-GB prebuilt archive is the ideal
+aria2 use case.
 
 Two facts matter most when planning a build:
 
