@@ -114,9 +114,13 @@ tablassert build-fullmap --aria2c --output /data/fullmap/fullmap.redb
 By default `build-fullmap` looks for a prebuilt `fullmap.tar.zst` at
 `https://stars.renci.org/var/babel_outputs/<babel-version>/fullmap/<tablassert-version>/` (the version
 directory is the **installed Tablassert package version**, never hardcoded), verifies it against the
-published `sha256sum.txt`, and stream-extracts it beside `--output`. If no prebuilt exists for this
-version (or the download/extract fails), it falls back to a from-scratch BABEL build and logs a
-warning. A database already present at `--output` is reused as-is; pass `--force` to rebuild.
+published `sha256sum.txt`, and extracts it beside `--output` in the Rust extension — streaming zstd →
+tar with the GIL released (the decompressed tar never touches disk), then validating the extracted
+primary + shards against the force-build contract (exact `v5` schema, a recorded `build_id`, the exact
+shard set, and per-shard `build_id` equality) before atomically renaming them into place. If no
+prebuilt exists for this version (or the download or extraction fails), it falls back to a
+from-scratch BABEL build and logs a warning. A database already present at `--output` is reused as-is;
+pass `--force` to rebuild.
 
 See [Fullmap](fullmap.md) for the data pipeline, output schema, and graph-config usage.
 

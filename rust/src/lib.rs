@@ -31,13 +31,14 @@ fn xxh64(data: &str) -> String {
 // build/read path.  The `fullmap` module itself stays private; only these
 // intended entry points are surfaced at the crate root.
 pub use fullmap::{
-    build_fullmap_db, fullmap_source_version, hydrate_categories, hydrate_curies, hydrate_prefixes,
-    hydrate_sources, lookup_fullmap_terms,
+    build_fullmap_db, extract_prebuilt_fullmap, fullmap_source_version, hydrate_categories,
+    hydrate_curies, hydrate_prefixes, hydrate_sources, lookup_fullmap_terms,
 };
 
 #[pymodule]
 fn rs(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fullmap::build_fullmap_db, module)?)?;
+    module.add_function(wrap_pyfunction!(fullmap::extract_prebuilt_fullmap, module)?)?;
     module.add_function(wrap_pyfunction!(fullmap::fullmap_source_version, module)?)?;
     module.add_function(wrap_pyfunction!(fullmap::hydrate_categories, module)?)?;
     module.add_function(wrap_pyfunction!(fullmap::hydrate_curies, module)?)?;
