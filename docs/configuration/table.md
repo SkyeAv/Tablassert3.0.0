@@ -370,8 +370,9 @@ Use the `"values"` token to reference column values in transformations.
 ### Qualifiers
 
 Add context to edges (anatomical location, disease context, etc.).
-`species_context_qualifier` is auto-derived from resolved subject/object taxon
-metadata and should not be declared manually.
+`species_context_qualifier` is intentionally disabled: it is neither derived from
+node taxon metadata nor accepted as a qualifier or annotation. Taxon metadata is
+still emitted on resolved nodes.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

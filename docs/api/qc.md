@@ -1,10 +1,10 @@
 # Quality Control (qc)
 
-The `qc` module validates entity-resolution mappings through a three-stage pipeline (exact, fuzzy, BioBERT semantic similarity) — it runs behind `build-kg --qc` and `resolve_many(qc=True)` to keep only high-confidence assertions.
+The `qc` module validates entity-resolution mappings through a four-stage pipeline (exact, fuzzy, abbreviation expansion, SapBERT semantic similarity) — it runs behind `build-kg --qc` and `resolve_many(qc=True)` to keep only high-confidence assertions.
 
 QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `scikit-learn` and `sentence-transformers` (`torch` and `numpy` arrive transitively); `rapidfuzz` is a core dependency and is always available.
 
-`fullmap_audit()` checks the whole extra before it does any work and raises `QcRuntimeMissingError` naming every absent package and the install command. Checking up front matters because the two packages are needed at different stages — `scikit-learn` from the start, `sentence-transformers` only if Stage 3 is reached — so a half-installed extra would otherwise fail after the audit had already run. `build-kg --qc` performs the same check before the build begins, since the audit does not run until the very end of the build.
+`fullmap_audit()` checks the whole extra before it does any work and raises `QcRuntimeMissingError` naming every absent package and the install command. Checking up front matters because the two packages are needed at different stages — `scikit-learn` from the start, `sentence-transformers` only if Stage 4 is reached — so a half-installed extra would otherwise fail after the audit had already run. `build-kg --qc` performs the same check before the build begins, since the audit does not run until the very end of the build.
 
 ## fullmap_audit()
 
@@ -61,11 +61,11 @@ Context fields used in QC failure logs for traceability.
 
 Returns a Polars LazyFrame containing only the rows whose `col` value (CURIE) has **at least one** passing pre-resolution/preferred-name pair.
 
-QC scores unique `(CURIE, pre_resolution, preferred_name)` pairs, but the result is joined back to the input via a **semi-join on the CURIE column** (`df.join(passed.select(col), on=col, how="semi")`). The retention granularity is therefore the CURIE, not the individual pair: if *any* pair for a CURIE passes any stage, *every* input row sharing that CURIE is kept — including rows that were themselves part of a failed pair. A CURIE (and thus all of its rows) is dropped only when *none* of its pairs pass any stage. Failed pairs are logged with section/config/column context and their fuzzy/BioBERT scores.
+QC scores unique `(CURIE, pre_resolution, preferred_name)` pairs, but the result is joined back to the input via a **semi-join on the CURIE column** (`df.join(passed.select(col), on=col, how="semi")`). The retention granularity is therefore the CURIE, not the individual pair: if *any* pair for a CURIE passes any stage, *every* input row sharing that CURIE is kept — including rows that were themselves part of a failed pair. A CURIE (and thus all of its rows) is dropped only when *none* of its pairs pass any stage. Failed pairs are logged with section/config/column context and their fuzzy/SapBERT scores.
 
-### Three-Stage Pipeline
+### Four-Stage Pipeline
 
-The function applies three validation stages in sequence. Each stage progressively filters out correct resolutions and leaves suspected errors for the next stage.
+The function applies four validation stages in sequence. Each stage progressively filters out correct resolutions and leaves suspected errors for the next stage.
 
 #### Stage 1: Exact Match & Rule-Based Pass-Through
 
@@ -99,35 +99,47 @@ or fuzz.partial_token_sort_ratio(original, preferred) >= 80
 
 **Performance:** O(n) string operations, batched.
 
-#### Stage 3: BioBERT Semantic Similarity
+#### Stage 3: Abbreviation Expansion
 
-**High confidence using BioBERT embeddings.**
+**Deterministic pass for abbreviation/expansion pairs (Schwartz-Hearst).** A row passes when the pre-resolution text abbreviates the preferred name, or vice versa:
 
-1. **Encode** original and preferred name with BioBERT (sentence-transformers)
+```python
+_is_abbrev(original, preferred_name) or _is_abbrev(preferred_name, original)
+```
+
+The matcher scans the short form right-to-left against the long form (case-insensitively); the first character of the short form must land on a word boundary of the long form. This rescues the class both fuzzy matching and embedding similarity can miss — `AML` ↔ `acute myeloid leukemia`.
+
+**Performance:** O(n) character scans per row, no model inference.
+
+#### Stage 4: SapBERT Semantic Similarity
+
+**High confidence using SapBERT embeddings.**
+
+1. **Encode** original and preferred name with SapBERT (sentence-transformers)
 2. **Compute** cosine similarity between embeddings (scikit-learn)
 3. **Accept** if similarity >= 0.5
 
 ```python
-embeddings = get_biobert().encode(originals + preferreds)
+embeddings = get_sapbert().encode(originals + preferreds)
 similarity = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()
-return similarity >= 0.5
+return similarity >= qc.SIMILARITY_THRESHOLD  # 0.5
 ```
 
 **Performance:** Expensive (transformer inference); the model is loaded once and cached.
 
-### BioBERT Model
+### SapBERT Model
 
-**Model:** `pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb`
+**Model:** `cambridgeltl/SapBERT-from-PubMedBERT-fulltext`
 
-**Backend:** [sentence-transformers](https://www.sbert.net/) (PyTorch). Embeddings are compared with scikit-learn's `cosine_similarity`.
+**Backend:** [sentence-transformers](https://www.sbert.net/) (PyTorch). Embeddings are compared with scikit-learn's `cosine_similarity`. SapBERT's self-alignment pretraining pulls UMLS synonym pairs together in embedding space, which fits this stage's task — deciding whether two names denote the same entity — better than the NLI/STS-trained BioBERT it replaced. The 0.5 threshold was carried over from that BioBERT gate and has not been re-tuned for SapBERT's score distribution.
 
-**Lazy-loaded** on the first `fullmap_audit()` call that reaches the embedding stage via `get_biobert()`, then cached globally for the lifetime of the process.
+**Lazy-loaded** on the first `fullmap_audit()` call that reaches the embedding stage via `get_sapbert()`, then cached globally for the lifetime of the process.
 
 ### Model Caching
 
-`get_biobert()` loads the model from the local cache when present; otherwise it downloads `pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb` and saves it for future runs.
+`get_sapbert()` loads the model from the local cache when present; otherwise it downloads `cambridgeltl/SapBERT-from-PubMedBERT-fulltext` and saves it for future runs.
 
-**Cache location:** `.tablassert/biobert/` on disk (`qc.MODEL`); the loaded model object is also cached in memory for the lifetime of the process.
+**Cache location:** `.tablassert/sapbert/` on disk (`qc.MODEL`); the loaded model object is also cached in memory for the lifetime of the process.
 
 ### Example Usage
 
@@ -162,9 +174,10 @@ Input: 1000 rows with entity mappings
 
 Stage 1 (Exact): 700 pass → 300 pending
 Stage 2 (Fuzzy): 250 pass → 50 pending
-Stage 3 (BioBERT): 40 pass → 10 rejected
+Stage 3 (Abbreviation): 10 pass → 40 pending
+Stage 4 (SapBERT): 30 pass → 10 rejected
 
-Output: 990 rows (700 + 250 + 40)
+Output: 990 rows (700 + 250 + 10 + 30)
 ```
 
 ### Confidence Levels
@@ -172,12 +185,13 @@ Output: 990 rows (700 + 250 + 40)
 | Stage | Method | Confidence | Use Case |
 |-------|--------|-----------|----------|
 | 1 | Exact match / rule-based | Highest | Standardized IDs, acronyms, CURIE-like inputs |
-| 2 | Fuzzy | Medium | Abbreviations, typos |
-| 3 | BioBERT | High | Synonyms, paraphrases |
+| 2 | Fuzzy | Medium | Typos, word reordering |
+| 3 | Abbreviation expansion | High | Abbreviation ↔ full-name pairs |
+| 4 | SapBERT | High | Synonyms, paraphrases |
 
 ### Rejection Logging
 
-When `log=True`, each rejected CURIE is logged at INFO level with its context and the scores that caused the rejection: `curie`, `original`, `preferred`, `col`, `fuzz` (partial token sort ratio), `config`, `hash`, and — when the BioBERT stage ran — `bert` (cosine similarity).
+When `log=True`, each rejected CURIE is logged at INFO level with its context and the scores that caused the rejection: `curie`, `original`, `preferred`, `col`, `fuzz` (partial token sort ratio), `config`, `hash`, and — when the SapBERT stage ran — `sapbert` (cosine similarity).
 
 ### Integration with Pipeline
 

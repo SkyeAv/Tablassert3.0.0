@@ -295,11 +295,18 @@ def test_node_encoding_explicit_null_disables_taxon() -> None:
     assert node.taxon is None
 
 
-def test_qualifier_rejects_species_context_qualifier() -> None:
-    """species_context_qualifier is auto-derived and cannot be manually declared."""
+def test_qualifier_rejects_disabled_species_context_qualifier() -> None:
+    """species_context_qualifier is disabled and cannot be manually declared."""
     with pytest.raises(ValidationError) as exc_info:
         models.Qualifier(qualifier="species_context_qualifier", method="value", encoding="Homo sapiens")  # pyright: ignore
-    assert "qualifier-auto-derived" in str(exc_info.value)
+    assert "field-disabled" in str(exc_info.value)
+
+
+def test_annotation_rejects_disabled_species_context_qualifier() -> None:
+    """The disabled field cannot re-enter through the generic annotation entry point."""
+    with pytest.raises(ValidationError) as exc_info:
+        Annotation(annotation="species_context_qualifier", method="value", encoding="NCBITaxon:9606")  # pyright: ignore
+    assert "field-disabled" in str(exc_info.value)
 
 
 def test_qualifier_nullable_defaults_false() -> None:

@@ -205,6 +205,23 @@ def test_table_config_error_returns_the_actionable_message_the_gate_swallows() -
     # Still False, still never raises -- only the reason is newly available.
     assert validate_section(yaml.safe_dump(unsatisfiable, sort_keys=False)) is False
 
+    # A permanently disabled field is rejected through both supported config entry points.
+    disabled_qualifier: dict[str, Any] = copy.deepcopy(ALAMV6_TEMPLATE)
+    disabled_qualifier["template"]["statement"]["qualifiers"] = [
+        {"qualifier": "species_context_qualifier", "method": "value", "encoding": "NCBITaxon:9606"}
+    ]
+    disabled_message: str | None = table_config_error(yaml.safe_dump(disabled_qualifier, sort_keys=False))
+    assert disabled_message is not None
+    assert "field-disabled" in disabled_message
+    assert validate_section(yaml.safe_dump(disabled_qualifier, sort_keys=False)) is False
+
+    disabled_annotation: dict[str, Any] = copy.deepcopy(ALAMV6_TEMPLATE)
+    disabled_annotation["template"]["annotations"] = [{"annotation": "species_context_qualifier", "method": "value", "encoding": "NCBITaxon:9606"}]
+    annotation_message: str | None = table_config_error(yaml.safe_dump(disabled_annotation, sort_keys=False))
+    assert annotation_message is not None
+    assert "field-disabled" in annotation_message
+    assert validate_section(yaml.safe_dump(disabled_annotation, sort_keys=False)) is False
+
     # Never raises, whatever it is handed.
     for nasty in ("", "[]", "{", "\x00", "a: [1, 2", "- - -"):
         assert table_config_error(nasty) is None or isinstance(table_config_error(nasty), str)

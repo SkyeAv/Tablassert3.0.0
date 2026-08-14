@@ -10,7 +10,7 @@ Use the [CLI](cli.md) or the autonomous [Agent](agent.md).
 - **Declarative YAML configuration** — define data transformations without code
 - **Entity resolution** — map free text to biological entities (genes, diseases, chemicals) with
   taxonomic filtering and provenance, backed by an embedded redb database
-- **Optional quality control** — three-stage audit (exact → fuzzy → BioBERT embeddings) flags
+- **Optional quality control** — four-stage audit (exact → fuzzy → abbreviation → SapBERT embeddings) flags
   low-confidence mappings
 - **KGX compliance** — emits NCATS Translator-compatible node/edge NDJSON with Biolink categories and
   predicates

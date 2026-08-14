@@ -95,7 +95,7 @@ See the [Tutorial](https://skyeav.github.io/Tablassert/tutorial/) for the full w
 - **Declarative YAML configuration** — define data transformations without writing code
 - **Built-in entity resolution** — map free text to genes, diseases, and chemicals with standard
   CURIEs, taxonomic filtering, and provenance, backed by an embedded redb database
-- **Optional quality control** — a three-stage audit (exact → fuzzy → BioBERT embeddings) flags
+- **Optional quality control** — a four-stage audit (exact → fuzzy → abbreviation → SapBERT embeddings) flags
   low-confidence mappings
 - **KGX compliance** — emits NCATS Translator-compatible node/edge NDJSON with Biolink categories
   and predicates
@@ -116,7 +116,7 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | ----- | ---- | ------- |
 | `rt` | CPU-compatible Polars runtime | `pip install "tablassert[rt]"` |
 | `aria2` | bundled aria2c downloader for `build-fullmap --aria2c` (Linux/Windows wheels only) | `pip install "tablassert[aria2]"` |
-| `qc` | three-stage QC audit (exact → fuzzy → BioBERT embeddings) | `pip install "tablassert[qc]"` |
+| `qc` | four-stage QC audit (exact → fuzzy → abbreviation → SapBERT embeddings) | `pip install "tablassert[qc]"` |
 | `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
 | `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |
 

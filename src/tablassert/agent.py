@@ -2210,7 +2210,7 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
   the validity score: a `biolink_valid_pct` below 1.0 is never caused by these intentional fields.
 - QUALIFIERS: enum-ranged qualifiers take a literal TOKEN, never a CURIE
   (`object_direction_qualifier: increased`, not a UMLS id), and `species_context_qualifier` is
-  auto-derived from the resolved taxon — never author it.
+  disabled — never author it as a qualifier or annotation.
 
 ## ReAct workflow + planning
 Reason in an explicit ReAct loop (Thought -> Action -> Observation) and re-plan every few steps:

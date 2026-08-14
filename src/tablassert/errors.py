@@ -31,7 +31,7 @@ TablassertErrorCodes = Literal[
     "annotation-split-by-empty",
     "annotation-effect-size-without-type",
     "annotation-effect-type-without-size",
-    "qualifier-auto-derived",
+    "field-disabled",
     "qualifier-bad-value",
     "qualifier-unsatisfiable",
     "qualifier-nullable-literal",

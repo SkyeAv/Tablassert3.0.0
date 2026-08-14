@@ -14,6 +14,7 @@ from tablassert import rs
 from tablassert._lazy import LazyModule
 from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
+    DISABLED_EDGE_FIELDS,
     ENUM_RANGED_QUALIFIERS,
     UNSATISFIABLE_EDGE_FIELDS,
     Categories,
@@ -74,6 +75,7 @@ __all__ = [
     "coerced_target",
     "compile_rig",
     "curie_prefix",
+    "drop_zero_effect_size",
     "effect_size_target",
     "effect_type_target",
     "infores",
@@ -259,8 +261,9 @@ def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
     ``ALLOWED_EDGE_FIELDS`` is a per-*family* allow-list: it says a column is a slot
     of *some* association class. Whether the specific class chosen for a given row
     accepts it is a separate question, and getting it wrong is the single largest
-    source of ``extra_forbidden`` failures (``species_context_qualifier`` and friends
-    on a class that has no such slot).
+    source of ``extra_forbidden`` failures for qualifier fields on a class that has
+    no such slot. Tablassert-disabled fields are removed before this class-specific
+    masking so they cannot be rescued into study metadata.
 
     Categories vary per row within a section, so this masks per row rather than
     dropping columns: values are nulled where the row's class rejects them, and the
@@ -277,6 +280,10 @@ def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
     """
     schema: pl.Schema = lf.collect_schema()
     names: list[str] = schema.names()
+    disabled: list[str] = [c for c in names if c in DISABLED_EDGE_FIELDS]
+    if disabled:
+        lf = lf.drop(disabled)
+        names = [c for c in names if c not in DISABLED_EDGE_FIELDS]
     if "category" not in names:
         return lf
 
@@ -342,22 +349,6 @@ def value(lf: pl.LazyFrame, col: str, x: object) -> pl.LazyFrame:
     return lf.with_columns(pl.lit(x).alias(col))
 
 
-def derive_species_context(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """Derive ``species_context_qualifier`` from resolved node taxon columns.
-
-    Uses ``subject_taxon`` first and falls back to ``object_taxon``. Null values
-    indicate no resolved taxon metadata and are later stripped from NDJSON
-    output by ``dedup_stream``.
-
-    Args:
-        lf: Source LazyFrame after subject/object fullmap resolution.
-
-    Returns:
-        LazyFrame with an auto-derived ``species_context_qualifier`` edge column.
-    """
-    return lf.with_columns(pl.coalesce(pl.col("subject_taxon"), pl.col("object_taxon")).alias("species_context_qualifier"))
-
-
 def _retrieval_source(resource_id: str, resource_role: str, upstream: list[str] | None = None, urls: list[str] | None = None) -> pl.Expr:
     """Build one ``RetrievalSource`` struct expression.
 
@@ -416,7 +407,8 @@ def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None) 
         LazyFrame with ``has_supporting_studies`` appended and the routed columns dropped.
     """
     names: list[str] = lf.collect_schema().names()
-    routed: list[str] = sorted(c for c in names if c in UNSATISFIABLE_EDGE_FIELDS)
+    routed: list[str] = sorted(c for c in names if c in UNSATISFIABLE_EDGE_FIELDS and c not in DISABLED_EDGE_FIELDS)
+    disabled: list[str] = sorted(c for c in names if c in DISABLED_EDGE_FIELDS)
     row: str = "extracted_from_row_number"
     has_row: bool = row in names
 
@@ -451,7 +443,13 @@ def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None) 
         pl.lit(study_id).alias("id"), pl.lit(sheet or study_id).alias("name"), pl.concat_list(pl.struct(fields)).alias("has_study_results")
     )
     out: pl.LazyFrame = lf.with_columns(pl.struct(study.alias(study_id)).alias("has_supporting_studies"))
-    drop: list[str] = [*routed, *([row] if has_row else []), *(["sheet_name"] if "sheet_name" in names else []), *([PRUNED_COLUMN] if pruned else [])]
+    drop: list[str] = [
+        *routed,
+        *disabled,
+        *([row] if has_row else []),
+        *(["sheet_name"] if "sheet_name" in names else []),
+        *([PRUNED_COLUMN] if pruned else []),
+    ]
     return out.drop(drop)
 
 
@@ -861,6 +859,27 @@ def drop_not_significant(lf: pl.LazyFrame, col: str = "statistical_significance_
     return lf.filter(pl.col(col).cast(pl.String).ne_missing("biolink:not_significant"))
 
 
+def drop_zero_effect_size(lf: pl.LazyFrame, col: str = "effect_size") -> pl.LazyFrame:
+    """Drop release-mode edges whose effect size is exactly zero.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Effect-size column name.
+
+    Returns:
+        LazyFrame with zero effect-size edges removed.
+
+    Notes:
+        Only filters when the effect-size column exists; no-op for sections
+        without an ``effect_size`` column. Null effect sizes are kept (no
+        score was detected for that row).
+    """
+    names: list[str] = lf.collect_schema().names()
+    if col not in names:
+        return lf
+    return lf.filter(pl.col(col).is_null() | (pl.col(col).cast(pl.Float64) != 0.0))
+
+
 def idxname(col: Any) -> str:
     """Convert Excel-style column letters (e.g. ``"AA"``) to a polars-style ``column_<n>`` name.
 
@@ -1023,6 +1042,7 @@ class Tcode(Section):
             # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
             (sig, ()),
             (drop_not_significant, ()) if self.release else None,
+            (drop_zero_effect_size, ()) if self.release else None,
         ]
 
     def _node_ops(self: Self, db: Path) -> list[Any]:
@@ -1101,7 +1121,6 @@ class Tcode(Section):
         publication: str = publication_values[0] if publication_values else (self.config.name or "study")
         study_id: str = f"{publication}#{sheet}" if sheet else publication
         return [
-            (derive_species_context, ()),
             (value, ("predicate", "biolink:" + self.statement.predicate)),
             (edge_category, ("biolink:" + self.statement.predicate,)),
             (value, ("knowledge_level", knowledge_level)),
@@ -1159,7 +1178,6 @@ PHASE_OF: dict[Callable, str] = {
     resolve_batch: "resolve",
     fullmap_audit: "qc",
     column: "encode",
-    derive_species_context: "edge",
     edge_category: "edge",
     publications: "provenance",
     retrieval_sources: "provenance",
@@ -1168,6 +1186,7 @@ PHASE_OF: dict[Callable, str] = {
     split_list: "encode",
     sig: "significance",
     drop_not_significant: "significance",
+    drop_zero_effect_size: "significance",
     trim: "finalize",
     format_numeric: "finalize",
     to_store: "write",
@@ -1364,9 +1383,10 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
     """
     schema: pl.Schema = lf.collect_schema()
     schema_names: list[str] = schema.names()
-    unknown: list[str] = sorted(c for c in schema_names if c not in ALLOWED_EDGE_FIELDS)
+    disabled: list[str] = sorted(c for c in schema_names if c in DISABLED_EDGE_FIELDS)
+    unknown: list[str] = sorted(c for c in schema_names if c not in ALLOWED_EDGE_FIELDS and c not in DISABLED_EDGE_FIELDS)
     if not unknown:
-        return lf
+        return lf.drop(disabled) if disabled else lf
 
     parts: list[pl.Expr] = []
     for col in unknown:
@@ -1388,7 +1408,7 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
     else:
         combined = derived
 
-    return lf.with_columns(combined.alias("supporting_text")).drop(unknown)
+    return lf.with_columns(combined.alias("supporting_text")).drop([*unknown, *disabled])
 
 
 def _collect_subframes(
