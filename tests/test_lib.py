@@ -386,6 +386,35 @@ def test_tcode_collect_threads_nullable_into_resolve_specs(fixtures_path: Path) 
     assert by_col["anatomical_context_qualifier"].nullable is False
 
 
+def test_tcode_collect_threads_reach_resolve_batch(fixtures_path: Path) -> None:
+    """``Tcode.threads`` rides the resolve_batch op args; the tag defaults to ``"_two"``.
+
+    ``compile_subgraph`` applies op args positionally, so the resolve_batch op spells the
+    tag explicitly to reach ``threads`` (positionals: specs, db, log, section_hash,
+    config_file, column_context, tag, threads).  Unset threads keeps the Rust auto behavior.
+    """
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    store: Path = Path("/tmp/sectionhash_threads.parquet")
+
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "threads": 8}
+    )
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    batch_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "resolve_batch"]
+    assert len(batch_ops) == 1
+    args: tuple[Any, ...] = tuple(batch_ops[0][1])
+    assert args[6] == "_two"
+    assert args[7] == 8
+
+    default_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": Path("/tmp/sectionhash_threads_default.parquet")}
+    )
+    default_ops: list[tuple[Any, tuple[Any]]] = [op for op in default_model.collect(Path("/tmp/fullmap.redb")) if op[0].__name__ == "resolve_batch"]  # pyright: ignore
+    default_args: tuple[Any, ...] = tuple(default_ops[0][1])
+    assert default_args[6] == "_two"
+    assert default_args[7] is None
+
+
 def test_tcode_collect_excludes_nullable_qualifier_from_audit(fixtures_path: Path) -> None:
     """QC audit skips a nullable qualifier column (its nulls are expected, not resolution errors)."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")

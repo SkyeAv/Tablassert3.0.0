@@ -113,11 +113,17 @@ def _load_graph(configuration_file: Path) -> Graph:
 
 
 def build_pipeline(
-    configuration_file: Path, progress: PipelineProgress, release: bool = False, qc: bool = False, log: bool = False, head: bool = False
+    configuration_file: Path,
+    progress: PipelineProgress,
+    release: bool = False,
+    qc: bool = False,
+    log: bool = False,
+    head: bool = False,
+    threads: int | None = None,
 ) -> None:
     """Load a graph YAML and build it through the shared in-process core."""
     graph: Graph = _load_graph(configuration_file)
-    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head)
+    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head, threads=threads)
 
 
 def build_graph_pipeline(
@@ -128,6 +134,7 @@ def build_graph_pipeline(
     qc: bool = False,
     log: bool = False,
     head: bool = False,
+    threads: int | None = None,
     audit_sources: bool = True,
 ) -> None:
     """Build a validated :class:`Graph` without loading another graph YAML.
@@ -145,6 +152,8 @@ def build_graph_pipeline(
         qc: When ``True``, run quality-control audits and final study assertions.
         log: When ``True``, enable per-section verbose logging.
         head: When ``True``, build a random sample of up to five rows per section.
+        threads: Optional worker thread count for the parallel fullmap reads behind
+            entity resolution (auto when unset).
     """
     from tablassert.fullmap import fullmap_db_path
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
@@ -203,6 +212,7 @@ def build_graph_pipeline(
                         "qc": qc,
                         "release": release,
                         "head": head,
+                        "threads": threads,
                         "name": g.name,
                         "infores": g.rig.source_info.infores_id,
                     }
@@ -643,22 +653,30 @@ def build_kg(
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
     head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
+    threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
     The positional config is a Graph YAML that orchestrates one or more table
     configs into a single knowledge-graph build.
 
-    ``--qc`` requires the ``[qc]`` extra (``pip install "tablassert[qc]"``); it is
-    checked before the build starts, because the audit stage runs LAST and a missing
-    extra would otherwise surface only after entity resolution has finished. It also
-    runs a final study stage that asserts over the emitted NDJSON -- no duplicate node
-    ids, no undeclared or isolated nodes, no malformed lines or stray whitespace --
-    and fails the build (non-zero exit) when any assertion is violated.
+    ``--threads`` sets the worker count for the parallel fullmap reads behind entity
+    resolution (auto when unset). ``--qc`` requires the ``[qc]`` extra (``pip install
+    "tablassert[qc]"``); it is checked before the build starts, because the audit stage
+    runs LAST and a missing extra would otherwise surface only after entity resolution
+    has finished. It also runs a final study stage that asserts over the emitted NDJSON
+    -- no duplicate node ids, no undeclared or isolated nodes, no malformed lines or
+    stray whitespace -- and fails the build (non-zero exit) when any assertion is
+    violated.
     """
+    # A non-positive thread count would only fail deep inside the Rust lookup; fail loud
+    # up front, matching the --gepa-threads pattern.
+    if threads is not None and threads < 1:
+        print("tablassert build-kg: --threads must be a positive integer.", file=sys.stderr)
+        raise SystemExit(2)
     if qc:
         extras.require("qc", required_by="--qc")
-    run(7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head)
+    run(7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head, threads=threads)
 
 
 @APP.command(name="validate")

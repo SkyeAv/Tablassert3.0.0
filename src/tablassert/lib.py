@@ -958,6 +958,7 @@ class Tcode(Section):
     qc: bool = Field(False)
     release: bool = Field(False)
     head: bool = Field(False)
+    threads: int | None = Field(None)
     name: str | None = Field(None)
     infores: str | None = Field(None)
 
@@ -1103,7 +1104,10 @@ class Tcode(Section):
             # Encode only: no pre-resolution snapshot and no NLP normalization, both of
             # which exist to feed entity resolution these columns never undergo.
             [self.encoding(x, x.qualifier) for x in literals],
-            (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True)),
+            # ``"_two"`` is spelled explicitly (it is ``resolve_batch``'s own default tag)
+            # only so ``threads`` can follow positionally: ``compile_subgraph`` applies op
+            # args positionally (``on_phase`` arrives separately as a keyword).
+            (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True, "_two", self.threads)),
             # QC audits only the strict columns: a nullable qualifier's nulls are expected
             # (blank cell / no match), not resolution errors for the audit to delete.
             [

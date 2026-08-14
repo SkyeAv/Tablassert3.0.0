@@ -148,6 +148,7 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 | `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, no undeclared or isolated nodes, no malformed lines or stray whitespace (verbatim `original_*` fields excepted, since they are faithful source copies) — and fails the build (non-zero exit) on any violation |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
+| `--threads`, `-t` | int | No | `None` (auto) | Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard — redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count |
 
 ```bash
 tablassert build-kg graph.yaml --qc --log
