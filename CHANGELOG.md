@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- **`build-kg --release` now drops edges whose `effect_size` is exactly zero.** When an `effect_size` column is present, release-mode builds filter out rows with a non-null zero effect size before fullmap resolution, matching the existing release-mode drop of `biolink:not_significant` edges. Rows with a null effect size are kept.
+
 ## 11.0.0 - 2026-08-13
 
 ### Breaking Changes
