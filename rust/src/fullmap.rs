@@ -3238,15 +3238,98 @@ fn lookup_shard_bucket(
     Ok(out)
 }
 
-/// Fan the query terms out across RECORDS shards and read the non-empty shards
-/// concurrently.  Terms are partitioned by `term_shard` (the shared routing
-/// oracle) into per-shard buckets; one worker thread per NON-EMPTY shard — capped
-/// at `workers` — reads only its own shard's RECORDS, and the tagged hits are
-/// re-merged into the original input term order.  With
-/// shard_count=SHARD_COUNT_SHARDS and enough workers this is up to
-/// SHARD_COUNT_SHARDS concurrent shard reads.  Surplus shards beyond the worker
-/// cap are read on the calling thread, which still overlaps with the spawned
-/// readers.  Pure Rust end-to-end (no `Python`).
+/// Decide how many readers each NON-EMPTY shard bucket gets.
+///
+/// One reader per bucket by default.  When `workers` exceeds the bucket count,
+/// the surplus goes to the bucket with the most terms-per-reader (ties break to
+/// the lower bucket index), never splitting a bucket into more readers than it
+/// has terms.  Pure and deterministic for a given input; the caller clamps
+/// `workers` to the total term count, so the loop always terminates.
+fn split_counts(bucket_lens: &[usize], workers: usize) -> Vec<usize> {
+    let mut splits: Vec<usize> = vec![1; bucket_lens.len()];
+    let mut job_count = bucket_lens.len();
+    while job_count < workers {
+        let mut best: Option<usize> = None;
+        let mut best_load = 0usize;
+        for (i, &len) in bucket_lens.iter().enumerate() {
+            if len > splits[i] {
+                let load = len / splits[i];
+                if best.is_none() || load > best_load {
+                    best = Some(i);
+                    best_load = load;
+                }
+            }
+        }
+        let Some(i) = best else { break };
+        splits[i] += 1;
+        job_count += 1;
+    }
+    splits
+}
+
+/// Split `bucket` into `count` contiguous, near-equal, NON-EMPTY chunks.
+///
+/// `count` must be ≤ `bucket.len()` (`split_counts` guarantees that); `count <=
+/// 1` returns the bucket whole.  Contiguity keeps each chunk's input-index tags
+/// ascending, though the caller re-merges by tag regardless.
+fn split_bucket(mut bucket: Vec<(usize, String)>, count: usize) -> Vec<Vec<(usize, String)>> {
+    debug_assert!(count >= 1 && count <= bucket.len());
+    if count <= 1 {
+        return vec![bucket];
+    }
+    let base = bucket.len() / count;
+    let rem = bucket.len() % count;
+    let mut chunks: Vec<Vec<(usize, String)>> = Vec::with_capacity(count);
+    for i in 0..count {
+        // Drain from the FRONT: each drain shrinks the vector, so offsets
+        // against the original layout would overshoot (the chunks stay
+        // contiguous and in input order either way).
+        let size = base + usize::from(i < rem);
+        chunks.push(bucket.drain(..size).collect());
+    }
+    chunks
+}
+
+/// Plan the read jobs for `lookup_pair_terms_db`: one job per NON-EMPTY shard
+/// bucket, and when `workers` exceeds the non-empty bucket count the busiest
+/// buckets are SPLIT across additional readers of the SAME shard file.  That is
+/// safe because redb readers hold a SHARED lock and each reader opens its own
+/// read transaction (`lookup_shard_bucket`), so concurrent reads of one shard
+/// never contend — only a writer (`build-fullmap`'s exclusive lock) conflicts.
+/// Each job owns its chunk and a clone of its shard handle so worker threads
+/// share neither a receiver nor a borrow.
+fn plan_shard_jobs(
+    shards: &[Arc<ReadOnlyDatabase>],
+    buckets: Vec<Vec<(usize, String)>>,
+    workers: usize,
+) -> Vec<ShardJob> {
+    let non_empty: Vec<(usize, Vec<(usize, String)>)> = buckets
+        .into_iter()
+        .enumerate()
+        .filter(|(_, bucket)| !bucket.is_empty())
+        .collect();
+    let lens: Vec<usize> = non_empty.iter().map(|(_, bucket)| bucket.len()).collect();
+    let splits = split_counts(&lens, workers);
+    let mut jobs: Vec<ShardJob> = Vec::with_capacity(splits.iter().sum());
+    for ((shard, bucket), count) in non_empty.into_iter().zip(splits) {
+        for chunk in split_bucket(bucket, count) {
+            jobs.push((chunk, Arc::clone(&shards[shard])));
+        }
+    }
+    jobs
+}
+
+/// Fan the query terms out across RECORDS shards and read them concurrently.
+/// Terms are partitioned by `term_shard` (the shared routing oracle) into
+/// per-shard buckets; one worker thread per NON-EMPTY shard — capped at
+/// `workers` — reads only its own shard's RECORDS.  When `workers` exceeds the
+/// non-empty shard count, the busiest buckets are further SPLIT across extra
+/// readers of the SAME shard file: redb readers hold a SHARED lock and each
+/// reader opens its own read transaction, so concurrent reads of one shard
+/// never contend.  The tagged hits are re-merged into the original input term
+/// order at ANY reader count.  Surplus jobs beyond the worker cap are read on
+/// the calling thread, which still overlaps with the spawned readers.  Pure
+/// Rust end-to-end (no `Python`).
 fn lookup_pair_terms_db(
     shards: &[Arc<ReadOnlyDatabase>],
     terms: &[String],
@@ -3268,17 +3351,13 @@ fn lookup_pair_terms_db(
         buckets[term_shard(term, shard_count)].push((index, term.clone()));
     }
 
-    // One job per NON-EMPTY shard; each job owns its bucket and a clone of its
-    // shard handle so worker threads share neither a receiver nor a borrow.
-    let mut jobs: Vec<ShardJob> = buckets
-        .into_iter()
-        .enumerate()
-        .filter(|(_, bucket)| !bucket.is_empty())
-        .map(|(shard, bucket)| (bucket, Arc::clone(&shards[shard])))
-        .collect();
+    // One job per NON-EMPTY shard; when `workers` exceeds the non-empty shard
+    // count the busiest buckets are further split across extra readers of the
+    // same shard file (see `plan_shard_jobs`).
+    let mut jobs: Vec<ShardJob> = plan_shard_jobs(shards, buckets, workers);
 
-    // Cap concurrent shard reads at `workers`; any surplus shards are read on
-    // the calling thread (split_off keeps the first `workers` jobs to spawn).
+    // Cap concurrent reads at `workers`; any surplus jobs are read on the
+    // calling thread (split_off keeps the first `workers` jobs to spawn).
     let split = jobs.len().min(workers);
     let inline_jobs = jobs.split_off(split);
 
@@ -4142,6 +4221,117 @@ mod tests {
         let rows_ser = lookup_terms(output, probes, Some(1)).unwrap();
         assert_eq!(rows_par.len(), expected_order.len());
         assert_eq!(rows_par, rows_ser);
+    }
+
+    /// `split_counts` hands surplus workers to the busiest bucket (most
+    /// terms-per-reader, ties to the lower index), never splits a bucket into
+    /// more readers than it has terms, and leaves buckets alone when `workers`
+    /// does not exceed the bucket count (surplus jobs then run inline, as
+    /// before).
+    #[test]
+    fn split_counts_balances_surplus_workers_deterministically() {
+        // workers at/below the bucket count: one reader per bucket, unchanged.
+        assert_eq!(split_counts(&[10, 5, 3], 3), vec![1, 1, 1]);
+        assert_eq!(split_counts(&[10, 5, 3], 2), vec![1, 1, 1]);
+        // 3 surplus readers: bucket 0 gains two (load 10 -> 5 -> 3; the 5-vs-5
+        // tie keeps the lower index), bucket 1 gains one.
+        assert_eq!(split_counts(&[10, 5, 3], 6), vec![3, 2, 1]);
+        // workers >= total terms: every bucket splits down to single terms.
+        assert_eq!(split_counts(&[10, 5, 3], 18), vec![10, 5, 3]);
+        assert_eq!(split_counts(&[10, 5, 3], 100), vec![10, 5, 3]);
+        assert_eq!(split_counts(&[2, 1], 100), vec![2, 1]);
+        // Deterministic: the same input always yields the same plan.
+        assert_eq!(split_counts(&[7, 7, 7], 9), split_counts(&[7, 7, 7], 9));
+    }
+
+    /// `split_bucket` partitions without loss, duplication, or empty chunks and
+    /// preserves the input order inside every chunk.
+    #[test]
+    fn split_bucket_partitions_without_loss() {
+        let bucket: Vec<(usize, String)> = (0..10).map(|i| (i, format!("t{i}"))).collect();
+        for count in 1..=10 {
+            let chunks = split_bucket(bucket.clone(), count);
+            assert_eq!(chunks.len(), count);
+            assert!(chunks.iter().all(|c| !c.is_empty()));
+            let flat: Vec<(usize, String)> = chunks.into_iter().flatten().collect();
+            assert_eq!(flat, bucket, "count={count} lost or reordered terms");
+        }
+        // count=1 returns the bucket whole.
+        assert_eq!(split_bucket(bucket.clone(), 1), vec![bucket]);
+    }
+
+    /// The whole point of `build-kg --threads` values ABOVE the shard count:
+    /// redb readers share-lock a shard file and open independent read
+    /// transactions, so `lookup_pair_terms_db` splits the busiest buckets
+    /// across extra readers of the SAME shard — and the result must stay
+    /// content- AND order-identical to the serial path at any reader count.
+    /// Same fixture shape as `parallel_shard_fanout_merges_in_input_order`,
+    /// probed with `2 * SHARD_COUNT_SHARDS` workers so every non-empty bucket
+    /// gains at least one extra reader.
+    #[test]
+    fn workers_above_shard_count_still_match_serial() {
+        pyo3::Python::initialize();
+        let dir = tempfile::tempdir().unwrap();
+        let synonyms = dir.path().join("many.ndjson");
+        let output = dir.path().join("fullmap.redb");
+        let mut synonym_file = File::create(&synonyms).unwrap();
+        for i in 0..120 {
+            writeln!(
+                synonym_file,
+                r#"{{"curie":"HGNC:{i}","preferred_name":"GENE{i}","names":["GENE{i}"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}}"#
+            )
+            .unwrap();
+        }
+        drop(synonym_file);
+        build_test(output.clone(), Vec::new(), vec![synonyms], 4, 4_000_000).unwrap();
+
+        // Probe terms in a fixed order, interleaving real terms with misses.
+        let mut probes: Vec<String> = Vec::new();
+        for i in 0..80 {
+            probes.push(format!("gene{i}"));
+            if i % 7 == 0 {
+                probes.push(format!("missing{i}"));
+            }
+        }
+        let spanned: HashSet<usize> = probes
+            .iter()
+            .filter(|t| !t.starts_with("missing"))
+            .map(|t| term_shard(t, SHARD_COUNT_SHARDS))
+            .collect();
+        assert!(
+            spanned.len() >= 2,
+            "probe terms must span >=2 shards, got {spanned:?}"
+        );
+
+        let shards = open_cached_shards(&output).unwrap();
+        let above = 2 * SHARD_COUNT_SHARDS;
+
+        // More readers than shards vs forced-serial: identical content + order.
+        let via_above = lookup_pair_terms_db(&shards, &probes, above).unwrap();
+        let via_serial = lookup_pair_terms_db(&shards, &probes, 1).unwrap();
+        assert_eq!(
+            via_above, via_serial,
+            "above-shard-count fan-out diverged from serial"
+        );
+        let expected_order: Vec<String> = probes
+            .iter()
+            .filter(|t| !t.starts_with("missing"))
+            .cloned()
+            .collect();
+        let got_order: Vec<String> = via_above.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(
+            got_order, expected_order,
+            "bucket splitting broke input order"
+        );
+
+        // End-to-end (through `lookup_pair_terms`, which clamps workers to the
+        // term count) and through full hydration alike.
+        let pairs_above = lookup_pair_terms(output.clone(), probes.clone(), Some(above)).unwrap();
+        let pairs_serial = lookup_pair_terms(output.clone(), probes.clone(), Some(1)).unwrap();
+        assert_eq!(pairs_above, pairs_serial);
+        let rows_above = lookup_terms(output.clone(), probes.clone(), Some(above)).unwrap();
+        let rows_serial = lookup_terms(output, probes, Some(1)).unwrap();
+        assert_eq!(rows_above, rows_serial);
     }
 
     /// The production build-kg resolve calls `lookup_fullmap_terms` with

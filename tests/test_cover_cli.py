@@ -22,7 +22,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 
 import pytest
-from cyclopts.exceptions import UnknownOptionError  # pyright: ignore[reportMissingImports]
+from cyclopts.exceptions import CoercionError, UnknownOptionError  # pyright: ignore[reportMissingImports]
 
 from tablassert import cli, extras, rs
 from tablassert.cli import build_fullmap_pipeline, build_kg, download_babel_file, download_babel_file_aria2c, validate_graph_pipeline
@@ -363,7 +363,8 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
 
     ``cli.run`` is stubbed to a recorder so the command body executes (line 501) without a real
     multi-hour build. Asserts the stage count (7 with ``--qc``: the study stage over the final
-    NDJSON is appended), pipeline function, config path, and every flag are threaded through unchanged.
+    NDJSON is appended), pipeline function, config path, and every flag — including the fullmap
+    lookup ``threads`` — are threaded through unchanged.
     """
     config: Path = tmp_path / "graph.yaml"
     calls: list[tuple[Any, ...]] = []
@@ -373,11 +374,30 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
 
     monkeypatch.setattr(cli, "run", _fake_run)
     monkeypatch.setattr(extras, "missing", lambda extra: ())
-    build_kg(config, release=True, qc=True, log=True, head=True)
-    assert calls == [(7, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True})]
+    build_kg(config, release=True, qc=True, log=True, head=True, threads=8)
+    assert calls == [(7, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True, "threads": 8})]
     calls.clear()
     build_kg(config)
-    assert calls == [(6, cli.build_pipeline, config, {"release": False, "qc": False, "log": False, "head": False})]
+    assert calls == [(6, cli.build_pipeline, config, {"release": False, "qc": False, "log": False, "head": False, "threads": None})]
+
+
+@pytest.mark.parametrize("bad_threads", [0, -1, -8])
+def test_build_kg_non_positive_threads_exits_2(
+    bad_threads: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A non-positive ``--threads`` fails loud (exit 2) before any build work starts.
+
+    Mirrors the ``--gepa-threads`` gate: the invalid count would otherwise surface only deep
+    inside the Rust lookup, after table loading had already begun.
+    """
+    config: Path = tmp_path / "graph.yaml"
+    monkeypatch.setattr(cli, "run", lambda *args, **kwargs: pytest.fail("the build started with an invalid --threads"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        build_kg(config, threads=bad_threads)
+
+    assert exc_info.value.code == 2
+    assert "--threads" in capsys.readouterr().err
 
 
 def test_build_kg_qc_without_the_extra_stops_before_the_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -528,10 +548,14 @@ def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
     # The configuration file now also binds via -f and --configuration-file (matches validate).
     assert parse(["build-kg", "-f", str(config)])["graph_configuration_file"] == config
     assert parse(["build-kg", "--configuration-file", str(config)])["graph_configuration_file"] == config
-    # The removed --table-config/-tc and --fullmap options are now rejected (locks the removal).
-    for removed in (["--table-config"], ["-tc"], ["--fullmap", str(config)]):
+    # The removed --table-config/--fullmap options are now rejected (locks the removal).
+    for removed in (["--table-config"], ["--fullmap", str(config)]):
         with pytest.raises(UnknownOptionError):
             parse(["build-kg", str(config), *removed])
+    # The removed ``-tc`` is likewise unusable: now that ``-t`` is the threads alias, cyclopts
+    # reads the cluster as ``-t c`` and rejects the non-integer value instead of the option.
+    with pytest.raises(CoercionError):
+        parse(["build-kg", str(config), "-tc"])
 
 
 def test_build_fullmap_pipeline_reports_download_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
