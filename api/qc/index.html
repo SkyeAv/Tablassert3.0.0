@@ -1034,15 +1034,15 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#three-stage-pipeline" class="md-nav__link">
+  <a href="#four-stage-pipeline" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Three-Stage Pipeline
+        Four-Stage Pipeline
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Three-Stage Pipeline">
+    <nav class="md-nav" aria-label="Four-Stage Pipeline">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1068,10 +1068,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-3-biobert-semantic-similarity" class="md-nav__link">
+  <a href="#stage-3-abbreviation-expansion" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 3: BioBERT Semantic Similarity
+        Stage 3: Abbreviation Expansion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-4-sapbert-semantic-similarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 4: SapBERT Semantic Similarity
       
     </span>
   </a>
@@ -1084,10 +1095,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#biobert-model" class="md-nav__link">
+  <a href="#sapbert-model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BioBERT Model
+        SapBERT Model
       
     </span>
   </a>
@@ -1346,15 +1357,15 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#three-stage-pipeline" class="md-nav__link">
+  <a href="#four-stage-pipeline" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Three-Stage Pipeline
+        Four-Stage Pipeline
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Three-Stage Pipeline">
+    <nav class="md-nav" aria-label="Four-Stage Pipeline">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1380,10 +1391,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-3-biobert-semantic-similarity" class="md-nav__link">
+  <a href="#stage-3-abbreviation-expansion" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 3: BioBERT Semantic Similarity
+        Stage 3: Abbreviation Expansion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-4-sapbert-semantic-similarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 4: SapBERT Semantic Similarity
       
     </span>
   </a>
@@ -1396,10 +1418,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#biobert-model" class="md-nav__link">
+  <a href="#sapbert-model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BioBERT Model
+        SapBERT Model
       
     </span>
   </a>
@@ -1509,9 +1531,9 @@
 
 
 <h1 id="quality-control-qc">Quality Control (qc)<a class="headerlink" href="#quality-control-qc" title="Permanent link">&para;</a></h1>
-<p>The <code>qc</code> module validates entity-resolution mappings through a three-stage pipeline (exact, fuzzy, BioBERT semantic similarity) — it runs behind <code>build-kg --qc</code> and <code>resolve_many(qc=True)</code> to keep only high-confidence assertions.</p>
+<p>The <code>qc</code> module validates entity-resolution mappings through a four-stage pipeline (exact, fuzzy, abbreviation expansion, SapBERT semantic similarity) — it runs behind <code>build-kg --qc</code> and <code>resolve_many(qc=True)</code> to keep only high-confidence assertions.</p>
 <p>QC runtime support is optional. Install <code>tablassert[qc]</code> to enable it — the extra pulls <code>scikit-learn</code> and <code>sentence-transformers</code> (<code>torch</code> and <code>numpy</code> arrive transitively); <code>rapidfuzz</code> is a core dependency and is always available.</p>
-<p><code>fullmap_audit()</code> checks the whole extra before it does any work and raises <code>QcRuntimeMissingError</code> naming every absent package and the install command. Checking up front matters because the two packages are needed at different stages — <code>scikit-learn</code> from the start, <code>sentence-transformers</code> only if Stage 3 is reached — so a half-installed extra would otherwise fail after the audit had already run. <code>build-kg --qc</code> performs the same check before the build begins, since the audit does not run until the very end of the build.</p>
+<p><code>fullmap_audit()</code> checks the whole extra before it does any work and raises <code>QcRuntimeMissingError</code> naming every absent package and the install command. Checking up front matters because the two packages are needed at different stages — <code>scikit-learn</code> from the start, <code>sentence-transformers</code> only if Stage 4 is reached — so a half-installed extra would otherwise fail after the audit had already run. <code>build-kg --qc</code> performs the same check before the build begins, since the audit does not run until the very end of the build.</p>
 <h2 id="fullmap_audit">fullmap_audit()<a class="headerlink" href="#fullmap_audit" title="Permanent link">&para;</a></h2>
 <p>Primary quality control function that filters entity mappings based on confidence criteria.</p>
 <h3 id="function-signature">Function Signature<a class="headerlink" href="#function-signature" title="Permanent link">&para;</a></h3>
@@ -1546,9 +1568,9 @@
 <p>Context fields used in QC failure logs for traceability.</p>
 <h3 id="return-value">Return Value<a class="headerlink" href="#return-value" title="Permanent link">&para;</a></h3>
 <p>Returns a Polars LazyFrame containing only the rows whose <code>col</code> value (CURIE) has <strong>at least one</strong> passing pre-resolution/preferred-name pair.</p>
-<p>QC scores unique <code>(CURIE, pre_resolution, preferred_name)</code> pairs, but the result is joined back to the input via a <strong>semi-join on the CURIE column</strong> (<code>df.join(passed.select(col), on=col, how="semi")</code>). The retention granularity is therefore the CURIE, not the individual pair: if <em>any</em> pair for a CURIE passes any stage, <em>every</em> input row sharing that CURIE is kept — including rows that were themselves part of a failed pair. A CURIE (and thus all of its rows) is dropped only when <em>none</em> of its pairs pass any stage. Failed pairs are logged with section/config/column context and their fuzzy/BioBERT scores.</p>
-<h3 id="three-stage-pipeline">Three-Stage Pipeline<a class="headerlink" href="#three-stage-pipeline" title="Permanent link">&para;</a></h3>
-<p>The function applies three validation stages in sequence. Each stage progressively filters out correct resolutions and leaves suspected errors for the next stage.</p>
+<p>QC scores unique <code>(CURIE, pre_resolution, preferred_name)</code> pairs, but the result is joined back to the input via a <strong>semi-join on the CURIE column</strong> (<code>df.join(passed.select(col), on=col, how="semi")</code>). The retention granularity is therefore the CURIE, not the individual pair: if <em>any</em> pair for a CURIE passes any stage, <em>every</em> input row sharing that CURIE is kept — including rows that were themselves part of a failed pair. A CURIE (and thus all of its rows) is dropped only when <em>none</em> of its pairs pass any stage. Failed pairs are logged with section/config/column context and their fuzzy/SapBERT scores.</p>
+<h3 id="four-stage-pipeline">Four-Stage Pipeline<a class="headerlink" href="#four-stage-pipeline" title="Permanent link">&para;</a></h3>
+<p>The function applies four validation stages in sequence. Each stage progressively filters out correct resolutions and leaves suspected errors for the next stage.</p>
 <h4 id="stage-1-exact-match-rule-based-pass-through">Stage 1: Exact Match &amp; Rule-Based Pass-Through<a class="headerlink" href="#stage-1-exact-match-rule-based-pass-through" title="Permanent link">&para;</a></h4>
 <p><strong>Fast path for high-confidence mappings.</strong> A row passes if any of these hold:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">original</span> <span class="o">==</span> <span class="n">preferred_name</span>
@@ -1570,56 +1592,63 @@
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="ow">or</span> <span class="n">fuzz</span><span class="o">.</span><span class="n">partial_token_sort_ratio</span><span class="p">(</span><span class="n">original</span><span class="p">,</span> <span class="n">preferred</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">80</span>
 </code></pre></div>
 <p><strong>Performance:</strong> O(n) string operations, batched.</p>
-<h4 id="stage-3-biobert-semantic-similarity">Stage 3: BioBERT Semantic Similarity<a class="headerlink" href="#stage-3-biobert-semantic-similarity" title="Permanent link">&para;</a></h4>
-<p><strong>High confidence using BioBERT embeddings.</strong></p>
+<h4 id="stage-3-abbreviation-expansion">Stage 3: Abbreviation Expansion<a class="headerlink" href="#stage-3-abbreviation-expansion" title="Permanent link">&para;</a></h4>
+<p><strong>Deterministic pass for abbreviation/expansion pairs (Schwartz-Hearst).</strong> A row passes when the pre-resolution text abbreviates the preferred name, or vice versa:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">_is_abbrev</span><span class="p">(</span><span class="n">original</span><span class="p">,</span> <span class="n">preferred_name</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_is_abbrev</span><span class="p">(</span><span class="n">preferred_name</span><span class="p">,</span> <span class="n">original</span><span class="p">)</span>
+</code></pre></div>
+<p>The matcher scans the short form right-to-left against the long form (case-insensitively); the first character of the short form must land on a word boundary of the long form. This rescues the class both fuzzy matching and embedding similarity can miss — <code>AML</code> ↔ <code>acute myeloid leukemia</code>.</p>
+<p><strong>Performance:</strong> O(n) character scans per row, no model inference.</p>
+<h4 id="stage-4-sapbert-semantic-similarity">Stage 4: SapBERT Semantic Similarity<a class="headerlink" href="#stage-4-sapbert-semantic-similarity" title="Permanent link">&para;</a></h4>
+<p><strong>High confidence using SapBERT embeddings.</strong></p>
 <ol>
-<li><strong>Encode</strong> original and preferred name with BioBERT (sentence-transformers)</li>
+<li><strong>Encode</strong> original and preferred name with SapBERT (sentence-transformers)</li>
 <li><strong>Compute</strong> cosine similarity between embeddings (scikit-learn)</li>
 <li><strong>Accept</strong> if similarity &gt;= 0.5</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">embeddings</span> <span class="o">=</span> <span class="n">get_biobert</span><span class="p">()</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">originals</span> <span class="o">+</span> <span class="n">preferreds</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">similarity</span> <span class="o">=</span> <span class="n">cosine_similarity</span><span class="p">(</span><span class="n">embeddings</span><span class="p">[:</span><span class="n">n</span><span class="p">],</span> <span class="n">embeddings</span><span class="p">[</span><span class="n">n</span><span class="p">:])</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">return</span> <span class="n">similarity</span> <span class="o">&gt;=</span> <span class="mf">0.5</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">embeddings</span> <span class="o">=</span> <span class="n">get_sapbert</span><span class="p">()</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">originals</span> <span class="o">+</span> <span class="n">preferreds</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">similarity</span> <span class="o">=</span> <span class="n">cosine_similarity</span><span class="p">(</span><span class="n">embeddings</span><span class="p">[:</span><span class="n">n</span><span class="p">],</span> <span class="n">embeddings</span><span class="p">[</span><span class="n">n</span><span class="p">:])</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">return</span> <span class="n">similarity</span> <span class="o">&gt;=</span> <span class="n">qc</span><span class="o">.</span><span class="n">SIMILARITY_THRESHOLD</span>  <span class="c1"># 0.5</span>
 </code></pre></div>
 <p><strong>Performance:</strong> Expensive (transformer inference); the model is loaded once and cached.</p>
-<h3 id="biobert-model">BioBERT Model<a class="headerlink" href="#biobert-model" title="Permanent link">&para;</a></h3>
-<p><strong>Model:</strong> <code>pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb</code></p>
-<p><strong>Backend:</strong> <a href="https://www.sbert.net/">sentence-transformers</a> (PyTorch). Embeddings are compared with scikit-learn's <code>cosine_similarity</code>.</p>
-<p><strong>Lazy-loaded</strong> on the first <code>fullmap_audit()</code> call that reaches the embedding stage via <code>get_biobert()</code>, then cached globally for the lifetime of the process.</p>
+<h3 id="sapbert-model">SapBERT Model<a class="headerlink" href="#sapbert-model" title="Permanent link">&para;</a></h3>
+<p><strong>Model:</strong> <code>cambridgeltl/SapBERT-from-PubMedBERT-fulltext</code></p>
+<p><strong>Backend:</strong> <a href="https://www.sbert.net/">sentence-transformers</a> (PyTorch). Embeddings are compared with scikit-learn's <code>cosine_similarity</code>. SapBERT's self-alignment pretraining pulls UMLS synonym pairs together in embedding space, which fits this stage's task — deciding whether two names denote the same entity — better than the NLI/STS-trained BioBERT it replaced. The 0.5 threshold was carried over from that BioBERT gate and has not been re-tuned for SapBERT's score distribution.</p>
+<p><strong>Lazy-loaded</strong> on the first <code>fullmap_audit()</code> call that reaches the embedding stage via <code>get_sapbert()</code>, then cached globally for the lifetime of the process.</p>
 <h3 id="model-caching">Model Caching<a class="headerlink" href="#model-caching" title="Permanent link">&para;</a></h3>
-<p><code>get_biobert()</code> loads the model from the local cache when present; otherwise it downloads <code>pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb</code> and saves it for future runs.</p>
-<p><strong>Cache location:</strong> <code>.tablassert/biobert/</code> on disk (<code>qc.MODEL</code>); the loaded model object is also cached in memory for the lifetime of the process.</p>
+<p><code>get_sapbert()</code> loads the model from the local cache when present; otherwise it downloads <code>cambridgeltl/SapBERT-from-PubMedBERT-fulltext</code> and saves it for future runs.</p>
+<p><strong>Cache location:</strong> <code>.tablassert/sapbert/</code> on disk (<code>qc.MODEL</code>); the loaded model object is also cached in memory for the lifetime of the process.</p>
 <h3 id="example-usage">Example Usage<a class="headerlink" href="#example-usage" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.qc</span><span class="w"> </span><span class="kn">import</span> <span class="n">fullmap_audit</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># LazyFrame with entity resolution results</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_parquet</span><span class="p">(</span><span class="s2">&quot;resolved.parquet&quot;</span><span class="p">)</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Expected columns:</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1"># - subject_pre_resolution</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="c1"># - subject (CURIE)</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># - subject_name</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1"># Run QC</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="n">validated</span> <span class="o">=</span> <span class="n">fullmap_audit</span><span class="p">(</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  <span class="n">lf</span><span class="p">,</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>  <span class="n">col</span><span class="o">=</span><span class="s2">&quot;subject&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>  <span class="n">section_hash</span><span class="o">=</span><span class="s2">&quot;tutorial-section&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>  <span class="n">config_file</span><span class="o">=</span><span class="s2">&quot;tutorial-table.yaml&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="p">)</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="c1"># Only rows that passed QC remain</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="c1"># Rows with low-confidence mappings removed</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.qc</span><span class="w"> </span><span class="kn">import</span> <span class="n">fullmap_audit</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># LazyFrame with entity resolution results</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_parquet</span><span class="p">(</span><span class="s2">&quot;resolved.parquet&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># Expected columns:</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1"># - subject_pre_resolution</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="c1"># - subject (CURIE)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="c1"># - subject_name</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="c1"># Run QC</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="n">validated</span> <span class="o">=</span> <span class="n">fullmap_audit</span><span class="p">(</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>  <span class="n">lf</span><span class="p">,</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>  <span class="n">col</span><span class="o">=</span><span class="s2">&quot;subject&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>  <span class="n">section_hash</span><span class="o">=</span><span class="s2">&quot;tutorial-section&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>  <span class="n">config_file</span><span class="o">=</span><span class="s2">&quot;tutorial-table.yaml&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="p">)</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="c1"># Only rows that passed QC remain</span>
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="c1"># Rows with low-confidence mappings removed</span>
 </code></pre></div>
 <h3 id="pipeline-flow">Pipeline Flow<a class="headerlink" href="#pipeline-flow" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Input: 1000 rows with entity mappings
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>Stage 1 (Exact): 700 pass → 300 pending
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>Stage 2 (Fuzzy): 250 pass → 50 pending
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>Stage 3 (BioBERT): 40 pass → 10 rejected
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>Output: 990 rows (700 + 250 + 40)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Input: 1000 rows with entity mappings
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>Stage 1 (Exact): 700 pass → 300 pending
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>Stage 2 (Fuzzy): 250 pass → 50 pending
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>Stage 3 (Abbreviation): 10 pass → 40 pending
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>Stage 4 (SapBERT): 30 pass → 10 rejected
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>Output: 990 rows (700 + 250 + 10 + 30)
 </code></pre></div>
 <h3 id="confidence-levels">Confidence Levels<a class="headerlink" href="#confidence-levels" title="Permanent link">&para;</a></h3>
 <table>
@@ -1642,18 +1671,24 @@
 <td>2</td>
 <td>Fuzzy</td>
 <td>Medium</td>
-<td>Abbreviations, typos</td>
+<td>Typos, word reordering</td>
 </tr>
 <tr>
 <td>3</td>
-<td>BioBERT</td>
+<td>Abbreviation expansion</td>
+<td>High</td>
+<td>Abbreviation ↔ full-name pairs</td>
+</tr>
+<tr>
+<td>4</td>
+<td>SapBERT</td>
 <td>High</td>
 <td>Synonyms, paraphrases</td>
 </tr>
 </tbody>
 </table>
 <h3 id="rejection-logging">Rejection Logging<a class="headerlink" href="#rejection-logging" title="Permanent link">&para;</a></h3>
-<p>When <code>log=True</code>, each rejected CURIE is logged at INFO level with its context and the scores that caused the rejection: <code>curie</code>, <code>original</code>, <code>preferred</code>, <code>col</code>, <code>fuzz</code> (partial token sort ratio), <code>config</code>, <code>hash</code>, and — when the BioBERT stage ran — <code>bert</code> (cosine similarity).</p>
+<p>When <code>log=True</code>, each rejected CURIE is logged at INFO level with its context and the scores that caused the rejection: <code>curie</code>, <code>original</code>, <code>preferred</code>, <code>col</code>, <code>fuzz</code> (partial token sort ratio), <code>config</code>, <code>hash</code>, and — when the SapBERT stage ran — <code>sapbert</code> (cosine similarity).</p>
 <h3 id="integration-with-pipeline">Integration with Pipeline<a class="headerlink" href="#integration-with-pipeline" title="Permanent link">&para;</a></h3>
 <p>QC is applied after entity resolution when QC is enabled (the <code>build-kg --qc</code> flag, or <code>resolve_many(..., qc=True)</code>):</p>
 <ol>

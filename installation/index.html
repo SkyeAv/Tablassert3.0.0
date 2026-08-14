@@ -1569,7 +1569,7 @@ extras are opt-in.</p>
 </tr>
 <tr>
 <td><code>qc</code></td>
-<td>QC runtime (exact → fuzzy → BioBERT audit)</td>
+<td>QC runtime (exact → fuzzy → abbreviation → SapBERT audit)</td>
 <td><code>scikit-learn</code>, <code>sentence-transformers</code> (<code>torch</code> + <code>numpy</code> arrive transitively; <code>rapidfuzz</code> is a core dependency)</td>
 </tr>
 <tr>
@@ -1702,7 +1702,7 @@ release:</p>
 </code></pre></div>
 <h3 id="qc-runtime">QC runtime<a class="headerlink" href="#qc-runtime" title="Permanent link">&para;</a></h3>
 <p>If <code>build-kg --qc</code> reports a missing QC runtime, install the <code>qc</code> extra (torch / sentence-transformers
-BioBERT backend for the audit stage):</p>
+SapBERT backend for the audit stage):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[qc]&quot;</span>
 </code></pre></div>
 
