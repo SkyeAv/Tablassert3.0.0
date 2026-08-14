@@ -1,6 +1,6 @@
-"""Coverage tests for the ``get_biobert`` loader body in ``tablassert.qc`` (lines 55-66).
+"""Coverage tests for the ``get_sapbert`` loader body in ``tablassert.qc``.
 
-``tests/test_qc.py`` monkeypatches ``qc.get_biobert`` itself, so the real loader
+``tests/test_qc.py`` monkeypatches ``qc.get_sapbert`` itself, so the real loader
 body never runs. These tests exercise that body directly — the cached local-load
 branch, the download-and-save branch, and the ``ImportError`` guard — by faking
 ``sentence_transformers`` and pointing ``qc.MODEL`` at a temp path, so no real
@@ -17,7 +17,7 @@ import pytest
 import tablassert.qc as qc
 from tablassert.errors import QcRuntimeMissingError
 
-HF_REPO: str = "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb"
+HF_REPO: str = "cambridgeltl/SapBERT-from-PubMedBERT-fulltext"
 
 
 class FakeModel:
@@ -46,37 +46,37 @@ class FakeSentenceTransformers:
 
 
 @pytest.fixture(autouse=True)
-def _clear_biobert_cache() -> Any:
-    """Clear the ``functools.cache`` around ``get_biobert`` so each test runs the body."""
-    qc.get_biobert.cache_clear()
+def _clear_sapbert_cache() -> Any:
+    """Clear the ``functools.cache`` around ``get_sapbert`` so each test runs the body."""
+    qc.get_sapbert.cache_clear()
     yield
-    qc.get_biobert.cache_clear()
+    qc.get_sapbert.cache_clear()
 
 
-def test_get_biobert_loads_from_local_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Lines 55-57 + 66: when ``MODEL`` exists, load it from disk and return (no download/save)."""
-    model_dir: Path = tmp_path / "biobert"
+def test_get_sapbert_loads_from_local_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """When ``MODEL`` exists, load it from disk and return (no download/save)."""
+    model_dir: Path = tmp_path / "sapbert"
     model_dir.mkdir()
     fake: FakeSentenceTransformers = FakeSentenceTransformers()
     monkeypatch.setattr(qc, "MODEL", model_dir)
     monkeypatch.setattr(qc, "sentence_transformers", fake)
 
-    result: object = qc.get_biobert()
+    result: object = qc.get_sapbert()
 
     assert result is fake.model
     assert fake.calls == [str(model_dir)]  # loaded from the local cache path, not the HF repo
     assert fake.model.saved_to == []  # cache-hit path never saves
 
 
-def test_get_biobert_downloads_and_saves_when_cache_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Lines 58-63 + 66: when ``MODEL`` is absent, download from HF, mkdir the cache, and save."""
-    model_dir: Path = tmp_path / "biobert"
+def test_get_sapbert_downloads_and_saves_when_cache_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """When ``MODEL`` is absent, download from HF, mkdir the cache, and save."""
+    model_dir: Path = tmp_path / "sapbert"
     assert not model_dir.exists()
     fake: FakeSentenceTransformers = FakeSentenceTransformers()
     monkeypatch.setattr(qc, "MODEL", model_dir)
     monkeypatch.setattr(qc, "sentence_transformers", fake)
 
-    result: object = qc.get_biobert()
+    result: object = qc.get_sapbert()
 
     assert result is fake.model
     assert fake.calls == [HF_REPO]  # downloaded the canonical model, not a local path
@@ -84,13 +84,13 @@ def test_get_biobert_downloads_and_saves_when_cache_missing(monkeypatch: pytest.
     assert fake.model.saved_to == [model_dir]  # model.save(MODEL) ran
 
 
-def test_get_biobert_raises_qc_runtime_missing_on_import_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Lines 64-65: an ``ImportError`` from the backend is re-raised as ``QcRuntimeMissingError``."""
-    model_dir: Path = tmp_path / "biobert"
+def test_get_sapbert_raises_qc_runtime_missing_on_import_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An ``ImportError`` from the backend is re-raised as ``QcRuntimeMissingError``."""
+    model_dir: Path = tmp_path / "sapbert"
     model_dir.mkdir()
     fake: FakeSentenceTransformers = FakeSentenceTransformers(error=ImportError("no sentence_transformers"))
     monkeypatch.setattr(qc, "MODEL", model_dir)
     monkeypatch.setattr(qc, "sentence_transformers", fake)
 
     with pytest.raises(QcRuntimeMissingError):
-        qc.get_biobert()
+        qc.get_sapbert()

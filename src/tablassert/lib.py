@@ -75,6 +75,7 @@ __all__ = [
     "coerced_target",
     "compile_rig",
     "curie_prefix",
+    "drop_zero_effect_size",
     "effect_size_target",
     "effect_type_target",
     "infores",
@@ -858,6 +859,27 @@ def drop_not_significant(lf: pl.LazyFrame, col: str = "statistical_significance_
     return lf.filter(pl.col(col).cast(pl.String).ne_missing("biolink:not_significant"))
 
 
+def drop_zero_effect_size(lf: pl.LazyFrame, col: str = "effect_size") -> pl.LazyFrame:
+    """Drop release-mode edges whose effect size is exactly zero.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Effect-size column name.
+
+    Returns:
+        LazyFrame with zero effect-size edges removed.
+
+    Notes:
+        Only filters when the effect-size column exists; no-op for sections
+        without an ``effect_size`` column. Null effect sizes are kept (no
+        score was detected for that row).
+    """
+    names: list[str] = lf.collect_schema().names()
+    if col not in names:
+        return lf
+    return lf.filter(pl.col(col).is_null() | (pl.col(col).cast(pl.Float64) != 0.0))
+
+
 def idxname(col: Any) -> str:
     """Convert Excel-style column letters (e.g. ``"AA"``) to a polars-style ``column_<n>`` name.
 
@@ -1020,6 +1042,7 @@ class Tcode(Section):
             # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
             (sig, ()),
             (drop_not_significant, ()) if self.release else None,
+            (drop_zero_effect_size, ()) if self.release else None,
         ]
 
     def _node_ops(self: Self, db: Path) -> list[Any]:
@@ -1163,6 +1186,7 @@ PHASE_OF: dict[Callable, str] = {
     split_list: "encode",
     sig: "significance",
     drop_not_significant: "significance",
+    drop_zero_effect_size: "significance",
     trim: "finalize",
     format_numeric: "finalize",
     to_store: "write",

@@ -27,6 +27,7 @@ from tablassert.lib import (
     coerce_study_size_columns,
     coerced_target,
     drop_not_significant,
+    drop_zero_effect_size,
     edge_category,
     edge_tables,
     effect_size_target,
@@ -264,34 +265,37 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
     assert qc_ops[1][1] == ("object", "sectionhash", "minimal_section.yaml", "passed", True)
 
 
-# tcode collect orders drop_not_significant before resolve_batch in release mode
-# rows that will be dropped for insignificance must never reach the expensive fullmap resolve step
-def test_tcode_collect_orders_significance_before_resolve_when_release(fixtures_path: Path) -> None:
+# tcode collect orders release-mode filters before resolve_batch
+# rows that will be dropped must never reach the expensive fullmap resolve step
+def test_tcode_collect_orders_release_filters_before_resolve_when_release(fixtures_path: Path, tmp_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
-    store: Path = Path("/tmp/sectionhash_release.parquet")
+    store: Path = tmp_path / "sectionhash_release.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "release": True}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    drop_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "drop_not_significant")
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
+    drop_ns_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "drop_not_significant")
+    drop_zero_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "drop_zero_effect_size")
     resolve_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "resolve_batch")
 
-    assert drop_idx < resolve_idx
+    assert drop_ns_idx < resolve_idx
+    assert drop_zero_idx < resolve_idx
 
 
-def test_tcode_collect_omits_drop_not_significant_without_release(fixtures_path: Path) -> None:
-    """tcode collect omits drop_not_significant without release but keeps sig before resolve_batch."""
+def test_tcode_collect_omits_release_filters_without_release(fixtures_path: Path, tmp_path: Path) -> None:
+    """tcode collect omits release-mode filters without release but keeps sig before resolve_batch."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
-    store: Path = Path("/tmp/sectionhash_norelease.parquet")
+    store: Path = tmp_path / "sectionhash_norelease.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
     names: list[str] = [op[0].__name__ for op in collected]
 
     assert "drop_not_significant" not in names
+    assert "drop_zero_effect_size" not in names
     assert names.index("sig") < names.index("resolve_batch")
 
 
@@ -955,6 +959,22 @@ def test_drop_not_significant_keeps_all_other_bands() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"q": bands}).lazy()
     result: pl.DataFrame = drop_not_significant(lf, col="q").collect()
     assert list(result["q"]) == [b for b in bands if b != "biolink:not_significant"]
+
+
+def test_drop_zero_effect_size_removes_zero_keeps_nonzero_and_nulls() -> None:
+    """drop_zero_effect_size drops exact zeros while keeping non-zeros and nulls."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b", "c", "d", "e"], "effect_size": [0.0, 1.5, -0.5, None, 0]}).lazy()
+    result: pl.DataFrame = drop_zero_effect_size(lf).collect()
+    assert list(result["subject"]) == ["b", "c", "d"]
+    assert list(result["effect_size"]) == [1.5, -0.5, None]
+
+
+def test_drop_zero_effect_size_noop_without_column() -> None:
+    """drop_zero_effect_size is a no-op when the effect-size column is absent."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b"]}).lazy()
+    result: pl.DataFrame = drop_zero_effect_size(lf).collect()
+    assert result.shape == (2, 1)
+    assert list(result["subject"]) == ["a", "b"]
 
 
 def test_numeric_columns_matches_p_value_substring() -> None:
@@ -2494,6 +2514,46 @@ def test_compile_subgraph_e2e_release_drops_rows_before_fullmap_lookup(monkeypat
     assert "droppeddisease" not in looked_up
 
 
+def test_compile_subgraph_e2e_release_drops_zero_effect_size_before_fullmap_lookup(monkeypatch: Any, tmp_path: Path) -> None:
+    """release-mode subgraph compilation drops zero effect-size rows before resolution."""
+    rows: dict[str, list[dict[str, object]]] = {
+        "keptgene": [fake_fullmap_row("keptgene", "HGNC:1", "KEPTGENE", "Gene", 9606)],
+        "keptdisease": [fake_fullmap_row("keptdisease", "MONDO:1", "Kept disease", "Disease", 0)],
+        "droppedgene": [fake_fullmap_row("droppedgene", "HGNC:2", "DROPPEDGENE", "Gene", 9606)],
+        "droppeddisease": [fake_fullmap_row("droppeddisease", "MONDO:2", "Dropped disease", "Disease", 0)],
+    }
+    calls: list[list[str]] = install_fake_fullmap(monkeypatch, rows)
+    table_path, _ = write_text_section(
+        tmp_path,
+        "release_drop_zero_effect",
+        {
+            "statement": {"subject": {"method": "column", "encoding": "A"}, "object": {"method": "column", "encoding": "B"}},
+            "annotations": [
+                {"annotation": "p_value", "method": "column", "encoding": "C"},
+                {"annotation": "effect_size", "method": "column", "encoding": "D"},
+                {"annotation": "effect_type", "method": "value", "encoding": "spearmans_rho"},
+            ],
+            "provenance": {"repo": "PMC", "publication": "PMC0000000"},
+        },
+        ["DroppedGene\tDroppedDisease\t0.05\t0.0", "KeptGene\tKeptDisease\t0.01\t1.5"],
+    )
+    data: Any = from_yaml(table_path)
+    store: Path = tmp_path / "release_drop_zero_effect.parquet"
+    tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "release": True})  # pyright: ignore
+
+    result_path: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
+    result: pl.DataFrame = pl.read_parquet(result_path)
+    looked_up: set[str] = set(calls[0])
+
+    assert result.height == 1
+    assert result["subject"].to_list() == ["HGNC:1"]
+    assert result["object"].to_list() == ["MONDO:1"]
+    # effect_size is not yet a numeric Biolink slot, so format_numeric emits it as a string.
+    assert result["effect_size"].to_list() == ["1.5"]
+    assert "droppedgene" not in looked_up
+    assert "droppeddisease" not in looked_up
+
+
 def test_compile_subgraph_e2e_head_caps_rows_to_five(monkeypatch: Any, tmp_path: Path) -> None:
     """--head randomly samples 5 of 8 rows before fullmap resolution (never more than available)."""
     rows: dict[str, list[dict[str, object]]] = {
@@ -2734,12 +2794,12 @@ def test_compile_subgraph_threads_fine_phases_into_resolve_and_qc(monkeypatch: A
     }
     install_fake_fullmap(monkeypatch, rows)
 
-    # Safety net: this data passes QC at the exact stage, so BioBERT must never run (keeps the test offline).
-    class DummyBioBERT:
+    # Safety net: this data passes QC at the exact stage, so SapBERT must never run (keeps the test offline).
+    class DummySapBERT:
         def encode(self, values: list[str]) -> object:
-            raise AssertionError("Stage 3 (BioBERT) must not run for exact-match QC data")
+            raise AssertionError("Stage 4 (SapBERT) must not run for exact-match QC data")
 
-    monkeypatch.setattr("tablassert.qc.get_biobert", lambda: DummyBioBERT())
+    monkeypatch.setattr("tablassert.qc.get_sapbert", lambda: DummySapBERT())
 
     table_path, _ = write_text_section(
         tmp_path,
@@ -2761,9 +2821,10 @@ def test_compile_subgraph_threads_fine_phases_into_resolve_and_qc(monkeypatch: A
     # Per-column resolve sub-phases fire in spec order, before any QC sub-phase.
     assert phases.index("resolve:subject") < phases.index("resolve:object")
     assert phases.index("resolve:object") < phases.index("qc:exact")
-    # QC sub-phases fire for the audits: exact then fuzzy; bert never (exact-match quick exit).
+    # QC sub-phases fire for the audits: exact then fuzzy; abbrev/sapbert never (exact-match quick exit).
     assert phases.index("qc:exact") < phases.index("qc:fuzzy")
-    assert "qc:bert" not in phases
+    assert "qc:abbrev" not in phases
+    assert "qc:sapbert" not in phases
 
 
 def test_predicate_options_answers_which_predicates_keep_the_class() -> None:
