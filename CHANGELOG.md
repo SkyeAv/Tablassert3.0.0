@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **`species_context_qualifier` is no longer auto-derived or relocated into supporting studies.** The field was derived from resolved node taxon metadata, then stored as a `StudyResult.description` key/value when the selected association class could not accept it. It is now disabled for both qualifiers and annotations; node taxon metadata remains available on node records.
+
 ## 11.0.0 - 2026-08-13
 
 ### Breaking Changes
