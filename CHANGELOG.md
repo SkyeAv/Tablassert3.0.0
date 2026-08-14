@@ -10,6 +10,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - **`species_context_qualifier` is no longer auto-derived or relocated into supporting studies.** The field was derived from resolved node taxon metadata, then stored as a `StudyResult.description` key/value when the selected association class could not accept it. It is now disabled for both qualifiers and annotations; node taxon metadata remains available on node records.
+- **A section with no publication and nothing to preserve no longer fabricates a supporting study.** `inline_supporting_study` emitted `has_supporting_studies` unconditionally, so a table declaring no `publications` got a `Study` keyed by its own config filename (`my_table.yaml`) whose single `StudyResult` was a row index into a file the pipeline regenerates. Biolink defines `has supporting studies` as "studies that produced information used as evidence", and nothing in `NCATSTranslator/translator-ingests` models evidence that way — there a `Study` is a real cohort (ICEES), dataset (COHD), trial (CTKP), or text-mining group (SemMedDB/TMKP) with typed `StudyResult` slots. The struct is now emitted only when it carries something: a section with a real publication keeps it unchanged (`PMID:123#Table_S7 row 12` is genuine provenance), as does any section with routed `UNSATISFIABLE_EDGE_FIELDS` statistics or class-pruned values to preserve. The sheet-name and row-number columns are consumed either way — they are never meant to reach the edge.
 
 ## 11.0.0 - 2026-08-13
 
