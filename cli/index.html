@@ -1887,7 +1887,8 @@ reported as <code>file not found</code> and also exits non-zero — a file that 
 a pass.</p>
 <p>Edges carrying <code>effect_size</code> / <code>effect_type</code> are reported invalid until a <code>biolink-model</code> release
 ships <a href="https://github.com/biolink/biolink-model/pull/1774">#1774</a>, because 4.4.3 declares neither on
-<code>Association</code>. Those are counted separately as <em>pending</em> rather than treated as defects:</p>
+<code>Association</code>. The translator-ingest <code>approval_ids</code> pass-through is also intentionally absent from
+that model. These curated fields are counted separately as <em>pending</em> rather than treated as defects:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
 </code></pre></div>
 <p>The strict count is what <code>ok</code> and the exit code use; the pending count is what

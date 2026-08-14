@@ -1872,11 +1872,13 @@ cannot drift from the model the build validates against:</p>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>- any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
 </code></pre></div>
 <div class="admonition note">
-<p class="admonition-title"><code>effect_size</code> / <code>effect_type</code> are exempt</p>
-<p>Tablassert emits both deliberately, pending
-<a href="https://github.com/biolink/biolink-model/pull/1774">biolink-model#1774</a> — 4.4.3 declares neither
-on <code>Association</code>, so a strict check rejects every edge carrying them. <code>biolink_valid_pct</code> exempts
-them (and the other curated KGX carryovers) so the agent is scored on <strong>its own</strong> decisions.
+<p class="admonition-title"><code>effect_size</code> / <code>effect_type</code> / <code>approval_ids</code> are exempt</p>
+<p>Tablassert emits <code>effect_size</code> / <code>effect_type</code> deliberately, pending
+<a href="https://github.com/biolink/biolink-model/pull/1774">biolink-model#1774</a>, and emits
+<code>approval_ids</code> as a translator-ingest pass-through. The installed model declares none of
+these on <code>Association</code>, so a strict check rejects edges carrying them. <code>biolink_valid_pct</code>
+exempts them (and the other curated KGX carryovers) so the agent is scored on <strong>its own</strong>
+decisions.
 The exempt set is <em>derived</em> — <code>TABLASERT_EDGE_EXTRAS - &lt;fields any association declares&gt;</code> — so it
 empties itself when the model catches up, with no code change.</p>
 </div>
