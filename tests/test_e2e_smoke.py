@@ -196,8 +196,9 @@ def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypa
 
     Declares annotations with non-canonical source spellings (``p value``, ``sample size``,
     ``odds ratio``, ``effect type``) and asserts the emitted KGX edge carries the coerced
-    canonical fields flat on the edge (``p_value`` as a JSON number, ``effect_size`` in
-    controlled notation, ``effect_type`` with the alias mapped to the ``EffectTypes`` enum)
+    canonical fields flat on the edge (``p_value`` in controlled scientific-notation
+    string form, ``effect_size`` in controlled decimal notation, ``effect_type`` with the
+    alias mapped to the ``EffectTypes`` enum)
     and routes the auto-derived ``statistical_significance_qualifier`` plus
     ``supporting_study_size`` into the inlined Study. Proves the whole coercion pipeline
     (``coerce_pvalue_columns`` / ``coerce_study_size_columns`` / ``coerce_effect_size_columns``
@@ -252,11 +253,11 @@ def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypa
     edge: dict[str, Any] = edges[0]
 
     # Raw annotation names normalized to canonical Biolink fields flat on the edge.
-    # p_value is a numeric Biolink float slot (emitted as a real JSON number), while
-    # effect_size has no numeric slot and keeps controlled {:.4g} string notation.
-    assert isinstance(edge["p_value"], float)
+    # p_value keeps the controlled {:.4e} scientific-notation string contract (Biolink's
+    # float typing is satisfied by lax coercion), while effect_size keeps {:.4g} notation.
+    assert isinstance(edge["p_value"], str)
     assert isinstance(edge["effect_size"], str)
-    assert float(edge["p_value"]) == 0.01
+    assert edge["p_value"] == "1.0000e-02"
     assert edge["effect_size"] == "0.85"
     assert edge["effect_type"] == "spearmans_rho"  # "Spearman" alias mapped to the EffectTypes enum
     assert "sample size" not in edge

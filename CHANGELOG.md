@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **P-value columns are emitted in scientific notation again.** The KGX-compliance rework (#71) made `format_numeric()` emit `p_value` / `adjusted_p_value` as real JSON numbers because the `numeric_slot_kind` lookup reports the `float`-typed Biolink slots — which silently retired the `{:.4e}` scientific-notation branch for exactly the columns it existed for, so edges shipped shortest-repr numbers (`"p_value":0.0001`, `"p_value":0.05`) instead of the controlled notation the tutorial documents (`"p_value":"1.0000e-03"`). P-value-like columns are now always formatted as scientific-notation strings regardless of the slot's model type: Biolink validation here and downstream runs in Pydantic's lax mode, which coerces the numeric string back, so `validate-kgx` stays green (verified against the pinned `biolink-model` classes). Non-p-value numeric columns keep the model-typed behavior: a real JSON number once a future biolink model types the slot (`biolink/biolink-model#1770` / `#1774`), controlled `{:.4g}` strings until then.
+
 ## 12.0.0 - 2026-08-14
 
 ### Breaking Changes

@@ -695,11 +695,13 @@ def _scalar_types(annotation: Any) -> set[type]:
 def numeric_slot_kind(field: str) -> str | None:
     """Return ``"int"`` / ``"float"`` when a Biolink association slot has a numeric range.
 
-    Tablassert stringifies its numeric annotation columns for notation control, but
-    Biolink types ``p_value`` and ``adjusted_p_value`` as ``float`` and (with
-    ``biolink/biolink-model#1770``) ``supporting_study_size`` as ``int``. Those must be
-    emitted as real JSON numbers. Derived from the installed model so the answer
-    tracks whatever version is pinned.
+    Tablassert stringifies its numeric annotation columns for notation control (p-value
+    columns are ALWAYS scientific-notation strings, which Pydantic's lax validation
+    coerces back for the ``float``-typed ``p_value`` / ``adjusted_p_value`` slots), but
+    a non-p-value column that the installed model types ``int`` (``supporting_study_size``
+    once ``biolink/biolink-model#1770`` lands) or ``float`` must be emitted as a real
+    JSON number. Derived from the installed model so the answer tracks whatever version
+    is pinned.
 
     Args:
         field: Edge column name.

@@ -467,11 +467,15 @@ def test_validate_kgx_separates_pending_extras_from_real_failures(tmp_path: Path
         # A real defect: p_value is typed float, so a non-numeric string can never validate.
         + json.dumps({**base, "id": "e2", "p_value": "not-a-number"})
         + "\n"
+        # The output contract: format_numeric emits p-values as scientific-notation strings;
+        # lax validation coerces them back to the float slot, so this record is fully valid.
+        + json.dumps({**base, "id": "e3", "p_value": "1.0000e-03"})
+        + "\n"
     )
     report: dict[str, Any] = validate_kgx(nodes, edges)
-    assert report["edges"]["total"] == 2
-    assert report["edges"]["valid"] == 0  # strict: both fail
-    assert report["edges"]["valid_excluding_pending"] == 1  # the effect_size edge is forgiven
+    assert report["edges"]["total"] == 3
+    assert report["edges"]["valid"] == 1  # strict: only the scientific-notation p_value edge passes
+    assert report["edges"]["valid_excluding_pending"] == 2  # the effect_size edge is forgiven
     assert report["ok"] is False
     assert report["ok_excluding_pending"] is False  # the real defect still fails
     assert "effect_size: extra_forbidden" in report["edges"]["problems"]
