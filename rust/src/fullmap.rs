@@ -2942,6 +2942,11 @@ fn extract_prebuilt_fullmap_inner(
     // stale dir from a crashed prior run is removed first, and the dir never
     // leaks — cleanup is guaranteed on success and best-effort on every error
     // path (a failed extraction must not leave multi-GB partials behind).
+    // NOTE: the name is deliberately fixed (not randomized): two CONCURRENT
+    // extractions to the same output would clobber each other's temp dir, but
+    // the failure is loud (validation/rename fails -> BABEL fallback) and can
+    // never land a corrupt bundle — and `build-fullmap` is not run concurrently
+    // against one output by design.
     let stem = output
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())

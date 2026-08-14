@@ -190,28 +190,38 @@ fn extract_prebuilt_matches_force_build() {
     //    (the GIL token is required by the signature; `Python::attach` +
     //    `py.detach` inside the function is the production code path).
     let out_dir = tempfile::tempdir().unwrap();
-    let output = out_dir.path().join("fullmap.redb");
+    let output = out_dir.path().join("custom.redb");
     pyo3::Python::initialize();
     pyo3::Python::attach(|py| {
         tablassert_rs::extract_prebuilt_fullmap(py, archive_path.clone(), output.clone(), None)
             .unwrap();
     });
 
-    // 4. The primary landed at `output` and exactly s0..s15 exist beside it.
+    // 4. The primary landed at `output` and exactly s0..s15 exist beside it,
+    //    named after the CUSTOM output stem (`custom.s<N>.redb`) — the rename
+    //    contract a `--output my-stem.redb` invocation depends on.
     assert!(output.exists(), "primary must land at the output path");
     for index in 0..common::SHARD_COUNT {
         let shard = common::shard_path(&output, index);
         assert!(shard.exists(), "missing extracted shard s{index}");
     }
+    assert_eq!(
+        common::shard_path(&output, 0)
+            .file_name()
+            .unwrap()
+            .to_string_lossy(),
+        "custom.s0.redb",
+        "shards must be renamed after the output stem"
+    );
     assert!(
         !common::shard_path(&output, common::SHARD_COUNT).exists(),
         "s16 must not exist"
     );
 
-    // 5. The temp dir is removed on success: no `.fullmap.prebuilt-extract.d`
+    // 5. The temp dir is removed on success: no `.custom.prebuilt-extract.d`
     //    (and no dot-prefixed stray at all) may remain in the output dir.
     assert!(
-        !out_dir.path().join(".fullmap.prebuilt-extract.d").exists(),
+        !out_dir.path().join(".custom.prebuilt-extract.d").exists(),
         "temp dir must be removed after a successful extraction"
     );
     let strays: Vec<String> = std::fs::read_dir(out_dir.path())
@@ -574,4 +584,66 @@ fn named_fullmap_primary_is_preferred_over_strays() {
         extracted, built,
         "the preferred `fullmap.redb` primary must land intact"
     );
+}
+
+/// WHY: the CLI's `section_loop` renders one sub-step line per progress detail
+/// from this extractor, and the CHANGELOG documents the exact detail sequence
+/// (`opening archive`, `extracting <entry>` per member, `validating`).  The
+/// callback is best-effort by design (errors discarded), so nothing else would
+/// catch a regression that stops firing callbacks or reshapes the details —
+/// this test pins the contract end-to-end through the real pyfunction with the
+/// GIL released (`py.detach` inside), re-entering Python per callback exactly
+/// as production does.  The callback is a plain Python list-appending lambda,
+/// so no Rust/Python shared state is involved.
+#[test]
+fn progress_callback_details_are_pinned() {
+    let fixture_dir = tempfile::tempdir().unwrap();
+    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let archive = fixture_dir.path().join("fullmap.tar.zst");
+    let mut members = vec![("fullmap.redb".to_string(), fixture_primary.clone())];
+    members.extend(shard_members(&fixture_primary, common::SHARD_COUNT));
+    package_tar_zst(&archive, &members);
+
+    pyo3::Python::initialize();
+    pyo3::Python::attach(|py| {
+        use pyo3::types::PyAnyMethods;
+
+        let details = pyo3::types::PyList::empty(py);
+        let globals = pyo3::types::PyDict::new(py);
+        globals.set_item("details", &details).unwrap();
+        let callback = py
+            .eval(
+                c"lambda detail: details.append(detail)",
+                Some(&globals),
+                None,
+            )
+            .unwrap();
+
+        let output = fixture_dir.path().join("out").join("fullmap.redb");
+        tablassert_rs::extract_prebuilt_fullmap(py, archive.clone(), output, Some(callback.into()))
+            .unwrap();
+
+        let recorded: Vec<String> = details.extract().unwrap();
+        assert_eq!(
+            recorded.first().map(String::as_str),
+            Some("opening archive"),
+            "progress must open with the opening-archive detail, got: {recorded:?}"
+        );
+        assert_eq!(
+            recorded.last().map(String::as_str),
+            Some("validating"),
+            "progress must end with the validating detail, got: {recorded:?}"
+        );
+        // One `extracting <member>` per archive member (17 members: primary +
+        // 16 shards; `package_tar_zst` writes no directory entries).
+        let extracting: Vec<&String> = recorded
+            .iter()
+            .filter(|detail| detail.starts_with("extracting "))
+            .collect();
+        assert_eq!(
+            extracting.len(),
+            common::SHARD_COUNT + 1,
+            "one extracting detail per member, got: {recorded:?}"
+        );
+    });
 }
