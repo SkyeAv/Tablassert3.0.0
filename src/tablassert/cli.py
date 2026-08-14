@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 import time
 from collections.abc import Callable
 from importlib import import_module
@@ -1038,91 +1035,37 @@ def _fetch_prebuilt_sha256(url: str) -> str | None:
     return None
 
 
-def _stream_tar(tar: tarfile.TarFile, dest: Path, on_phase: Callable[[str], None]) -> None:
-    """Extract every member of a streaming tarfile into ``dest`` (data-filtered on 3.12+).
+def _extract_prebuilt_fullmap(archive: Path, output: Path, on_phase: Callable[[str], None]) -> None:
+    """Extract + validate the prebuilt archive via the Rust extension (GIL-free).
 
-    Streaming mode (``r|``) only allows extracting each member as it is read (no random
-    access), which is exactly the loop here. PEP 706 (Python 3.12) added tar-extraction
-    filters; ``filter="data"`` strips absolute paths, traversals, and unsafe links. On
-    3.11 the kwarg is absent and is omitted — the archive is RENCI-published, but the
-    filter is cheap defense-in-depth when available.
-
-    Args:
-        tar: An open streaming-mode tarfile.
-        dest: Directory members are written into.
-        on_phase: Progress callback fired with the active step label.
-    """
-    use_data_filter: bool = sys.version_info >= (3, 12)
-    for member in tar:
-        on_phase(f"extracting {member.name}")
-        # Explicit branch so pyright sees the "data" literal (PEP 706, Python 3.12+).
-        if use_data_filter:
-            tar.extract(member, dest, filter="data")
-        else:
-            tar.extract(member, dest)
-
-
-def _extract_zst_tar(archive: Path, dest: Path, on_phase: Callable[[str], None]) -> None:
-    """Stream-extract a ``.tar.zst`` archive into ``dest`` without materializing the tar on disk.
-
-    Prefers Python 3.14+ native tarfile zstd support; on older runtimes (where ``r|zst``
-    raises ``CompressionError``) it streams the archive through the installed ``zstd``
-    binary into tarfile. Streaming keeps peak disk near the redb files' own size even
-    though the uncompressed tar is tens of GB.
+    Rust streams the ``.tar.zst``, validates it (schema version, build id, exact shard
+    set), and atomically installs the primary + shards beside ``output`` named after its
+    stem. Any failure surfaces as ``PrebuiltFullmapUnavailable`` so ``build-fullmap`` can
+    fall back to a from-scratch BABEL build.
 
     Args:
         archive: Path to the downloaded ``fullmap.tar.zst``.
-        dest: Directory members are written into (created if missing).
+        output: Target primary redb path; shards land beside it as ``<stem>.s<N>.redb``.
         on_phase: Progress callback fired with the active step label.
 
     Raises:
-        PrebuiltFullmapUnavailable: If the archive cannot be decompressed/extracted
-            (native zstd unavailable AND no ``zstd`` binary, a read error, or a zstd failure).
+        PrebuiltFullmapUnavailable: If decompression, validation, or extraction fails.
     """
-    dest.mkdir(parents=True, exist_ok=True)
-    on_phase("opening archive")
-    # Native zstd landed in tarfile for 3.14; older interpreters reject the ``zst`` mode
-    # with CompressionError, which is caught to fall through to the zstd binary.
-    try:
-        with tarfile.open(archive, "r|zst") as tar:
-            _stream_tar(tar, dest, on_phase)
-        return
-    except tarfile.CompressionError:
-        pass
-    except (OSError, tarfile.TarError) as exc:
-        raise PrebuiltFullmapUnavailable(f"failed to read prebuilt archive: {exc}") from exc
+    from tablassert import rs
 
-    on_phase("streaming via zstd")
-    binary: str | None = shutil.which("zstd")
-    if binary is None:
-        raise PrebuiltFullmapUnavailable("no native zstd support and the `zstd` executable was not found")
     try:
-        proc: subprocess.Popen[bytes] = subprocess.Popen([binary, "-d", "-c", "-T0", str(archive)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except OSError as exc:
-        raise PrebuiltFullmapUnavailable(f"could not start zstd: {exc}") from exc
-    assert proc.stdout is not None
-    try:
-        with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
-            _stream_tar(tar, dest, on_phase)
-    except (OSError, tarfile.TarError) as exc:
+        rs.extract_prebuilt_fullmap(archive, output, progress=on_phase)
+    except Exception as exc:
         raise PrebuiltFullmapUnavailable(f"failed to extract prebuilt archive: {exc}") from exc
-    finally:
-        if proc.stdout is not None:
-            proc.stdout.close()
-        proc.wait()
-    if proc.returncode not in (0, None):
-        stderr: bytes = proc.stderr.read() if proc.stderr else b""
-        detail: str = stderr.decode("utf-8", "replace").strip()[-500:]
-        raise PrebuiltFullmapUnavailable(f"zstd exited with status {proc.returncode}: {detail}")
 
 
 def fetch_prebuilt_fullmap(output: Path, progress: PipelineProgress, version: str = BABEL_VERSION, aria2c: bool = False) -> None:
     """Download and extract a prebuilt fullmap database from RENCI (instead of building).
 
     Two stages: download ``fullmap.tar.zst`` for THIS Tablassert version (cached +
-    resumable, optionally via ``aria2c``) beside ``output``, then stream-extract it so the
-    primary redb and its shards land beside ``output`` named after its stem. The checksum
-    published alongside the archive is verified when present.
+    resumable, optionally via ``aria2c``) beside ``output``, then extract it in Rust so
+    the primary redb and its shards land beside ``output`` named after its stem. The
+    checksum published alongside the archive is verified when present.
 
     Args:
         output: Target primary redb path; the archive is downloaded + extracted beside it.
@@ -1175,32 +1118,15 @@ def fetch_prebuilt_fullmap(output: Path, progress: PipelineProgress, version: st
             archive.unlink(missing_ok=True)
             raise PrebuiltFullmapUnavailable(f"checksum mismatch for {archive.name}: expected {expected}, got {actual}")
 
-    # Stage 2/2: stream-extract into a temp dir ON THE SAME FILESYSTEM as the output (so
-    # the renames are atomic), then move the primary + shards beside ``output`` named
-    # after its stem. A custom --output stem is honored, not assumed to be fullmap.redb.
+    # Stage 2/2: extract + validate in Rust (streaming zstd+tar, GIL-free). Rust extracts
+    # to a temp dir on the output's filesystem and atomically renames the primary + shards
+    # beside ``output`` after its stem — a custom --output stem is honored, not assumed to
+    # be fullmap.redb.
     progress.stage("Extracting Fullmap")
     start, advance, sub_step = progress.section_loop(1, "Extract")
     start("fullmap.tar.zst")
     sub_step("extracting")
-    download_dir.mkdir(parents=True, exist_ok=True)
-    shard_re: re.Pattern[str] = re.compile(r"\.s(\d+)\.redb$")
-    with tempfile.TemporaryDirectory(dir=download_dir) as tmp_name:
-        tmp_dir: Path = Path(tmp_name)
-        _extract_zst_tar(archive, tmp_dir, on_phase=sub_step)
-        primary_src: Path | None = None
-        shards: dict[int, Path] = {}
-        for candidate in tmp_dir.rglob("*.redb"):
-            match: re.Match[str] | None = shard_re.search(candidate.name)
-            if match:
-                shards[int(match.group(1))] = candidate
-            elif primary_src is None or candidate.name == "fullmap.redb":
-                # Prefer a primary literally named fullmap.redb when several non-shard redb files appear.
-                primary_src = candidate
-        if primary_src is None:
-            raise PrebuiltFullmapUnavailable("prebuilt archive contained no primary .redb file")
-        primary_src.replace(output)
-        for shard_index, shard_src in sorted(shards.items()):
-            shard_src.replace(output.parent / f"{output.stem}.s{shard_index}.redb")
+    _extract_prebuilt_fullmap(archive, output, on_phase=sub_step)
 
     # The extracted redb files are the cache; drop the multi-GB archive to free the space.
     archive.unlink(missing_ok=True)
