@@ -588,15 +588,29 @@ def test_normalize_category_null_stays_null() -> None:
     assert result == [None]
 
 
-def test_derive_species_context_coalesces_taxon() -> None:
-    """derive_species_context uses subject taxon first, then object taxon."""
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"subject_taxon": ["NCBITaxon:9606", None, None], "object_taxon": ["NCBITaxon:10090", "NCBITaxon:9606", None]}
-    ).lazy()
+def test_tcode_collect_does_not_schedule_species_context_derivation(fixtures_path: Path) -> None:
+    """Taxon resolution remains available without creating an edge qualifier operation."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": Path("/tmp/no_species_context.parquet")}
+    )
 
-    result: list[Any] = lib.derive_species_context(lf).collect()["species_context_qualifier"].to_list()
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
 
-    assert result == ["NCBITaxon:9606", "NCBITaxon:9606", None]
+    assert "derive_species_context" not in [op[0].__name__ for op in collected]
+
+
+def test_disabled_species_context_is_dropped_before_study_or_supporting_text() -> None:
+    """Legacy/direct frames cannot relocate the disabled field into study text or supporting text."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"], "species_context_qualifier": ["NCBITaxon:9606"]}).lazy()
+
+    study_frame: pl.DataFrame = lib.inline_supporting_study(lf, "study", None).collect()
+    folded_frame: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
+
+    assert "species_context_qualifier" not in study_frame.columns
+    assert "species_context_qualifier" not in json.dumps(study_frame.to_dicts())
+    assert "species_context_qualifier" not in folded_frame.columns
+    assert "species_context_qualifier" not in json.dumps(folded_frame.to_dicts())
 
 
 def test_tcode_collect_emits_primary_sources_entry_with_explicit_infores(fixtures_path: Path) -> None:
@@ -2573,8 +2587,8 @@ def test_compile_subgraph_e2e_head_caps_rows_to_five(monkeypatch: Any, tmp_path:
     assert diseases <= {f"disease{i}" for i in range(1, 9)}
 
 
-def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
-    """auto-derived species context survives graph export as an edge attribute without creating nodes."""
+def test_compile_subgraph_and_graph_e2e_does_not_emit_species_context(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
+    """Species context is absent from section, study, and final edge output."""
     monkeypatch.chdir(tmp_path)
     rows: dict[str, list[dict[str, object]]] = {
         "brca1": [fake_fullmap_row("brca1", "HGNC:1100", "BRCA1", "Gene", 9606)],
@@ -2600,25 +2614,15 @@ def test_compile_subgraph_and_graph_e2e_qualifier_stays_edge_attribute(monkeypat
     tcode_model: Tcode = Tcode.model_validate({**data, "config": table_path, "store": store, "name": "QUAL_KG", "infores": "infores:qual-kg"})  # pyright: ignore
 
     subgraph: Path = lib.compile_subgraph(tcode_model.collect(tmp_path / "fullmap.redb"))  # pyright: ignore
-    # `biolink:Association` has no species_context_qualifier slot, so the value is
-    # nulled on the edge and preserved on the inlined StudyResult instead.
     frame: pl.DataFrame = pl.read_parquet(subgraph)
-    assert frame["species_context_qualifier"].to_list() == [None]
-    assert (
-        "species_context_qualifier=NCBITaxon:9606"
-        in frame["has_supporting_studies"].to_list()[0][next(iter(frame["has_supporting_studies"].to_list()[0]))]["has_study_results"][0][
-            "description"
-        ]
-    )
+    assert "species_context_qualifier" not in frame.columns
+    assert "species_context_qualifier" not in json.dumps(frame["has_supporting_studies"].to_list())
 
     lib.compile_graph([subgraph], "qual", "1.0.0", rig_factory(tmp_path, infores_id="infores:qual-kg"))
     edges: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.edges.ndjson").read_text().splitlines()]
     nodes: list[dict[str, Any]] = [json.loads(line) for line in (tmp_path / "qual_1.0.0.nodes.ndjson").read_text().splitlines()]
 
-    # Nulled on the edge (no such slot on biolink:Association) and kept on the study.
-    assert "species_context_qualifier" not in edges[0]
-    study: dict[str, Any] = edges[0]["has_supporting_studies"]
-    assert "species_context_qualifier=NCBITaxon:9606" in study[next(iter(study))]["has_study_results"][0]["description"]
+    assert "species_context_qualifier" not in json.dumps(edges[0])
     assert all("species_context_qualifier_pre_resolution" not in edge for edge in edges)
     assert {node["id"] for node in nodes} == {"HGNC:1100", "MONDO:0000001"}
     assert "NCBITaxon:9606" not in {node["id"] for node in nodes}

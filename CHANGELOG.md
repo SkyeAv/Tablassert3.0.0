@@ -7,6 +7,9 @@ All notable changes to this project are documented in this file.
 ### Added
 - **`build-kg --release` now drops edges whose `effect_size` is exactly zero.** When an `effect_size` column is present, release-mode builds filter out rows with a non-null zero effect size before fullmap resolution, matching the existing release-mode drop of `biolink:not_significant` edges. Rows with a null effect size are kept.
 
+### Fixed
+- **`species_context_qualifier` is no longer auto-derived or relocated into supporting studies.** The field was derived from resolved node taxon metadata, then stored as a `StudyResult.description` key/value when the selected association class could not accept it. It is now disabled for both qualifiers and annotations; node taxon metadata remains available on node records.
+
 ## 11.0.0 - 2026-08-13
 
 ### Breaking Changes

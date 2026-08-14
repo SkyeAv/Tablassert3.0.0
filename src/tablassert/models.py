@@ -11,6 +11,7 @@ from tablassert._lazy import LazyModule
 from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
     BIOLINK_VERSION,
+    DISABLED_EDGE_FIELDS,
     ENUM_RANGED_QUALIFIERS,
     UNSATISFIABLE_EDGE_FIELDS,
     AgentTypes,
@@ -339,17 +340,18 @@ class Qualifier(NodeEncoding):
         return self.vocabulary is None
 
     @model_validator(mode="after")
-    def reject_auto_derived_qualifiers(self: Self) -> Self:
-        """Reject qualifiers that Tablassert derives from resolved node metadata.
+    def reject_disabled_qualifiers(self: Self) -> Self:
+        """Reject qualifier fields that Tablassert has intentionally disabled.
 
-        ``species_context_qualifier`` is populated automatically from resolved
-        subject/object taxon, so declaring it manually would make fullmap treat
-        it as an independently resolved query column and risk conflicting output.
+        The disabled policy is separate from Biolink's current slot attachment: a
+        dependency release must not make a field that Tablassert does not support
+        silently configurable again.
         """
-        if self.qualifier == "species_context_qualifier":
+        field: str = str(self.qualifier)
+        if field in DISABLED_EDGE_FIELDS:
             raise TablassertValidationError(
-                "species_context_qualifier is auto-derived from resolved subject/object taxon; remove it from qualifiers.",
-                code="qualifier-auto-derived",
+                f"{field} is disabled in Tablassert; it is neither derived nor accepted as a configured qualifier or annotation.",
+                code="field-disabled",
             )
         return self
 
@@ -535,6 +537,16 @@ class Annotation(Encoding):
     @classmethod
     def clean_annotation(cls, annotation: str) -> str:
         return annotation.lower().strip()
+
+    @model_validator(mode="after")
+    def reject_disabled_annotations(self: Self) -> Self:
+        """Reject disabled edge fields even when they arrive through ``annotations``."""
+        if self.annotation in DISABLED_EDGE_FIELDS:
+            raise TablassertValidationError(
+                f"{self.annotation} is disabled in Tablassert; it is neither derived nor accepted as a configured qualifier or annotation.",
+                code="field-disabled",
+            )
+        return self
 
     @model_validator(mode="after")
     def split_by_requires_a_column(self) -> Self:

@@ -22,6 +22,7 @@ import pytest
 from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
     BIOLINK_VERSION,
+    DISABLED_EDGE_FIELDS,
     EFFECT_TYPE_VALUES,
     KNOWN_PENDING_EDGE_FIELDS,
     TABLASERT_EDGE_EXTRAS,
@@ -331,6 +332,12 @@ def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
         assert slot in ALLOWED_EDGE_FIELDS, slot
 
 
+def test_disabled_edge_fields_are_never_emittable() -> None:
+    """Tablassert-disabled fields stay excluded even if a future Biolink model attaches them."""
+    assert "species_context_qualifier" in DISABLED_EDGE_FIELDS
+    assert DISABLED_EDGE_FIELDS.isdisjoint(ALLOWED_EDGE_FIELDS)
+
+
 def test_allowed_edge_fields_excludes_unattached_qualifiers() -> None:
     """Qualifier slots attached to no Pydantic class are not emittable.
 
@@ -345,7 +352,7 @@ def test_allowed_edge_fields_excludes_unattached_qualifiers() -> None:
 
 def test_allowed_edge_fields_covers_every_satisfiable_qualifier() -> None:
     """Every qualifier slot with a real home is an allowed edge column."""
-    satisfiable: set[str] = {q.value for q in Qualifiers} - set(UNSATISFIABLE_EDGE_FIELDS)
+    satisfiable: set[str] = {q.value for q in Qualifiers} - set(UNSATISFIABLE_EDGE_FIELDS) - set(DISABLED_EDGE_FIELDS)
     assert satisfiable <= set(ALLOWED_EDGE_FIELDS)
 
 

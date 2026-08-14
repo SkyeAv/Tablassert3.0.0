@@ -60,6 +60,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ALLOWED_EDGE_FIELDS",
     "BIOLINK_VERSION",
+    "DISABLED_EDGE_FIELDS",
     "EFFECT_TYPE_VALUES",
     "ENUM_RANGED_QUALIFIERS",
     "KNOWN_PENDING_EDGE_FIELDS",
@@ -420,7 +421,7 @@ def resolve_association_class(category: str, predicate: str) -> type[Any]:
 #     ``relationship_strength`` -- declared in the LinkML YAML but attached to zero
 #     Pydantic classes (see ``UNSATISFIABLE_EDGE_FIELDS``); they are routed onto the
 #     inlined ``Study`` / ``StudyResult`` instead.
-#   - ``taxon`` -- a node property; edges carry ``species_context_qualifier``.
+#   - ``taxon`` -- a node property; no species-context edge is synthesized from it.
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
         "broad_synonym",
@@ -523,6 +524,16 @@ their values are routed onto the inlined ``StudyResult`` instead.
 """
 
 
+DISABLED_EDGE_FIELDS: frozenset[str] = frozenset({"species_context_qualifier"})
+"""Edge fields Tablassert intentionally never emits or accepts.
+
+This policy is separate from :data:`UNSATISFIABLE_EDGE_FIELDS`: the latter tracks
+Biolink Model attachment and may change with a dependency release, while this set is
+a stable Tablassert product decision. Keeping it separate prevents a future Biolink
+release from making ``species_context_qualifier`` silently emittable again.
+"""
+
+
 ENUM_RANGED_QUALIFIERS: dict[str, frozenset[str]] = {
     qualifier.value: choices
     for qualifier in Qualifiers
@@ -551,15 +562,18 @@ unresolved.
 
 
 ALLOWED_EDGE_FIELDS: frozenset[str] = (
-    frozenset(_association_model_fields()) | {q.value for q in Qualifiers} | TABLASERT_EDGE_EXTRAS
-) - UNSATISFIABLE_EDGE_FIELDS
+    (frozenset(_association_model_fields()) | {q.value for q in Qualifiers} | TABLASERT_EDGE_EXTRAS)
+    - UNSATISFIABLE_EDGE_FIELDS
+    - DISABLED_EDGE_FIELDS
+)
 """Authoritative biolink-compliant edge column allow-list.
 
 Any column on an edge frame that is not in this set is folded into the
 ``supporting_text`` ``list[str]`` field by ``lib.fold_unknown_to_supporting_text()``
 as a ``"column: value"`` string. Composed of the fields declared by *any* Biolink
 association class, the derived qualifier slot names, and the curated
-``TABLASERT_EDGE_EXTRAS`` -- less the slots that no Pydantic class can hold.
+``TABLASERT_EDGE_EXTRAS`` -- less the slots that no Pydantic class can hold and the
+fields disabled by Tablassert policy.
 
 Note this is a per-*family* allow-list: a field being permitted here does not mean the
 specific association class chosen for a given edge accepts it. Per-record pruning

@@ -178,10 +178,11 @@ def test_instructions_carry_a_generated_predicate_cheatsheet() -> None:
     assert "Gene ~ Disease -> GeneToDiseaseAssociation: affects, associated_with, contributes_to" in INSTRUCTIONS
     assert "demoted_edge_pct" in INSTRUCTIONS
 
-    # And the two silent-relocation rules the pipeline enforces.
+    # And the relocation/disabled-field rules the pipeline enforces.
     assert "supporting_study_size" in INSTRUCTIONS  # named as a slot that does NOT reach the edge
     assert "adjusted_p_value" in INSTRUCTIONS  # the recommended alternative
-    assert "species_context_qualifier" in INSTRUCTIONS
+    assert "species_context_qualifier` is" in INSTRUCTIONS
+    assert "species_context_qualifier` is\n  auto-derived" not in INSTRUCTIONS
 
 
 def test_instructions_do_not_recommend_a_class_forbidden_predicate() -> None:
