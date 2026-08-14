@@ -214,11 +214,13 @@ cannot drift from the model the build validates against:
 - any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
 ```
 
-!!! note "`effect_size` / `effect_type` are exempt"
-    Tablassert emits both deliberately, pending
-    [biolink-model#1774](https://github.com/biolink/biolink-model/pull/1774) — 4.4.3 declares neither
-    on `Association`, so a strict check rejects every edge carrying them. `biolink_valid_pct` exempts
-    them (and the other curated KGX carryovers) so the agent is scored on **its own** decisions.
+!!! note "`effect_size` / `effect_type` / `approval_ids` are exempt"
+    Tablassert emits `effect_size` / `effect_type` deliberately, pending
+    [biolink-model#1774](https://github.com/biolink/biolink-model/pull/1774), and emits
+    `approval_ids` as a translator-ingest pass-through. The installed model declares none of
+    these on `Association`, so a strict check rejects edges carrying them. `biolink_valid_pct`
+    exempts them (and the other curated KGX carryovers) so the agent is scored on **its own**
+    decisions.
     The exempt set is *derived* — `TABLASERT_EDGE_EXTRAS - <fields any association declares>` — so it
     empties itself when the model catches up, with no code change.
 

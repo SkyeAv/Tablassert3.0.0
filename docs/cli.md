@@ -253,7 +253,8 @@ a pass.
 
 Edges carrying `effect_size` / `effect_type` are reported invalid until a `biolink-model` release
 ships [#1774](https://github.com/biolink/biolink-model/pull/1774), because 4.4.3 declares neither on
-`Association`. Those are counted separately as *pending* rather than treated as defects:
+`Association`. The translator-ingest `approval_ids` pass-through is also intentionally absent from
+that model. These curated fields are counted separately as *pending* rather than treated as defects:
 
 ```text
 edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)

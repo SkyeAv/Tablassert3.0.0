@@ -321,6 +321,18 @@ def test_allowed_edge_fields_includes_effect_annotations() -> None:
     assert "effect_type" in ALLOWED_EDGE_FIELDS
 
 
+def test_allowed_edge_fields_includes_approval_ids() -> None:
+    """``approval_ids`` is an allowed edge column (translator-ingest precedent).
+
+    The DAKP translator-ingest emits FDA application numbers as a pipe-joined scalar
+    (``"011111|022222"``, no ``split_by``). Folding the column into ``supporting_text``
+    would bury structured approval provenance in prose, so the curated extra keeps it a
+    top-level edge field, preserved verbatim as a scalar string -- never a JSON array.
+    """
+    assert "approval_ids" in TABLASERT_EDGE_EXTRAS
+    assert "approval_ids" in ALLOWED_EDGE_FIELDS
+
+
 def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
     """Slots declared only by ``Association`` *subclasses* are still allowed columns.
 
@@ -399,13 +411,14 @@ def test_known_pending_fields_are_derived_not_hardcoded() -> None:
             owned |= set(getattr(cls, "model_fields", {}))
     assert frozenset(TABLASERT_EDGE_EXTRAS) - owned == KNOWN_PENDING_EDGE_FIELDS
     # Today's state, asserted so the pending exemption is visibly scoped.
-    assert {"effect_size", "effect_type"} <= KNOWN_PENDING_EDGE_FIELDS
+    assert {"approval_ids", "effect_size", "effect_type"} <= KNOWN_PENDING_EDGE_FIELDS
     assert KNOWN_PENDING_EDGE_FIELDS <= ALLOWED_EDGE_FIELDS
 
 
 def test_is_pending_problem_only_exempts_extra_forbidden_pending_fields() -> None:
     """The exemption is narrow: a deliberate extra Biolink has not declared, and nothing else."""
     assert is_pending_problem("effect_size: extra_forbidden")
+    assert is_pending_problem("approval_ids: extra_forbidden")
     # Same field, a REAL failure -> not exempt.
     assert not is_pending_problem("effect_size: missing")
     # A genuinely malformed value on a real slot -> never exempt.

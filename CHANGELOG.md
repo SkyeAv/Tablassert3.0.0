@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
+- **`approval_ids` is now a curated pass-through edge field.** FDA application numbers declared as an `approval_ids` annotation (the DAKP translator-ingest precedent) now reach the final KGX edges as their own top-level field instead of being folded into `supporting_text`, notwithstanding that no association class declares the slot: the allow-list keeps the column out of the fold sweep, annotation validation emits no `BiolinkRelocationWarning`, and strict KGX validation counts it as *pending* Biolink support exactly like `effect_size` / `effect_type`. The representation follows the ingest: a pipe-joined scalar (e.g. `011111|022222`) is emitted verbatim as a scalar string — Tablassert does not split it into a JSON array.
 - **`build-kg --release` now drops edges whose `effect_size` is exactly zero.** When an `effect_size` column is present, release-mode builds filter out rows with a non-null zero effect size before fullmap resolution, matching the existing release-mode drop of `biolink:not_significant` edges. Rows with a null effect size are kept.
 
 ### Fixed
