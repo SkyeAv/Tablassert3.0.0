@@ -2592,7 +2592,27 @@ fn extract_validate_rename(
             archive.display()
         ))
     })?;
-    let reader = BufReader::with_capacity(EXTRACT_READ_BUFFER_BYTES, file);
+    let mut reader = BufReader::with_capacity(EXTRACT_READ_BUFFER_BYTES, file);
+    // Cheap upfront sanity: a zstd stream starts with the 4-byte frame magic
+    // 0xFD2FB528 (little-endian).  `zstd::Decoder::new` is LAZY — it only
+    // fails on the first read — so garbage bytes from a torn download would
+    // otherwise surface as a cryptic mid-stream tar error instead of the
+    // actionable "not valid zstd".
+    const ZSTD_FRAME_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+    let head = reader.fill_buf().map_err(|e| {
+        py_err(format!(
+            "failed to read prebuilt archive {}: {e}",
+            archive.display()
+        ))
+    })?;
+    if head.len() < ZSTD_FRAME_MAGIC.len() || !head.starts_with(&ZSTD_FRAME_MAGIC) {
+        return Err(py_err(format!(
+            "prebuilt archive {} is not valid zstd (missing the zstd frame magic); \
+             re-download the archive or force a local rebuild with \
+             'tablassert build-fullmap'",
+            archive.display()
+        )));
+    }
     let decoder = zstd::Decoder::new(reader).map_err(|e| {
         py_err(format!(
             "prebuilt archive {} is not valid zstd: {e}",
@@ -2615,6 +2635,38 @@ fn extract_validate_rename(
             ))
         })?;
         let rel = validated_entry_path(&entry)?;
+        // tar-rs silently IGNORES `GNU.sparse.*` PAX records (bsdtar's sparse
+        // encoding), so a PAX-sparse archive of redb files — which are
+        // genuinely sparse because redb preallocates — would extract WRONG
+        // bytes with no error.  Reject such archives loudly instead of landing
+        // a silently-corrupt database.  (GNU tar's `GNUSparse` entry type does
+        // NOT use these PAX records and is expanded correctly below.)
+        if let Some(extensions) = entry.pax_extensions().map_err(|e| {
+            py_err(format!(
+                "failed to read the PAX extensions of entry {} in prebuilt archive {}: {e}",
+                rel.display(),
+                archive.display()
+            ))
+        })? {
+            for extension in extensions {
+                let extension = extension.map_err(|e| {
+                    py_err(format!(
+                        "failed to parse a PAX extension of entry {} in prebuilt archive {}: {e}",
+                        rel.display(),
+                        archive.display()
+                    ))
+                })?;
+                if extension.key_bytes().starts_with(b"GNU.sparse") {
+                    return Err(py_err(format!(
+                        "prebuilt archive entry {} uses PAX sparse records ({}), which are \
+                         unsupported: extracting them would silently land wrong bytes for the \
+                         sparse file — repack with GNU tar or re-publish the archive",
+                        rel.display(),
+                        String::from_utf8_lossy(extension.key_bytes())
+                    )));
+                }
+            }
+        }
         extract_report(progress, &format!("extracting {}", rel.display()));
         let dest = temp_dir.join(&rel);
         match entry.header().entry_type() {
@@ -2688,6 +2740,32 @@ fn extract_validate_rename(
     let mut primaries: Vec<PathBuf> = Vec::new();
     scan_extracted_redb(temp_dir, &mut shards, &mut primaries)?;
     primaries.sort();
+    // More than one non-shard .redb means a torn or mispackaged archive:
+    // proceeding would silently discard every unchosen candidate, so refuse
+    // loudly and list them.  The ONE documented exception is the prefer-case
+    // itself — exactly one candidate literally named `fullmap.redb` wins over
+    // any strays (preserving the historical selection rule).
+    if primaries.len() > 1 {
+        let named_fullmap = primaries
+            .iter()
+            .filter(|p| p.file_name() == Some(std::ffi::OsStr::new("fullmap.redb")))
+            .count();
+        if named_fullmap != 1 {
+            let listing = primaries
+                .iter()
+                .map(|p| p.strip_prefix(temp_dir).unwrap_or(p).display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(py_err(format!(
+                "prebuilt archive {} contains {} primary .redb candidates ({listing}); exactly \
+                 one non-shard .redb is required — a stray primary means a torn or mispackaged \
+                 archive, so re-download it or force a local rebuild with \
+                 'tablassert build-fullmap'",
+                archive.display(),
+                primaries.len()
+            )));
+        }
+    }
     let primary = primaries
         .iter()
         .find(|p| p.file_name() == Some(std::ffi::OsStr::new("fullmap.redb")))
