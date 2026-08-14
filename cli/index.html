@@ -1711,6 +1711,13 @@ YAML configuration file.</p>
 <td><code>False</code></td>
 <td>Fast output-shape preview: ≤5 random rows/section, cached to <code>.head.parquet</code>, never clobbers a full build</td>
 </tr>
+<tr>
+<td><code>--threads</code>, <code>-t</code></td>
+<td>int</td>
+<td>No</td>
+<td><code>None</code> (auto)</td>
+<td>Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard — redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count</td>
+</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>graph.yaml<span class="w"> </span>--qc<span class="w"> </span>--log
