@@ -267,14 +267,14 @@ def test_tcode_collect_enables_qc_logging(fixtures_path: Path) -> None:
 
 # tcode collect orders release-mode filters before resolve_batch
 # rows that will be dropped must never reach the expensive fullmap resolve step
-def test_tcode_collect_orders_release_filters_before_resolve_when_release(fixtures_path: Path) -> None:
+def test_tcode_collect_orders_release_filters_before_resolve_when_release(fixtures_path: Path, tmp_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
-    store: Path = Path("/tmp/sectionhash_release.parquet")
+    store: Path = tmp_path / "sectionhash_release.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "release": True}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
     drop_ns_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "drop_not_significant")
     drop_zero_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "drop_zero_effect_size")
     resolve_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "resolve_batch")
@@ -283,15 +283,15 @@ def test_tcode_collect_orders_release_filters_before_resolve_when_release(fixtur
     assert drop_zero_idx < resolve_idx
 
 
-def test_tcode_collect_omits_release_filters_without_release(fixtures_path: Path) -> None:
+def test_tcode_collect_omits_release_filters_without_release(fixtures_path: Path, tmp_path: Path) -> None:
     """tcode collect omits release-mode filters without release but keeps sig before resolve_batch."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
-    store: Path = Path("/tmp/sectionhash_norelease.parquet")
+    store: Path = tmp_path / "sectionhash_norelease.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
     )
 
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
     names: list[str] = [op[0].__name__ for op in collected]
 
     assert "drop_not_significant" not in names
