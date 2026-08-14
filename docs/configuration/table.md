@@ -469,6 +469,7 @@ annotations:
   - {annotation: supporting_study_size, method: value, encoding: 450}  # Attached to no class -> inlined supporting study (see below)
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
   - {annotation: has_evidence, method: column, encoding: E, split_by: "|"}       # Multivalued -> a per-row JSON array
+  - {annotation: approval_ids, method: column, encoding: F}            # Curated pass-through -> emitted verbatim as a scalar (e.g. "011111|022222")
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
   - annotation: log2fc_relative_to_vehicle_control
@@ -480,7 +481,7 @@ annotations:
 
 Annotation names fall into three groups at build time:
 
-- **Allowed edge fields** — names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `primary_knowledge_source`, `supporting_text`, `publications`, `effect_size`, `effect_type`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim.
+- **Allowed edge fields** — names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `primary_knowledge_source`, `supporting_text`, `publications`, `effect_size`, `effect_type`, `approval_ids`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim. `approval_ids` (FDA application numbers, following the DAKP translator-ingest precedent) is deliberately a **scalar pass-through**: a pipe-joined cell such as `011111|022222` is emitted verbatim as its own top-level edge field — no `split_by`, not a JSON array.
 - **Unsatisfiable slots** — names the Biolink LinkML schema declares but attaches to **no** Pydantic class: `supporting_study_size`, `sample_size`, `relationship_strength`, `statistical_significance_qualifier`, and the other `supporting_study_*` slots. A record carrying one could never validate, so their values are routed onto the edge's **inlined supporting study** (`has_supporting_studies` → `Study` → `StudyResult`, the COHD/ICEES pattern) rather than emitted as edge fields. Declaring one is legal and loses nothing, but Tablassert emits a `BiolinkRelocationWarning` naming where the value went. This set is derived from the *installed* `biolink-model`, so a slot leaves it automatically once a release attaches it.
 - **Tablassert pipeline fields** — `upstream_resource_ids`, `source_record_urls`.
 

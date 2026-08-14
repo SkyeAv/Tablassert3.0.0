@@ -423,6 +423,11 @@ def resolve_association_class(category: str, predicate: str) -> type[Any]:
 #   - ``taxon`` -- a node property; edges carry ``species_context_qualifier``.
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
+        # FDA application numbers from translator-ingests (DAKP precedent): the ingest
+        # emits them as a pipe-joined scalar (e.g. ``"011111|022222"``) with no
+        # ``split_by``, so the curated extra carries the scalar to the final edge
+        # verbatim instead of folding it into ``supporting_text``.
+        "approval_ids",
         "broad_synonym",
         # PR #1774 edge attributes; absent from biolink-model 4.4.3 Association.model_fields,
         # so the union keeps them out of fold_unknown_to_supporting_text and they reach the
@@ -571,9 +576,10 @@ KNOWN_PENDING_EDGE_FIELDS: frozenset[str] = TABLASERT_EDGE_EXTRAS - frozenset(_a
 """Curated edge extras the installed Biolink Model does not (yet) declare on any association.
 
 Tablassert emits these deliberately -- ``effect_size`` / ``effect_type`` pending
-``biolink/biolink-model#1774``, plus the KGX denormalized carryovers (``synonym``,
-``xref``, ``relation``, ...) -- so a Biolink class rejects them as ``extra_forbidden``
-even though the build is behaving as designed. :func:`is_pending_problem` uses this set
+``biolink/biolink-model#1774``, ``approval_ids`` as a translator-ingest pass-through, plus the
+KGX denormalized carryovers (``synonym``, ``xref``, ``relation``, ...) -- so a Biolink class
+rejects them as ``extra_forbidden`` even though the build is behaving as designed.
+:func:`is_pending_problem` uses this set
 to separate "Tablassert is ahead of the pinned model" from "this record is genuinely
 malformed", so a validity *score* is not dominated by a known, intentional gap.
 

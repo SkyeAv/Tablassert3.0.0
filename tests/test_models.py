@@ -818,11 +818,13 @@ def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
     # Not an association slot at all, and no statistical coercion claims it -> folded into supporting_text.
     with pytest.warns(BiolinkRelocationWarning, match="folded into `supporting_text`"):
         Annotation.model_validate({"annotation": "overlap", "method": "column", "encoding": "E"})
-    # Real association slots, the deliberate pending extras, and aliases the coercions rename to a
-    # canonical slot (the pipeline emits those on the edge) are silent.
+    # Real association slots, the deliberate pending extras (``effect_size`` / ``effect_type``
+    # awaiting biolink-model#1774, ``approval_ids`` as the translator-ingest pipe-joined
+    # scalar pass-through), and aliases the coercions rename to a canonical slot (the
+    # pipeline emits those on the edge) are silent.
     with warnings.catch_warnings():
         warnings.simplefilter("error", BiolinkRelocationWarning)
-        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "adjusted p value", "odds ratio", "q_value"):
+        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "approval_ids", "adjusted p value", "odds ratio", "q_value"):
             Annotation.model_validate({"annotation": name, "method": "column", "encoding": "C"})
 
 

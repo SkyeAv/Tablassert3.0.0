@@ -1211,8 +1211,9 @@ def _biolink_report(nodes: Path, edges: Path) -> dict[str, object]:
     Wraps ``biolink.validate_kgx`` (the same check ``tablassert validate-kgx`` runs) into the
     flat, JSON-safe keys ``build_and_audit`` returns, plus the ``_notes`` list the caller
     folds into its own. ``biolink_valid_pct`` excludes the known-pending fields Tablassert
-    emits on purpose (``effect_size`` / ``effect_type`` pending biolink-model#1774, the KGX
-    denormalized carryovers) so the scored number reflects the agent's decisions rather than
+    emits on purpose (``effect_size`` / ``effect_type`` pending biolink-model#1774,
+    ``approval_ids`` as a translator-ingest pass-through, and the KGX denormalized carryovers)
+    so the scored number reflects the agent's decisions rather than
     a deliberate gap; ``biolink_valid_pct_strict`` keeps that gap visible.
 
     Never raises: an unreadable or unparseable artifact degrades to ``None`` metrics and a
@@ -2196,14 +2197,17 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
   schema but belong to NO class, so their values are rerouted into an inlined StudyResult
   description rather than emitted on the edge. `q_value`, `fold_change`, `z_score`, `beta` and
   similar are not association slots at all and are folded into `supporting_text`. Prefer
-  `p_value`, `adjusted_p_value`, `effect_size`, `effect_type`, `has_evidence`.
+  `p_value`, `adjusted_p_value`, `effect_size`, `effect_type`, `has_evidence`. For FDA
+  application numbers, `approval_ids` is a deliberate translator-ingest pass-through: keep
+  the pipe-joined value as a scalar and do not add `split_by`.
 - MULTIVALUED slots (`has_evidence` and friends) take a real JSON array, never a joined string:
   declare the annotation `{method: column, encoding: <letter>, split_by: "|"}` so each cell's
   delimited text splits into its own per-row array. `split_by` is the ONLY multivalued encoding
   — there is no literal-list method, and a scalar bound for a multivalued slot ships to consumers
   as one unusable "a|b|c" blob.
-- `effect_size` / `effect_type` are deliberate Tablassert extras pending biolink-model#1774 and
-  are EXEMPT from the validity score: a `biolink_valid_pct` below 1.0 is never caused by them.
+- `effect_size` / `effect_type` are deliberate Tablassert extras pending biolink-model#1774;
+  `approval_ids` is a deliberate translator-ingest pass-through extra. All three are EXEMPT from
+  the validity score: a `biolink_valid_pct` below 1.0 is never caused by these intentional fields.
 - QUALIFIERS: enum-ranged qualifiers take a literal TOKEN, never a CURIE
   (`object_direction_qualifier: increased`, not a UMLS id), and `species_context_qualifier` is
   auto-derived from the resolved taxon — never author it.

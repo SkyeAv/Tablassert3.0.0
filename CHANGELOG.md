@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- **`approval_ids` is now a curated pass-through edge field.** FDA application numbers declared as an `approval_ids` annotation (the DAKP translator-ingest precedent) now reach the final KGX edges as their own top-level field instead of being folded into `supporting_text`, notwithstanding that no association class declares the slot: the allow-list keeps the column out of the fold sweep, annotation validation emits no `BiolinkRelocationWarning`, and strict KGX validation counts it as *pending* Biolink support exactly like `effect_size` / `effect_type`. The representation follows the ingest: a pipe-joined scalar (e.g. `011111|022222`) is emitted verbatim as a scalar string — Tablassert does not split it into a JSON array.
+
 ## 11.0.0 - 2026-08-13
 
 ### Breaking Changes
