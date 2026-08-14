@@ -812,10 +812,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#workspace-layout-checkpoint-resume" class="md-nav__link">
+  <a href="#workspace-layout-target-graph-and-checkpoint-rerun" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Workspace layout &amp; checkpoint / resume
+        Workspace layout, target graph, and checkpoint / rerun
       
     </span>
   </a>
@@ -823,21 +823,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#reusing-agent-outputs-with-the-full-pipeline" class="md-nav__link">
+  <a href="#concurrent-agents-targeting-one-graph" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reusing agent outputs with the full pipeline
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#parallel-agents-and-the-shared-graph-registry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parallel agents and the shared graph registry
+        Concurrent agents targeting one graph
       
     </span>
   </a>
@@ -1447,10 +1436,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#workspace-layout-checkpoint-resume" class="md-nav__link">
+  <a href="#workspace-layout-target-graph-and-checkpoint-rerun" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Workspace layout &amp; checkpoint / resume
+        Workspace layout, target graph, and checkpoint / rerun
       
     </span>
   </a>
@@ -1458,21 +1447,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#reusing-agent-outputs-with-the-full-pipeline" class="md-nav__link">
+  <a href="#concurrent-agents-targeting-one-graph" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reusing agent outputs with the full pipeline
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#parallel-agents-and-the-shared-graph-registry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parallel agents and the shared graph registry
+        Concurrent agents targeting one graph
       
     </span>
   </a>
@@ -1723,10 +1701,10 @@ source and DOI (e.g. PMC11708054 → <a href="https://doi.org/10.1128/mbio.01679
 <p>Only the open-access subset of PMC is fetchable from the bucket. To run the <strong>same</strong> derive/build/improve
 pipeline on an article you already hold locally (e.g. a non-open-access paper), pass <code>--local</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># one directory used for every PMC id</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--local<span class="w"> </span>./payloads/PMC11708054
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--local<span class="w"> </span>./payloads/PMC11708054
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># per-article directories</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC1<span class="w"> </span>PMC2<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--local<span class="w"> </span><span class="nv">PMC1</span><span class="o">=</span>./payloads/p1<span class="w"> </span><span class="nv">PMC2</span><span class="o">=</span>./payloads/p2
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC1<span class="w"> </span>PMC2<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--local<span class="w"> </span><span class="nv">PMC1</span><span class="o">=</span>./payloads/p1<span class="w"> </span><span class="nv">PMC2</span><span class="o">=</span>./payloads/p2
 </code></pre></div>
 <p>A local payload directory holds the table(s) and (optionally) the article main text. When <code>--local</code> is
 given for an id, the supervisor locates the files there and <strong>does not fetch from PMC-AWS</strong>; each section's
@@ -1776,14 +1754,15 @@ non-zero <strong>before</strong> any model call.</p>
 <h2 id="running-it-for-real">Running it for real<a class="headerlink" href="#running-it-for-real" title="Permanent link">&para;</a></h2>
 <p>With network access and a configured endpoint:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>PMC12345678<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--map-threshold<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--max-improve-iters<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--max-steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert/agent
 </code></pre></div>
-<p>Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>, <code>--max-improve-iters</code>/<code>-mi</code>,
-<code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
+<p>The required target is <code>--configuration-file</code>/<code>-f</code>; it supplies the fullmap, graph identity, RIG,
+artifact metadata, and existing table list. Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>,
+<code>--max-improve-iters</code>/<code>-mi</code>, <code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
 <code>--judge-model</code>, <code>--judge-threshold</code>, <code>--biolink-threshold</code>, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
 (<code>--instructions-file</code>, <code>--instructions-out</code>, <code>--max-metric-calls</code>, <code>--dataset</code>).
 The <a href="../cli/#agent">CLI reference — <code>agent</code></a> is the authoritative flag table; the list here is a compact
@@ -1912,116 +1891,50 @@ every section measured, plus the per-section breakdown under <code>sections</cod
 each section independently from its own coverage entry. A single-table paper is still one config with
 one section. State and storage stay <strong>per-paper</strong>: one best config (<code>configs/&lt;pmc_id&gt;.yaml</code>) holding
 all sections, with <code>section_coverages</code> recorded for visibility.</p>
-<h3 id="workspace-layout-checkpoint-resume">Workspace layout &amp; checkpoint / resume<a class="headerlink" href="#workspace-layout-checkpoint-resume" title="Permanent link">&para;</a></h3>
-<p><code>tablassert agent</code> uses a <strong>single stable workspace root</strong> — <code>state_dir</code> (default <code>.tablassert/agent</code>,
-override with <code>--state-dir</code>). The CLI never sets a separate artifact root, so the checkpoint, the configs,
-the fetched downloads, and the build outputs <strong>all co-locate</strong> under it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>.tablassert/agent/                       # = state_dir (the workspace root)
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  state.json                             # supervisor checkpoint (atomic; unchanged location)
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  graph.yaml                             # SHARED aggregate graph registry (flock-serialized, atomic)
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  graph.yaml.lock                        # sidecar lock file for graph.yaml (exclusive flock)
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  configs/&lt;pmc_id&gt;.yaml                  # best / accepted config (ALL configs in ONE folder)
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial agent-derived config
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload (main text + metadata + tables) — stable, persists
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  builds/&lt;pmc_id&gt;/                       # KGX agent_0.0.1.{nodes,edges}.ndjson + table.yaml + graph.yaml + .tablassert/store — stable
+<h3 id="workspace-layout-target-graph-and-checkpoint-rerun">Workspace layout, target graph, and checkpoint / rerun<a class="headerlink" href="#workspace-layout-target-graph-and-checkpoint-rerun" title="Permanent link">&para;</a></h3>
+<p><code>--configuration-file</code> is the caller-owned Graph YAML that the agent updates in place. Its <code>fullmap</code>,
+<code>name</code>, <code>version</code>, complete <code>rig:</code>, and artifact metadata drive every one-table audit. The agent does
+<strong>not</strong> create an aggregate graph under <code>state_dir</code>; <code>state_dir</code> remains only the checkpoint and working
+artifact directory (default <code>.tablassert/agent</code>, override with <code>--state-dir</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>project/graph.yaml                       # caller-owned aggregate graph, updated in place
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>.tablassert/agent/                       # checkpoint/artifact workspace
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  state.json                             # supervisor checkpoint (atomic)
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  configs/&lt;pmc_id&gt;.yaml                  # accepted generated table config (absolute source.local)
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial generated config
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload; stable across runs
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  builds/&lt;pmc_id&gt;/table.yaml             # temporary one-table audit input
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  builds/&lt;pmc_id&gt;/artifacts/             # &lt;graph-name&gt;_&lt;graph-version&gt;.{nodes,edges}.ndjson + RIG
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>  builds/&lt;pmc_id&gt;/.tablassert/store/      # temporary parquet cache
 </code></pre></div>
-<table>
-<thead>
-<tr>
-<th>Path</th>
-<th>Contents</th>
-<th>Lifecycle</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>state.json</code></td>
-<td>supervisor checkpoint: <code>{pmc_id, status, config_path, coverage_history[], qc_pass_rate, attempts, last_edits, best_coverage, best_config_path, biolink_valid_pct, demoted_edge_pct}</code> per record</td>
-<td>written <strong>atomically</strong> (tmp write + <code>os.replace</code>) after each config and each improve iteration; git-ignored</td>
-</tr>
-<tr>
-<td><code>graph.yaml</code></td>
-<td>SHARED aggregate graph registry: one <code>tables</code> entry per successful (<code>MAPPED</code> / <code>BUILT_UNMEASURED</code>) build</td>
-<td>maintained under an exclusive <code>graph.yaml.lock</code> flock; atomic writes; see <a href="#parallel-agents-and-the-shared-graph-registry">Parallel agents and the shared graph registry</a></td>
-</tr>
-<tr>
-<td><code>graph.yaml.lock</code></td>
-<td>sidecar lock file serializing registry read-modify-write</td>
-<td>created on first registration; never deleted</td>
-</tr>
-<tr>
-<td><code>configs/&lt;pmc_id&gt;.yaml</code></td>
-<td>the best / accepted config for the article</td>
-<td>the reuse entry point (below)</td>
-</tr>
-<tr>
-<td><code>configs/&lt;pmc_id&gt;.derived.yaml</code></td>
-<td>the agent's initial derived config</td>
-<td>kept for provenance</td>
-</tr>
-<tr>
-<td><code>downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/</code></td>
-<td>fetched PMC payload (main text + metadata + tables)</td>
-<td><strong>stable</strong> — persists across runs</td>
-</tr>
-<tr>
-<td><code>builds/&lt;pmc_id&gt;/</code></td>
-<td>KGX artifacts: <code>agent_0.0.1.{nodes,edges}.ndjson</code>, <code>table.yaml</code>, <code>graph.yaml</code>, <code>.tablassert/store</code></td>
-<td><strong>stable</strong> — the built graph for the article</td>
-</tr>
-</tbody>
-</table>
-<p>Re-running the same command <strong>resumes</strong> from the checkpoint: records already <code>MAPPED</code>/<code>SKIPPED</code> are
-skipped. The <code>downloads/</code> payload persists on disk across runs.</p>
-<h3 id="reusing-agent-outputs-with-the-full-pipeline">Reusing agent outputs with the full pipeline<a class="headerlink" href="#reusing-agent-outputs-with-the-full-pipeline" title="Permanent link">&para;</a></h3>
-<p>The best config's <code>source.local</code> points at the downloaded table under <code>downloads/&lt;pmc_id&gt;/</code>, so the full
-(non-agent) pipeline can reuse the agent's output <strong>without re-fetching</strong>. The agent already writes a
-ready-to-build <code>graph.yaml</code> (wrapping <code>table.yaml</code> with the resolved fullmap) into <code>builds/&lt;pmc_id&gt;/</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">cd</span><span class="w"> </span>.tablassert/agent/builds/PMC11708054
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>graph.yaml
+<p>Only newly generated agent table configs are normalized: every section's <code>source.local</code> is written as
+an absolute local/data-lake path, and the graph's new <code>tables</code> entry is an absolute path. Existing
+user-authored table YAMLs and their source paths are not rewritten. The target graph's existing metadata
+and unrelated table entries are preserved.</p>
+<p>A result is appended to the target graph only when it is <code>MAPPED</code> or <code>BUILT_UNMEASURED</code>. <code>SKIPPED</code>
+articles never append. If the same PMC is processed again, its old table entry is replaced and the new
+absolute config path is appended. Requested PMCs are deliberately processed again even when <code>state.json</code>
+contains a terminal record; this makes reruns effective while retaining attempts, coverage history, and
+metrics. A failed rerun does not replace the prior successful config.</p>
+<p>The agent audits each candidate with a one-table in-process graph, so it does not rebuild every table
+already present in the target graph. The temporary audit inherits the target graph's semantic metadata
+and graph identity but writes physical artifacts to an isolated per-article workspace. Build the complete
+aggregate explicitly after the agent finishes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--state-dir<span class="w"> </span>.tablassert/agent
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># inspect graph.yaml, then build every existing + generated table together</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./graph.yaml
 </code></pre></div>
 <div class="admonition warning">
-<p class="admonition-title">Not relocatable</p>
-<p><code>source.local</code> in the best config is an <strong>absolute</strong> path into <code>downloads/&lt;pmc_id&gt;/</code>. The workspace is
-therefore <strong>not relocatable</strong> — moving or renaming the <code>.tablassert/agent</code> folder breaks that reference
-(re-run the agent, or fix <code>source.local</code>, after any move).</p>
+<p class="admonition-title">Absolute paths are intentional</p>
+<p>Generated <code>tables</code> entries and generated <code>source.local</code> values are absolute so the target graph can
+be built from any current working directory. Moving the data lake, downloaded payload, or workspace
+requires updating those generated paths or rerunning the agent.</p>
 </div>
-<h3 id="parallel-agents-and-the-shared-graph-registry">Parallel agents and the shared graph registry<a class="headerlink" href="#parallel-agents-and-the-shared-graph-registry" title="Permanent link">&para;</a></h3>
-<p>Several <code>tablassert agent</code> processes can run CONCURRENTLY against the SAME shared <code>--state-dir</code> and
-each successful build self-registers into ONE aggregate graph config that a single <code>build-kg</code> then
-builds as a whole:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># fan out over DISJOINT pmc sets, all pointed at one shared state dir</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC1<span class="w"> </span>PMC2<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--state-dir<span class="w"> </span>./shared<span class="w"> </span><span class="p">&amp;</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC3<span class="w"> </span>PMC4<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--state-dir<span class="w"> </span>./shared<span class="w"> </span><span class="p">&amp;</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nb">wait</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># one build of the whole registered graph</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./shared/graph.yaml
-</code></pre></div>
-<p>Use <strong>disjoint pmc sets</strong>: each process owns its own ids. The shared registry itself is fully
-cross-process safe, but the per-process checkpoint (<code>state.json</code>) read-modify cycle is not
-cross-process locked, so two processes must not own the same pmc id.</p>
-<p><strong>How the registry works.</strong> Every build that ends <code>MAPPED</code> or <code>BUILT_UNMEASURED</code> (both are
-successful builds) UPSERTS its best config into <code>&lt;state-dir&gt;/graph.yaml</code>:</p>
-<ul>
-<li><strong>Concurrency-safe</strong> — each registration takes an EXCLUSIVE <code>flock</code> on the
-  <code>&lt;state-dir&gt;/graph.yaml.lock</code> sidecar around the read-modify-write, then persists atomically
-  (tmp file + <code>os.replace</code>, the same pattern as <code>state.json</code>). No registration can lose or tear
-  another process's entry.</li>
-<li><strong>Upsert by pmc id</strong> — a re-run REPLACES the prior entry for the same pmc id (matched by config
-  basename stem); other entries keep their insertion order. Entries are ABSOLUTE paths, so
-  <code>build-kg</code> works from any CWD.</li>
-<li><strong><code>fullmap</code> is first-wins</strong> — the first fullmap recorded stays; a later run passing a different
-  fullmap keeps the existing value and logs a warning.</li>
-<li><strong>Self-healing</strong> — a corrupt registry (bad YAML, not a mapping, or failing <code>Graph.model_validate</code>)
-  is renamed <code>graph.yaml.corrupt-&lt;UTC timestamp&gt;</code> and rebuilt fresh with a warning, so unattended
-  parallel runs never wedge on a damaged file.</li>
-<li><strong>Registered statuses</strong> — only <code>MAPPED</code> and <code>BUILT_UNMEASURED</code> register; <code>SKIPPED</code> never does. A
-  re-run that SKIPS an already-MAPPED pmc keeps the existing entry (resume skips terminal records
-  entirely, so nothing rewrites them). <code>tablassert rebuild-agent-graph --state-dir ./shared
-  --fullmap ./fullmap</code> reconstructs the registry from <code>state.json</code> and prunes stale entries
-  (deleted configs, non-registered statuses).</li>
-</ul>
+<h3 id="concurrent-agents-targeting-one-graph">Concurrent agents targeting one graph<a class="headerlink" href="#concurrent-agents-targeting-one-graph" title="Permanent link">&para;</a></h3>
+<p>Several agent processes may target the same caller-owned graph. Each successful append takes an exclusive
+<code>&lt;graph&gt;.lock</code> sidecar lock and atomically replaces the graph YAML, so distinct PMCs do not lose one
+another's entries and a same-PMC rerun has deterministic last-writer-wins replacement. The checkpoint
+<code>state.json</code> read-modify-write is still per-workspace and is not cross-process locked; use separate
+<code>state_dir</code> values for concurrent processes unless they intentionally coordinate their article ids.</p>
 <h2 id="the-tools">The tools<a class="headerlink" href="#the-tools" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2133,15 +2046,15 @@ run fast while the strong model does the thinking; without <code>--task-model</c
 both. <code>--gepa-threads</code> parallelizes GEPA's candidate <strong>LM forward passes</strong> only — the coverage-scoring
 builds stay serialized on the process-wide <code>_GEPA_BUILD_LOCK</code> (<code>agent.py</code>, since <code>os.chdir</code> is
 process-global), so a higher thread count does not speed up the expensive build/coverage step.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
 </code></pre></div>
 <p><code>--dataset</code> is a YAML/JSON list of examples. Each example carries <code>table_summary</code> and
 <code>coverage_feedback</code> (the program inputs); it MAY also carry:</p>
@@ -2167,9 +2080,9 @@ W3 multi-section validation honest on a distinct config.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>The agent suite is <strong>fully offline</strong> — no live LLM or network. It uses a <code>FakeModel</code> smolagents stub,
 mocked/snapshotted PMC data, a tiny real redb (<code>rs.build_fullmap_db</code>), and injectable GEPA stubs.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
 </code></pre></div>
 <p>Without the extra, the base suite stays green and every agent test skips via <code>pytest.importorskip</code>.</p>
 <div class="admonition tip">

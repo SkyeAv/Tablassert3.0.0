@@ -707,17 +707,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rebuild-agent-graph" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        rebuild-agent-graph
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#validate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1273,17 +1262,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rebuild-agent-graph" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        rebuild-agent-graph
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#validate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1349,8 +1327,8 @@
 
 <h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
 <p>Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The <code>tablassert</code> app
-exposes <strong>five subcommands</strong> — <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>rebuild-agent-graph</code>,
-<code>validate</code> — plus an app-level <code>--version</code> flag. Run <code>tablassert --help</code> (or <code>&lt;command&gt; --help</code>)
+exposes <strong>five subcommands</strong> — <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>validate</code>, and <code>validate-kgx</code> —
+plus an app-level <code>--version</code> flag. Run <code>tablassert --help</code> (or <code>&lt;command&gt; --help</code>)
 for the live surface.</p>
 <h2 id="command-index">Command index<a class="headerlink" href="#command-index" title="Permanent link">&para;</a></h2>
 <table>
@@ -1372,10 +1350,6 @@ for the live surface.</p>
 <tr>
 <td><a href="#build-kg"><code>build-kg</code></a></td>
 <td>Build a KGX NDJSON knowledge graph from a YAML configuration</td>
-</tr>
-<tr>
-<td><a href="#rebuild-agent-graph"><code>rebuild-agent-graph</code></a></td>
-<td>Rebuild the shared agent graph registry from the supervisor checkpoint</td>
 </tr>
 <tr>
 <td><a href="#validate"><code>validate</code></a></td>
@@ -1420,9 +1394,12 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 (<code>pip install "tablassert[optimize]"</code>, pulls <code>dspy</code>). Both are checked after flag validation and
 before any model is built or article fetched, so a missing extra is reported with its install
 command instead of surfacing mid-run — see <a href="../installation/#when-an-extra-is-missing">When an extra is missing</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>--fullmap<span class="w"> </span>PATH<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>PMC-IDS...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC-IDS...<span class="w"> </span>--configuration-file<span class="w"> </span>GRAPH.yaml<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
 </code></pre></div>
-<p>PMC ids are passed positionally (also accepted as <code>--pmc-ids</code>). This page lists the flags; see
+<p>PMC ids are passed positionally (also accepted as <code>--pmc-ids</code>). The required graph target is accepted
+as <code>--configuration-file</code> or <code>-f</code>; it is modified in place after successful article builds. The graph's
+<code>fullmap</code>, name, version, RIG, and artifact metadata replace the old standalone fullmap argument. This
+page lists the flags; see
 <a href="../agent/">Agent</a> for the full pipeline, workspace layout, checkpoint/resume, and tooling.</p>
 <table>
 <thead>
@@ -1443,11 +1420,11 @@ command instead of surfacing mid-run — see <a href="../installation/#when-an-e
 <td>One or more PMC article ids (positional)</td>
 </tr>
 <tr>
-<td><code>--fullmap</code>, <code>-f</code></td>
+<td><code>--configuration-file</code>, <code>-f</code></td>
 <td>Path</td>
 <td>Yes</td>
 <td>—</td>
-<td>Fullmap redb file or base directory</td>
+<td>Caller-owned Graph YAML; supplies build metadata/fullmap and receives successful absolute table entries</td>
 </tr>
 <tr>
 <td><code>--model-id</code>, <code>-m</code></td>
@@ -1591,7 +1568,9 @@ command instead of surfacing mid-run — see <a href="../installation/#when-an-e
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># equivalent short form:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>-f<span class="w"> </span>./graph.yaml
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Secrets</p>
@@ -1752,57 +1731,12 @@ Subgraphs the detail line also shows the per-section phase (<code>load</code>, <
 <code>resolve</code>, <code>qc</code>, <code>edge</code>, <code>provenance</code>, <code>significance</code>, <code>finalize</code>, <code>write</code>).</p>
 </details>
 <hr />
-<h2 id="rebuild-agent-graph">rebuild-agent-graph<a class="headerlink" href="#rebuild-agent-graph" title="Permanent link">&para;</a></h2>
-<p>Use this to rebuild the SHARED agent graph registry (<code>&lt;state-dir&gt;/graph.yaml</code>) from the supervisor
-checkpoint (<code>&lt;state-dir&gt;/state.json</code>) — e.g. to prune stale entries after deleting configs, or to
-recover a hand-edited/damaged registry. Parallel <code>tablassert agent</code> runs maintain the registry
-incrementally (see <a href="../agent/#parallel-agents-and-the-shared-graph-registry">Agent — Parallel agents and the shared graph registry</a>);
-this command reconstructs it deterministically from <code>state.json</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>rebuild-agent-graph<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>Option</th>
-<th>Type</th>
-<th>Required</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--state-dir</code>, <code>-sd</code></td>
-<td>Path</td>
-<td>No</td>
-<td><code>.tablassert/agent</code></td>
-<td>Agent state directory holding <code>state.json</code> + <code>configs/</code></td>
-</tr>
-<tr>
-<td><code>--fullmap</code>, <code>-f</code></td>
-<td>Path</td>
-<td>Yes</td>
-<td>—</td>
-<td>Fullmap redb file or base directory recorded in the registry</td>
-</tr>
-</tbody>
-</table>
-<p>Every <code>MAPPED</code> / <code>BUILT_UNMEASURED</code> record whose best config still exists on disk becomes a
-<code>tables</code> entry (absolute path, sorted by pmc id); every other entry — <code>SKIPPED</code> records, deleted
-configs, stale leftovers — is pruned. The registry <code>fullmap</code> is <strong>first-wins</strong>: an existing value
-that differs from <code>--fullmap</code> is kept (with a warning). The write is concurrency-safe (exclusive
-<code>graph.yaml.lock</code> flock + atomic replace), so the command never corrupts the registry; run it
-while agents are quiescent for a complete snapshot.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>rebuild-agent-graph<span class="w"> </span>--state-dir<span class="w"> </span>.tablassert/agent<span class="w"> </span>--fullmap<span class="w"> </span>./fullmap
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>.tablassert/agent/graph.yaml
-</code></pre></div>
-<hr />
 <h2 id="validate">validate<a class="headerlink" href="#validate" title="Permanent link">&para;</a></h2>
 <p>Use this to validate a configuration against a schema without running the build — ideal for CI and
 pre-commit hooks. The required <code>--schema</code> flag selects which schema to validate against (the kind is
 no longer sniffed from the YAML).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>table
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>table
 </code></pre></div>
 <table>
 <thead>
@@ -1833,8 +1767,8 @@ no longer sniffed from the YAML).</p>
 </table>
 <p>Exits non-zero on any schema error. See <a href="../configuration/table/">Table Configuration</a> and
 <a href="../configuration/graph/">Graph Configuration</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml<span class="w"> </span>--schema<span class="w"> </span>table
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml<span class="w"> </span>--schema<span class="w"> </span>table
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
 </code></pre></div>
 <hr />
 <h2 id="validate-kgx">validate-kgx<a class="headerlink" href="#validate-kgx" title="Permanent link">&para;</a></h2>
@@ -1843,7 +1777,7 @@ no longer sniffed from the YAML).</p>
 and edge is constructed as the Biolink Pydantic class named by its own <code>category</code> — the same classes
 <a href="https://github.com/NCATSTranslator/translator-ingests"><code>NCATSTranslator/translator-ingests</code></a> builds
 when it ingests your files.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
 </code></pre></div>
 <table>
 <thead>
@@ -1881,10 +1815,10 @@ when it ingests your files.</p>
 </table>
 <p>Failures are grouped by field and error type, so a systematic modelling problem shows up as one line
 rather than a million:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>biolink-model 4.4.3
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>nodes: 424141/424141 valid (0 failures)
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>edges: 2000085/2000085 valid (0 failures)
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>KGX output is Biolink-compliant.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>biolink-model 4.4.3
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>nodes: 424141/424141 valid (0 failures)
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>edges: 2000085/2000085 valid (0 failures)
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>KGX output is Biolink-compliant.
 </code></pre></div>
 <p>Exits non-zero when any record fails, so it can gate a release in CI. A missing or misspelled path is
 reported as <code>file not found</code> and also exits non-zero — a file that was never read must never count as
@@ -1893,7 +1827,7 @@ a pass.</p>
 ships <a href="https://github.com/biolink/biolink-model/pull/1774">#1774</a>, because 4.4.3 declares neither on
 <code>Association</code>. The translator-ingest <code>approval_ids</code> pass-through is also intentionally absent from
 that model. These curated fields are counted separately as <em>pending</em> rather than treated as defects:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
 </code></pre></div>
 <p>The strict count is what <code>ok</code> and the exit code use; the pending count is what
 <a href="#agent"><code>tablassert agent</code></a> optimizes against, so a deliberate gap never reads as a modelling error.</p>
