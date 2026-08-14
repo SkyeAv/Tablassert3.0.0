@@ -173,8 +173,10 @@ def get_table_summary(config: dict) -> str:
 
 
 def get_edges(pmc: str, k: int = 8) -> str:
-    ep = STATE_DIR / "builds" / pmc / "agent_0.0.1.edges.ndjson"
-    if not ep.is_file():
+    bdir = STATE_DIR / "builds" / pmc
+    candidates = sorted((bdir / "artifacts").glob("*.edges.ndjson")) + sorted(bdir.glob("*.edges.ndjson"))
+    ep = next((path for path in candidates if path.is_file()), None)
+    if ep is None:
         return "(no edges built)"
     rows = []
     with ep.open() as fh:

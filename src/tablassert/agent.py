@@ -39,10 +39,10 @@ from tablassert.enums import EncodingMethods
 from tablassert.errors import GraphValidationError, QcRuntimeMissingError, SectionValidationError, TablassertValidationError
 from tablassert.extras import install_command, require_module
 from tablassert.fullmap import distinct, fullmap_db_path, is_lock_contention, lookup_rows
-from tablassert.graph_registry import REGISTERED_STATUSES, register_build
+from tablassert.graph_target import append_successful_config
 from tablassert.lib import Tcode
 from tablassert.log import cat
-from tablassert.models import NodeEncoding, Section
+from tablassert.models import Graph, NodeEncoding, Section
 from tablassert.progress import flatten_pydantic_error
 
 if TYPE_CHECKING:
@@ -61,6 +61,8 @@ AGENT_EXTRA: str = install_command("agent")
 OPTIMIZE_EXTRA: str = install_command("optimize")
 
 logger = cat("AGENT")
+
+SUCCESSFUL_STATUSES: frozenset[str] = frozenset({"MAPPED", "BUILT_UNMEASURED"})
 
 
 def _require(name: str) -> None:
@@ -794,6 +796,45 @@ def validate_table_config(cfg: str, agent_memory: object = None, agent: object =
     return error is None
 
 
+def normalize_agent_table_config(config_yaml: str, *, base_dirs: Sequence[Path] = ()) -> str:
+    """Return an agent-generated table config with absolute ``source.local`` values.
+
+    Only the newly generated config is rewritten. Existing table YAMLs referenced by
+    the caller's graph are never opened or modified. Relative source paths are resolved
+    against the supplied bases in order; the first existing candidate wins, otherwise
+    the first base still produces a deterministic absolute path and the normal build
+    validation reports a missing source.
+    """
+    data: object = yaml.safe_load(config_yaml)
+    if not isinstance(data, dict):
+        raise ValueError("config is not a YAML mapping")
+
+    bases: tuple[Path, ...] = tuple(Path(base).expanduser().resolve() for base in base_dirs)
+    default_base: Path = bases[0] if bases else Path.cwd()
+
+    def absolute_local(value: object) -> str:
+        candidate: Path = Path(str(value)).expanduser()
+        if candidate.is_absolute():
+            return str(candidate.resolve())
+        possibilities: list[Path] = [(base / candidate).resolve() for base in bases]
+        existing = next((path for path in possibilities if path.is_file()), None)
+        return str(existing or (default_base / candidate).resolve())
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            source: object = value.get("source")
+            if isinstance(source, dict) and "local" in source:
+                source["local"] = absolute_local(source["local"])
+            for nested in value.values():
+                visit(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                visit(nested)
+
+    visit(data)
+    return yaml.safe_dump(data, sort_keys=False)
+
+
 def make_derive_config_tool() -> Tool:
     """Build the ``derive_config`` smolagents Tool lazily (imports smolagents on first call).
 
@@ -1252,23 +1293,32 @@ def _biolink_report(nodes: Path, edges: Path) -> dict[str, object]:
 
 
 def build_and_audit(
-    config_yaml: str, *, fullmap: Path, name: str = "agent", version: str = "0.0.1", qc: bool = False, head: bool = False, workdir: Path | None = None
+    config_yaml: str,
+    *,
+    graph: Graph | None = None,
+    fullmap: Path | None = None,
+    name: str = "agent",
+    version: str = "0.0.1",
+    qc: bool = False,
+    head: bool = False,
+    workdir: Path | None = None,
 ) -> dict[str, object]:
     """Validate, build, (QC), and score a config in ONE deterministic call.
 
-    Runs the REAL ``validate_pipeline`` + ``build_pipeline`` (headless ``_NullProgress``)
-    inside an isolated ``workdir`` (``contextlib.chdir``), then measures fullmap
-    coverage via :func:`map_coverage`. The build writes ``<name>_<version>.nodes.ndjson``
-    / ``.edges.ndjson`` to the CWD, so the pipelines run inside ``workdir`` (after
-    ``mkdir -p workdir/.tablassert/store``, mirroring the e2e recipe) and the artifacts
-    land there.
+    Runs the REAL validate/build stages (headless ``_NullProgress``) inside an isolated
+    ``workdir`` (``contextlib.chdir``), then measures fullmap coverage via
+    :func:`map_coverage`. When ``graph`` is supplied, the build uses a one-table copy of
+    that graph, retaining its name/version/full RIG/fullmap while redirecting physical
+    artifacts to the isolated workdir. The legacy ``fullmap``/``name``/``version`` inputs
+    remain available for direct callers that do not yet supply a graph.
 
     Args:
         config_yaml: A Tablassert Section/table config YAML; a bare merged section is
             auto-wrapped as ``{template: <section>}``.
-        fullmap: Fullmap redb file or base directory (see ``fullmap_db_path``).
-        name: Graph name (drives the output artifact prefix).
-        version: Graph version label (drives the output artifact prefix).
+        graph: Prepared target graph whose metadata drives a one-table temporary build.
+        fullmap: Legacy fullmap redb file or base directory when ``graph`` is omitted.
+        name: Legacy graph name when ``graph`` is omitted.
+        version: Legacy graph version when ``graph`` is omitted.
         qc: When True, run the build's quality-control audit.
         head: When True, preview-build a random sample of up to 5 rows per section (fast; the
             ``--head`` lever) for intermediate improve-loop scoring. Coverage is still measured on
@@ -1313,52 +1363,77 @@ def build_and_audit(
         # to_sections (used by the pipelines) sees the table-config shape it expects.
         table_cfg: dict[str, object] = data if ("template" in data or "sections" in data) else {"template": data}
 
-        (root / "table.yaml").write_text(yaml.safe_dump(table_cfg, sort_keys=False))
-        # The measurement build still emits a RIG (every build does), so it carries an
-        # honest minimal rig block: the agent only mines PMC open-access tables, and the
-        # artifacts live in this throwaway workdir (file:// base = unpublished).
-        resolved_root: str = str(root.resolve())
-        graph_cfg: dict[str, object] = {
-            "name": name,
-            "version": version,
-            "tables": ["table.yaml"],  # relative to workdir (the pipelines chdir there)
-            "fullmap": str(fullmap),
-            "rig": {
-                "source_info": {
-                    "infores_id": f"infores:{name.lower().replace('_', '-')}",
-                    "name": f"Agent-built measurement graph {name}",
-                    "terms_of_use_info": {
-                        "terms_of_use_url": "https://pmc.ncbi.nlm.nih.gov/about/copyright/",
-                        "terms_of_use_description": "PubMed Central open-access supplementary table; individual article licenses apply.",
-                    },
-                    "data_access_locations": ["PubMed Central - https://pmc.ncbi.nlm.nih.gov/"],
-                    "source_status": "unknown",
-                },
-                "ingest_info": {
-                    "utility": f"Transient measurement graph used to score agent-derived table configs for {name}.",
-                    "scope": "Associations mined from one PMC supplementary table config under audit.",
-                },
-                "provenance_info": {"contributions": ["Tablassert agent: automated config derivation and measurement build"]},
-                "artifact_base_url": f"file://{resolved_root}",
-                "artifact_base_path": resolved_root,
-            },
-        }
-        (root / "graph.yaml").write_text(yaml.safe_dump(graph_cfg, sort_keys=False))
+        table_path: Path = root / "table.yaml"
+        table_path.write_text(yaml.safe_dump(table_cfg, sort_keys=False))
 
-        from tablassert.cli import build_pipeline, validate_pipeline  # deferred: keeps the cli APP off the module top
+        # Direct callers from the pre-target-graph API can still score a config with a
+        # standalone fullmap. Normal agent runs always pass the prepared target Graph and
+        # therefore never synthesize metadata here.
+        if graph is None:
+            if fullmap is None:
+                return _fail(["build_and_audit requires a graph or fullmap"])
+            resolved_root: str = str(root.resolve())
+            graph_cfg: dict[str, object] = {
+                "name": name,
+                "version": version,
+                "tables": [str(table_path)],
+                "fullmap": str(fullmap),
+                "rig": {
+                    "source_info": {
+                        "infores_id": f"infores:{name.lower().replace('_', '-')}",
+                        "name": f"Agent-built measurement graph {name}",
+                        "terms_of_use_info": {
+                            "terms_of_use_url": "https://pmc.ncbi.nlm.nih.gov/about/copyright/",
+                            "terms_of_use_description": "PubMed Central open-access supplementary table; individual article licenses apply.",
+                        },
+                        "data_access_locations": ["PubMed Central - https://pmc.ncbi.nlm.nih.gov/"],
+                        "source_status": "unknown",
+                    },
+                    "ingest_info": {
+                        "utility": f"Transient measurement graph used to score agent-derived table configs for {name}.",
+                        "scope": "Associations mined from one PMC supplementary table config under audit.",
+                    },
+                    "provenance_info": {"contributions": ["Tablassert agent: automated config derivation and measurement build"]},
+                    "artifact_base_url": f"file://{resolved_root}",
+                    "artifact_base_path": resolved_root,
+                },
+            }
+            build_graph: Graph = Graph.model_validate(graph_cfg)
+        else:
+            build_graph = graph.model_copy(deep=True)
+            # The target RIG describes the aggregate graph. Its semantic metadata is
+            # retained, while only the physical artifact directory is isolated so each
+            # one-table audit cannot overwrite another article's output.
+            build_graph.rig.artifact_base_path = root / "artifacts"
+
+        build_graph.tables = [table_path]
+        build_graph_path: Path = root / "agent-graph.yaml"
+
+        from tablassert.cli import build_graph_pipeline, validate_pipeline  # deferred: keeps the cli APP off the module top
 
         try:
             with contextlib.chdir(root):
                 (root / ".tablassert" / "store").mkdir(parents=True, exist_ok=True)
                 validate_pipeline(Path("table.yaml"), _NullProgress())  # pyright: ignore[reportArgumentType]
-                build_pipeline(Path("graph.yaml"), _NullProgress(), qc=qc, head=head)  # pyright: ignore[reportArgumentType]
+                build_graph_pipeline(
+                    build_graph,
+                    build_graph_path,
+                    _NullProgress(),  # pyright: ignore[reportArgumentType]
+                    qc=qc,
+                    head=head,
+                    audit_sources=False,
+                )
         except (GraphValidationError, SectionValidationError, TablassertValidationError, QcRuntimeMissingError) as exc:
             return _err(exc)
         except pydantic.ValidationError as exc:
             return _err(exc)
 
-        nodes: Path = root / f"{name}_{version}.nodes.ndjson"
-        edges: Path = root / f"{name}_{version}.edges.ndjson"
+        artifact_dir: Path = Path(build_graph.rig.artifact_base_path)
+        output_name: str = build_graph.name
+        output_version: str = build_graph.version
+        build_fullmap: Path = build_graph.fullmap
+        nodes: Path = artifact_dir / f"{output_name}_{output_version}.nodes.ndjson"
+        edges: Path = artifact_dir / f"{output_name}_{output_version}.edges.ndjson"
 
         # Coverage is NON-fatal: the KG already built, so a bad fullmap (or any coverage
         # failure) keeps ok=True with coverage_pct=0.0 and a note, never masking success.
@@ -1376,7 +1451,7 @@ def build_and_audit(
                 # resolves against root (the build's CWD) — measuring from the original CWD would fail
                 # the frame reproduction and report a false/unmeasurable coverage.
                 with contextlib.chdir(root):
-                    cov: dict[str, object] = map_coverage(table_cfg, fullmap=fullmap, workdir=root)
+                    cov: dict[str, object] = map_coverage(table_cfg, fullmap=build_fullmap, workdir=root)
                 overall: object = cov.get("overall")
                 coverage_pct = float(overall) if isinstance(overall, (int, float)) else 0.0
                 measured = bool(cov.get("measured"))
@@ -1424,15 +1499,19 @@ def build_and_audit(
 
 
 def make_build_and_audit_tool(
-    get_fullmap: Callable[[], Path], *, name: str = "agent", version: str = "0.0.1", qc: bool = False, head: bool = False
+    get_fullmap: Callable[[], Path] | None = None,
+    *,
+    graph: Graph | None = None,
+    name: str = "agent",
+    version: str = "0.0.1",
+    qc: bool = False,
+    head: bool = False,
 ) -> Tool:
-    """Build the ``build_and_audit`` smolagents Tool lazily, binding the fullmap via closure.
+    """Build the ``build_and_audit`` tool with a target graph or legacy fullmap closure.
 
-    ``get_fullmap`` is a zero-arg callable returning the fullmap redb path (the
-    supervisor supplies it when assembling tools); ``forward(config_yaml)`` returns the
-    JSON-encoded audit report so the agent validates, builds, (QC), and scores a config
-    in a single call. The subclass is defined INSIDE this factory so the module top
-    never forces the optional smolagents import.
+    Normal agent runs pass ``graph`` so the one-table audit inherits the caller's complete
+    graph metadata. ``get_fullmap`` remains for direct/tool API compatibility outside the
+    target-graph supervisor.
     """
     _require("smolagents")
     from smolagents import Tool  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
@@ -1452,7 +1531,13 @@ def make_build_and_audit_tool(
         output_type = "string"
 
         def forward(self, config_yaml: str) -> str:
-            return json.dumps(build_and_audit(config_yaml, fullmap=get_fullmap(), name=name, version=version, qc=qc, head=head), default=str)
+            if graph is not None:
+                report = build_and_audit(config_yaml, graph=graph, qc=qc, head=head)
+            else:
+                if get_fullmap is None:
+                    raise ValueError("make_build_and_audit_tool requires graph or get_fullmap")
+                report = build_and_audit(config_yaml, fullmap=get_fullmap(), name=name, version=version, qc=qc, head=head)
+            return json.dumps(report, default=str)
 
     return BuildAndAuditTool()
 
@@ -2170,8 +2255,10 @@ config cannot terminate the run.
 Emit exactly ONE table config as YAML shaped as {template: {...}, sections: [...]}. The
 `template` carries the shared per-article PROVENANCE (repo + publication id) and NOTHING else —
 in particular NO `source` (each section owns its source). The `sections` list has ONE entry per
-mappable table/worksheet; each section supplies its OWN `source` (the table's local path + that
-file's source.url, plus sheet/row_slice/delimiter as needed) and its OWN `statement`. Within each
+mappable table/worksheet; each section supplies its OWN `source` (the table's ABSOLUTE local/data-lake path + that
+file's source.url, plus sheet/row_slice/delimiter as needed) and its OWN `statement`. Copy the exact
+absolute candidate path shown by the task into every `source.local`; never emit a relative local path.
+Within each
 section choose column-letter encodings for entity columns and literal CURIEs for fixed values;
 pick a predicate the subject/object pair actually permits (see BIOLINK MODELING below); add
 statistical annotations (p_value / effect_size / effect_type) when that table has them —
@@ -2506,7 +2593,7 @@ def make_fake_model(responses: list[str] | None = None, final_yaml: str | None =
 # config (agent.run -> final_answer, gated by validate_section); the improve loop is
 # deterministic Python (propose_config_edit -> build_and_audit -> accept IFF strictly
 # better, so coverage_history is monotonic non-decreasing). State checkpoints atomically
-# to <state_dir>/state.json so a crashed batch resumes, skipping terminal records
+# to <state_dir>/state.json so a crashed batch resumes while requested terminal records are rerunnable
 # (DONE/MAPPED/SKIPPED). One bad pmc never aborts the batch: the whole per-pmc body is
 # wrapped in try/except -> status=SKIPPED with the reason. Only the inner agent.run needs
 # the [agent] extra; the state dataclasses + load/save are pure stdlib.
@@ -2583,17 +2670,20 @@ def make_pmc_article_context_tool() -> Tool:
 
 def make_tools(
     *,
-    fullmap: Path,
+    graph: Graph | None = None,
+    fullmap: Path | None = None,
     table_path: Path | None = None,  # pyright: ignore[reportUnusedParameter]  # reserved for future table-bound tools; read_table takes source from the LLM
     name: str = "agent",
     version: str = "0.0.1",
     qc: bool = False,
     derive_mode: DeriveMode = "full",
 ) -> list[object]:
-    """Assemble the fullmap-bound smolagents tools the supervisor hands to the inner agent.
+    """Assemble the graph/fullmap-bound tools the supervisor hands to the inner agent.
 
-    ``get_fullmap = lambda: fullmap`` binds the redb path via closure so each tool's ``forward``
-    needs only the LLM-provided args. Returns ``[read_table, pmc_article_context, derive_config,
+    A supplied ``graph`` binds the complete target metadata to ``build_and_audit`` while
+    its resolved fullmap remains available to coverage tools. The legacy ``fullmap`` path
+    is accepted for direct callers outside the target-graph supervisor. Returns
+    ``[read_table, pmc_article_context, derive_config,
     build_and_audit, map_coverage, propose_config_edit]``. All construction is offline-safe (no network, no model
     I/O); the smolagents import happens lazily inside each factory. ``table_path`` is accepted for
     API symmetry with the supervisor call site (the read_table tool reads whatever ``source`` the
@@ -2613,9 +2703,14 @@ def make_tools(
       rebuild on the next lookup.
     """
 
+    if graph is None and fullmap is None:
+        raise ValueError("make_tools requires graph or fullmap")
+
+    bound_fullmap: Path = graph.fullmap if graph is not None else cast(Path, fullmap)
+
     def get_fullmap() -> Path:
         """Return the bound fullmap redb path the tools read."""
-        return fullmap
+        return bound_fullmap
 
     if derive_mode == "derive_only":
         return [make_read_table_tool(), make_pmc_article_context_tool(), make_derive_config_tool()]
@@ -2625,7 +2720,7 @@ def make_tools(
         make_read_table_tool(),
         make_pmc_article_context_tool(),
         make_derive_config_tool(),
-        make_build_and_audit_tool(get_fullmap, name=name, version=version, qc=qc),
+        make_build_and_audit_tool(graph=graph, get_fullmap=None if graph is not None else get_fullmap, name=name, version=version, qc=qc),
         make_map_coverage_tool(get_fullmap),
         make_propose_config_edit_tool(),
     ]
@@ -2829,7 +2924,9 @@ def _is_improvement(current_cov: float, current_report: dict[str, object], new_c
 def run_supervisor(
     pmc_ids: list[str] | str,
     *,
-    fullmap: Path,
+    graph: Graph | None = None,
+    graph_path: Path | None = None,
+    fullmap: Path | None = None,
     build_model_factory: Callable[[], object],
     map_threshold: float = 0.25,
     max_improve_iters: int = 3,
@@ -2848,7 +2945,7 @@ def run_supervisor(
 ) -> dict[str, object]:
     """Run the deterministic supervisor over a batch of PMC ids with checkpoint/resume.
 
-    For each pmc id (resume-aware: terminal DONE/MAPPED/SKIPPED records are skipped):
+    For each requested pmc id (including ids with terminal records from an earlier invocation):
       1. mark RUNNING + checkpoint; fetch the latest-version article payload (``fetch_pmc_article``, the
          single seam tests monkeypatch) and present ALL candidate tables + the main-text path to the agent;
       2. run the INNER agent (``build_agent`` + ``build_model_factory()``) whose schema-gated
@@ -2862,6 +2959,11 @@ def run_supervisor(
          ``map_threshold``, Biolink pass rate ≥ ``biolink_threshold``, and — only when a
          ``judge_model`` is configured — judge score ≥ ``judge_threshold``), BUILT_UNMEASURED
          (built but coverage unmeasurable), or SKIPPED.
+
+    ``graph`` is the prepared caller-owned target graph for normal agent runs. The legacy
+    ``fullmap``/``name``/``version`` arguments remain available for direct callers while the
+    target-graph migration settles. ``graph_path`` identifies the YAML to update after a
+    successful result.
 
     ``biolink_threshold`` defaults to 0.0 (report-only): every record carries its
     ``biolink_valid_pct`` / ``demoted_edge_pct`` regardless, and raising the threshold turns that
@@ -2880,12 +2982,45 @@ def run_supervisor(
         verbosity = None
 
     ids: list[str] = [pmc_ids] if isinstance(pmc_ids, str) else list(pmc_ids)
+    target_graph: Graph | None = graph
+    if target_graph is not None and graph_path is None:
+        raise ValueError("run_supervisor requires graph_path when graph is supplied")
+    if target_graph is None:
+        if fullmap is None:
+            raise ValueError("run_supervisor requires graph or fullmap")
+        effective_fullmap: Path = fullmap
+        effective_name: str = name
+        effective_version: str = version
+    else:
+        effective_fullmap = target_graph.fullmap
+        effective_name = target_graph.name
+        effective_version = target_graph.version
+    assert effective_fullmap is not None
+
     art_root: Path = artifact_root(state_dir, workdir)
+    source_bases: tuple[Path, ...] = tuple(
+        dict.fromkeys(
+            path.expanduser().resolve() for path in (Path.cwd(), state_dir, art_root, graph_path.parent if graph_path is not None else state_dir)
+        )
+    )
+
+    def normalize_config(config_yaml: str) -> str:
+        """Normalize only the generated candidate, never target graph table files."""
+        return normalize_agent_table_config(config_yaml, base_dirs=source_bases)
+
+    def audit_config(config_yaml: str, **kwargs: Any) -> dict[str, object]:
+        """Build one candidate with the target graph, or legacy scalar metadata."""
+        normalized: str = normalize_config(config_yaml)
+        if target_graph is not None:
+            return build_and_audit(normalized, graph=target_graph, **kwargs)  # pyright: ignore[reportArgumentType]
+        return build_and_audit(normalized, fullmap=effective_fullmap, name=effective_name, version=effective_version, **kwargs)  # pyright: ignore[reportArgumentType]
+
     art_root.mkdir(parents=True, exist_ok=True)
 
     loaded: SupervisorState | None = load_state(state_dir)
     state: SupervisorState = loaded if loaded is not None else SupervisorState(pmc_ids=list(ids))
-    # Resume merge: keep existing records (so terminal statuses are skipped) and add any new ids.
+    # Merge checkpoint records and add any new ids. Terminal records are deliberately retained
+    # for history but are processed again below on every requested invocation.
     for pid in ids:
         if pid not in state.records:
             state.records[pid] = ConfigRecord(pmc_id=pid)
@@ -2896,8 +3031,6 @@ def run_supervisor(
     all_metrics: list[dict[str, object]] = []
     for pmc_id in ids:
         rec: ConfigRecord = state.records[pmc_id]
-        if rec.status in {"DONE", "MAPPED", "SKIPPED", "BUILT_UNMEASURED", "DERIVED"}:
-            continue  # resume: already terminal
         try:
             rec.status = "RUNNING"
             rec.attempts += 1
@@ -2935,7 +3068,14 @@ def run_supervisor(
             metrics: dict[str, object] = {}
             agent: object = build_agent(
                 model=build_model_factory(),
-                tools=make_tools(fullmap=fullmap, table_path=tables[0], name=name, version=version, derive_mode=derive_mode),
+                tools=make_tools(
+                    graph=target_graph,
+                    fullmap=effective_fullmap,
+                    table_path=tables[0],
+                    name=effective_name,
+                    version=effective_version,
+                    derive_mode=derive_mode,
+                ),
                 max_steps=max_steps,
                 step_callbacks=[make_step_callback(metrics)],
                 verbosity_level=verbosity,
@@ -2953,20 +3093,32 @@ def run_supervisor(
                 f"Candidate tables:\n{table_list}\n"
                 "Inspect candidates with read_table(path): for an Excel file it lists ALL worksheets (pass sheet='<name>' to "
                 "read one, and set source.sheet in the config). Choose the table and worksheet that yield the cleanest "
-                "subject-predicate-object mapping, then author and build the config. Maximize fullmap mapping coverage; return the config YAML."
+                "subject-predicate-object mapping, then author and build the config. Copy the exact ABSOLUTE candidate "
+                "path into every source.local; never emit a relative local/data-lake path. Maximize fullmap mapping coverage; "
+                "return the config YAML."
             )
             result: object = agent.run(task)  # pyright: ignore[reportAttributeAccessIssue]
-            config: str = str(result)
+            raw_config: str = str(result)
             all_metrics.append(metrics)
 
-            if not validate_table_config(config):  # the final-answer gate should prevent this; be safe
+            # Check the raw model response before path normalization so malformed YAML gets the same
+            # actionable final-answer-gate status as a schema-invalid mapping. Normalization is only
+            # applied after that gate and is then checked once more because it mutates newly generated
+            # source.local values.
+            if not validate_table_config(raw_config):  # the final-answer gate should prevent this; be safe
                 rec.status = "SKIPPED"
                 rec.notes = "SKIPPED: agent final answer failed the validate_table_config gate."
                 save_state(state_dir, state)
                 continue
+            config: str = normalize_config(raw_config)
+            if not validate_table_config(config):
+                rec.status = "SKIPPED"
+                rec.notes = "SKIPPED: normalized agent answer failed the validate_table_config gate."
+                save_state(state_dir, state)
+                continue
 
             configs_dir(state_dir).mkdir(parents=True, exist_ok=True)
-            derived_path: Path = derived_config_path(state_dir, pmc_id)
+            derived_path: Path = derived_config_path(state_dir, pmc_id).resolve()
             derived_path.write_text(config)
             rec.config_path = str(derived_path)
 
@@ -2978,7 +3130,7 @@ def run_supervisor(
                 save_state(state_dir, state)
                 continue
 
-            report: dict[str, object] = build_and_audit(config, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id))
+            report: dict[str, object] = audit_config(config, workdir=pmc_build_dir(art_root, pmc_id))
             raw_cov: object = report.get("coverage_pct")
             coverage: float = float(raw_cov) if isinstance(raw_cov, (int, float)) else 0.0
             rec.coverage_history.append(coverage)
@@ -3004,7 +3156,7 @@ def run_supervisor(
             improve_tmp: Path = pmc_build_dir(art_root, pmc_id) / ".improve-tmp"
             while current_cov < map_threshold and iters < max_improve_iters:
                 try:
-                    cov_report: dict[str, object] = map_coverage(current_config, fullmap=fullmap, workdir=pmc_build_dir(art_root, pmc_id))
+                    cov_report: dict[str, object] = map_coverage(current_config, fullmap=effective_fullmap, workdir=pmc_build_dir(art_root, pmc_id))
                 except Exception:  # a coverage failure must not abort the improve attempt
                     cov_report = {"per_column": {}, "unresolved": []}
 
@@ -3012,15 +3164,12 @@ def run_supervisor(
 
                 # Tier 1: deterministic ranked candidates (distinct edits), best-first.
                 for edited, rationale in propose_config_candidates(current_config, cov_report):
-                    head_report: dict[str, object] = build_and_audit(
-                        edited, fullmap=fullmap, name=name, version=version, head=True, workdir=improve_tmp
-                    )
+                    edited = normalize_config(edited)
+                    head_report: dict[str, object] = audit_config(edited, head=True, workdir=improve_tmp)
                     raw_cov2: object = head_report.get("coverage_pct")
                     cov2: float = float(raw_cov2) if isinstance(raw_cov2, (int, float)) else 0.0
                     if _is_improvement(current_cov, current_report, cov2, head_report):  # head looks better -> confirm with a FULL build
-                        full_report: dict[str, object] = build_and_audit(
-                            edited, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id)
-                        )
+                        full_report: dict[str, object] = audit_config(edited, workdir=pmc_build_dir(art_root, pmc_id))
                         full_cov: object = full_report.get("coverage_pct")
                         full_cov_f: float = float(full_cov) if isinstance(full_cov, (int, float)) else 0.0
                         # Commit IFF the full build actually succeeded AND beat the prior best. A failing or
@@ -3045,15 +3194,12 @@ def run_supervisor(
                 if not improved and reflexion_model_factory is not None:
                     revised: str | None = llm_propose_config_edit(current_config, cov_report, task, model=reflexion_model_factory())
                     if revised is not None:
-                        head_report3: dict[str, object] = build_and_audit(
-                            revised, fullmap=fullmap, name=name, version=version, head=True, workdir=improve_tmp
-                        )
+                        revised = normalize_config(revised)
+                        head_report3: dict[str, object] = audit_config(revised, head=True, workdir=improve_tmp)
                         raw_cov3: object = head_report3.get("coverage_pct")
                         cov3: float = float(raw_cov3) if isinstance(raw_cov3, (int, float)) else 0.0
                         if _is_improvement(current_cov, current_report, cov3, head_report3):  # head looks better -> confirm with a FULL build
-                            full_report3: dict[str, object] = build_and_audit(
-                                revised, fullmap=fullmap, name=name, version=version, workdir=pmc_build_dir(art_root, pmc_id)
-                            )
+                            full_report3: dict[str, object] = audit_config(revised, workdir=pmc_build_dir(art_root, pmc_id))
                             full_cov3: object = full_report3.get("coverage_pct")
                             full_cov3_f: float = float(full_cov3) if isinstance(full_cov3, (int, float)) else 0.0
                             # Same guard as tier 1: commit IFF the full build succeeded AND beat the prior best;
@@ -3081,7 +3227,7 @@ def run_supervisor(
 
             # Record per-section coverages for visibility (W3 multi-section; best-effort, never aborts).
             try:
-                final_cov: dict[str, object] = map_coverage(current_config, fullmap=fullmap, workdir=pmc_build_dir(art_root, pmc_id))
+                final_cov: dict[str, object] = map_coverage(current_config, fullmap=effective_fullmap, workdir=pmc_build_dir(art_root, pmc_id))
                 raw_sections: object = final_cov.get("sections")
                 if isinstance(raw_sections, list):
                     per_section: list[float] = []
@@ -3093,12 +3239,7 @@ def run_supervisor(
             except Exception:  # visibility-only; a measurement failure must not abort the run
                 pass
 
-            best_path: Path = best_config_path(state_dir, pmc_id)
-            best_path.write_text(current_config)
-            # Persist the ABSOLUTE path: a relative --state-dir would otherwise store a CWD-relative
-            # entry that rebuild_graph (which may run from a different CWD) could not locate.
-            rec.best_config_path = str(best_path.resolve())
-            rec.config_path = str(best_path)
+            current_config = normalize_config(current_config)
             # Record the best build's Biolink compliance whether or not it gates, so state.json
             # always shows whether this paper's KGX is actually consumable downstream.
             rec.biolink_valid_pct = biolink_validity_metric(current_report)
@@ -3143,17 +3284,28 @@ def run_supervisor(
                     f"SKIPPED: could not reach map_threshold={map_threshold} after {max_improve_iters} "
                     f"improve iters (best coverage {current_cov:.3f})"
                 )
-            # Shared graph registry: successful builds upsert into <state_dir>/graph.yaml so concurrent
-            # agents over one --state-dir converge on a single aggregate config. SKIPPED never registers,
-            # and registration must NEVER flip a successful status: on any error log + note and keep the
-            # status. A re-run that SKIPS an already-MAPPED pmc keeps its registry entry: resume skips
-            # terminal records entirely, and rebuild-agent-graph prunes stale entries from state.json.
-            if rec.status in REGISTERED_STATUSES:
+            # Only a successful terminal result may replace the stable best config. A failed
+            # rerun therefore leaves both the previous file and its target-graph entry intact.
+            best_path: Path | None = None
+            if rec.status in SUCCESSFUL_STATUSES:
+                best_path = best_config_path(state_dir, pmc_id).resolve()
+                best_path.parent.mkdir(parents=True, exist_ok=True)
+                config_tmp: Path = best_path.with_name(f".{best_path.name}.tmp")
+                config_tmp.write_text(current_config)
+                os.replace(config_tmp, best_path)
+                rec.best_config_path = str(best_path)
+                rec.config_path = str(best_path)
+
+                # Normal runs update the caller-owned graph. Legacy direct callers retain
+                # their scalar build behavior but do not have an aggregate target to mutate.
                 try:
-                    register_build(state_dir, pmc_id, best_path, fullmap)
-                except Exception as reg_exc:  # a registry failure is a note, never a status change
-                    logger.error("graph registry update failed for {pmc}: {error}", pmc=pmc_id, error=reg_exc)
-                    note: str = f"graph registry update failed (status kept {rec.status}): {reg_exc}"
+                    if target_graph is not None:
+                        if graph_path is None:
+                            raise ValueError("graph_path is required when graph is supplied")
+                        append_successful_config(graph_path, pmc_id, best_path)
+                except Exception as reg_exc:  # a graph update failure is a note, never a status change
+                    logger.error("target graph update failed for {pmc}: {error}", pmc=pmc_id, error=reg_exc)
+                    note: str = f"target graph update failed (status kept {rec.status}): {reg_exc}"
                     rec.notes = f"{rec.notes}; {note}" if rec.notes else note
             save_state(state_dir, state)
         except Exception as exc:  # one bad pmc never aborts the batch

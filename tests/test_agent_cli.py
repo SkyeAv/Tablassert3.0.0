@@ -8,18 +8,49 @@ agent or network call ever fires.
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 import types
 from pathlib import Path
 
 import pytest
 import yaml
-from cyclopts.exceptions import MissingArgumentError  # pyright: ignore[reportMissingImports]
+from cyclopts.exceptions import UnknownOptionError  # pyright: ignore[reportMissingImports]
 
 from tablassert import extras
 from tablassert.agent import ENV_API_BASE, ENV_API_KEY, ENV_MODEL_ID, load_optimized_instructions, save_optimized_instructions
-from tablassert.cli import APP, agent, rebuild_agent_graph
+from tablassert.cli import APP, agent
 from tablassert.errors import MissingExtraError
+
+
+def _graph_path() -> Path:
+    """Return a valid caller-owned target graph for CLI wiring tests."""
+    path: Path = Path(tempfile.gettempdir()) / f"tablassert-agent-cli-target-{os.getpid()}.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "CLI_TARGET",
+                "version": "1.0.0",
+                "tables": [],
+                "fullmap": "/tmp/fm",
+                "rig": {
+                    "source_info": {
+                        "infores_id": "infores:cli-target",
+                        "terms_of_use_info": {"license_name": "CC0"},
+                        "data_access_locations": ["Test - https://example.org/data"],
+                        "source_status": "unknown",
+                    },
+                    "ingest_info": {"utility": "CLI test.", "scope": "CLI test."},
+                    "provenance_info": {"contributions": ["Test"]},
+                    "artifact_base_url": "https://example.org/cli-target",
+                    "artifact_base_path": "/tmp/cli-target-output",
+                },
+            },
+            sort_keys=False,
+        )
+    )
+    return path
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +87,7 @@ def test_agent_no_secret_fails_loud(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     monkeypatch.delenv(ENV_API_BASE, raising=False)
     monkeypatch.delenv(ENV_API_KEY, raising=False)
     with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"))
+        agent(["PMC1"], graph_configuration_file=_graph_path())
     assert exc_info.value.code == 2
     captured = capsys.readouterr()
     assert ENV_MODEL_ID in captured.err
@@ -83,7 +114,7 @@ def test_agent_without_extra_names_the_install_command(monkeypatch: pytest.Monke
     monkeypatch.setattr("tablassert.agent.run_supervisor", lambda *a, **k: pytest.fail("supervisor ran without the extra"))
 
     with pytest.raises(MissingExtraError) as excinfo:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"))
+        agent(["PMC1"], graph_configuration_file=_graph_path())
 
     message: str = str(excinfo.value)
     assert "smolagents" in message
@@ -102,7 +133,7 @@ def test_agent_optimize_without_optimize_extra_points_at_optimize(monkeypatch: p
     monkeypatch.setattr("tablassert.agent.run_gepa", lambda *a, **k: pytest.fail("GEPA ran without the extra"))
 
     with pytest.raises(MissingExtraError) as excinfo:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True)
+        agent(["PMC1"], graph_configuration_file=_graph_path(), optimize=True)
 
     message: str = str(excinfo.value)
     assert 'pip install "tablassert[optimize]"' in message
@@ -121,7 +152,7 @@ def test_agent_missing_secret_is_reported_before_missing_extra(monkeypatch: pyte
     monkeypatch.setattr(extras, "missing", lambda extra: ("smolagents",))
 
     with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"))
+        agent(["PMC1"], graph_configuration_file=_graph_path())
 
     assert exc_info.value.code == 2
     assert ENV_MODEL_ID in capsys.readouterr().err
@@ -132,7 +163,7 @@ def test_agent_env_fallback_and_forwarding(monkeypatch: pytest.MonkeyPatch, caps
 
     Why: the CLI is thin glue over ``run_supervisor``. With the three env vars set (and no flags),
     ``resolve_model_config`` must fill the model config from the environment, and the thresholds /
-    fullmap must reach the supervisor unchanged. ``run_supervisor`` and
+    target graph/path must reach the supervisor unchanged. ``run_supervisor`` and
     ``build_model`` are monkeypatched (module attributes the command looks up at call time) so no real
     agent runs; invoking the forwarded ``build_model_factory`` then proves the factory resolved the env
     config and handed it to ``build_model``.
@@ -157,10 +188,12 @@ def test_agent_env_fallback_and_forwarding(monkeypatch: pytest.MonkeyPatch, caps
     monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
     monkeypatch.setattr("tablassert.agent.build_model", fake_build_model)
 
-    agent(["PMC1", "PMC2"], fullmap=Path("/tmp/fm"), map_threshold=0.7, max_improve_iters=5)
+    agent(["PMC1", "PMC2"], graph_configuration_file=_graph_path(), map_threshold=0.7, max_improve_iters=5)
 
     assert captured["pmc_ids"] == ["PMC1", "PMC2"]
-    assert captured["fullmap"] == Path("/tmp/fm")
+    target_graph = captured["graph"]
+    assert target_graph.fullmap == Path("/tmp/fm").resolve()  # pyright: ignore[reportAttributeAccessIssue]
+    assert captured["graph_path"] == _graph_path().resolve()
     assert captured["map_threshold"] == 0.7
     assert captured["max_improve_iters"] == 5
 
@@ -179,20 +212,24 @@ def test_agent_env_fallback_and_forwarding(monkeypatch: pytest.MonkeyPatch, caps
 def test_agent_cli_flag_parsing() -> None:
     """A full argv parses into the command's bound args WITHOUT executing the body.
 
-    Why: the documented UX is positional PMC ids plus flags. cyclopts' ``parse_args`` binds tokens to
-    the signature without running the function, so this proves ``agent PMC9 --fullmap ... --map-threshold``
-    parses (positional list + required ``--fullmap`` + typed flags) with no model/network run.
+    Why: the documented UX is positional PMC ids plus a required target graph flag. cyclopts' ``parse_args``
+    binds tokens to the signature without running the function, so this proves both target graph forms
+    parse and the removed fullmap flag is rejected.
     """
-    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm", "--map-threshold", "0.5"], exit_on_error=False)
+    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--configuration-file", "/tmp/graph.yaml", "--map-threshold", "0.5"], exit_on_error=False)
     assert fn is agent
     assert bound.args == (["PMC9"],)
-    assert bound.kwargs["fullmap"] == Path("/tmp/fm")
+    assert bound.kwargs["graph_configuration_file"] == Path("/tmp/graph.yaml")
     assert bound.kwargs["map_threshold"] == 0.5
+    _, alias_bound, _ = APP.parse_args(["agent", "PMC9", "-f", "/tmp/graph.yaml"], exit_on_error=False)
+    assert alias_bound.kwargs["graph_configuration_file"] == Path("/tmp/graph.yaml")
+    with pytest.raises(UnknownOptionError):
+        APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm"], exit_on_error=False)
 
 
 def test_agent_optimize_flag_parses() -> None:
     """``-o``/``--optimize`` parses to optimize=True without executing the body."""
-    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm", "-o"], exit_on_error=False)
+    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--configuration-file", str(_graph_path()), "-o"], exit_on_error=False)
     assert fn is agent
     assert bound.kwargs["optimize"] is True
 
@@ -217,7 +254,7 @@ def test_agent_optimize_persists_instructions(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
 
     out: Path = tmp_path / "opt.yaml"
-    agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, instructions_out=out)
+    agent(["PMC1"], graph_configuration_file=_graph_path(), optimize=True, instructions_out=out)
 
     assert out.is_file()
     assert load_optimized_instructions(out) == "OPTIMIZED PROMPT"
@@ -241,7 +278,7 @@ def test_agent_instructions_file_forwarded(monkeypatch: pytest.MonkeyPatch, tmp_
     instr_file: Path = tmp_path / "instr.yaml"
     save_optimized_instructions(instr_file, "CUSTOM PROMPT")
 
-    agent(["PMC1"], fullmap=Path("/tmp/fm"), instructions_file=instr_file)
+    agent(["PMC1"], graph_configuration_file=_graph_path(), instructions_file=instr_file)
     assert captured["instructions"] == "CUSTOM PROMPT"
 
 
@@ -259,7 +296,7 @@ def test_agent_no_instructions_file_passes_none(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
 
-    agent(["PMC1"], fullmap=Path("/tmp/fm"))
+    agent(["PMC1"], graph_configuration_file=_graph_path())
     assert captured["instructions"] is None
 
 
@@ -278,7 +315,7 @@ def test_agent_judge_threshold_out_of_range_exits_2(
     monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
 
     with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"), judge_threshold=bad_threshold)
+        agent(["PMC1"], graph_configuration_file=_graph_path(), judge_threshold=bad_threshold)
     assert exc_info.value.code == 2
     assert "judge-threshold" in capsys.readouterr().err
 
@@ -297,7 +334,7 @@ def test_agent_judge_threshold_valid_is_forwarded(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
 
-    agent(["PMC1"], fullmap=Path("/tmp/fm"), judge_threshold=0.7)
+    agent(["PMC1"], graph_configuration_file=_graph_path(), judge_threshold=0.7)
     assert captured["judge_threshold"] == 0.7
 
 
@@ -319,7 +356,7 @@ def test_agent_gepa_threads_non_positive_exits_2(bad_threads: int, monkeypatch: 
     monkeypatch.setattr("tablassert.agent.make_dspy_lm", fail_model_init)
 
     with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"), gepa_threads=bad_threads)
+        agent(["PMC1"], graph_configuration_file=_graph_path(), gepa_threads=bad_threads)
     assert exc_info.value.code == 2
     assert "gepa-threads" in capsys.readouterr().err
 
@@ -337,7 +374,7 @@ def test_agent_local_rejects_empty_mapping_components(bad_spec: str, monkeypatch
     monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
 
     with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"), local=[bad_spec])
+        agent(["PMC1"], graph_configuration_file=_graph_path(), local=[bad_spec])
     assert exc_info.value.code == 2
     assert "--local" in capsys.readouterr().err
 
@@ -356,7 +393,7 @@ def test_agent_local_valid_mapping_forwarded(monkeypatch: pytest.MonkeyPatch, tm
 
     monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
 
-    agent(["PMC1"], fullmap=Path("/tmp/fm"), local=[f"PMC1={tmp_path}"])
+    agent(["PMC1"], graph_configuration_file=_graph_path(), local=[f"PMC1={tmp_path}"])
     assert captured["local"] == {"PMC1": tmp_path}
 
 
@@ -378,7 +415,7 @@ def test_agent_optimize_forwards_backend_to_dspy_lm(monkeypatch: pytest.MonkeyPa
     )
 
     out: Path = tmp_path / "opt.yaml"
-    agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, backend="litellm", instructions_out=out)
+    agent(["PMC1"], graph_configuration_file=_graph_path(), optimize=True, backend="litellm", instructions_out=out)
 
     # Without --task-model the CLI builds EXACTLY ONE LM (the reflection LM) — assert the count so a
     # regression that reorders/adds LM constructions cannot hide behind lm_calls[0].
@@ -403,7 +440,7 @@ def test_agent_optimize_gepa_error_exits_nonzero(monkeypatch: pytest.MonkeyPatch
 
     out: Path = tmp_path / "opt.yaml"
     with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"), optimize=True, instructions_out=out)
+        agent(["PMC1"], graph_configuration_file=_graph_path(), optimize=True, instructions_out=out)
     assert exc_info.value.code == 1
     assert not out.is_file()  # the unoptimized seed is NOT persisted
     assert "GEPA optimization failed" in capsys.readouterr().err
@@ -443,63 +480,6 @@ def test_make_dspy_lm_honors_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured[0]["timeout"] == 600
 
 
-# --------------------------------------------------------------------------- #
-# rebuild-agent-graph: the shared-registry reconstruction command (wiring only)
-# --------------------------------------------------------------------------- #
-
-
-def test_rebuild_agent_graph_command_registered() -> None:
-    """The ``rebuild-agent-graph`` subcommand is registered as a flat peer of ``build-kg``."""
-    assert "rebuild-agent-graph" in APP.resolved_commands()
-
-
-def test_rebuild_agent_graph_flags_parse(tmp_path: Path) -> None:
-    """``--state-dir``/``-sd`` + required ``--fullmap``/``-f`` bind; the state-dir default is pinned."""
-
-    def parse(argv: list[str]) -> dict[str, object]:
-        fn, bound, _ = APP.parse_args(argv, exit_on_error=False)
-        assert fn is rebuild_agent_graph
-        bound.apply_defaults()  # bound.arguments only carries explicitly-parsed tokens
-        return dict(bound.arguments)
-
-    arguments = parse(["rebuild-agent-graph", "--state-dir", str(tmp_path), "--fullmap", "/tmp/fm.redb"])
-    assert arguments["state_dir"] == tmp_path
-    assert arguments["fullmap"] == Path("/tmp/fm.redb")
-
-    alias_arguments = parse(["rebuild-agent-graph", "-sd", str(tmp_path), "-f", "/tmp/fm.redb"])
-    assert alias_arguments["state_dir"] == tmp_path
-    assert alias_arguments["fullmap"] == Path("/tmp/fm.redb")
-
-    default_arguments = parse(["rebuild-agent-graph", "-f", "/tmp/fm.redb"])
-    assert default_arguments["state_dir"] == Path(".tablassert") / "agent"
-
-    with pytest.raises(MissingArgumentError):
-        APP.parse_args(["rebuild-agent-graph", "--state-dir", str(tmp_path)], exit_on_error=False)
-
-
-def test_rebuild_agent_graph_rebuilds_and_reports(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """The command rebuilds the registry from ``state.json`` and prints the path + entry count."""
-    from tablassert.agent import ConfigRecord, SupervisorState, save_state
-
-    config: Path = tmp_path / "configs" / "PMC1.yaml"
-    config.parent.mkdir()
-    config.write_text("sections: []\n")
-    save_state(
-        tmp_path, SupervisorState(pmc_ids=["PMC1"], records={"PMC1": ConfigRecord(pmc_id="PMC1", status="MAPPED", best_config_path=str(config))})
-    )
-    fullmap: Path = tmp_path / "fullmap.redb"
-    fullmap.touch()
-
-    rebuild_agent_graph(state_dir=tmp_path, fullmap=fullmap)
-
-    out: str = capsys.readouterr().out
-    assert str(tmp_path / "graph.yaml") in out
-    assert "1 table config" in out
-    data: object = yaml.safe_load((tmp_path / "graph.yaml").read_text())
-    assert isinstance(data, dict)
-    assert data["tables"] == [str(config.resolve())]
-
-
 @pytest.mark.parametrize("bad_threshold", [-1.0, 2.0, float("nan"), float("inf")])
 def test_agent_biolink_threshold_out_of_range_exits_2(
     bad_threshold: float, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -515,7 +495,7 @@ def test_agent_biolink_threshold_out_of_range_exits_2(
     monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
 
     with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], fullmap=Path("/tmp/fm"), biolink_threshold=bad_threshold)
+        agent(["PMC1"], graph_configuration_file=_graph_path(), biolink_threshold=bad_threshold)
     assert exc_info.value.code == 2
     assert "biolink-threshold" in capsys.readouterr().err
 
@@ -534,8 +514,8 @@ def test_agent_biolink_threshold_defaults_to_report_only_and_forwards(monkeypatc
 
     monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
 
-    agent(["PMC1"], fullmap=Path("/tmp/fm"))
+    agent(["PMC1"], graph_configuration_file=_graph_path())
     assert captured["biolink_threshold"] == 0.0
 
-    agent(["PMC1"], fullmap=Path("/tmp/fm"), biolink_threshold=0.95)
+    agent(["PMC1"], graph_configuration_file=_graph_path(), biolink_threshold=0.95)
     assert captured["biolink_threshold"] == 0.95

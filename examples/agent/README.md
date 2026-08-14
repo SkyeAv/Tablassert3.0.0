@@ -10,7 +10,7 @@ These artifacts come from running the Tablassert `[agent]` GEPA prompt-optimizat
   optimization cost in production:
 
   ```bash
-  tablassert agent PMC11947420 --fullmap /path/to/fullmap \
+  tablassert agent PMC11947420 --configuration-file /path/to/graph.yaml \
     --instructions-file examples/agent/optimized_instructions.yaml
   ```
 
@@ -41,7 +41,7 @@ export TABLASSERT_AGENT_MODEL_ID="qwen3.8-max-preview"     # strong reflection L
 export TABLASSERT_AGENT_API_BASE="https://YOUR-ENDPOINT/v1"
 export TABLASSERT_AGENT_API_KEY="sk-***"
 
-tablassert agent PMC11947420 --fullmap /path/to/fullmap --optimize \
+tablassert agent PMC11947420 --configuration-file /path/to/graph.yaml --optimize \
   --dataset examples/agent/gepa-dataset.yaml \
   --task-model qwen3.6-flash \
   --max-metric-calls 30 --gepa-threads 4 \

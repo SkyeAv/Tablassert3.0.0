@@ -1,8 +1,8 @@
 # CLI Reference
 
 Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The `tablassert` app
-exposes **five subcommands** — `agent`, `build-fullmap`, `build-kg`, `rebuild-agent-graph`,
-`validate` — plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
+exposes **five subcommands** — `agent`, `build-fullmap`, `build-kg`, `validate`, and `validate-kgx` —
+plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
 for the live surface.
 
 ## Command index
@@ -12,7 +12,6 @@ for the live surface.
 | [`agent`](#agent) | Autonomously derive, build, audit, and improve KG configs from PMC articles |
 | [`build-fullmap`](#build-fullmap) | Build the embedded fullmap redb used for entity resolution |
 | [`build-kg`](#build-kg) | Build a KGX NDJSON knowledge graph from a YAML configuration |
-| [`rebuild-agent-graph`](#rebuild-agent-graph) | Rebuild the shared agent graph registry from the supervisor checkpoint |
 | [`validate`](#validate) | Validate a graph or table configuration without executing it |
 | [`validate-kgx`](#validate-kgx) | Validate built KGX NDJSON against the Biolink Model |
 
@@ -41,16 +40,19 @@ before any model is built or article fetched, so a missing extra is reported wit
 command instead of surfacing mid-run — see [When an extra is missing](installation.md#when-an-extra-is-missing).
 
 ```bash
-tablassert agent --fullmap PATH [OPTIONS] PMC-IDS...
+tablassert agent PMC-IDS... --configuration-file GRAPH.yaml [OPTIONS]
 ```
 
-PMC ids are passed positionally (also accepted as `--pmc-ids`). This page lists the flags; see
+PMC ids are passed positionally (also accepted as `--pmc-ids`). The required graph target is accepted
+as `--configuration-file` or `-f`; it is modified in place after successful article builds. The graph's
+`fullmap`, name, version, RIG, and artifact metadata replace the old standalone fullmap argument. This
+page lists the flags; see
 [Agent](agent.md) for the full pipeline, workspace layout, checkpoint/resume, and tooling.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `PMC-IDS` (`--pmc-ids`) | list[str] | Yes | — | One or more PMC article ids (positional) |
-| `--fullmap`, `-f` | Path | Yes | — | Fullmap redb file or base directory |
+| `--configuration-file`, `-f` | Path | Yes | — | Caller-owned Graph YAML; supplies build metadata/fullmap and receives successful absolute table entries |
 | `--model-id`, `-m` | str | No | `None` | Model id (env `TABLASSERT_AGENT_MODEL_ID`) |
 | `--api-base`, `-ab` | str | No | `None` | OpenAI-compatible base URL (env `TABLASSERT_AGENT_API_BASE`) |
 | `--api-key`, `-ak` | str | No | `None` | API key secret (env `TABLASSERT_AGENT_API_KEY`) |
@@ -73,7 +75,9 @@ PMC ids are passed positionally (also accepted as `--pmc-ids`). This page lists 
 | `--gepa-threads` | int | No | `None` | Thread count for GEPA's evaluation pool (`--optimize`) — parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on `_GEPA_BUILD_LOCK` |
 
 ```bash
-tablassert agent PMC11708054 --fullmap ./fullmap
+tablassert agent PMC11708054 --configuration-file ./graph.yaml
+# equivalent short form:
+tablassert agent PMC11708054 -f ./graph.yaml
 ```
 
 !!! warning "Secrets"
@@ -163,37 +167,6 @@ or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is 
     stage prints a green `✓ Stage N · NAME · elapsed` line above the live block. During Building
     Subgraphs the detail line also shows the per-section phase (`load`, `filter`, `clean`, `encode`,
     `resolve`, `qc`, `edge`, `provenance`, `significance`, `finalize`, `write`).
-
----
-
-## rebuild-agent-graph
-
-Use this to rebuild the SHARED agent graph registry (`<state-dir>/graph.yaml`) from the supervisor
-checkpoint (`<state-dir>/state.json`) — e.g. to prune stale entries after deleting configs, or to
-recover a hand-edited/damaged registry. Parallel `tablassert agent` runs maintain the registry
-incrementally (see [Agent — Parallel agents and the shared graph registry](agent.md#parallel-agents-and-the-shared-graph-registry));
-this command reconstructs it deterministically from `state.json`.
-
-```bash
-tablassert rebuild-agent-graph [ARGS]
-```
-
-| Option | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `--state-dir`, `-sd` | Path | No | `.tablassert/agent` | Agent state directory holding `state.json` + `configs/` |
-| `--fullmap`, `-f` | Path | Yes | — | Fullmap redb file or base directory recorded in the registry |
-
-Every `MAPPED` / `BUILT_UNMEASURED` record whose best config still exists on disk becomes a
-`tables` entry (absolute path, sorted by pmc id); every other entry — `SKIPPED` records, deleted
-configs, stale leftovers — is pruned. The registry `fullmap` is **first-wins**: an existing value
-that differs from `--fullmap` is kept (with a warning). The write is concurrency-safe (exclusive
-`graph.yaml.lock` flock + atomic replace), so the command never corrupts the registry; run it
-while agents are quiescent for a complete snapshot.
-
-```bash
-tablassert rebuild-agent-graph --state-dir .tablassert/agent --fullmap ./fullmap
-tablassert build-kg -f .tablassert/agent/graph.yaml
-```
 
 ---
 
