@@ -37,7 +37,7 @@ Current CLI behavior queries an embedded redb database whose primary file is `fu
 ## Implementation Map
 - [Core Pipeline](src/tablassert/lib.py): extraction transforms, statement assembly, and graph compilation.
 - [Entity Resolution](src/tablassert/fullmap.py): embedded redb synonym resolution and ranking logic.
-- [Quality Control](src/tablassert/qc.py): exact, fuzzy, and BioBERT validation stages.
+- [Quality Control](src/tablassert/qc.py): exact, fuzzy, abbreviation, and SapBERT validation stages.
 - [Graph Study](src/tablassert/study.py): stdlib-only assertions over the final KGX NDJSON, run as the `build-kg --qc` stage 7.
 - [Normalization](src/tablassert/nlp.py): text normalization levels and preprocessing helpers.
 - [Enums Catalog](src/tablassert/enums.py): allowed values for predicates, qualifiers, categories, repositories, knowledge levels, agent types, and transforms.

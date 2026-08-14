@@ -21,7 +21,12 @@ from tablassert.utils import BASE
 
 logger = cat("QC")
 
-MODEL: Path = BASE / "biobert"
+MODEL: Path = BASE / "sapbert"
+
+# Pass threshold for the SapBERT cosine-similarity stage. Carried over from the
+# BioBERT gate; SapBERT's UMLS synonym-alignment training shifts true synonym
+# pairs upward, so a tuning pass against real reject logs is the natural follow-up.
+SIMILARITY_THRESHOLD: float = 0.5
 
 
 def _cascade(passed: pl.DataFrame, scored: pl.DataFrame, out: str) -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -39,13 +44,54 @@ def _cascade(passed: pl.DataFrame, scored: pl.DataFrame, out: str) -> tuple[pl.D
     return pairs.filter(pl.col(out)), pairs.filter(~pl.col(out))
 
 
+def _is_abbrev(short_form: str, long_form: str) -> bool:
+    """Schwartz-Hearst (2003) check that ``short_form`` abbreviates ``long_form``.
+
+    Scans ``short_form`` right-to-left, matching each alphanumeric character
+    (case-insensitively) against ``long_form`` scanned right-to-left; the first
+    character of ``short_form`` must match at a ``long_form`` word boundary.
+
+    Args:
+        short_form: Candidate abbreviation.
+        long_form: Candidate expansion.
+
+    Returns:
+        True when ``short_form`` is a valid abbreviation of ``long_form``.
+    """
+    sf: str = short_form.strip()
+    lf: str = long_form.strip()
+    if len(sf) < 2 or len(sf) >= len(lf) or not any(c.isalnum() for c in sf):
+        return False
+    s_idx: int = len(sf) - 1
+    l_idx: int = len(lf) - 1
+    while s_idx >= 0 and l_idx >= 0:
+        s_char: str = sf[s_idx].lower()
+        if not s_char.isalnum():
+            s_idx -= 1
+            continue
+        matched: bool = False
+        while l_idx >= 0:
+            # The first abbreviation character must land on a long-form word
+            # boundary; keep scanning leftward until one does (or none exists).
+            if lf[l_idx].lower() == s_char and (s_idx > 0 or l_idx == 0 or not lf[l_idx - 1].isalnum()):
+                matched = True
+                break
+            l_idx -= 1
+        if not matched:
+            return False
+        s_idx -= 1
+        l_idx -= 1
+    # Every remaining short-form character must be non-alphanumeric.
+    return all(not c.isalnum() for c in sf[: s_idx + 1])
+
+
 @cache
-def get_biobert() -> object:
-    """Lazy-load and memoize the BioBERT sentence-transformer (``functools.cache``).
+def get_sapbert() -> object:
+    """Lazy-load and memoize the SapBERT sentence-transformer (``functools.cache``).
 
     Loads from the local cache at ``MODEL`` when present; otherwise downloads
-    ``pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb`` and saves it for
-    future runs.
+    ``cambridgeltl/SapBERT-from-PubMedBERT-fulltext`` and saves it for future
+    runs.
 
     Returns:
         The memoized ``SentenceTransformer`` instance.
@@ -58,7 +104,7 @@ def get_biobert() -> object:
             model: object = sentence_transformers.SentenceTransformer(str(MODEL))  # pyright: ignore
         else:
             model = sentence_transformers.SentenceTransformer(  # pyright: ignore
-                "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb"
+                "cambridgeltl/SapBERT-from-PubMedBERT-fulltext"
             )
             MODEL.mkdir(parents=True, exist_ok=True)
             model.save(MODEL)  # pyright: ignore
@@ -78,14 +124,16 @@ def fullmap_audit(
 ) -> pl.LazyFrame:
     """Audit that fullmap correctly processed source strings into CURIEs.
 
-    Runs a three-stage cascade that progressively filters out correct
+    Runs a four-stage cascade that progressively filters out correct
     resolutions and leaves suspected errors behind:
 
     1. Exact match between pre-resolution text and the resolved preferred
        name, or the source value already looks like a CURIE, or the resolved
        preferred name matches a small allow-list of exception prefixes.
     2. Fuzzy string similarity (RapidFuzz ratio / partial token sort).
-    3. BioBERT embedding cosine similarity for the remaining rows.
+    3. Abbreviation expansion (Schwartz-Hearst): the source text abbreviates
+       the preferred name, or vice versa.
+    4. SapBERT embedding cosine similarity for the remaining rows.
 
     Rows that fail every stage are treated as QC rejects and dropped from the
     output LazyFrame; when ``log`` is set, each reject is logged with the
@@ -99,9 +147,10 @@ def fullmap_audit(
         config_file: Originating config file (for log context).
         out: Name of the boolean pass/fail column produced internally.
         log: When ``True``, log rejected CURIEs at INFO level.
-        on_phase: Optional callback fired with ``"qc:exact"``, ``"qc:fuzzy"``
-            and ``"qc:bert"`` at the start of each cascade stage (``qc:bert``
-            only fires when Stage 3 actually runs), used to drive fine-grained
+        on_phase: Optional callback fired with ``"qc:exact"``, ``"qc:fuzzy"``,
+            ``"qc:abbrev"`` and ``"qc:sapbert"`` at the start of each cascade
+            stage (``qc:abbrev`` only fires when Stage 3 actually runs, and
+            ``qc:sapbert`` only when Stage 4 does), used to drive fine-grained
             progress UX.
 
     Returns:
@@ -115,7 +164,7 @@ def fullmap_audit(
         needs the full set of survivors to batch-similarity-score them.
     """
     # The whole extra is checked up front, not just the package the next line needs:
-    # scikit-learn is imported here but sentence-transformers only in Stage 3, so a
+    # scikit-learn is imported here but sentence-transformers only in Stage 4, so a
     # half-installed extra would otherwise fail after the audit had already run.
     extras.require("qc", required_by="the QC audit")
 
@@ -169,37 +218,56 @@ def fullmap_audit(
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
-    # Quick exit if no rows need BioBERT QC.
+    # Quick exit if no rows need abbreviation/SapBERT QC.
     if pending.height == 0:
         return df.join(passed.select(col), on=col, how="semi").lazy()
 
-    # Stage 3: BioBERT embeddings (batched).
+    # Stage 3: abbreviation expansion (Schwartz-Hearst, deterministic).
     if on_phase is not None:
-        on_phase("qc:bert")
+        on_phase("qc:abbrev")
     originals = pending.get_column(cols[1]).to_list()
     preferreds = pending.get_column(cols[2]).to_list()
 
-    embeddings: object = get_biobert().encode(originals + preferreds)  # pyright: ignore
+    abbrev_mask: pl.Series = pl.Series(
+        out, [_is_abbrev(o, p) or _is_abbrev(p, o) for o, p in zip(originals, preferreds, strict=True)], dtype=pl.Boolean
+    )
+    masked_abbrev: pl.DataFrame = pending.with_columns(abbrev_mask)
+    pairs = pl.concat((passed, masked_abbrev), how="diagonal")
+
+    passed = pairs.filter(pl.col(out))
+    pending = pairs.filter(~pl.col(out))
+
+    # Quick exit if no rows need SapBERT QC.
+    if pending.height == 0:
+        return df.join(passed.select(col), on=col, how="semi").lazy()
+
+    # Stage 4: SapBERT embeddings (batched).
+    if on_phase is not None:
+        on_phase("qc:sapbert")
+    originals = pending.get_column(cols[1]).to_list()
+    preferreds = pending.get_column(cols[2]).to_list()
+
+    embeddings: object = get_sapbert().encode(originals + preferreds)  # pyright: ignore
     n: int = len(originals)
     similarity: object = cosine_similarity(embeddings[:n], embeddings[n:]).diagonal()  # pyright: ignore
 
-    pending = pending.with_columns(pl.Series("bert_similarity", similarity))  # pyright: ignore
+    pending = pending.with_columns(pl.Series("sapbert_similarity", similarity))  # pyright: ignore
 
-    bert_mask: pl.Series = pl.Series(out, similarity >= 0.5, dtype=pl.Boolean)  # pyright: ignore
-    BERT_fuzz: pl.DataFrame = pending.with_columns(bert_mask)
-    pairs = pl.concat((passed, BERT_fuzz), how="diagonal")
+    sapbert_mask: pl.Series = pl.Series(out, similarity >= SIMILARITY_THRESHOLD, dtype=pl.Boolean)  # pyright: ignore
+    masked_sapbert: pl.DataFrame = pending.with_columns(sapbert_mask)
+    pairs = pl.concat((passed, masked_sapbert), how="diagonal")
 
     passed = pairs.filter(pl.col(out))
     pending = pairs.filter(~pl.col(out))
 
     # Log rejected CURIEs.
     if log and pending.height > 0:
-        has_bert: bool = "bert_similarity" in pending.columns
+        has_sapbert: bool = "sapbert_similarity" in pending.columns
         curies: list[str] = pending.get_column(col).to_list()
         originals_list: list[str] = pending.get_column(original).to_list()
         preferreds_list: list[str] = pending.get_column(preferred).to_list()
         fuzz_partials: list[object] = pending.get_column("fuzz_partial").to_list()
-        bert_sims: list[object] = pending.get_column("bert_similarity").to_list() if has_bert else []
+        sapbert_sims: list[object] = pending.get_column("sapbert_similarity").to_list() if has_sapbert else []
 
         for i, c in enumerate(curies):
             fields: dict[str, object] = {
@@ -212,9 +280,9 @@ def fullmap_audit(
                 "hash": section_hash,
             }
             template: str = "QC rejected {curie!r}: original={original!r} preferred={preferred!r} col={col} fuzz={fuzz} config={config} hash={hash}"
-            if has_bert:
-                fields["bert"] = bert_sims[i]
-                template += " bert={bert}"
+            if has_sapbert:
+                fields["sapbert"] = sapbert_sims[i]
+                template += " sapbert={sapbert}"
             logger.info(template, **fields)  # pyright: ignore
 
     return df.join(passed.select(col), on=col, how="semi").lazy()

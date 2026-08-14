@@ -2730,12 +2730,12 @@ def test_compile_subgraph_threads_fine_phases_into_resolve_and_qc(monkeypatch: A
     }
     install_fake_fullmap(monkeypatch, rows)
 
-    # Safety net: this data passes QC at the exact stage, so BioBERT must never run (keeps the test offline).
-    class DummyBioBERT:
+    # Safety net: this data passes QC at the exact stage, so SapBERT must never run (keeps the test offline).
+    class DummySapBERT:
         def encode(self, values: list[str]) -> object:
-            raise AssertionError("Stage 3 (BioBERT) must not run for exact-match QC data")
+            raise AssertionError("Stage 4 (SapBERT) must not run for exact-match QC data")
 
-    monkeypatch.setattr("tablassert.qc.get_biobert", lambda: DummyBioBERT())
+    monkeypatch.setattr("tablassert.qc.get_sapbert", lambda: DummySapBERT())
 
     table_path, _ = write_text_section(
         tmp_path,
@@ -2757,9 +2757,10 @@ def test_compile_subgraph_threads_fine_phases_into_resolve_and_qc(monkeypatch: A
     # Per-column resolve sub-phases fire in spec order, before any QC sub-phase.
     assert phases.index("resolve:subject") < phases.index("resolve:object")
     assert phases.index("resolve:object") < phases.index("qc:exact")
-    # QC sub-phases fire for the audits: exact then fuzzy; bert never (exact-match quick exit).
+    # QC sub-phases fire for the audits: exact then fuzzy; abbrev/sapbert never (exact-match quick exit).
     assert phases.index("qc:exact") < phases.index("qc:fuzzy")
-    assert "qc:bert" not in phases
+    assert "qc:abbrev" not in phases
+    assert "qc:sapbert" not in phases
 
 
 def test_predicate_options_answers_which_predicates_keep_the_class() -> None:

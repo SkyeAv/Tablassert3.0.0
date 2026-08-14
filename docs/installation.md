@@ -62,7 +62,7 @@ pip install tablassert
 |---|---|---|
 | `rt` | Runtime-compatible Polars build | `polars[rtcompat]` |
 | `aria2` | Bundled aria2c downloader for `build-fullmap --aria2c` (Linux/Windows wheels only) | `aria2==0.0.1b0` (imports as `aria2c`, bundles aria2c) |
-| `qc` | QC runtime (exact → fuzzy → BioBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
+| `qc` | QC runtime (exact → fuzzy → abbreviation → SapBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
 | `agent` | Autonomous PMC → KG agent (`tablassert agent`) | `smolagents`, `litellm` |
 | `optimize` | GEPA prompt optimization (`tablassert agent --optimize`) | `dspy` |
 
@@ -201,7 +201,7 @@ uv python pin 3.11
 ### QC runtime
 
 If `build-kg --qc` reports a missing QC runtime, install the `qc` extra (torch / sentence-transformers
-BioBERT backend for the audit stage):
+SapBERT backend for the audit stage):
 
 ```bash
 pip install "tablassert[qc]"
