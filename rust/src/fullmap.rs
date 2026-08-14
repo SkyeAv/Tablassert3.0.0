@@ -10,16 +10,17 @@ use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 use std::fs::File;
 use std::hash::{BuildHasher, BuildHasherDefault};
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
+use tar::EntryType;
 use xxhash_rust::xxh3::xxh3_128;
 use xxhash_rust::xxh64::xxh64;
 
@@ -2458,6 +2459,438 @@ fn validate_schema(database: &ReadOnlyDatabase) -> PyResult<()> {
             ))
         }
         _ => Err(PyRuntimeError::new_err("unsupported fullmap redb schema")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Prebuilt archive extraction
+// ---------------------------------------------------------------------------
+
+/// Size of the file buffer feeding the zstd decoder during prebuilt archive
+/// extraction (~8 MiB): one large sequential read per chunk keeps the multi-GB
+/// decompression IO-bound instead of syscall-bound (the same capacity
+/// `RunWriter` uses for its spill writes).
+const EXTRACT_READ_BUFFER_BYTES: usize = 8 * 1024 * 1024;
+
+/// Best-effort `(detail: str)` progress report for `extract_prebuilt_fullmap`.
+/// The extraction runs with the GIL released, so the GIL is re-acquired briefly
+/// per call and the callback result is deliberately discarded — a failing
+/// Python callback must never kill the extraction (mirrors `Progress::call`).
+fn extract_report(progress: &Option<Py<PyAny>>, detail: &str) {
+    if let Some(cb) = progress {
+        Python::attach(|py| {
+            let _ = cb.call1(py, (detail,));
+        });
+    }
+}
+
+/// Validated RELATIVE member path for one archive entry.
+///
+/// `tar::Entry::path()` returns the header path AS-IS — tar 0.4's own
+/// traversal protection lives in `Entry::unpack_in`, which SILENTLY SKIPS
+/// escaping members instead of failing.  The contract here is to ERROR loudly,
+/// so the check is explicit: every component must be a plain name (`..`,
+/// absolute roots, and drive prefixes all fail the whole extraction).
+fn validated_entry_path<R: Read>(entry: &tar::Entry<'_, R>) -> PyResult<PathBuf> {
+    use std::path::Component;
+
+    let raw = entry.path().map_err(|e| {
+        py_err(format!(
+            "prebuilt archive has an entry with an unreadable path: {e}"
+        ))
+    })?;
+    let mut rel = PathBuf::new();
+    for component in raw.components() {
+        match component {
+            Component::CurDir => {} // `./` is harmless; normalize it away
+            Component::Normal(part) => rel.push(part),
+            other => {
+                return Err(py_err(format!(
+                    "prebuilt archive entry {} has an unsafe path ({other:?}); \
+                     entries must be relative with no '..' components",
+                    raw.display()
+                )));
+            }
+        }
+    }
+    if rel.as_os_str().is_empty() {
+        return Err(py_err(format!(
+            "prebuilt archive entry {} has an empty path",
+            raw.display()
+        )));
+    }
+    Ok(rel)
+}
+
+/// The shard index encoded in a `.s<N>.redb` file name (matches
+/// `\.s(\d+)\.redb$`), or `None` for a non-shard `.redb` (primary candidate).
+fn shard_index_of_name(file_name: &str) -> Option<usize> {
+    let stem = file_name.strip_suffix(".redb")?;
+    let marker = stem.rfind(".s")?;
+    let digits = &stem[marker + 2..];
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+/// Recursively collect the `.redb` files under `dir` (archive members may be
+/// nested in subdirectories), classifying each as a shard (`s<N>` -> index) or
+/// a primary candidate.  A duplicate shard index is an error, never a
+/// silent overwrite.
+fn scan_extracted_redb(
+    dir: &Path,
+    shards: &mut BTreeMap<usize, PathBuf>,
+    primaries: &mut Vec<PathBuf>,
+) -> PyResult<()> {
+    let read_dir = std::fs::read_dir(dir).map_err(|e| {
+        py_err(format!(
+            "failed to scan extracted prebuilt archive dir {}: {e}",
+            dir.display()
+        ))
+    })?;
+    for item in read_dir {
+        let item = item.map_err(py_err)?;
+        let path = item.path();
+        let file_type = item.file_type().map_err(py_err)?;
+        if file_type.is_dir() {
+            scan_extracted_redb(&path, shards, primaries)?;
+        } else if file_type.is_file() && path.extension().and_then(|x| x.to_str()) == Some("redb") {
+            let name = item.file_name().to_string_lossy().into_owned();
+            match shard_index_of_name(&name) {
+                Some(index) => {
+                    if shards.contains_key(&index) {
+                        return Err(py_err(format!(
+                            "prebuilt archive contains a duplicate shard s{index} at {}",
+                            path.display()
+                        )));
+                    }
+                    shards.insert(index, path);
+                }
+                None => primaries.push(path),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Stream-extract, validate, and atomically rename one prebuilt fullmap
+/// archive (the shared tail of `extract_prebuilt_fullmap`; see its doc for the
+/// full contract).  On success the temp dir is removed last; the caller cleans
+/// it up on error.
+fn extract_validate_rename(
+    archive: &Path,
+    temp_dir: &Path,
+    output: &Path,
+    progress: &Option<Py<PyAny>>,
+) -> PyResult<()> {
+    // Stream File -> 8 MiB BufReader -> zstd decoder -> tar entries; the
+    // decompressed tar is NEVER materialized on disk.
+    let file = File::open(archive).map_err(|e| {
+        py_err(format!(
+            "failed to open prebuilt archive {}: {e}",
+            archive.display()
+        ))
+    })?;
+    let reader = BufReader::with_capacity(EXTRACT_READ_BUFFER_BYTES, file);
+    let decoder = zstd::Decoder::new(reader).map_err(|e| {
+        py_err(format!(
+            "prebuilt archive {} is not valid zstd: {e}",
+            archive.display()
+        ))
+    })?;
+    let mut tar_archive = tar::Archive::new(decoder);
+    let entries = tar_archive.entries().map_err(|e| {
+        py_err(format!(
+            "failed to read tar entries from prebuilt archive {}: {e}",
+            archive.display()
+        ))
+    })?;
+
+    for entry in entries {
+        let mut entry = entry.map_err(|e| {
+            py_err(format!(
+                "failed to read an entry of prebuilt archive {}: {e}",
+                archive.display()
+            ))
+        })?;
+        let rel = validated_entry_path(&entry)?;
+        extract_report(progress, &format!("extracting {}", rel.display()));
+        let dest = temp_dir.join(&rel);
+        match entry.header().entry_type() {
+            EntryType::Directory => {
+                std::fs::create_dir_all(&dest).map_err(|e| {
+                    py_err(format!(
+                        "failed to create directory {} from prebuilt archive: {e}",
+                        dest.display()
+                    ))
+                })?;
+            }
+            // `Continuous` is the UStar 'high-performance' type, specified to
+            // be treated as a regular file.  `GNUSparse` matters in practice:
+            // redb pre-allocates its files, so GNU tar and rust-tar both store
+            // the primary/shard DBs as sparse entries, and the tar reader
+            // transparently expands them here (holes read as zeros) — the
+            // landed file is the fully-materialized database.
+            EntryType::Regular | EntryType::Continuous | EntryType::GNUSparse => {
+                if let Some(dir) = dest.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| {
+                        py_err(format!(
+                            "failed to create directory {} from prebuilt archive: {e}",
+                            dir.display()
+                        ))
+                    })?;
+                }
+                // Copy through an 8 MiB buffer: `Entry::unpack` writes with
+                // std's 8 KB default, which costs millions of write syscalls
+                // on a multi-GB archive.
+                let file = File::create(&dest).map_err(|e| {
+                    py_err(format!(
+                        "failed to create {} while extracting prebuilt archive: {e}",
+                        dest.display()
+                    ))
+                })?;
+                let mut out = BufWriter::with_capacity(EXTRACT_READ_BUFFER_BYTES, file);
+                std::io::copy(&mut entry, &mut out).map_err(|e| {
+                    py_err(format!(
+                        "failed to extract {} from prebuilt archive {}: {e}",
+                        rel.display(),
+                        archive.display()
+                    ))
+                })?;
+                out.flush().map_err(|e| {
+                    py_err(format!(
+                        "failed to finish writing {} from prebuilt archive: {e}",
+                        dest.display()
+                    ))
+                })?;
+                // Propagate the archived mode (best effort: an unreadable mode
+                // never blocks landing the bytes).
+                if let Ok(mode) = entry.header().mode() {
+                    let perms = std::fs::Permissions::from_mode(mode & 0o777);
+                    let _ = std::fs::set_permissions(&dest, perms);
+                }
+            }
+            other => {
+                return Err(py_err(format!(
+                    "prebuilt archive entry {} has unsupported type {other:?}; \
+                     the archive must contain only directories and regular \
+                     (including sparse-encoded) redb files",
+                    rel.display()
+                )));
+            }
+        }
+    }
+
+    // Locate the primary + shards among the extracted members (they may be
+    // nested in subdirectories inside the archive).
+    let mut shards: BTreeMap<usize, PathBuf> = BTreeMap::new();
+    let mut primaries: Vec<PathBuf> = Vec::new();
+    scan_extracted_redb(temp_dir, &mut shards, &mut primaries)?;
+    primaries.sort();
+    let primary = primaries
+        .iter()
+        .find(|p| p.file_name() == Some(std::ffi::OsStr::new("fullmap.redb")))
+        .or_else(|| primaries.first())
+        .ok_or_else(|| {
+            py_err(format!(
+                "prebuilt archive {} contains no primary .redb database \
+                 (expected a non-shard member, preferring `fullmap.redb`)",
+                archive.display()
+            ))
+        })?
+        .clone();
+
+    extract_report(progress, "validating");
+
+    // Validate the extracted bundle against the force-build contract BEFORE
+    // any rename, reusing the exact read-path helpers so the contract cannot
+    // drift: exact v5 schema (older tags are rejected loudly), a parseable
+    // build_id, and the META-advertised shard count.
+    let validation_ctx = |err: PyErr| {
+        py_err(format!(
+            "prebuilt archive {} failed validation: {err}",
+            archive.display()
+        ))
+    };
+    let database = open_read_only(&primary).map_err(&validation_ctx)?;
+    validate_schema(&database).map_err(&validation_ctx)?;
+    let build_id = read_build_id(&database).map_err(&validation_ctx)?;
+    let shard_count = shard_count_of(&database).map_err(&validation_ctx)?;
+    drop(database);
+
+    // The archive must contain EXACTLY s0..s{shard_count-1}: a gap or an
+    // extra shard (e.g. s16 alongside a 16-shard primary) means a torn or
+    // wrong archive — refuse instead of landing a broken bundle.
+    let missing: Vec<usize> = (0..shard_count)
+        .filter(|index| !shards.contains_key(index))
+        .collect();
+    let extra: Vec<usize> = shards
+        .keys()
+        .copied()
+        .filter(|index| *index >= shard_count)
+        .collect();
+    if !missing.is_empty() || !extra.is_empty() {
+        return Err(py_err(format!(
+            "prebuilt archive {} has an inconsistent shard set: expected s0..s{}, \
+             missing {missing:?}, unexpected {extra:?} — re-download the archive or \
+             force a local rebuild with 'tablassert build-fullmap'",
+            archive.display(),
+            shard_count - 1
+        )));
+    }
+
+    // Every shard must open read-only and carry the primary's build_id
+    // (mirrors the bundle-consistency invariant the read path enforces).
+    for index in 0..shard_count {
+        let shard = &shards[&index];
+        let shard_db = open_read_only(shard).map_err(|e| {
+            py_err(format!(
+                "shard s{index} ({}) of prebuilt archive {} is not a readable fullmap DB: {e}",
+                shard.display(),
+                archive.display()
+            ))
+        })?;
+        let shard_build_id = read_build_id(&shard_db).map_err(|e| {
+            py_err(format!(
+                "shard s{index} ({}) of prebuilt archive {}: {e}",
+                shard.display(),
+                archive.display()
+            ))
+        })?;
+        if shard_build_id != build_id {
+            return Err(py_err(format!(
+                "shard s{index} of prebuilt archive {} has build_id {shard_build_id} \
+                 but the primary has {build_id}; the archive is inconsistent",
+                archive.display()
+            )));
+        }
+    }
+
+    // Every check passed: rename into place atomically (the temp dir lives on
+    // the same filesystem as the output).  The primary moves first, mirroring
+    // the build's commit order; rename replaces any existing file atomically.
+    std::fs::rename(&primary, output).map_err(|e| {
+        py_err(format!(
+            "failed to move extracted primary into place at {}: {e}",
+            output.display()
+        ))
+    })?;
+    for index in 0..shard_count {
+        let dest = shard_path(output, index);
+        std::fs::rename(&shards[&index], &dest).map_err(|e| {
+            py_err(format!(
+                "failed to move extracted shard s{index} into place at {}: {e}",
+                dest.display()
+            ))
+        })?;
+    }
+
+    // Guaranteed cleanup on success: the temp dir is now empty.
+    std::fs::remove_dir_all(temp_dir).map_err(|e| {
+        py_err(format!(
+            "extraction succeeded but cleaning up {} failed: {e}",
+            temp_dir.display()
+        ))
+    })?;
+    Ok(())
+}
+
+/// Extract a prebuilt fullmap archive (`fullmap.tar.zst`) into `output` plus
+/// its sibling shard files.
+///
+/// Streams `File -> BufReader -> zstd decoder -> tar entries` (the multi-GB
+/// decompressed tar is never materialized on disk) into a fresh dot-prefixed
+/// temp dir inside `output`'s directory (same filesystem -> atomic renames),
+/// then VALIDATES the extracted bundle against the same contract the read path
+/// enforces — exact v5 schema, a parseable `build_id`, the META-advertised
+/// shard count with no gaps or extras, and a matching `build_id` in every
+/// shard — BEFORE renaming anything into place: primary -> `output`, shard
+/// `i` -> `<output stem>.s<i>.redb`.  A failing validation therefore never
+/// lands a broken DB at the output path, and the temp dir is removed on every
+/// exit path (guaranteed on success, best-effort on error, so a failed
+/// extraction never leaks multi-GB partials).  Runs with the GIL released;
+/// the optional `progress` callback receives `(detail: str)` updates
+/// (`"opening archive"`, `"extracting <entry>"`, `"validating"`) and is
+/// best-effort.
+#[pyfunction]
+#[pyo3(signature = (archive, output, progress=None))]
+pub fn extract_prebuilt_fullmap(
+    py: Python<'_>,
+    archive: PathBuf,
+    output: PathBuf,
+    progress: Option<Py<PyAny>>,
+) -> PyResult<()> {
+    // Release the GIL for the whole extract->validate->rename so the multi-GB
+    // streaming extraction never blocks the interpreter; progress callbacks
+    // re-acquire it briefly (see `extract_report`).
+    py.detach(|| extract_prebuilt_fullmap_inner(archive, output, progress))
+}
+
+fn extract_prebuilt_fullmap_inner(
+    archive: PathBuf,
+    output: PathBuf,
+    progress: Option<Py<PyAny>>,
+) -> PyResult<()> {
+    extract_report(&progress, "opening archive");
+
+    // A missing or non-file archive errors BEFORE any extraction work.
+    let meta = std::fs::metadata(&archive).map_err(|e| {
+        py_err(format!(
+            "prebuilt archive {} not found: {e}",
+            archive.display()
+        ))
+    })?;
+    if !meta.is_file() {
+        return Err(py_err(format!(
+            "prebuilt archive {} is not a regular file",
+            archive.display()
+        )));
+    }
+
+    let parent = output
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    std::fs::create_dir_all(&parent).map_err(|e| {
+        py_err(format!(
+            "failed to create output directory {}: {e}",
+            parent.display()
+        ))
+    })?;
+
+    // Extract into a fresh dot-prefixed temp dir INSIDE the output directory:
+    // the same filesystem, so the final primary/shard renames are atomic.  A
+    // stale dir from a crashed prior run is removed first, and the dir never
+    // leaks — cleanup is guaranteed on success and best-effort on every error
+    // path (a failed extraction must not leave multi-GB partials behind).
+    let stem = output
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "fullmap".to_string());
+    let temp_dir = parent.join(format!(".{stem}.prebuilt-extract.d"));
+    if temp_dir.exists() {
+        std::fs::remove_dir_all(&temp_dir).map_err(|e| {
+            py_err(format!(
+                "failed to remove stale extraction dir {}: {e}",
+                temp_dir.display()
+            ))
+        })?;
+    }
+    std::fs::create_dir_all(&temp_dir).map_err(|e| {
+        py_err(format!(
+            "failed to create extraction dir {}: {e}",
+            temp_dir.display()
+        ))
+    })?;
+
+    match extract_validate_rename(&archive, &temp_dir, &output, &progress) {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            // Best-effort: never leak multi-GB partials from a failed run.
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            Err(err)
+        }
     }
 }
 
