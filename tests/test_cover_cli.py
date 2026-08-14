@@ -9,6 +9,7 @@ stubbed, and all artifacts land in ``tmp_path``. No network, no real Rust build.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import shutil
@@ -997,3 +998,202 @@ def test_build_fullmap_force_flag_parses() -> None:
     assert parse(["build-fullmap", "-f"])["force"] is True
     with pytest.raises(UnknownOptionError):
         parse(["build-fullmap", "--no-force"])
+
+
+# --- REAL end-to-end prebuilt tests: the Rust extractor runs unmocked (US-004) ---
+
+# BABEL-format NDJSON lines mirroring the shapes pinned in rust/tests/common/mod.rs
+# (CLASS_LINES / SYNONYM_LINES). Two class + two synonym gzip files prove the
+# multi-file build path; the names deliberately yield level-one lowercase terms that
+# resolve to KNOWN CURIEs (cross-checked against rust/tests/build_golden.rs).
+_REAL_CLASS_LINES_HGNC: tuple[str, ...] = ('{"id":"HGNC:1","equivalent_identifiers":[{"identifier":"NCBIGene:100"}]}', '{"id":"HGNC:6"}')
+_REAL_CLASS_LINES_MONDO: tuple[str, ...] = ('{"id":"MONDO:2","equivalent_identifiers":[{"identifier":"DOID:999"}]}',)
+_REAL_SYNONYM_LINES_HGNC: tuple[str, ...] = (
+    '{"curie":"HGNC:1","preferred_name":"Alpha Gene","names":["Alpha Gene","alpha"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}',
+    '{"curie":"HGNC:2","preferred_name":"café","names":["café","naïve"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}',
+    '{"curie":"HGNC:6","preferred_name":"Shared Hit","names":["shared"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}',
+    '{"curie":"HGNC:10","preferred_name":"Multi A","names":["multi","alpha"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}',
+)
+_REAL_SYNONYM_LINES_MONDO: tuple[str, ...] = (
+    '{"curie":"MONDO:2","preferred_name":"Shared Disease","names":["shared"],"types":["Disease"],"taxa":["NCBITaxon:0"]}',
+)
+# Level-one lowercase forms of the fixture names/preferred names above; every one
+# resolves (golden expectations: alpha -> HGNC:1+HGNC:10, alpha gene -> HGNC:1,
+# café/naïve -> HGNC:2, shared -> HGNC:6+MONDO:2, multi -> HGNC:10).
+_REAL_RESOLVING_TERMS: list[str] = ["alpha", "alpha gene", "café", "naïve", "shared", "multi"]
+
+
+def _write_gzip_ndjson(path: Path, lines: tuple[str, ...]) -> Path:
+    """Write BABEL-format gzip NDJSON (the on-disk shape ``build_fullmap_db`` downloads)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return path
+
+
+def _build_real_force_fullmap(directory: Path) -> Path:
+    """Build a REAL fullmap with ``rs.build_fullmap_db`` and return the primary path.
+
+    Two gzip class files + two gzip synonym files exercise the multi-file, gzip-aware
+    build path exactly as ``build_fullmap_pipeline`` Stage 3 does.
+    """
+    classes: list[Path] = [
+        _write_gzip_ndjson(directory / "classes" / "HGNC.ndjson.gz", _REAL_CLASS_LINES_HGNC),
+        _write_gzip_ndjson(directory / "classes" / "MONDO.ndjson.gz", _REAL_CLASS_LINES_MONDO),
+    ]
+    synonyms: list[Path] = [
+        _write_gzip_ndjson(directory / "synonyms" / "HGNC.ndjson.gz", _REAL_SYNONYM_LINES_HGNC),
+        _write_gzip_ndjson(directory / "synonyms" / "MONDO.ndjson.gz", _REAL_SYNONYM_LINES_MONDO),
+    ]
+    output: Path = directory / "force" / "fullmap.redb"
+    rs.build_fullmap_db(output, classes, synonyms, threads=2)
+    return output
+
+
+def _force_shards(primary: Path) -> list[Path]:
+    """The 16 shard files ``build_fullmap_db`` lands beside the primary."""
+    return [primary.parent / f"{primary.stem}.s{index}.redb" for index in range(16)]
+
+
+def _pack_fullmap_bundle(archive: Path, files: list[Path]) -> None:
+    """Pack redb files into a real ``tar.zst`` under their basenames (root-level members)."""
+    _build_tiny_tar_zst(archive, {path.name: path.read_bytes() for path in files})
+
+
+def _stage_prebuilt_download(monkeypatch: pytest.MonkeyPatch, archive: Path) -> None:
+    """Point ``fetch_prebuilt_fullmap``'s download seam at a locally staged archive.
+
+    The fake downloader copies the staged bytes into the download dir as the requested
+    filename (same idiom as ``_write_archive``); the checksum fetch returns ``None`` so
+    verification is skipped, like the existing missing-checksum orchestration tests.
+    """
+
+    def _fake_download(filename: str, url: str, destination: Path, on_progress: object = None) -> Path:
+        destination.mkdir(parents=True, exist_ok=True)
+        path: Path = destination / filename
+        shutil.copyfile(archive, path)
+        return path
+
+    monkeypatch.setattr(cli, "download_babel_file", _fake_download)
+    monkeypatch.setattr(cli, "_fetch_prebuilt_sha256", lambda url: None)
+
+
+def _sorted_lookup_rows(db: Path, terms: list[str]) -> list[dict[str, Any]]:
+    """``lookup_fullmap_terms`` rows sorted by (term, CURIE) so order cannot flake."""
+    return sorted(rs.lookup_fullmap_terms(db, terms), key=lambda row: (row["term"], row["CURIE"]))
+
+
+def test_fetch_prebuilt_fullmap_real_archive_matches_force_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE equivalence contract: an extracted prebuilt equals a force build, for real.
+
+    WHY: users must be able to trust "download prebuilt" as a byte-faithful substitute
+    for hours of BABEL building. This pins that promise through the REAL Rust pipeline:
+    ``rs.build_fullmap_db`` builds a genuine 17-file bundle from gzip NDJSON, the bundle
+    is packed into a real ``tar.zst``, the download is faked (bytes only, no network),
+    and ``fetch_prebuilt_fullmap`` runs the REAL streaming zstd+tar extractor with ZERO
+    extraction monkeypatching — then both DBs must answer every lookup identically.
+    A custom ``--output`` stem (``mymap``) proves stem-naming flows through the Rust
+    rename path.
+    """
+    force_db: Path = _build_real_force_fullmap(tmp_path / "build")
+    staging: Path = tmp_path / "staging"
+    staging.mkdir()
+    archive: Path = staging / "fullmap.tar.zst"
+    _pack_fullmap_bundle(archive, [force_db, *_force_shards(force_db)])
+    _stage_prebuilt_download(monkeypatch, archive)
+
+    output: Path = tmp_path / "extracted" / "mymap.redb"
+    cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+
+    # Exactly the primary + s0..s15 renamed after the CUSTOM stem — no other redb files.
+    expected: list[str] = sorted(["mymap.redb", *(f"mymap.s{index}.redb" for index in range(16))])
+    landed: list[str] = sorted(path.name for path in output.parent.iterdir() if path.suffix == ".redb")
+    assert landed == expected
+    assert not (output.parent / "fullmap.tar.zst").exists()  # archive deleted after extraction
+    assert not (output.parent / ".mymap.prebuilt-extract.d").exists()  # no temp-dir residue
+
+    # The extracted DB answers every lookup EXACTLY like the force-built one.
+    extracted_rows: list[dict[str, Any]] = _sorted_lookup_rows(output, _REAL_RESOLVING_TERMS)
+    force_rows: list[dict[str, Any]] = _sorted_lookup_rows(force_db, _REAL_RESOLVING_TERMS)
+    assert extracted_rows  # sanity: the fixture terms really do resolve
+    assert extracted_rows == force_rows
+    # Spot-pin semantic content so a silent empty-schema DB cannot pass by equality alone.
+    assert {(row["term"], row["CURIE"]) for row in extracted_rows} >= {
+        ("alpha", "HGNC:1"),
+        ("alpha", "HGNC:10"),
+        ("alpha gene", "HGNC:1"),
+        ("café", "HGNC:2"),
+        ("naïve", "HGNC:2"),
+        ("shared", "HGNC:6"),
+        ("shared", "MONDO:2"),
+        ("multi", "HGNC:10"),
+    }
+
+
+def test_fetch_prebuilt_fullmap_real_corrupt_archive_keeps_archive_and_lands_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Garbage (non-zstd) archive bytes fail loud through the real Rust seam.
+
+    WHY: a torn download must never leave a half-extracted "DB" the read path would
+    open. The seam wraps the Rust error as ``PrebuiltFullmapUnavailable`` (triggering
+    the force-build fallback), nothing lands beside the output, and — by design for
+    extraction failures — the archive is KEPT so the failure is diagnosable.
+    """
+    archive: Path = tmp_path / "staging" / "fullmap.tar.zst"
+    archive.parent.mkdir()
+    archive.write_bytes(b"this is definitely not a zstd stream")
+    _stage_prebuilt_download(monkeypatch, archive)
+
+    output: Path = tmp_path / "extracted" / "mymap.redb"
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="failed to extract prebuilt archive"):
+        cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+
+    assert not output.exists()
+    assert [path for path in output.parent.iterdir() if path.suffix == ".redb"] == []
+    assert not (output.parent / ".mymap.prebuilt-extract.d").exists()
+    assert (output.parent / "fullmap.tar.zst").exists()  # kept on extraction failure
+
+
+def test_fetch_prebuilt_fullmap_real_shards_only_archive_rejects_missing_primary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An archive with ONLY the 16 shards (no primary) is rejected before renaming.
+
+    WHY: shard files are useless without the primary (CURIES/PREFIXES/META live there).
+    A mispackaged archive must fail validation with a named cause, not install an
+    orphan shard set.
+    """
+    force_db: Path = _build_real_force_fullmap(tmp_path / "build")
+    staging: Path = tmp_path / "staging"
+    staging.mkdir()
+    archive: Path = staging / "fullmap.tar.zst"
+    _pack_fullmap_bundle(archive, _force_shards(force_db))  # no primary member
+    _stage_prebuilt_download(monkeypatch, archive)
+
+    output: Path = tmp_path / "extracted" / "mymap.redb"
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match="no primary"):
+        cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+
+    assert not output.exists()
+    assert [path for path in output.parent.iterdir() if path.suffix == ".redb"] == []
+    assert (output.parent / "fullmap.tar.zst").exists()  # kept on extraction failure
+
+
+def test_fetch_prebuilt_fullmap_real_archive_missing_one_shard_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Primary + only s0..s14 is an inconsistent shard set and must not land.
+
+    WHY: lookups hashing into the absent shard would fail at read time, silently
+    corrupting resolution. The Rust validator compares the archive's shard set
+    against the primary's META-advertised count BEFORE any rename, naming the gap.
+    """
+    force_db: Path = _build_real_force_fullmap(tmp_path / "build")
+    staging: Path = tmp_path / "staging"
+    staging.mkdir()
+    archive: Path = staging / "fullmap.tar.zst"
+    _pack_fullmap_bundle(archive, [force_db, *_force_shards(force_db)[:15]])  # drop s15
+    _stage_prebuilt_download(monkeypatch, archive)
+
+    output: Path = tmp_path / "extracted" / "mymap.redb"
+    with pytest.raises(cli.PrebuiltFullmapUnavailable, match=r"inconsistent shard set.*missing \[15\]"):
+        cli.fetch_prebuilt_fullmap(output, PipelineProgress(total_stages=2), version="v")
+
+    assert not output.exists()
+    assert [path for path in output.parent.iterdir() if path.suffix == ".redb"] == []
+    assert (output.parent / "fullmap.tar.zst").exists()  # kept on extraction failure
