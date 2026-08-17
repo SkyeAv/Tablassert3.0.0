@@ -1079,18 +1079,20 @@ def test_clean_numeric_idempotent_on_float64() -> None:
     assert twice.schema["p_value"] == pl.Float64
 
 
-def test_format_numeric_emits_p_values_as_numbers() -> None:
-    """P-value columns are emitted as real JSON numbers, not formatted strings.
+def test_format_numeric_emits_p_values_as_scientific_strings() -> None:
+    """P-value columns are emitted as controlled scientific-notation strings.
 
-    Biolink types ``p_value`` / ``adjusted_p_value`` as ``float``; writing
-    ``"1.0000e-08"`` yields a file strict consumers reject even though Pydantic's lax
-    mode happens to coerce it back.
+    Notation is part of the output contract (the tutorial's edge example shows
+    ``"p_value":"1.0000e-03"``); Biolink's ``float`` typing is satisfied by Pydantic's
+    lax coercion, so the notation control costs no KGX validity. The
+    ``numeric_slot_kind`` float short-circuit must never fire for p-value columns.
     """
     lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "0.001"], "adjusted_p_value": ["0.0001", "0.1", "0.2"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["p_value"].to_list() == [1e-08, 0.05, 0.001]
-    assert result["adjusted_p_value"].to_list() == [0.0001, 0.1, 0.2]
-    assert result.schema["p_value"] == pl.Float64
+    assert result["p_value"].to_list() == ["1.0000e-08", "5.0000e-02", "1.0000e-03"]
+    assert result["adjusted_p_value"].to_list() == ["1.0000e-04", "1.0000e-01", "2.0000e-01"]
+    assert result.schema["p_value"] == pl.String
+    assert result.schema["adjusted_p_value"] == pl.String
 
 
 def test_format_numeric_decimal_general() -> None:
@@ -1105,7 +1107,7 @@ def test_format_numeric_preserves_nulls() -> None:
     """format_numeric preserves nulls as null."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "N/A", "0.05"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["p_value"].to_list() == [1e-08, None, 0.05]
+    assert result["p_value"].to_list() == ["1.0000e-08", None, "5.0000e-02"]
 
 
 def test_format_numeric_cleans_float_noise() -> None:
@@ -1124,14 +1126,22 @@ def test_format_numeric_noop_without_numeric_columns() -> None:
 
 
 def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
-    """cleaned and formatted null numeric values are stripped from NDJSON rows."""
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["BRCA1", "TP53"], "p_value": ["1e-8", "N/A"], "effect_size": ["0.85", "0.42"]}).lazy()
+    """cleaned and formatted null numeric values are stripped from NDJSON rows.
+
+    A zero p-value formats to ``"0.0000e+00"`` — a non-empty string, so it survives
+    ``strip_nulls`` instead of vanishing like the pre-#71 bug.
+    """
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"subject": ["BRCA1", "TP53", "EGFR"], "p_value": ["1e-8", "N/A", "0"], "effect_size": ["0.85", "0.42", "1.0"]}
+    ).lazy()
     formatted: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     rows: list[dict[str, Any]] = [strip_nulls(r) for r in formatted.iter_rows(named=True)]
-    assert rows[0] == {"subject": "BRCA1", "p_value": 1e-08, "effect_size": "0.85"}
+    assert rows[0] == {"subject": "BRCA1", "p_value": "1.0000e-08", "effect_size": "0.85"}
     assert "p_value" not in rows[1]
     assert rows[1]["subject"] == "TP53"
     assert rows[1]["effect_size"] == "0.42"
+    assert rows[2]["p_value"] == "0.0000e+00"  # zero survives strip_nulls
+    assert rows[2]["effect_size"] == "1"
 
 
 def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
@@ -2542,7 +2552,7 @@ def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch
     assert result["original_subject"] == "BRCA-1 [alias]"
     assert result["object"] == "HGNC:11998"
     assert result["original_object"] == "TP 53"
-    assert result["p_value"] == 1e-08
+    assert result["p_value"] == "1.0000e-08"
     # Both slots are unattached in biolink-model 4.4.3, so they are preserved on the
     # inlined StudyResult instead of being emitted unvalidatably on the edge.
     described: str = result["has_supporting_studies"][next(iter(result["has_supporting_studies"]))]["has_study_results"][0]["description"]

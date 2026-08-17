@@ -592,15 +592,19 @@ def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
 def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Normalize numeric annotation columns for output.
 
-    Columns that map to a numeric Biolink slot are emitted as real JSON numbers:
-    ``p_value`` and ``adjusted_p_value`` are typed ``float`` in the model (and
-    ``supporting_study_size`` ``integer`` once ``biolink/biolink-model#1770`` lands),
-    so writing ``"6.5200e-06"`` produces a file that strict consumers reject even
-    though Pydantic's lax mode happens to coerce it.
+    P-value columns (any name containing ``p_value``) are always emitted as
+    controlled scientific-notation strings (``{:.4e}``, e.g. ``"1.0000e-03"``):
+    notation is part of the output contract (see the tutorial's edge example), and
+    shortest-repr JSON numbers would render the same values as ``0.0001`` / ``0.05``.
+    Biolink types ``p_value`` / ``adjusted_p_value`` as ``float``, but the validation
+    here and downstream runs in Pydantic's lax mode, which coerces the numeric string
+    back -- so the notation control costs no KGX validity.
 
-    Columns with no numeric Biolink slot keep the controlled string notation --
-    p-value-like names use scientific (``{:.4e}``), others decimal general
-    (``{:.4g}``) -- because they end up in human-readable text (the inlined
+    Remaining numeric columns (``effect_size`` / ``supporting_study_size``) that a
+    future biolink model types ``int`` / ``float`` (e.g. once
+    ``biolink/biolink-model#1770`` / ``#1774`` land) are emitted as real JSON numbers;
+    today's untyped ones keep the controlled decimal general string notation
+    (``{:.4g}``) because they end up in human-readable text (the inlined
     ``StudyResult`` description or ``supporting_text``). Null values stay null.
 
     Args:
@@ -617,15 +621,20 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     # Collection point: batch formatting for notation control.
     df: pl.DataFrame = lf.collect()
     for c in numeric_columns(df.columns):
-        kind: str | None = numeric_slot_kind(c)
-        if kind == "float":
-            df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
-            continue
-        if kind == "int":
-            df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).round().cast(pl.Int64, strict=False).alias(c))
-            continue
         df = df.with_columns(pl.col(c).cast(pl.Float64, strict=False).alias(c))
-        fmt: str = "{:.4e}" if "p_value" in c.lower() else "{:.4g}"
+        if "p_value" in c.lower():
+            # Scientific notation is the p-value output contract; the branch ordering is
+            # the guard, so the numeric-slot short-circuits below can never fire for
+            # these columns even though the model types them ``float``.
+            fmt: str = "{:.4e}"
+        else:
+            kind: str | None = numeric_slot_kind(c)
+            if kind == "float":
+                continue
+            if kind == "int":
+                df = df.with_columns(pl.col(c).round().cast(pl.Int64, strict=False).alias(c))
+                continue
+            fmt = "{:.4g}"
         formatted: list[str | None] = [None if v is None else fmt.format(v) for v in df[c].to_list()]
         df = df.with_columns(pl.Series(c, formatted))
     return df.lazy()
