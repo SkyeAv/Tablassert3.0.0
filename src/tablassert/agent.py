@@ -2288,10 +2288,11 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
   application numbers, `approval_ids` is a deliberate translator-ingest pass-through: keep
   the pipe-joined value as a scalar and do not add `split_by`.
 - MULTIVALUED slots (`has_evidence` and friends) take a real JSON array, never a joined string:
-  declare the annotation `{method: column, encoding: <letter>, split_by: "|"}` so each cell's
-  delimited text splits into its own per-row array. `split_by` is the ONLY multivalued encoding
-  — there is no literal-list method, and a scalar bound for a multivalued slot ships to consumers
-  as one unusable "a|b|c" blob.
+  `split_by` is the ONLY multivalued encoding — there is no literal-list method. INSPECT the
+  column's cells first (read_table shows them); the separator they ACTUALLY use — `|`, `,`, or
+  `;` — is the one you declare: `{method: column, encoding: <letter>, split_by: "<separator>"}`.
+  A SINGLE-value cell gets NO `split_by`: its scalar wraps into a one-element array, the correct
+  shape. Cells that DO join multiple values but OMIT `split_by` ship as one unusable joined blob.
 - `effect_size` / `effect_type` are deliberate Tablassert extras pending biolink-model#1774;
   `approval_ids` is a deliberate translator-ingest pass-through extra. All three are EXEMPT from
   the validity score: a `biolink_valid_pct` below 1.0 is never caused by these intentional fields.
