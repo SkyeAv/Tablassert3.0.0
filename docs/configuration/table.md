@@ -220,13 +220,15 @@ At runtime those letters are converted internally to Polars column names such as
 annotations:
   - annotation: has_evidence
     method: column
-    encoding: D        # cells like "EFO:0001|EFO:0002"
-    split_by: "|"      # -> ["EFO:0001", "EFO:0002"], per row
+    encoding: D        # cells like "EFO:0001,EFO:0002"
+    split_by: ","      # -> ["EFO:0001", "EFO:0002"], per row
 ```
+
+The separator is a property of the data, not of the slot. Inspect the table's cells and set `split_by` to the separator the cells actually use: `","` for comma-joined ids like `"EFO:0001,EFO:0002"` above, `";"` for `"EFO:0001;EFO:0002"`, `"|"` only if the cells happen to be pipe-joined.
 
 `split_by` is the one multivalued encoding: every row's cell becomes its own JSON array, so an array that differs per row — the shape a literal can never express — is declared directly. Values are trimmed and blanks dropped; a null cell stays null.
 
-Reach for it whenever an aggregated column feeds a multivalued Biolink slot. Without it the joined cell stays a scalar, and because `prune_to_class` wraps a scalar bound for a uniformly multivalued slot into a one-element list, the edge emits `has_evidence: ["EFO:0001|EFO:0002"]` — structurally valid Biolink that hands consumers one unusable blob instead of two ids.
+Single-value cells need no `split_by` at all: `prune_to_class` wraps a scalar bound for a uniformly multivalued slot into a one-element list, so a lone `EFO:0001` cell already emits as `has_evidence: ["EFO:0001"]`. Reach for it when the cells actually join multiple values. Leave such a column without `split_by` and the joined cell stays a scalar: the same wrapping yields a one-element list holding the whole string — `has_evidence: ["EFO:0001;EFO:0002"]` — structurally valid Biolink that hands consumers one unusable blob instead of two ids.
 
 `split_by` requires `method: column` and rejects an empty separator, which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator. (The earlier annotation `delimiter` field — unrelated to the `source.delimiter` CSV/TSV separator — was replaced by `split_by`.)
 
@@ -460,7 +462,7 @@ Optional edge attributes (statistical metadata, notes, etc.).
 | `split_by` | String | No | Separator splitting each cell of a `method: column` encoding into a real JSON array. See [`split_by`](#split_by). |
 | (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
-Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — must emit a real JSON array rather than a scalar. [`split_by`](#split_by) is the multivalued encoding: point it at an aggregated column and each cell's delimited text splits into a per-row array.
+Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — must emit a real JSON array rather than a scalar. [`split_by`](#split_by) is the multivalued encoding: point it at a column whose cells join multiple values, set it to the separator the cells actually use, and each cell's delimited text splits into a per-row array. A single-value column needs no `split_by` — the scalar is wrapped into a one-element array.
 
 **Example:**
 ```yaml
@@ -469,7 +471,7 @@ annotations:
   - {annotation: adjusted_p_value, method: column, encoding: D}        # A real Association slot -> emitted on the edge
   - {annotation: supporting_study_size, method: value, encoding: 450}  # Attached to no class -> inlined supporting study (see below)
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
-  - {annotation: has_evidence, method: column, encoding: E, split_by: "|"}       # Multivalued -> a per-row JSON array
+  - {annotation: has_evidence, method: column, encoding: E, split_by: ","}       # cells like "EFO:0001,EFO:0002" -> a per-row JSON array
   - {annotation: approval_ids, method: column, encoding: F}            # Curated pass-through -> emitted verbatim as a scalar (e.g. "011111|022222")
 
   # Descriptive name of your choice — folded into `supporting_text` on output.
