@@ -766,7 +766,8 @@ def test_tcode_collect_upstream_source_record_urls_rehome_urls(fixtures_path: Pa
     source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0] is retrieval_sources]
     assert len(source_ops) == 1
     # The mapping is forwarded as the fourth op arg.
-    assert source_ops[0][1][3] == {"infores:upstream-source": ["https://example.org/dataset"]}
+    source_args: tuple[Any, ...] = source_ops[0][1]  # pyright: ignore[reportAssignmentType]
+    assert source_args[3] == {"infores:upstream-source": ["https://example.org/dataset"]}
 
     result: pl.DataFrame = source_ops[0][0](pl.LazyFrame({"subject": ["A"]}), *source_ops[0][1]).collect()
     sources: list[dict[str, Any]] = result["sources"].to_list()[0]
