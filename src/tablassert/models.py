@@ -119,7 +119,7 @@ class BaseSource(TablaBase):
     url: list[HttpUrl] = Field(
         ...,
         min_length=1,
-        description="One or more remote source URL(s) recorded as provenance; emitted in the edge `sources` list under the primary entry's `source_record_urls` list and in the RIG. Format-validated only; not fetched.",
+        description="One or more remote source URL(s) recorded as provenance; emitted in the edge `sources` list under the primary entry's `source_record_urls` list and in the RIG. When `provenance.override.upstream_source_record_urls` is set, these URLs serve the RIG only and the per-upstream mapping determines edge placement instead. Format-validated only; not fetched.",
     )
 
     rows: list[NonNegativeInt] | None = Field(None, description="Zero-based row indices kept after any row_slice crop.", examples=[[0, 2, 5]])
@@ -464,6 +464,11 @@ class ManualProvenance(TablaBase):
         description="Manual upstream source infores CURIEs emitted instead of the repo-derived source map; the sanctioned place for manual infores.",
         examples=[["infores:my-upstream"]],
     )
+    upstream_source_record_urls: dict[str, list[HttpUrl]] | None = Field(
+        None,
+        description="Per-upstream source record URLs keyed by infores CURIE; every key must appear in `upstream_resource_ids`. When set, the section's `source.url` values are NOT emitted on the primary `sources` entry (RIG use only) — each listed upstream supporting entry carries its own `source_record_urls` instead.",
+        examples=[{"infores:my-upstream": ["https://example.org/dataset"]}],
+    )
     publications: list[str] | None = Field(
         None,
         description="Publication CURIEs emitted verbatim; currently PMCID CURIEs are required for manual provenance.",
@@ -492,6 +497,19 @@ class ManualProvenance(TablaBase):
                     f"Manual provenance publications must start with `PMCID:`, got {value!r}.", code="override-bad-publication"
                 )
         return values
+
+    @model_validator(mode="after")
+    def upstream_urls_match_resource_ids(self: Self) -> Self:
+        if self.upstream_source_record_urls is None:
+            return self
+        for key in self.upstream_source_record_urls:
+            validate_infores_curie(key, "override-bad-upstream-urls")
+        unknown = sorted(set(self.upstream_source_record_urls) - set(self.upstream_resource_ids))
+        if unknown:
+            raise TablassertValidationError(
+                f"`upstream_source_record_urls` keys must appear in `upstream_resource_ids`, got {unknown}.", code="override-bad-upstream-urls"
+            )
+        return self
 
 
 class Provenance(TablaBase):
