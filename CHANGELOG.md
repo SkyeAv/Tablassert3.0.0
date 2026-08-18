@@ -2,7 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 12.1.0 - 2026-08-18
+
+### Added
+- **Per-upstream `source_record_urls` via a provenance override.** `ManualProvenance` gained `upstream_source_record_urls`: a mapping of upstream infores CURIE to source record URLs. When set, the section's `source.url` values serve the RIG only and are no longer emitted on the primary `sources` entry; each listed upstream `supporting_data_source` entry carries its own `source_record_urls` instead. Keys must be infores CURIEs declared in `upstream_resource_ids` (`override-bad-upstream-urls`). This lets transforming resources (e.g. DAKP's `infores:multiomics-drugapprovals`) keep their primary entry bare while the dataset download URLs live on the `infores:dailymed` / `infores:faers` entries they were actually retrieved from. Legacy placement — URLs on the primary entry — is unchanged when the mapping is absent (#104).
 
 ### Fixed
 - **P-value columns are emitted in scientific notation again.** The KGX-compliance rework (#71) made `format_numeric()` emit `p_value` / `adjusted_p_value` as real JSON numbers because the `numeric_slot_kind` lookup reports the `float`-typed Biolink slots — which silently retired the `{:.4e}` scientific-notation branch for exactly the columns it existed for, so edges shipped shortest-repr numbers (`"p_value":0.0001`, `"p_value":0.05`) instead of the controlled notation the tutorial documents (`"p_value":"1.0000e-03"`). P-value-like columns are now always formatted as scientific-notation strings regardless of the slot's model type: Biolink validation here and downstream runs in Pydantic's lax mode, which coerces the numeric string back, so `validate-kgx` stays green (verified against the pinned `biolink-model` classes). Non-p-value numeric columns keep the model-typed behavior: a real JSON number once a future biolink model types the slot (`biolink/biolink-model#1770` / `#1774`), controlled `{:.4g}` strings until then.
