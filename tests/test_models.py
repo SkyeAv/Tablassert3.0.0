@@ -556,6 +556,29 @@ def test_manual_provenance_rejects_unprefixed_values() -> None:
     assert "override-bad-publication" in str(exc_info.value)
 
 
+def test_manual_provenance_accepts_upstream_source_record_urls() -> None:
+    """per-upstream record URLs validate when keyed by a declared upstream infores."""
+    override = ManualProvenance(  # pyright: ignore
+        upstream_resource_ids=["infores:external-source"], upstream_source_record_urls={"infores:external-source": ["https://example.org/dataset"]}
+    )
+    assert [str(u) for u in (override.upstream_source_record_urls or {})["infores:external-source"]] == ["https://example.org/dataset"]
+
+
+def test_manual_provenance_rejects_mismatched_upstream_url_keys() -> None:
+    """URL mapping keys must be infores CURIEs declared in ``upstream_resource_ids``."""
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            upstream_resource_ids=["infores:external-source"], upstream_source_record_urls={"infores:other": ["https://example.org/dataset"]}
+        )
+    assert "override-bad-upstream-urls" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            upstream_resource_ids=["infores:external-source"], upstream_source_record_urls={"external-source": ["https://example.org/dataset"]}
+        )
+    assert "override-bad-upstream-urls" in str(exc_info.value)
+
+
 def test_manual_provenance_rejects_infores_key() -> None:
     """manual provenance no longer accepts a per-section ``infores`` key.
 

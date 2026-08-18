@@ -469,7 +469,9 @@ def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None, 
     return out.drop(drop)
 
 
-def retrieval_sources(lf: pl.LazyFrame, primary: str, upstream: list[str], urls: list[str]) -> pl.LazyFrame:
+def retrieval_sources(
+    lf: pl.LazyFrame, primary: str, upstream: list[str], urls: list[str], upstream_urls: dict[str, list[str]] | None = None
+) -> pl.LazyFrame:
     """Add the Biolink ``sources`` retrieval-provenance column.
 
     ``upstream_resource_ids`` and ``source_record_urls`` have ``domain: retrieval
@@ -478,21 +480,30 @@ def retrieval_sources(lf: pl.LazyFrame, primary: str, upstream: list[str], urls:
     validation with ``extra_forbidden``.
 
     Mirrors ``build_association_knowledge_sources()`` from
-    ``translator-ingests/util/biolink.py``: the primary knowledge source carries the
-    source record URLs and lists the upstream resources, and each upstream resource
-    additionally appears as its own ``supporting_data_source`` entry.
+    ``translator-ingests/util/biolink.py``: the primary knowledge source lists the
+    upstream resources, and each upstream resource additionally appears as its own
+    ``supporting_data_source`` entry. By default the primary entry carries the
+    section's source record URLs; when ``upstream_urls`` is given, URL placement is
+    fully determined by that mapping instead -- each listed upstream entry carries
+    its own ``source_record_urls`` and the primary entry emits none (the primary is
+    the transforming resource, not a downloadable record).
 
     Args:
         lf: Source LazyFrame.
         primary: Infores CURIE of the primary knowledge source.
         upstream: Infores CURIEs of upstream/supporting data sources.
-        urls: Source record URLs for the primary entry.
+        urls: Source record URLs for the primary entry (ignored when ``upstream_urls`` is set).
+        upstream_urls: Optional per-upstream source record URLs keyed by infores CURIE.
 
     Returns:
         LazyFrame with a ``sources`` ``list[struct]`` column appended.
     """
-    entries: list[pl.Expr] = [_retrieval_source(primary, "primary_knowledge_source", upstream, urls)]
-    entries.extend(_retrieval_source(x, "supporting_data_source") for x in upstream)
+    if upstream_urls is not None:
+        entries: list[pl.Expr] = [_retrieval_source(primary, "primary_knowledge_source", upstream)]
+        entries.extend(_retrieval_source(x, "supporting_data_source", urls=upstream_urls.get(x)) for x in upstream)
+    else:
+        entries = [_retrieval_source(primary, "primary_knowledge_source", upstream, urls)]
+        entries.extend(_retrieval_source(x, "supporting_data_source") for x in upstream)
     return lf.with_columns(pl.concat_list(entries).alias("sources"))
 
 
@@ -1141,6 +1152,11 @@ class Tcode(Section):
         # name, so a RIG and its edges can never disagree about the source identity.
         primary_knowledge_source: str | None = self.infores
         upstream_ids = override.upstream_resource_ids if override else upstream_resource_ids(self.provenance.repo)
+        upstream_urls: dict[str, list[str]] | None = (
+            {key: [str(u) for u in urls] for key, urls in override.upstream_source_record_urls.items()}
+            if override and override.upstream_source_record_urls is not None
+            else None
+        )
         knowledge_level = override.knowledge_level if override else self.provenance.knowledge_level
         agent_type = override.agent_type if override else self.provenance.agent_type
         publication_values = override.publications if override else [publication_curie(self.provenance.repo, self.provenance.publication or "")]
@@ -1160,8 +1176,12 @@ class Tcode(Section):
             (value, ("agent_type", agent_type)),
             # Retrieval provenance lives only in the nested `sources` list (Biolink
             # RetrievalSource); current translator-ingests emits no flat
-            # `primary_knowledge_source` scalar, so neither do we.
-            (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(u) for u in self.source.url])) if primary_knowledge_source else None,
+            # `primary_knowledge_source` scalar, so neither do we. A per-upstream URL
+            # mapping (override.upstream_source_record_urls) re-homes the record URLs
+            # from the primary entry onto the matching supporting entries.
+            (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(u) for u in self.source.url], upstream_urls))
+            if primary_knowledge_source
+            else None,
             (publications, (publication_values,)) if publication_values else None,
             # Prune first so class-rejected values are handed to the study rather than lost.
             (prune_to_class, ()),

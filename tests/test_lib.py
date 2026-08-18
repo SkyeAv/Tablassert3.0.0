@@ -743,6 +743,44 @@ def test_tcode_collect_nests_source_record_urls_in_sources(fixtures_path: Path) 
     assert primary["id"] == primary["resource_id"]
 
 
+def test_tcode_collect_upstream_source_record_urls_rehome_urls(fixtures_path: Path) -> None:
+    """``override.upstream_source_record_urls`` leaves the primary bare and attaches URLs to supporting entries.
+
+    The section's ``source.url`` values serve the RIG only in this mode: the primary
+    ``sources`` entry (the transforming resource) emits no ``source_record_urls``,
+    and each mapped upstream supporting entry carries its own dataset URLs.
+    """
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    data["provenance"] = {
+        "override": {
+            "upstream_resource_ids": ["infores:upstream-source", "infores:other-source"],
+            "upstream_source_record_urls": {"infores:upstream-source": ["https://example.org/dataset"]},
+        }
+    }
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "GRAPH_KG", "infores": "infores:graph-kg"}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0] is retrieval_sources]
+    assert len(source_ops) == 1
+    # The mapping is forwarded as the fourth op arg.
+    source_args: tuple[Any, ...] = source_ops[0][1]  # pyright: ignore[reportAssignmentType]
+    assert source_args[3] == {"infores:upstream-source": ["https://example.org/dataset"]}
+
+    result: pl.DataFrame = source_ops[0][0](pl.LazyFrame({"subject": ["A"]}), *source_ops[0][1]).collect()
+    sources: list[dict[str, Any]] = result["sources"].to_list()[0]
+    primary: dict[str, Any] = next(s for s in sources if s["resource_role"] == "primary_knowledge_source")
+    assert primary["resource_id"] == "infores:graph-kg"
+    assert primary["source_record_urls"] is None
+    assert primary["upstream_resource_ids"] == ["infores:upstream-source", "infores:other-source"]
+    by_resource: dict[str, dict[str, Any]] = {s["resource_id"]: s for s in sources if s["resource_role"] == "supporting_data_source"}
+    # The mapped upstream carries its URLs; the unmapped one stays bare.
+    assert by_resource["infores:upstream-source"]["source_record_urls"] == ["https://example.org/dataset"]
+    assert by_resource["infores:other-source"]["source_record_urls"] is None
+
+
 def test_tcode_original_value_before_regex_for_columns(fixtures_path: Path) -> None:
     """tcode captures original value before regex for column encoded nodes."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
