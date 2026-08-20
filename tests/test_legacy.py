@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
 from pathlib import Path
 from typing import Any, cast
@@ -9,6 +10,8 @@ import pytest
 import yaml
 from yaml.constructor import ConstructorError
 
+from tablassert import cli
+from tablassert.cli import convert_legacy_command
 from tablassert.errors import LegacyDuplicateKeyWarning, LegacySourceUnresolvedError, LegacyUnsupportedSyntaxError, UnpairedEffectAnnotationWarning
 from tablassert.ingests import from_yaml, to_sections, to_yaml
 from tablassert.legacy import convert_legacy, load_legacy_yaml
@@ -528,4 +531,187 @@ def test_convert_module_never_imports_agent_eagerly() -> None:
         ancestor: ast.AST | None = node
         while ancestor is not None and not isinstance(ancestor, (ast.FunctionDef, ast.AsyncFunctionDef)):
             ancestor = parent_of.get(ancestor)
-        assert ancestor is not None, f"tablassert.agent import outside a function at line {node.lineno}"
+        assert ancestor is not None, f"tablassert.agent import outside a function at line {getattr(node, 'lineno', 0)}"
+
+
+# --- US-004: convert-legacy CLI -------------------------------------------- #
+
+
+def _copy_fixture(fixtures_path: Path, directory: Path, name: str) -> Path:
+    """Copy a legacy fixture into ``directory`` so a conversion never writes into the repo."""
+    target: Path = directory / name
+    target.write_bytes((fixtures_path / name).read_bytes())
+    return target
+
+
+def test_convert_legacy_cli_flag_binding(tmp_path: Path) -> None:
+    """``convert-legacy`` binds the positional path plus ``--downloads``/``--fetch``/``--out``.
+
+    WHY: pins the live Cyclopts contract (same pattern as ``validate``'s flag test) — the
+    positional and every documented flag bind through the parser without executing.
+    """
+    legacy: Path = tmp_path / "legacy.yaml"
+    downloads: Path = tmp_path / "downloads"
+    out: Path = tmp_path / "out"
+    fn, bound, _ = cli.APP.parse_args(
+        ["convert-legacy", str(legacy), "--downloads", str(downloads), "--fetch", "--out", str(out)], exit_on_error=False
+    )
+    assert fn is convert_legacy_command
+    arguments: dict[str, Any] = dict(bound.arguments)
+    assert arguments["legacy_path"] == legacy
+    assert arguments["downloads"] == downloads
+    assert arguments["fetch"] is True
+    assert arguments["out"] == out
+
+
+def test_convert_legacy_cli_nonexistent_input_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A missing input path fails loud with a usage error (exit 2) before any conversion."""
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(tmp_path / "missing.yaml", None, False, None)
+    assert excinfo.value.code == 2
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_convert_legacy_cli_input_not_file_or_dir_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """An existing input that is neither a file nor a directory is a usage error (exit 2)."""
+    fifo: Path = tmp_path / "fifo.yaml"
+    os.mkfifo(fifo)
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(fifo, None, False, None)
+    assert excinfo.value.code == 2
+    assert "neither a file nor a directory" in capsys.readouterr().err
+
+
+def test_convert_legacy_cli_missing_downloads_dir_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A ``--downloads`` path that is not a directory is a usage error (exit 2)."""
+    legacy: Path = _legacy_file(tmp_path, _legacy_config())
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(legacy, tmp_path / "nope", False, None)
+    assert excinfo.value.code == 2
+    assert "--downloads" in capsys.readouterr().err
+
+
+def test_convert_legacy_cli_out_not_a_directory_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """An ``--out`` that exists as a FILE is a usage error (exit 2), never a silent clobber."""
+    legacy: Path = _legacy_file(tmp_path, _legacy_config())
+    blocker: Path = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(legacy, None, False, blocker)
+    assert excinfo.value.code == 2
+    assert "--out" in capsys.readouterr().err
+
+
+def test_convert_legacy_cli_single_file_writes_beside_input(fixtures_path: Path, tmp_path: Path) -> None:
+    """Single-file mode writes ``<stem>.v12.yaml`` next to the input by default."""
+    legacy: Path = _copy_fixture(fixtures_path, tmp_path, "legacy_template_only.yaml")
+    downloads: Path = _downloads(tmp_path, "PMC7878905/PMC7878905.1/CHENG1.xlsx")
+    convert_legacy_command(legacy, downloads, False, None)
+    converted: Path = tmp_path / "legacy_template_only.v12.yaml"
+    assert converted.is_file()
+    data: Any = from_yaml(converted)
+    assert set(data) == {"template", "sections"}
+    section: dict[str, Any] = data["sections"][0]
+    assert section["source"]["local"] == str((downloads / "PMC7878905" / "PMC7878905.1" / "CHENG1.xlsx").resolve())
+
+
+def test_convert_legacy_cli_single_file_out_dir(fixtures_path: Path, tmp_path: Path) -> None:
+    """``--out`` redirects the output into the given directory, creating it when missing."""
+    legacy: Path = _copy_fixture(fixtures_path, tmp_path, "legacy_template_only.yaml")
+    downloads: Path = _downloads(tmp_path, "PMC7878905/PMC7878905.1/CHENG1.xlsx")
+    out: Path = tmp_path / "v12"
+    convert_legacy_command(legacy, downloads, False, out)
+    assert (out / "legacy_template_only.v12.yaml").is_file()
+    assert not (tmp_path / "legacy_template_only.v12.yaml").exists()
+
+
+def test_convert_legacy_cli_unresolved_source_exits_1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """An unresolvable ``source.local`` exits 1 with its coded message and writes nothing."""
+    legacy: Path = _legacy_file(tmp_path, _legacy_config())
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/other.tsv")
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(legacy, downloads, False, None)
+    assert excinfo.value.code == 1
+    err: str = capsys.readouterr().err
+    assert "legacy-source-unresolved" in err
+    assert not (tmp_path / "legacy.v12.yaml").exists()
+
+
+def test_convert_legacy_cli_fetch_without_downloads_exits_1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """``--fetch`` without a downloads directory cannot fetch: coded failure, never a hang."""
+    legacy: Path = _legacy_file(tmp_path, _legacy_config())
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(legacy, None, True, None)
+    assert excinfo.value.code == 1
+    assert "legacy-source-unresolved" in capsys.readouterr().err
+
+
+def test_convert_legacy_cli_batch_status_lines_and_exit(fixtures_path: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Directory mode prints one status line per file, keeps going, and exits 1 iff ANY failed.
+
+    WHY: two fixtures resolve and write into ``--out`` while the third file's source stays
+    unresolved — the batch must not abort on the failure, yet the exit code must be non-zero.
+    """
+    workdir: Path = tmp_path / "legacy"
+    workdir.mkdir()
+    _copy_fixture(fixtures_path, workdir, "legacy_template_only.yaml")
+    _copy_fixture(fixtures_path, workdir, "legacy_multi_section.yaml")
+    _legacy_file(workdir, _legacy_config())  # publication payload absent from downloads -> unresolved
+    downloads: Path = _downloads(tmp_path, "PMC7878905/PMC7878905.1/CHENG1.xlsx", "PMC11530135/PMC11530135.1/CORREIA1.xlsx")
+    out: Path = tmp_path / "out"
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(workdir, downloads, False, out)
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out.count("CONVERTED") == 2
+    assert "FAILED" in captured.out
+    assert "legacy-source-unresolved" in captured.out
+    assert "legacy-source-unresolved" in captured.err  # full coded message on stderr
+    assert (out / "legacy_template_only.v12.yaml").is_file()
+    assert (out / "legacy_multi_section.v12.yaml").is_file()
+    assert not (out / "legacy.v12.yaml").exists()
+
+
+def test_convert_legacy_cli_batch_malformed_yaml_is_failed_not_fatal(fixtures_path: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A non-coded failure (malformed YAML) gets a FAILED line too and never aborts the batch."""
+    workdir: Path = tmp_path / "legacy"
+    workdir.mkdir()
+    _copy_fixture(fixtures_path, workdir, "legacy_template_only.yaml")
+    (workdir / "broken.yaml").write_text("template: [\n")
+    downloads: Path = _downloads(tmp_path, "PMC7878905/PMC7878905.1/CHENG1.xlsx")
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(workdir, downloads, False, None)
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "CONVERTED" in captured.out
+    assert "FAILED" in captured.out
+    assert "(error)" in captured.out
+    assert (workdir / "legacy_template_only.v12.yaml").is_file()
+    assert not (workdir / "broken.v12.yaml").exists()
+
+
+def test_convert_legacy_cli_batch_in_place_and_idempotent(fixtures_path: Path, tmp_path: Path) -> None:
+    """Without ``--out`` the batch writes beside each input; a rerun skips its own outputs.
+
+    WHY: ``--out`` is optional in directory mode BY DESIGN (documented in docs/cli.md) — the
+    ``<stem>.v12.yaml`` suffix keeps outputs beside their inputs, and reruns must skip
+    ``*.v12.yaml`` so no ``.v12.v12.yaml`` cascade appears.
+    """
+    workdir: Path = tmp_path / "legacy"
+    workdir.mkdir()
+    _copy_fixture(fixtures_path, workdir, "legacy_template_only.yaml")
+    downloads: Path = _downloads(tmp_path, "PMC7878905/PMC7878905.1/CHENG1.xlsx")
+    convert_legacy_command(workdir, downloads, False, None)
+    assert (workdir / "legacy_template_only.v12.yaml").is_file()
+    convert_legacy_command(workdir, downloads, False, None)  # rerun: only the source file converts
+    assert sorted(p.name for p in workdir.glob("*.yaml")) == ["legacy_template_only.v12.yaml", "legacy_template_only.yaml"]
+
+
+def test_convert_legacy_cli_empty_directory_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A directory holding no ``*.yaml`` files is a usage error (exit 2) — never a silent pass."""
+    empty: Path = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(empty, None, False, None)
+    assert excinfo.value.code == 2
+    assert "no *.yaml" in capsys.readouterr().err

@@ -19,7 +19,7 @@ import cyclopts
 
 from tablassert import extras
 from tablassert._lazy import LazyModule
-from tablassert.errors import BabelDownloadError, GraphValidationError, SectionValidationError
+from tablassert.errors import BabelDownloadError, GraphValidationError, SectionValidationError, TablassertError
 from tablassert.log import cat
 
 if TYPE_CHECKING:
@@ -732,6 +732,98 @@ def validate_kgx_command(
         print("KGX output is not Biolink-compliant.", file=sys.stderr)
         raise SystemExit(1)
     print("KGX output is Biolink-compliant.", file=sys.stderr)
+
+
+@APP.command(name="convert-legacy")
+def convert_legacy_command(
+    legacy_path: Annotated[Path, cyclopts.Parameter(allow_leading_hyphen=False)],
+    downloads: Annotated[Path | None, cyclopts.Parameter(name=["--downloads", "-d"])] = None,
+    fetch: Annotated[bool, cyclopts.Parameter(name=["--fetch"], negative="")] = False,
+    out: Annotated[Path | None, cyclopts.Parameter(name=["--out", "-o"])] = None,
+) -> None:
+    """Convert legacy table configs into the v12 ``{template, sections}`` shape.
+
+    ``LEGACY-PATH`` is one legacy YAML file or a directory of them. Each converted config is
+    written as ``<stem>.v12.yaml`` — beside its input by default, or under ``--out`` when
+    given (created when missing). Directory mode converts every ``*.yaml`` file — skipping
+    ``*.v12.yaml`` outputs from earlier runs so a rerun never re-converts its own output —
+    and prints one status line per file (``CONVERTED`` / ``FAILED (<code>)``); one failure
+    never aborts the batch, but the command exits non-zero when ANY file failed.
+
+    ``--downloads`` points at the directory holding the articles' downloaded payloads
+    (``PMC<n>/PMC<n>.<v>/...``) so each ``source.local`` resolves onto a real file; with
+    ``--fetch``, a payload missing there is downloaded from PMC open access instead. A
+    source that still cannot resolve fails its file with ``legacy-source-unresolved`` — a
+    coded error, never a hang, whether the network is down or the article is not open access.
+
+    Exit codes: ``0`` everything converted; ``1`` any conversion failed; ``2`` usage error
+    (missing input or ``--downloads`` path, an ``--out`` that is not a directory, or a
+    directory holding no ``*.yaml`` files).
+
+    Args:
+        legacy_path: Legacy YAML file, or a directory of ``*.yaml`` legacy configs.
+        downloads: Directory holding the downloaded article payloads each ``source.local``
+            is resolved against.
+        fetch: Download a missing payload from PMC open access (via ``provenance.publication``)
+            into ``--downloads`` instead of failing the source as unresolved.
+        out: Directory the ``<stem>.v12.yaml`` outputs are written into; defaults to each
+            input's own directory.
+    """
+    # Lazy imports: the legacy converter stays out of the base CLI import surface, exactly
+    # like the agent module (convert_legacy itself lazy-imports agent on the fetch path).
+    from tablassert.ingests import to_yaml
+    from tablassert.legacy import convert_legacy
+
+    if not legacy_path.exists():
+        print(f"tablassert convert-legacy: input does not exist: {legacy_path}", file=sys.stderr)
+        raise SystemExit(2)
+    if not legacy_path.is_file() and not legacy_path.is_dir():
+        print(f"tablassert convert-legacy: input is neither a file nor a directory: {legacy_path}", file=sys.stderr)
+        raise SystemExit(2)
+    if downloads is not None and not downloads.is_dir():
+        print(f"tablassert convert-legacy: --downloads directory does not exist: {downloads}", file=sys.stderr)
+        raise SystemExit(2)
+    if out is not None:
+        if out.exists() and not out.is_dir():
+            print(f"tablassert convert-legacy: --out is not a directory: {out}", file=sys.stderr)
+            raise SystemExit(2)
+        out.mkdir(parents=True, exist_ok=True)
+
+    def convert_one(legacy_file: Path) -> Path:
+        converted: dict[str, Any] = convert_legacy(legacy_file, downloads, fetch)
+        target: Path = (out if out is not None else legacy_file.parent) / f"{legacy_file.stem}.v12.yaml"
+        to_yaml(target, converted)
+        return target
+
+    if legacy_path.is_file():
+        try:
+            target = convert_one(legacy_path)
+        except TablassertError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(f"CONVERTED {legacy_path} -> {target}")
+        return
+
+    legacy_files: list[Path] = sorted(p for p in legacy_path.glob("*.yaml") if not p.name.endswith(".v12.yaml"))
+    if not legacy_files:
+        print(f"tablassert convert-legacy: no *.yaml files found in {legacy_path}", file=sys.stderr)
+        raise SystemExit(2)
+    failures: int = 0
+    for legacy_file in legacy_files:
+        try:
+            target = convert_one(legacy_file)
+        except TablassertError as exc:
+            failures += 1
+            print(f"FAILED {legacy_file} ({exc.code})")
+            print(str(exc), file=sys.stderr)
+        except Exception as exc:  # malformed YAML etc: one bad file must never abort the batch
+            failures += 1
+            print(f"FAILED {legacy_file} (error)")
+            print(f"{legacy_file}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        else:
+            print(f"CONVERTED {legacy_file} -> {target}")
+    if failures:
+        raise SystemExit(1)
 
 
 @APP.command(name="agent")
