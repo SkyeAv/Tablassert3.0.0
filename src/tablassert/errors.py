@@ -97,6 +97,19 @@ class UnpairedEffectAnnotationWarning(UserWarning):
     """
 
 
+class LegacyDuplicateKeyWarning(UserWarning):
+    """A legacy YAML config declared the same mapping key more than once.
+
+    PyYAML's default construction silently keeps only the LAST occurrence of a duplicate key,
+    dropping everything earlier occurrences contributed — unnoticed data loss in human-curated
+    legacy configs that accumulated duplicates over years. The legacy loader instead MERGES the
+    occurrences (dict+dict deep-merged, list+list extended, later value wins otherwise) and fires
+    this warning naming the key and line so the curator can fix the source file. Its own category
+    so callers can silence or assert on duplicate merges without touching the relocation or
+    deprecation scaffolds.
+    """
+
+
 def format_missing_extra(extra: str, problem: str) -> str:
     """Append the install instructions for ``extra`` to a one-sentence ``problem``.
 
