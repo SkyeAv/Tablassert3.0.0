@@ -414,6 +414,24 @@ def test_convert_fetch_failure_surfaces_unresolved(tmp_path: Path, monkeypatch: 
     assert isinstance(excinfo.value.__cause__, FileNotFoundError)
 
 
+def test_convert_fetch_retries_url_basenames_after_download(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """After a fetch, the retry matches EVERY candidate — the fetched objects carry the url
+    basenames, not the human ``local`` alias, so a local-only retry would never resolve.
+    """
+    _patch_pmc(monkeypatch)
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["source"]["local"] = "./DATALAKE/human-alias.xlsx"
+    config["template"]["source"]["url"] = ["https://pmc.ncbi.nlm.nih.gov/articles/instance/11708054/bin/mbio.01679-24-s0002.xlsx"]
+    config["template"]["provenance"]["publication"] = "PMC11708054"
+    p: Path = _legacy_file(tmp_path, config)
+    downloads: Path = tmp_path / "downloads"
+    downloads.mkdir()
+    out: dict[str, Any] = convert_legacy(p, downloads, fetch=True)
+    payload: Path = downloads / "PMC11708054" / "PMC11708054.1" / "mbio.01679-24-s0002.xlsx"
+    assert out["sections"][0]["source"]["local"] == str(payload.resolve())
+    assert payload.read_bytes() == b"FAKEBYTES"
+
+
 def test_convert_keeps_legacy_url_when_payload_stem_unknown(tmp_path: Path) -> None:
     """A payload found outside any ``PMC<n>.<v>`` directory keeps the legacy url verbatim.
 
@@ -444,6 +462,75 @@ def test_convert_prefers_publication_dir_on_basename_collision(tmp_path: Path) -
     assert source["url"] == ["https://pmc-oa-opendata.s3.amazonaws.com/PMC2222222.1/data.tsv"]
 
 
+def test_convert_url_basename_hit_when_local_basename_misses(tmp_path: Path) -> None:
+    """The legacy ``local`` is a human alias; each ``source.url`` basename is a fallback.
+
+    WHY: MOKG configs point ``local`` at ``./DATALAKE/<NAME>.xlsx`` files that exist only on
+    the curator's machine, while the ``url`` entries hold the REAL payload filenames — so
+    resolution falls back to the url basenames (query/fragment stripped) and the resolved
+    payload still gets its url repaired to the real S3 object.
+    """
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["source"]["local"] = "./DATALAKE/HUMAN-ALIAS.xlsx"
+    config["template"]["source"]["url"] = ["https://pmc.ncbi.nlm.nih.gov/articles/instance/7878905/bin/real-payload.xlsx?v=2"]
+    p: Path = _legacy_file(tmp_path, config)
+    downloads: Path = _downloads(tmp_path, "PMC7878905/PMC7878905.1/real-payload.xlsx")
+    out: dict[str, Any] = convert_legacy(p, downloads)
+    source: dict[str, Any] = out["sections"][0]["source"]
+    assert source["local"] == str((downloads / "PMC7878905" / "PMC7878905.1" / "real-payload.xlsx").resolve())
+    assert source["url"] == ["https://pmc-oa-opendata.s3.amazonaws.com/PMC7878905.1/real-payload.xlsx"]
+
+
+def test_convert_local_basename_precedes_url_basenames(tmp_path: Path) -> None:
+    """Resolution order is local basename FIRST, then url basenames in declared order.
+
+    WHY: when both exist on disk the curator's local name wins, and when the first url
+    basename misses the second one still resolves — the first hit in candidate order wins.
+    """
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["source"]["local"] = "./DATALAKE/human.xlsx"
+    config["template"]["source"]["url"] = ["https://a.example/bin/missing.xlsx", "https://b.example/files/second.xlsx"]
+    p: Path = _legacy_file(tmp_path, config)
+    both: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/human.xlsx", "PMC0000000/PMC0000000.1/second.xlsx")
+    out: dict[str, Any] = convert_legacy(p, both)
+    assert out["sections"][0]["source"]["local"] == str((both / "PMC0000000" / "PMC0000000.1" / "human.xlsx").resolve())
+    no_local: Path = _downloads(tmp_path / "alt", "PMC0000000/PMC0000000.1/second.xlsx")
+    second: Path = tmp_path / "legacy-second.yaml"
+    second.write_text(yaml.safe_dump(config, sort_keys=False))
+    out = convert_legacy(second, no_local)
+    assert out["sections"][0]["source"]["local"] == str((no_local / "PMC0000000" / "PMC0000000.1" / "second.xlsx").resolve())
+
+
+def test_convert_unresolved_error_lists_every_tried_basename(tmp_path: Path) -> None:
+    """The unresolved error names the local basename AND every url basename that was tried."""
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["source"]["local"] = "./DATALAKE/human.xlsx"
+    config["template"]["source"]["url"] = ["https://a.example/bin/first-payload.xlsx", "https://b.example/files/second-payload.xlsx"]
+    p: Path = _legacy_file(tmp_path, config)
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/other.tsv")
+    with pytest.raises(LegacySourceUnresolvedError) as excinfo:
+        convert_legacy(p, downloads)
+    assert excinfo.value.code == "legacy-source-unresolved"
+    message: str = str(excinfo.value)
+    for basename in ("human.xlsx", "first-payload.xlsx", "second-payload.xlsx"):
+        assert f"basename '{basename}' under {downloads}" in message
+
+
+def test_convert_malformed_url_shape_raises_unsupported(tmp_path: Path) -> None:
+    """A scalar ``source.url`` or a non-string entry is an unsupported construct."""
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    scalar: dict[str, Any] = _legacy_config()
+    scalar["template"]["source"]["url"] = "https://example.com/data.tsv"
+    with pytest.raises(LegacyUnsupportedSyntaxError, match=r"`source\.url` must hold a list"):
+        convert_legacy(_legacy_file(tmp_path, scalar), downloads)
+    bad_entry: dict[str, Any] = _legacy_config()
+    bad_entry["template"]["source"]["url"] = [42]
+    second: Path = tmp_path / "legacy-bad-entry.yaml"
+    second.write_text(yaml.safe_dump(bad_entry, sort_keys=False))
+    with pytest.raises(LegacyUnsupportedSyntaxError, match=r"every `source\.url` entry must hold a URL string"):
+        convert_legacy(second, downloads)
+
+
 @pytest.mark.parametrize(
     "name", ["relationship strength", "relationship_strength", "Relationship-Strength", "RELATIONSHIP STRENGTH", "relationshipstrength"]
 )
@@ -465,6 +552,95 @@ def test_convert_non_alias_annotation_names_untouched(tmp_path: Path) -> None:
     downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
     out: dict[str, Any] = convert_legacy(p, downloads)
     assert out["sections"][0]["annotations"] == annotations
+
+
+def test_convert_dedup_drops_identical_overlay_entries(tmp_path: Path) -> None:
+    """An entry declared IDENTICALLY in template and section lands exactly once.
+
+    WHY: the overlay EXTENDS list-valued keys (fastmerge), so the MIN1 case — the same
+    ``anatomical_context_qualifier`` on the template and a section — lands twice in the
+    merged section; the converter drops the second copy, preserving first-seen order.
+    """
+    qualifier: dict[str, Any] = {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000955"}
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["statement"]["qualifiers"] = [dict(qualifier)]
+    config["sections"] = [{"statement": {"qualifiers": [dict(qualifier)]}}]
+    p: Path = _legacy_file(tmp_path, config)
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    out: dict[str, Any] = convert_legacy(p, downloads)
+    assert out["sections"][0]["statement"]["qualifiers"] == [qualifier]  # exactly once
+
+
+def test_convert_dedup_keeps_distinct_qualifier_entries_and_order(tmp_path: Path) -> None:
+    """DISTINCT qualifier entries survive the dedup in first-seen order.
+
+    WHY: template declares the disease qualifier, the section re-declares it identically and
+    adds two DISTINCT keys — the overlay yields [disease, disease, anatomical, species]; the
+    dedup collapses the duplicate without disturbing the distinct entries or their order.
+    """
+    disease: dict[str, Any] = {"qualifier": "disease_context_qualifier", "method": "value", "encoding": "MONDO:0019037"}
+    anatomical: dict[str, Any] = {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000955"}
+    species: dict[str, Any] = {"qualifier": "species_qualifier", "method": "value", "encoding": "NCBITaxon:9606"}
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["statement"]["qualifiers"] = [dict(disease)]
+    config["sections"] = [{"statement": {"qualifiers": [dict(disease), dict(anatomical), dict(species)]}}]
+    p: Path = _legacy_file(tmp_path, config)
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    out: dict[str, Any] = convert_legacy(p, downloads)
+    assert out["sections"][0]["statement"]["qualifiers"] == [disease, anatomical, species]
+
+
+def test_convert_dedup_leaves_scalar_values_untouched(tmp_path: Path) -> None:
+    """Scalar values pass through the dedup untouched — it applies to list entries only.
+
+    WHY: a scalar declared identically on the template and a section (``sheet`` here) keeps
+    fastmerge's later-wins value as a plain scalar; nothing is wrapped or compared.
+    """
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["source"]["sheet"] = "Table 1"
+    config["sections"] = [{"source": {"sheet": "Table 1"}}]
+    p: Path = _legacy_file(tmp_path, config)
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    out: dict[str, Any] = convert_legacy(p, downloads)
+    sheet: Any = out["sections"][0]["source"]["sheet"]
+    assert isinstance(sheet, str)
+    assert sheet == "Table 1"
+
+
+def test_convert_same_key_qualifier_section_entry_wins_first_seen_slot(tmp_path: Path) -> None:
+    """The MIN1 pattern: a section re-declares the template's qualifier key with a MORE
+    SPECIFIC encoding — v12 allows one entry per key, so the section's entry wins the
+    first-seen slot while sections without their own entry keep the template's.
+
+    WHY: ``Section`` rejects a qualifier key declared twice (``qualifier-duplicated``); the
+    curator's intent of the re-declaration is specialization, i.e. fastmerge's later-wins.
+    """
+    brain: dict[str, Any] = {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000955"}
+    cell: dict[str, Any] = {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "CL:0000129"}
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["statement"]["qualifiers"] = [dict(brain)]
+    config["sections"] = [{}, {"statement": {"qualifiers": [dict(cell)]}}]
+    p: Path = _legacy_file(tmp_path, config)
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    out: dict[str, Any] = convert_legacy(p, downloads)
+    assert out["sections"][0]["statement"]["qualifiers"] == [brain]  # template entry kept
+    assert out["sections"][1]["statement"]["qualifiers"] == [cell]  # section entry won
+    sections, _ = _validate_converted(tmp_path, out)  # passes Section's one-per-key rule
+    assert [[str(q.qualifier) for q in section.statement.qualifiers or []] for section in sections] == [
+        ["anatomical_context_qualifier"],
+        ["anatomical_context_qualifier"],
+    ]
+
+
+def test_convert_malformed_qualifiers_shape_raises_unsupported(tmp_path: Path) -> None:
+    """Non-list ``qualifiers``, non-mapping entries, and empty keys are unsupported constructs."""
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    cases: list[Any] = [{"qualifier": "anatomical_context_qualifier"}, ["anatomical_context_qualifier"], [{"qualifier": ""}]]
+    for qualifiers in cases:
+        config: dict[str, Any] = _legacy_config()
+        config["template"]["statement"]["qualifiers"] = qualifiers
+        with pytest.raises(LegacyUnsupportedSyntaxError, match="qualifiers"):
+            convert_legacy(_legacy_file(tmp_path, config), downloads)
 
 
 def test_convert_unsupported_constructs_raise(tmp_path: Path) -> None:
@@ -834,6 +1010,11 @@ def test_synthetic_pairing_gap_fixture_drops_orphan_with_warning(fixtures_path: 
 #: corpus changed and this acceptance test must be re-evaluated, never silently resized.
 _MOKG_FILE_COUNT: int = 26
 
+#: Of the 26 corpus files at least this many must CONVERT (US-008): the human ``local`` names
+#: exist on no build machine, but every config's ``url`` points at the real payload object, so
+#: url-basename resolution lands the large majority. A lower count means resolution regressed.
+_MOKG_MIN_CONVERTED: int = 15
+
 
 def test_corpus_mokg_convert_or_fail_unresolved(tmp_path: Path) -> None:
     """Env-gated ingestability acceptance over the REAL MOKG corpus (US-005).
@@ -843,7 +1024,9 @@ def test_corpus_mokg_convert_or_fail_unresolved(tmp_path: Path) -> None:
     run the alias/reindex conversion; each file then either converts AND every section
     validates against the downloads directory (``TABLASSERT_MOKG_DOWNLOADS``), or fails
     loudly with EXACTLY ``legacy-source-unresolved`` — no other error class escapes, no file
-    is silently skipped. ``--fetch`` is deliberately NOT used: the acceptance must stay
+    is silently skipped. With a downloads directory, at least ``_MOKG_MIN_CONVERTED`` of the
+    26 must convert (the ``source.url`` basenames resolve the payloads the human ``local``
+    names cannot). ``--fetch`` is deliberately NOT used: the acceptance must stay
     deterministic offline; the docs runbook covers the fetching variant.
     """
     mokg_dir: str | None = os.environ.get("TABLASSERT_MOKG_DIR")
@@ -876,6 +1059,10 @@ def test_corpus_mokg_convert_or_fail_unresolved(tmp_path: Path) -> None:
         converted.append(path.name)
 
     assert len(converted) + len(unresolved) == len(files)  # every file has a verdict: no silent skips
+    if downloads is not None:
+        assert len(converted) >= _MOKG_MIN_CONVERTED, (
+            f"only {len(converted)}/{len(files)} MOKG configs converted; url-basename source resolution regressed (unresolved: {unresolved})"
+        )
     print(f"\nMOKG corpus: {len(files)} files | downloads={downloads} | converted={len(converted)} legacy-source-unresolved={len(unresolved)}")
     for name in converted:
         print(f"  CONVERTED {name}")

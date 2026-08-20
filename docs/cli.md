@@ -175,10 +175,12 @@ or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is 
 ## convert-legacy
 
 Use this to migrate a legacy table config (or a whole directory of them) into the current v12
-`{template, sections}` shape: duplicate mapping keys are merged (never silently dropped), the
-removed `relationship_strength` annotation is renamed to `effect_size`, every `source.reindex`
-entry is validated against the v12 model, and each `source.local` is resolved onto the real
-downloaded payload — never left pointing at a stale `./DATALAKE` path.
+`{template, sections}` shape: duplicate mapping keys are merged (never silently dropped),
+exact-duplicate entries the template/section overlay produced are dropped and same-key
+`qualifiers` entries merged into one per key, the removed `relationship_strength` annotation
+is renamed to `effect_size`, every `source.reindex` entry is validated against the v12 model,
+and each `source.local` is resolved onto the real downloaded payload — never left pointing at
+a stale `./DATALAKE` path.
 
 ```bash
 tablassert convert-legacy LEGACY-PATH [ARGS]
@@ -190,7 +192,7 @@ config is written as `<stem>.v12.yaml` — beside its input by default, or under
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `LEGACY-PATH` | Path | Yes | — | Legacy YAML file, or a directory of `*.yaml` legacy configs |
-| `--downloads`, `-d` | Path | No | `None` | Directory holding the downloaded article payloads (`PMC<n>/PMC<n>.<v>/...`) that each `source.local` is resolved against |
+| `--downloads`, `-d` | Path | No | `None` | Directory holding the downloaded article payloads (`PMC<n>/PMC<n>.<v>/...`) that each `source.local` is resolved against: the `local` basename is tried first, then each `source.url` entry's basename (the urls hold the real payload filenames), recursively, preferring a hit under the section's own publication directory; an unresolved source lists every basename tried |
 | `--fetch` | Flag | No | `False` | When no local payload match exists, download the article from PMC open access (via `provenance.publication`) into `--downloads` instead of failing the source as unresolved |
 | `--out`, `-o` | Path | No | `None` (beside each input) | Directory the `<stem>.v12.yaml` outputs are written into (created when missing); defaults to each input's own directory |
 
@@ -223,8 +225,10 @@ The MOKG corpus (26 legacy table configs) has an executable ingestability accept
 `tests/test_legacy.py::test_corpus_mokg_convert_or_fail_unresolved`, gated on
 `TABLASSERT_MOKG_DIR`. It skips with a printed reason when the variable is unset; when set,
 every corpus file must either convert and validate against the downloads directory
-(`TABLASSERT_MOKG_DOWNLOADS`, recursive basename match) or fail loudly with exactly
-`legacy-source-unresolved` — no other error class, no silent skip:
+(`TABLASSERT_MOKG_DOWNLOADS`, recursive basename match with the `source.url` basenames as
+fallback) or fail loudly with exactly `legacy-source-unresolved` — no other error class, no
+silent skip, and at least 15 of the 26 must convert (with the full downloads tree below,
+24 convert; only QIN9 and WAINBERG3 stay unresolved because their payloads are absent):
 
 ```bash
 TABLASSERT_MOKG_DIR=/home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG \
@@ -232,9 +236,10 @@ TABLASSERT_MOKG_DOWNLOADS=/home/skyeav/Code/ISB/MultiomicsNext/.tablassert \
 uv run pytest tests/test_legacy.py -q -k corpus
 ```
 
-For 26/26 converted outputs, run the batch with `--fetch` so every article payload missing
-from the downloads directory is downloaded from PMC open access first (network required);
-`--out` keeps the outputs out of the curated corpus directory:
+For the remaining files, run the batch with `--fetch` so every open-access article payload
+missing from the downloads directory is downloaded from PMC open access first (network
+required); `--out` keeps the outputs out of the curated corpus directory. QIN9 stays
+unresolved either way — its payload is hosted on figshare, not in the PMC article bundle:
 
 ```bash
 tablassert convert-legacy /home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG \

@@ -24,6 +24,7 @@ import warnings
 from copy import deepcopy
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import pydantic
 import yaml
@@ -203,8 +204,26 @@ def _match_payload(downloads: Path, name: str, publication: str | None) -> Path 
     return matches[0]
 
 
-def _fetch_payload(path: Path, local: str, downloads: Path | None, name: str, publication: str | None, tried: list[str]) -> Path | None:
-    """Fetch the article payload through the agent's PMC downloader, then retry the match.
+def _match_candidates(downloads: Path | None, candidates: list[str], publication: str | None, tried: list[str]) -> Path | None:
+    """Match the candidate basenames against ``downloads`` in order; the first hit wins.
+
+    Every attempt is recorded in ``tried`` so an unresolved source can name ALL of the
+    basenames/locations that were tried, not just the last one.
+    """
+    if downloads is None:
+        return None
+    for candidate in candidates:
+        tried.append(f"basename {candidate!r} under {downloads} (recursive)")
+        matched: Path | None = _match_payload(downloads, candidate, publication)
+        if matched is not None:
+            return matched
+    return None
+
+
+def _fetch_payload(path: Path, local: str, downloads: Path | None, candidates: list[str], publication: str | None, tried: list[str]) -> Path | None:
+    """Fetch the article payload through the agent's PMC downloader, then retry the match
+    against EVERY candidate basename (the fetched objects carry the url basenames, which
+    usually differ from the human ``local`` alias).
 
     ``tablassert.agent`` is imported LAZILY here (never at module scope): conversion must stay
     importable in the base environment, and the fetch path is the only piece that needs the
@@ -232,16 +251,44 @@ def _fetch_payload(path: Path, local: str, downloads: Path | None, name: str, pu
         fetch_pmc_article(pmc, target)
     except (ValueError, OSError) as e:
         raise LegacySourceUnresolvedError(path, local, tried) from e
-    return _match_payload(downloads, name, publication)
+    return _match_candidates(downloads, candidates, publication, tried)
+
+
+def _url_basenames(path: Path, index: int, source: dict[str, Any]) -> list[str]:
+    """The basename of every ``source.url`` entry, in declared order.
+
+    Legacy ``url`` entries point at the REAL payload objects while ``local`` holds a human
+    alias that rarely exists on disk, so the url basenames are the fallback resolution
+    candidates after the local basename. A malformed ``url`` is an unsupported construct:
+    v12 carries ``url`` as a list of URL strings, so anything else can neither be resolved
+    against the downloads directory nor expressed in the output.
+    """
+    url: object = source.get("url")
+    if url is None:
+        return []
+    if not isinstance(url, list):
+        raise _unsupported(path, f"section {index}: `source.url` must hold a list, found {type(url).__name__}")
+    basenames: list[str] = []
+    for entry in url:
+        if not isinstance(entry, str):
+            raise _unsupported(path, f"section {index}: every `source.url` entry must hold a URL string, found {type(entry).__name__}")
+        # urlparse first: a query string or fragment is not part of the payload's filename.
+        name: str = PurePosixPath(urlparse(entry).path).name
+        if name:
+            basenames.append(name)
+    return basenames
 
 
 def _resolve_source(path: Path, index: int, section: dict[str, Any], downloads: Path | None, fetch: bool) -> None:
     """Point ``source.local`` at the real downloaded payload and repair ``source.url``.
 
-    The legacy ``local`` path (``./DATALAKE/...``) is rewritten by basename match against the
-    downloads directory — never kept, since it no longer exists. The url becomes the real S3
-    object only when the resolved payload reveals its ``PMC<n>.<v>`` stem; otherwise the legacy
-    url is kept verbatim (never fabricated).
+    The legacy ``local`` path (``./DATALAKE/...``) is never kept, since it no longer exists:
+    resolution tries candidate basenames against the downloads directory IN ORDER — the local
+    basename first, then each ``source.url`` entry's basename (the urls hold the real payload
+    filenames) — and the first recursive match wins, still preferring a hit under the
+    section's own publication directory. The url becomes the real S3 object only when the
+    resolved payload reveals its ``PMC<n>.<v>`` stem; otherwise the legacy url is kept
+    verbatim (never fabricated).
     """
     source: object = section.get("source")
     if source is None:
@@ -254,15 +301,15 @@ def _resolve_source(path: Path, index: int, section: dict[str, Any], downloads: 
         return  # Section validation owns missing-local failures
     if not isinstance(local, str):
         raise _unsupported(path, f"section {index}: `source.local` must hold a path string, found {type(local).__name__}")
-    name: str = PurePosixPath(local).name
+    candidates: list[str] = []
+    for candidate in [PurePosixPath(local).name, *_url_basenames(path, index, source)]:
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
     publication: str | None = _publication(section)
     tried: list[str] = []
-    matched: Path | None = None
-    if downloads is not None:
-        tried.append(f"basename {name!r} under {downloads} (recursive)")
-        matched = _match_payload(downloads, name, publication) if name else None
+    matched: Path | None = _match_candidates(downloads, candidates, publication, tried)
     if matched is None and fetch:
-        matched = _fetch_payload(path, local, downloads, name, publication, tried)
+        matched = _fetch_payload(path, local, downloads, candidates, publication, tried)
     if matched is None:
         if downloads is None:
             tried.append("no downloads directory supplied")
@@ -276,16 +323,77 @@ def _resolve_source(path: Path, index: int, section: dict[str, Any], downloads: 
         source["url"] = [public_url(stem, resolved.name)]
 
 
+def _dedupe_list_entries(value: Any) -> None:
+    """Drop exact-duplicate entries from every list in place, preserving first-seen order.
+
+    WHY: the template-over-section overlay EXTENDS list-valued keys (``fastmerge``), so an
+    entry declared IDENTICALLY on the template and a section (e.g. the same qualifier or
+    annotation twice) lands twice in the merged section. Distinct entries and their order
+    are kept, non-list values pass through untouched, and the walk is bottom-up, so entries
+    are compared after their own nested lists were deduped. The dedup lives in the CONVERTER
+    only: ``fastmerge`` keeps its plain extend semantics on the production path.
+    """
+    if isinstance(value, dict):
+        for item in value.values():
+            _dedupe_list_entries(item)
+    elif isinstance(value, list):
+        unique: list[Any] = []
+        for item in value:
+            _dedupe_list_entries(item)
+            if not any(item == kept for kept in unique):
+                unique.append(item)
+        value[:] = unique
+
+
+def _merge_duplicate_qualifiers(path: Path, index: int, section: dict[str, Any]) -> None:
+    """Merge same-key ``statement.qualifiers`` entries so each key survives exactly once.
+
+    WHY: ``Section`` rejects a qualifier key declared twice (``qualifier-duplicated``), but
+    the overlay EXTENDS the template's qualifiers with the section's — the MIN1 pattern, a
+    generic template qualifier re-declared per section with a more specific encoding. Such a
+    key cannot stay a pair in v12: the section's entry WINS the first-seen slot of the key
+    (fastmerge's later-wins collision semantics — the section re-declares the key to
+    specialize it, and the template's generic entry stays on sections that declare no own
+    entry). Exact duplicates collapse to one entry silently; distinct keys keep their
+    entries and order untouched, and the literal/vocabulary checks stay on ``Section``.
+    """
+    statement: object = section.get("statement")
+    if not isinstance(statement, dict):
+        return
+    qualifiers: object = statement.get("qualifiers")
+    if qualifiers is None:
+        return
+    if not isinstance(qualifiers, list):
+        raise _unsupported(path, f"section {index}: `statement.qualifiers` must hold a list, found {type(qualifiers).__name__}")
+    for position, entry in enumerate(qualifiers):
+        if not isinstance(entry, dict):
+            raise _unsupported(path, f"section {index}: every `statement.qualifiers` entry must hold a mapping, found {type(entry).__name__}")
+        key: object = entry.get("qualifier")
+        if not isinstance(key, str) or not key.strip():
+            raise _unsupported(path, f"section {index}: `statement.qualifiers[{position}].qualifier` must hold a non-empty string")
+    merged: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for entry in qualifiers:
+        key = str(entry["qualifier"])
+        if key not in merged:
+            order.append(key)
+        # exact duplicates collapse; a differing same-key entry wins its first-seen slot
+        merged[key] = entry
+    statement["qualifiers"] = [merged[key] for key in order]
+
+
 def convert_legacy(path: Path, downloads: Path | None, fetch: bool = False) -> dict[str, Any]:
     """Convert one legacy table config into the v12 ``{template, sections}`` shape.
 
     Expansion REUSES :func:`tablassert.ingests.to_sections` (``fastmerge`` of template over
     each section), so legacy merge semantics and production merge semantics can never drift;
     a template-only file yields exactly one section. Each expanded section is then fully
-    specified: annotation aliases renamed, ``reindex`` validated, ``source.local`` resolved
-    against the downloads payload and ``source.url`` repaired. A provenance shared by every
-    section is hoisted into ``template`` (the v12 idiom); divergent provenances stay on
-    their sections. The result serializes via :func:`tablassert.ingests.to_yaml` and every
+    specified: exact-duplicate list entries from the overlay dropped, same-key qualifier
+    entries merged (each qualifier key survives once), annotation aliases renamed,
+    ``reindex`` validated, ``source.local`` resolved against the downloads payload (local
+    basename first, then each ``source.url`` basename) and ``source.url`` repaired. A
+    provenance shared by every section is hoisted into ``template`` (the v12 idiom); divergent
+    provenances stay on their sections. The result serializes via :func:`tablassert.ingests.to_yaml` and every
     section constructs through the :class:`tablassert.models.Section` models.
 
     Args:
@@ -327,6 +435,8 @@ def convert_legacy(path: Path, downloads: Path | None, fetch: bool = False) -> d
     expanded: list[dict[str, Any]] = cast("list[dict[str, Any]]", to_sections(raw, path))
     for index, merged in enumerate(expanded):
         merged.pop("config", None)  # stamped by to_sections; not a v12 config field
+        _dedupe_list_entries(merged)
+        _merge_duplicate_qualifiers(path, index, merged)
         _rewrite_effect_aliases(path, index, merged)
         _resolve_source(path, index, merged, downloads, fetch)
         sections.append(merged)
