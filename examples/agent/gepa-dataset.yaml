@@ -30,7 +30,12 @@
 
     column meanings: A=Gene (HGNC symbol; statement SUBJECT entity, taxon 9606), B=Gene ID (Ensembl), C=cohort, D=or, E=p
     value, F=fdr, G=case count, H=control count, I=case variant count, J=control variant count (C-J are SCHEMA/BIPEX/Epilepsy
-    association statistics). Statement: gene (col A) --gene_associated_with_condition--> MONDO:0016033 (fixed object value).'
+    association statistics). Statement: gene (col A) --gene_associated_with_condition--> MONDO:0016033 (fixed object value).
+    Guidance: this sheet''s header is NOT row 1 — rows 1-4 hold the table title, the cohort banner and the column-name
+    rows, and data starts at row 5, so the section needs sheet: ''data'' and row_slice: [5, auto]. The *_or_* columns
+    are effect_size and their *_pval_* siblings are p_value; each OR/p block shares one statistic, so capture it as the
+    PAIR effect_size (method: column) + effect_type (method: value, e.g. odds_ratio); a p-only column is captured as
+    p_value alone.'
   coverage_feedback: 'baseline coverage 1.00; unresolved terms: none (gene column A: 4/4 HGNC symbols resolved); gene column
     resolves via NCBI Gene taxon 9606; object MONDO:0016033 is a fixed value (vacuous, not counted).'
   fullmap: /home/skyeav/Desktop/fullmap

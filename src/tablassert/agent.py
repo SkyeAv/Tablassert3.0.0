@@ -856,7 +856,13 @@ def make_derive_config_tool() -> Tool:
             "supplementary table/worksheet, each section owning its OWN source (local path + that file's source.url, "
             "plus sheet/row_slice/delimiter as needed) and its OWN statement (subject/object encodings — column letters "
             "for entity columns, literal CURIEs for fixed chemicals — a biolink predicate, and any statistical "
-            "annotations). A single-table article is still one config with one section. Author the YAML yourself from "
+            "annotations). Guidance — inspect each sheet's first rows to place the header (usually within rows 1-3; "
+            "data starts the row after it) and set `row_slice: [<first data row>, auto]` + the EXACT sheet name; a "
+            'subject/object cell joining multiple entities (separators `;` `|` `,` `/`) takes `explode_by: "<separator>"` '
+            "(one edge per entity); `prioritize` names EVERY plausible biolink Category for the column, best first; "
+            "capture p_value columns and, when every row shares one statistic, pair effect_size (method: column) with "
+            "effect_type (method: value) — an unpaired half is dropped with a warning. A single-table article is still "
+            "one config with one section. Author the YAML yourself from "
             "the inspected data-fenced tables. Call this tool with your candidate YAML; it is returned unchanged for the "
             "schema gate to validate. EVERY section MUST satisfy the Tablassert Section JSON schema (injected below). "
             "Return ONLY the YAML string. An invalid config comes back as a coded error naming the "
@@ -2300,6 +2306,25 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
 - QUALIFIERS: enum-ranged qualifiers take a literal TOKEN, never a CURIE
   (`object_direction_qualifier: increased`, not a UMLS id), and `species_context_qualifier` is
   disabled — never author it as a qualifier or annotation.
+
+# DERIVATION GUIDANCE (breadth first: map every mappable sheet, capture every evidence slot)
+- HEADERS + row_slice: inspect the first rows BEFORE authoring the source: titles/captions often
+  precede the header (headers usually sit within rows 1-3; data starts the row AFTER the header).
+  Declare `row_slice: [<first data row>, auto]` and the EXACT sheet name read_table reports; omit
+  row_slice only when row 1 already is the header.
+- explode_by: a subject/object cell joining MULTIPLE entities (common separators: `;`, `|`, `,`,
+  `/`) must declare `explode_by: "<separator>"` so EACH entity emits its own edge; without it the
+  joined string maps as ONE unusable blob and the table under-extracts.
+- prioritize: name EVERY plausible biolink Category for the column in priority order, best first
+  (`prioritize: [Gene, ChemicalEntity]`), never a single guess; `avoid` only what you positively
+  know is wrong.
+- STATISTICS: capture p-value columns (`p_value` / `adjusted_p_value`). When every row shares one
+  statistic, emit the PAIR: `{annotation: effect_size, method: column, encoding: <letter>}` +
+  `{annotation: effect_type, method: value, encoding: <statistic>}` — effect_type is generally a
+  method: value encoding and its value is NOT validated or enforced; the PAIRING is (an unpaired
+  half is DROPPED with a warning, edge kept), so always emit both halves together.
+- ONE SECTION PER MAPPABLE SHEET/WORKSHEET: every mappable sheet earns its own section; skipping
+  one silently under-extracts the article's graph.
 
 ## ReAct workflow + planning
 Reason in an explicit ReAct loop (Thought -> Action -> Observation) and re-plan every few steps:
