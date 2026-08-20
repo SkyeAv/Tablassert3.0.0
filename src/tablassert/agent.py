@@ -2287,9 +2287,9 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
 {{PREDICATE_CHEATSHEET}}
 
 - ANNOTATIONS must name a slot a Biolink association can actually hold. `supporting_study_size`,
-  `sample_size`, `relationship_strength` and the other `supporting_study_*` names exist in the
-  schema but belong to NO class, so their values are rerouted into an inlined StudyResult
-  description rather than emitted on the edge. `q_value`, `fold_change`, `z_score`, `beta` and
+  `sample_size` and the other `supporting_study_*` names exist in the schema but belong to NO
+  class, so their values are rerouted into an inlined StudyResult description rather than
+  emitted on the edge. `q_value`, `fold_change`, `z_score`, `beta` and
   similar are not association slots at all and are folded into `supporting_text`. Prefer
   `p_value`, `adjusted_p_value`, `effect_size`, `effect_type`, `has_evidence`. For FDA
   application numbers, `approval_ids` is a deliberate translator-ingest pass-through: keep

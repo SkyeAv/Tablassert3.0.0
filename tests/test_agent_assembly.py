@@ -120,6 +120,24 @@ def test_instructions_carry_us006_derivation_guidance() -> None:
     assert "hard validation error" not in INSTRUCTIONS.lower()
 
 
+def test_instructions_annotations_bullet_excludes_relationship_strength() -> None:
+    """The ANNOTATIONS bullet must NOT list `relationship_strength` among StudyResult-rerouted names.
+
+    Why: `relationship_strength` is a legacy ALIAS that `coerce.coerced_target` routes to
+    `effect_size` (pinned by tests/test_lib.py), a real, satisfiable edge slot: the relocation
+    validator keeps effect_size ON the edge, pairing treats it as the effect_size half, and
+    legacy.py renames it to `effect_size`. Listing it among annotation names whose values are
+    rerouted into an inlined StudyResult contradicts that routing and teaches the agent its value
+    is lost when it actually reaches the edge. This guard stops a future prompt edit from
+    re-adding the alias to the bullet. `supporting_study_size`, `sample_size` and the other
+    `supporting_study_*` names genuinely have NO satisfiable target, so they must stay named.
+    """
+    region = INSTRUCTIONS.split("ANNOTATIONS must name", 1)[1].split("MULTIVALUED", 1)[0]
+    assert "relationship_strength" not in region
+    assert "supporting_study_size" in region
+    assert "sample_size" in region
+
+
 def test_step_callback_tallies() -> None:
     """make_step_callback tallies steps/tokens/tool-call quality over duck-typed steps (pure)."""
     metrics: dict[str, object] = {}
