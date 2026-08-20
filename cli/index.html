@@ -707,6 +707,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#convert-legacy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        convert-legacy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="convert-legacy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runbook-the-full-mokg-corpus-26-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runbook: the full MOKG corpus (26 files)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#validate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1262,6 +1290,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#convert-legacy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        convert-legacy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="convert-legacy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runbook-the-full-mokg-corpus-26-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runbook: the full MOKG corpus (26 files)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#validate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1327,8 +1383,8 @@
 
 <h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
 <p>Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The <code>tablassert</code> app
-exposes <strong>five subcommands</strong> — <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>validate</code>, and <code>validate-kgx</code> —
-plus an app-level <code>--version</code> flag. Run <code>tablassert --help</code> (or <code>&lt;command&gt; --help</code>)
+exposes <strong>six subcommands</strong> — <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>convert-legacy</code>, <code>validate</code>,
+and <code>validate-kgx</code> — plus an app-level <code>--version</code> flag. Run <code>tablassert --help</code> (or <code>&lt;command&gt; --help</code>)
 for the live surface.</p>
 <h2 id="command-index">Command index<a class="headerlink" href="#command-index" title="Permanent link">&para;</a></h2>
 <table>
@@ -1350,6 +1406,10 @@ for the live surface.</p>
 <tr>
 <td><a href="#build-kg"><code>build-kg</code></a></td>
 <td>Build a KGX NDJSON knowledge graph from a YAML configuration</td>
+</tr>
+<tr>
+<td><a href="#convert-legacy"><code>convert-legacy</code></a></td>
+<td>Convert legacy table configs into the v12 config shape</td>
 </tr>
 <tr>
 <td><a href="#validate"><code>validate</code></a></td>
@@ -1738,12 +1798,107 @@ Subgraphs the detail line also shows the per-section phase (<code>load</code>, <
 <code>resolve</code>, <code>qc</code>, <code>edge</code>, <code>provenance</code>, <code>significance</code>, <code>finalize</code>, <code>write</code>).</p>
 </details>
 <hr />
+<h2 id="convert-legacy">convert-legacy<a class="headerlink" href="#convert-legacy" title="Permanent link">&para;</a></h2>
+<p>Use this to migrate a legacy table config (or a whole directory of them) into the current v12
+<code>{template, sections}</code> shape: duplicate mapping keys are merged (never silently dropped),
+exact-duplicate entries the template/section overlay produced are dropped and same-key
+<code>qualifiers</code> entries merged into one per key, the removed <code>relationship_strength</code> annotation
+is renamed to <code>effect_size</code>, every <code>source.reindex</code> entry is validated against the v12 model,
+and each <code>source.local</code> is resolved onto the real downloaded payload — never left pointing at
+a stale <code>./DATALAKE</code> path.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>LEGACY-PATH<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
+</code></pre></div>
+<p><code>LEGACY-PATH</code> is a single legacy YAML file or a directory of them (non-recursive). Each converted
+config is written as <code>&lt;stem&gt;.v12.yaml</code> — beside its input by default, or under <code>--out</code> when given.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LEGACY-PATH</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>—</td>
+<td>Legacy YAML file, or a directory of <code>*.yaml</code> legacy configs</td>
+</tr>
+<tr>
+<td><code>--downloads</code>, <code>-d</code></td>
+<td>Path</td>
+<td>No</td>
+<td><code>None</code></td>
+<td>Directory holding the downloaded article payloads (<code>PMC&lt;n&gt;/PMC&lt;n&gt;.&lt;v&gt;/...</code>) that each <code>source.local</code> is resolved against: the <code>local</code> basename is tried first, then each <code>source.url</code> entry's basename (the urls hold the real payload filenames), recursively, preferring a hit under the section's own publication directory; an unresolved source lists every basename tried</td>
+</tr>
+<tr>
+<td><code>--fetch</code></td>
+<td>Flag</td>
+<td>No</td>
+<td><code>False</code></td>
+<td>When no local payload match exists, download the article from PMC open access (via <code>provenance.publication</code>) into <code>--downloads</code> instead of failing the source as unresolved</td>
+</tr>
+<tr>
+<td><code>--out</code>, <code>-o</code></td>
+<td>Path</td>
+<td>No</td>
+<td><code>None</code> (beside each input)</td>
+<td>Directory the <code>&lt;stem&gt;.v12.yaml</code> outputs are written into (created when missing); defaults to each input's own directory</td>
+</tr>
+</tbody>
+</table>
+<p>Directory mode converts every <code>*.yaml</code> file — skipping <code>*.v12.yaml</code> outputs from earlier runs, so
+a rerun never re-converts its own output — and prints one status line per file:
+<code>CONVERTED &lt;input&gt; -&gt; &lt;output&gt;</code> or <code>FAILED &lt;input&gt; (&lt;code&gt;)</code>. One failure never aborts the batch,
+but the command exits non-zero when ANY file failed (the full coded message for every failure is
+printed on stderr). <code>--out</code> is optional in directory mode too: without it each <code>&lt;stem&gt;.v12.yaml</code>
+lands beside its input. The glob is <code>*.yaml</code> ONLY — <code>.yml</code> files and every other extension are
+never picked up.</p>
+<p>Exit codes: <code>0</code> everything converted; <code>1</code> any conversion failed; <code>2</code> usage error — a missing input
+or <code>--downloads</code> path, an <code>--out</code> that is not a directory, or a directory holding no <code>*.yaml</code>
+files. Conversion is all-or-nothing per file: a construct v12 cannot express fails the file with
+<code>legacy-unsupported-syntax</code>, and an unresolvable <code>source.local</code> fails it with
+<code>legacy-source-unresolved</code> — the same coded error <code>--fetch</code> ends in when the network is down or
+the article is not open access (a bounded fetch, never a hang).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># One file: writes my-table.v12.yaml beside it</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>my-table.yaml<span class="w"> </span>--downloads<span class="w"> </span>./downloads
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># One file into an explicit directory (created when missing)</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>my-table.yaml<span class="w"> </span>--downloads<span class="w"> </span>./downloads<span class="w"> </span>--out<span class="w"> </span>./v12
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># A whole directory in place; fetch any payload not already downloaded</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>./legacy-configs<span class="w"> </span>--downloads<span class="w"> </span>./downloads<span class="w"> </span>--fetch
+</code></pre></div>
+<h3 id="runbook-the-full-mokg-corpus-26-files">Runbook: the full MOKG corpus (26 files)<a class="headerlink" href="#runbook-the-full-mokg-corpus-26-files" title="Permanent link">&para;</a></h3>
+<p>The MOKG corpus (26 legacy table configs) has an executable ingestability acceptance:
+<code>tests/test_legacy.py::test_corpus_mokg_convert_or_fail_unresolved</code>, gated on
+<code>TABLASSERT_MOKG_DIR</code>. It skips with a printed reason when the variable is unset; when set,
+every corpus file must either convert and validate against the downloads directory
+(<code>TABLASSERT_MOKG_DOWNLOADS</code>, recursive basename match with the <code>source.url</code> basenames as
+fallback) or fail loudly with exactly <code>legacy-source-unresolved</code> — no other error class, no
+silent skip, and at least 15 of the 26 must convert (with the full downloads tree below,
+24 convert; only QIN9 and WAINBERG3 stay unresolved because their payloads are absent):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">TABLASSERT_MOKG_DIR</span><span class="o">=</span>/home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nv">TABLASSERT_MOKG_DOWNLOADS</span><span class="o">=</span>/home/skyeav/Code/ISB/MultiomicsNext/.tablassert<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/test_legacy.py<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span>corpus
+</code></pre></div>
+<p>For the remaining files, run the batch with <code>--fetch</code> so every open-access article payload
+missing from the downloads directory is downloaded from PMC open access first (network
+required); <code>--out</code> keeps the outputs out of the curated corpus directory. QIN9 stays
+unresolved either way — its payload is hosted on figshare, not in the PMC article bundle:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>/home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>--downloads<span class="w"> </span>/home/skyeav/Code/ISB/MultiomicsNext/.tablassert<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>--fetch<span class="w"> </span>--out<span class="w"> </span>/tmp/mokg-v12
+</code></pre></div>
+<hr />
 <h2 id="validate">validate<a class="headerlink" href="#validate" title="Permanent link">&para;</a></h2>
 <p>Use this to validate a configuration against a schema without running the build — ideal for CI and
 pre-commit hooks. The required <code>--schema</code> flag selects which schema to validate against (the kind is
 no longer sniffed from the YAML).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>table
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>table
 </code></pre></div>
 <table>
 <thead>
@@ -1774,8 +1929,8 @@ no longer sniffed from the YAML).</p>
 </table>
 <p>Exits non-zero on any schema error. See <a href="../configuration/table/">Table Configuration</a> and
 <a href="../configuration/graph/">Graph Configuration</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml<span class="w"> </span>--schema<span class="w"> </span>table
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml<span class="w"> </span>--schema<span class="w"> </span>table
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
 </code></pre></div>
 <hr />
 <h2 id="validate-kgx">validate-kgx<a class="headerlink" href="#validate-kgx" title="Permanent link">&para;</a></h2>
@@ -1784,7 +1939,7 @@ no longer sniffed from the YAML).</p>
 and edge is constructed as the Biolink Pydantic class named by its own <code>category</code> — the same classes
 <a href="https://github.com/NCATSTranslator/translator-ingests"><code>NCATSTranslator/translator-ingests</code></a> builds
 when it ingests your files.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
 </code></pre></div>
 <table>
 <thead>
@@ -1822,10 +1977,10 @@ when it ingests your files.</p>
 </table>
 <p>Failures are grouped by field and error type, so a systematic modelling problem shows up as one line
 rather than a million:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>biolink-model 4.4.3
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>nodes: 424141/424141 valid (0 failures)
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>edges: 2000085/2000085 valid (0 failures)
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>KGX output is Biolink-compliant.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>biolink-model 4.4.3
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>nodes: 424141/424141 valid (0 failures)
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>edges: 2000085/2000085 valid (0 failures)
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>KGX output is Biolink-compliant.
 </code></pre></div>
 <p>Exits non-zero when any record fails, so it can gate a release in CI. A missing or misspelled path is
 reported as <code>file not found</code> and also exits non-zero — a file that was never read must never count as
@@ -1834,7 +1989,7 @@ a pass.</p>
 ships <a href="https://github.com/biolink/biolink-model/pull/1774">#1774</a>, because 4.4.3 declares neither on
 <code>Association</code>. The translator-ingest <code>approval_ids</code> pass-through is also intentionally absent from
 that model. These curated fields are counted separately as <em>pending</em> rather than treated as defects:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
 </code></pre></div>
 <p>The strict count is what <code>ok</code> and the exit code use; the pending count is what
 <a href="#agent"><code>tablassert agent</code></a> optimizes against, so a deliberate gap never reads as a modelling error.</p>
