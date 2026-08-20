@@ -3,7 +3,8 @@ from __future__ import annotations
 import ast
 import os
 import re
-from pathlib import Path
+import warnings
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 import pytest
@@ -715,3 +716,168 @@ def test_convert_legacy_cli_empty_directory_exits_2(tmp_path: Path, capsys: pyte
         convert_legacy_command(empty, None, False, None)
     assert excinfo.value.code == 2
     assert "no *.yaml" in capsys.readouterr().err
+
+
+# --- US-005: synthetic fixtures + MOKG corpus ingestability ------------------- #
+
+
+def _seed_payloads(tmp_path: Path, raw: dict[str, Any], legacy: Path) -> Path:
+    """Materialize one placeholder payload per merged (publication, local basename) pair.
+
+    WHY: every committed legacy fixture must convert against a downloads directory that can
+    exist in CI, so the payloads are derived from the fixture's OWN merged sections — the
+    production overlay (:func:`to_sections`) supplies them, never a hand-maintained list.
+    """
+    downloads: Path = tmp_path / "downloads"
+    # cast: ``to_sections`` returns one dict per section, but its annotation nests one list too deep.
+    expanded: list[dict[str, Any]] = cast("list[dict[str, Any]]", to_sections(raw, legacy))
+    for merged in expanded:
+        publication: str = merged["provenance"]["publication"]
+        name: str = PurePosixPath(merged["source"]["local"]).name
+        payload: Path = downloads / publication / f"{publication}.1" / name
+        payload.parent.mkdir(parents=True, exist_ok=True)
+        payload.write_bytes(b"payload")
+    return downloads
+
+
+def _validate_converted(tmp_path: Path, out: dict[str, Any]) -> tuple[list[Section], list[warnings.WarningMessage]]:
+    """Dump a converted config, re-expand it the production way, and construct every Section.
+
+    Returns the validated sections and every warning validation fired, so callers can pin
+    the US-001 drop-with-warning behavior without second-guessing the models here.
+    """
+    config: Path = tmp_path / "converted.yaml"
+    to_yaml(config, out)
+    data: Any = from_yaml(config)
+    # cast: ``to_sections`` returns one dict per section, but its annotation nests one list too deep.
+    expanded: list[dict[str, Any]] = cast("list[dict[str, Any]]", to_sections(data, config))
+    sections: list[Section] = []
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        for merged in expanded:
+            merged.pop("config")  # stamped by to_sections; not a Section field
+            sections.append(Section.model_validate(merged))
+    return sections, record
+
+
+#: Committed legacy fixtures expected to convert AND validate fully (a pairing gap may still
+#: drop an orphan with UnpairedEffectAnnotationWarning — that is a validated outcome, not a
+#: failure). Together with ``legacy_pairing_gap.yaml`` they cover EVERY legacy syntax class:
+#: template-only, duplicate-key mapping, reindex blocks, relationship-strength aliases.
+_SYNTHETIC_CONVERTIBLE: list[str] = ["legacy_template_only.yaml", "legacy_multi_section.yaml", "legacy_duplicate_keys.yaml"]
+
+
+@pytest.mark.parametrize("fixture", _SYNTHETIC_CONVERTIBLE)
+def test_synthetic_fixture_converts_and_validates(fixtures_path: Path, tmp_path: Path, fixture: str) -> None:
+    """Each convertible synthetic fixture parses, converts, and every section validates.
+
+    Fixture-to-syntax-class map: ``legacy_template_only.yaml`` = template-only + reindex
+    block + ``relationship_strength`` alias; ``legacy_multi_section.yaml`` = template+sections
+    with the space-separated alias; ``legacy_duplicate_keys.yaml`` = duplicate-key mapping.
+    No alias spelling may survive conversion under ANY of its case/separator variants.
+    """
+    path: Path = fixtures_path / fixture
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        raw: Any = load_legacy_yaml(path)
+    assert isinstance(raw, dict)
+    duplicates: list[warnings.WarningMessage] = [w for w in record if issubclass(w.category, LegacyDuplicateKeyWarning)]
+    assert bool(duplicates) == (fixture == "legacy_duplicate_keys.yaml")  # only that fixture merges duplicates
+    out: dict[str, Any] = convert_legacy(path, _seed_payloads(tmp_path, raw, path))
+    sections, _ = _validate_converted(tmp_path, out)
+    assert sections
+    for section in sections:
+        names: list[str] = [str(annotation.annotation) for annotation in section.annotations or []]
+        assert not any("relationship" in name for name in names), f"legacy alias survived conversion: {names}"
+
+
+def test_synthetic_duplicate_keys_fixture_keeps_both_occurrences(fixtures_path: Path, tmp_path: Path) -> None:
+    """The duplicate-key fixture merges BOTH ``template:`` occurrences into one section.
+
+    WHY: ``yaml.safe_load`` would keep only the second block and lose source/provenance
+    entirely; the merged conversion must carry the first occurrence's ``source``/provenance
+    AND the second's statement/annotations through Section validation.
+    """
+    path: Path = fixtures_path / "legacy_duplicate_keys.yaml"
+    with pytest.warns(LegacyDuplicateKeyWarning, match=r"Duplicate key `template`"):
+        raw: Any = load_legacy_yaml(path)
+    assert isinstance(raw, dict)
+    out: dict[str, Any] = convert_legacy(path, _seed_payloads(tmp_path, raw, path))
+    section: dict[str, Any] = out["sections"][0]
+    assert section["source"]["sheet"] == "Table 1"  # first occurrence survived the merge
+    assert section["statement"]["predicate"] == "correlated_with"  # second occurrence too
+    sections, record = _validate_converted(tmp_path, out)
+    assert [str(annotation.annotation) for annotation in sections[0].annotations or []] == ["sample size", "effect size", "effect type"]
+    assert not [w for w in record if issubclass(w.category, UnpairedEffectAnnotationWarning)]  # paired: nothing dropped
+
+
+def test_synthetic_pairing_gap_fixture_drops_orphan_with_warning(fixtures_path: Path, tmp_path: Path) -> None:
+    """The pairing-gap fixture converts (alias renamed), then Section DROPS the orphan (US-001).
+
+    WHY: the converter must keep the renamed ``effect_size`` annotation — pairing policy
+    lives ONLY on ``Section``, which drops the unpaired half with exactly one
+    ``UnpairedEffectAnnotationWarning`` and keeps the section.
+    """
+    path: Path = fixtures_path / "legacy_pairing_gap.yaml"
+    raw: Any = load_legacy_yaml(path)
+    assert isinstance(raw, dict)
+    out: dict[str, Any] = convert_legacy(path, _seed_payloads(tmp_path, raw, path))
+    assert out["sections"][0]["annotations"] == [{"annotation": "effect_size", "method": "column", "encoding": "C"}]
+    sections, record = _validate_converted(tmp_path, out)
+    unpaired: list[warnings.WarningMessage] = [w for w in record if issubclass(w.category, UnpairedEffectAnnotationWarning)]
+    assert len(unpaired) == 1
+    assert "effect_size" in str(unpaired[0].message)
+    assert sections[0].annotations is None  # the orphan was dropped, the section kept
+
+
+#: The MOKG corpus holds exactly 26 legacy table configs (US-005); a different count means the
+#: corpus changed and this acceptance test must be re-evaluated, never silently resized.
+_MOKG_FILE_COUNT: int = 26
+
+
+def test_corpus_mokg_convert_or_fail_unresolved(tmp_path: Path) -> None:
+    """Env-gated ingestability acceptance over the REAL MOKG corpus (US-005).
+
+    SKIPS with a printed reason when ``TABLASSERT_MOKG_DIR`` is unset. When set, every
+    ``*.yaml`` in that directory must parse, overlay (template merged over each section), and
+    run the alias/reindex conversion; each file then either converts AND every section
+    validates against the downloads directory (``TABLASSERT_MOKG_DOWNLOADS``), or fails
+    loudly with EXACTLY ``legacy-source-unresolved`` — no other error class escapes, no file
+    is silently skipped. ``--fetch`` is deliberately NOT used: the acceptance must stay
+    deterministic offline; the docs runbook covers the fetching variant.
+    """
+    mokg_dir: str | None = os.environ.get("TABLASSERT_MOKG_DIR")
+    if not mokg_dir:
+        pytest.skip("TABLASSERT_MOKG_DIR is unset; point it at the MOKG legacy corpus (TABLE/MOKG) to run the 26-file ingestability acceptance")
+    root: Path = Path(mokg_dir)
+    assert root.is_dir(), f"TABLASSERT_MOKG_DIR is not a directory: {root}"
+    downloads_env: str | None = os.environ.get("TABLASSERT_MOKG_DOWNLOADS")
+    downloads: Path | None = None
+    if downloads_env:
+        downloads = Path(downloads_env)
+        assert downloads.is_dir(), f"TABLASSERT_MOKG_DOWNLOADS is not a directory: {downloads}"
+
+    files: list[Path] = sorted(root.glob("*.yaml"))
+    assert len(files) == _MOKG_FILE_COUNT, f"expected {_MOKG_FILE_COUNT} MOKG legacy configs in {root}, found {len(files)}"
+
+    converted: list[str] = []
+    unresolved: list[str] = []
+    for path in files:
+        raw: Any = load_legacy_yaml(path)  # parse: duplicate-merging loader
+        assert isinstance(raw, dict), f"{path.name} did not parse to a mapping"
+        to_sections(raw, path)  # overlay: template fastmerged over every section
+        try:
+            out: dict[str, Any] = convert_legacy(path, downloads)  # alias rename + reindex check + source resolution
+        except LegacySourceUnresolvedError:  # the class IS the code: it always carries legacy-source-unresolved
+            unresolved.append(path.name)
+            continue
+        # ANY other exception escapes and fails the test: only the two outcomes above are legal.
+        _validate_converted(tmp_path, out)
+        converted.append(path.name)
+
+    assert len(converted) + len(unresolved) == len(files)  # every file has a verdict: no silent skips
+    print(f"\nMOKG corpus: {len(files)} files | downloads={downloads} | converted={len(converted)} legacy-source-unresolved={len(unresolved)}")
+    for name in converted:
+        print(f"  CONVERTED {name}")
+    for name in unresolved:
+        print(f"  FAILED    {name} (legacy-source-unresolved)")

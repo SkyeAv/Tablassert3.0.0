@@ -217,6 +217,31 @@ tablassert convert-legacy my-table.yaml --downloads ./downloads --out ./v12
 tablassert convert-legacy ./legacy-configs --downloads ./downloads --fetch
 ```
 
+### Runbook: the full MOKG corpus (26 files)
+
+The MOKG corpus (26 legacy table configs) has an executable ingestability acceptance:
+`tests/test_legacy.py::test_corpus_mokg_convert_or_fail_unresolved`, gated on
+`TABLASSERT_MOKG_DIR`. It skips with a printed reason when the variable is unset; when set,
+every corpus file must either convert and validate against the downloads directory
+(`TABLASSERT_MOKG_DOWNLOADS`, recursive basename match) or fail loudly with exactly
+`legacy-source-unresolved` — no other error class, no silent skip:
+
+```bash
+TABLASSERT_MOKG_DIR=/home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG \
+TABLASSERT_MOKG_DOWNLOADS=/home/skyeav/Code/ISB/MultiomicsNext/.tablassert \
+uv run pytest tests/test_legacy.py -q -k corpus
+```
+
+For 26/26 converted outputs, run the batch with `--fetch` so every article payload missing
+from the downloads directory is downloaded from PMC open access first (network required);
+`--out` keeps the outputs out of the curated corpus directory:
+
+```bash
+tablassert convert-legacy /home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG \
+    --downloads /home/skyeav/Code/ISB/MultiomicsNext/.tablassert \
+    --fetch --out /tmp/mokg-v12
+```
+
 ---
 
 ## validate
