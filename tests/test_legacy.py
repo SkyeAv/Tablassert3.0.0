@@ -7,6 +7,7 @@ import warnings
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
+import pydantic
 import pytest
 import yaml
 from yaml.constructor import ConstructorError
@@ -575,36 +576,36 @@ def test_convert_dedup_keeps_distinct_qualifier_entries_and_order(tmp_path: Path
     """DISTINCT qualifier entries survive the dedup in first-seen order.
 
     WHY: template declares the disease qualifier, the section re-declares it identically and
-    adds two DISTINCT keys — the overlay yields [disease, disease, anatomical, species]; the
+    adds two DISTINCT keys — the overlay yields [disease, disease, anatomical, sex]; the
     dedup collapses the duplicate without disturbing the distinct entries or their order.
     """
     disease: dict[str, Any] = {"qualifier": "disease_context_qualifier", "method": "value", "encoding": "MONDO:0019037"}
     anatomical: dict[str, Any] = {"qualifier": "anatomical_context_qualifier", "method": "value", "encoding": "UBERON:0000955"}
-    species: dict[str, Any] = {"qualifier": "species_qualifier", "method": "value", "encoding": "NCBITaxon:9606"}
+    sex: dict[str, Any] = {"qualifier": "sex_qualifier", "method": "value", "encoding": "PATO:0000384"}
     config: dict[str, Any] = _legacy_config()
     config["template"]["statement"]["qualifiers"] = [dict(disease)]
-    config["sections"] = [{"statement": {"qualifiers": [dict(disease), dict(anatomical), dict(species)]}}]
+    config["sections"] = [{"statement": {"qualifiers": [dict(disease), dict(anatomical), dict(sex)]}}]
     p: Path = _legacy_file(tmp_path, config)
     downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
     out: dict[str, Any] = convert_legacy(p, downloads)
-    assert out["sections"][0]["statement"]["qualifiers"] == [disease, anatomical, species]
+    assert out["sections"][0]["statement"]["qualifiers"] == [disease, anatomical, sex]
 
 
 def test_convert_dedup_leaves_scalar_values_untouched(tmp_path: Path) -> None:
     """Scalar values pass through the dedup untouched — it applies to list entries only.
 
-    WHY: a scalar declared identically on the template and a section (``sheet`` here) keeps
+    WHY: a scalar declared identically on the template and a section (``delimiter`` here) keeps
     fastmerge's later-wins value as a plain scalar; nothing is wrapped or compared.
     """
     config: dict[str, Any] = _legacy_config()
-    config["template"]["source"]["sheet"] = "Table 1"
-    config["sections"] = [{"source": {"sheet": "Table 1"}}]
+    config["template"]["source"]["delimiter"] = "\t"
+    config["sections"] = [{"source": {"delimiter": "\t"}}]
     p: Path = _legacy_file(tmp_path, config)
     downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
     out: dict[str, Any] = convert_legacy(p, downloads)
-    sheet: Any = out["sections"][0]["source"]["sheet"]
-    assert isinstance(sheet, str)
-    assert sheet == "Table 1"
+    delimiter: Any = out["sections"][0]["source"]["delimiter"]
+    assert isinstance(delimiter, str)
+    assert delimiter == "\t"
 
 
 def test_convert_same_key_qualifier_section_entry_wins_first_seen_slot(tmp_path: Path) -> None:
@@ -679,6 +680,66 @@ def test_convert_non_mapping_annotation_entries_raise(tmp_path: Path) -> None:
     scalar_source["template"]["source"] = "./DATALAKE/data.tsv"
     with pytest.raises(LegacyUnsupportedSyntaxError, match="`source` must hold a mapping"):
         convert_legacy(_legacy_file(tmp_path, scalar_source), downloads)
+
+
+def test_convert_non_list_annotations_raises_unsupported(tmp_path: Path) -> None:
+    """A non-list ``annotations`` value is an unsupported construct (never expressible as a ``Section``)."""
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["annotations"] = "effect size"
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    with pytest.raises(LegacyUnsupportedSyntaxError, match="`annotations` must hold a list") as excinfo:
+        convert_legacy(_legacy_file(tmp_path, config), downloads)
+    assert excinfo.value.code == "legacy-unsupported-syntax"
+
+
+def test_convert_non_string_source_local_raises_unsupported(tmp_path: Path) -> None:
+    """A non-string ``source.local`` cannot be resolved onto a payload and is unsupported."""
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["source"]["local"] = 42
+    with pytest.raises(LegacyUnsupportedSyntaxError, match=r"`source\.local` must hold a path string") as excinfo:
+        convert_legacy(_legacy_file(tmp_path, config), None)
+    assert excinfo.value.code == "legacy-unsupported-syntax"
+
+
+def test_convert_fetch_without_publication_surfaces_unresolved(tmp_path: Path) -> None:
+    """fetch=True without ``provenance.publication`` cannot know which article to fetch: unresolved, never a traceback."""
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["provenance"].pop("publication")
+    downloads: Path = tmp_path / "downloads"
+    downloads.mkdir()
+    with pytest.raises(LegacySourceUnresolvedError, match=r"provenance\.publication") as excinfo:
+        convert_legacy(_legacy_file(tmp_path, config), downloads, fetch=True)
+    assert excinfo.value.code == "legacy-source-unresolved"
+
+
+def test_convert_fetch_non_pmc_publication_surfaces_unresolved(tmp_path: Path) -> None:
+    """fetch=True with a publication that is not a PMC id stays unresolved (the normalize failure is recorded in ``tried``)."""
+    config: dict[str, Any] = _legacy_config()
+    config["template"]["provenance"]["publication"] = "not-a-pmc-id"
+    downloads: Path = tmp_path / "downloads"
+    downloads.mkdir()
+    with pytest.raises(LegacySourceUnresolvedError, match="is not a PMC id") as excinfo:
+        convert_legacy(_legacy_file(tmp_path, config), downloads, fetch=True)
+    assert excinfo.value.code == "legacy-source-unresolved"
+
+
+@pytest.mark.parametrize("missing", ["source", "statement"])
+def test_convert_template_missing_required_block_raises_unsupported(tmp_path: Path, missing: str) -> None:
+    """A template missing ``source`` or ``statement`` fails conversion — never a broken ``.v12.yaml``.
+
+    WHY: every expanded section constructs through the Section models, so a required block the
+    template never supplied surfaces as ``legacy-unsupported-syntax`` naming the section index
+    (and source label when one exists), chained from the pydantic ValidationError, instead of
+    writing a config that only fails downstream.
+    """
+    config: dict[str, Any] = _legacy_config()
+    config["template"].pop(missing)
+    downloads: Path = _downloads(tmp_path, "PMC0000000/PMC0000000.1/data.tsv")
+    with pytest.raises(LegacyUnsupportedSyntaxError, match="section 0") as excinfo:
+        convert_legacy(_legacy_file(tmp_path, config), downloads)
+    assert excinfo.value.code == "legacy-unsupported-syntax"
+    assert "fails `Section` validation" in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, pydantic.ValidationError)
 
 
 def test_convert_module_never_imports_agent_eagerly() -> None:
@@ -821,6 +882,18 @@ def test_convert_legacy_cli_fetch_without_downloads_exits_1(tmp_path: Path, caps
         convert_legacy_command(legacy, None, True, None)
     assert excinfo.value.code == 1
     assert "legacy-source-unresolved" in capsys.readouterr().err
+
+
+def test_convert_legacy_cli_single_file_malformed_yaml_exits_1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A malformed YAML in single-file mode exits 1 with one FAILED stderr line, never a raw traceback."""
+    legacy: Path = tmp_path / "broken.yaml"
+    legacy.write_text("template: [\n")
+    with pytest.raises(SystemExit) as excinfo:
+        convert_legacy_command(legacy, None, False, None)
+    assert excinfo.value.code == 1
+    err: str = capsys.readouterr().err
+    assert f"FAILED {legacy} (error)" in err
+    assert not (tmp_path / "broken.v12.yaml").exists()
 
 
 def test_convert_legacy_cli_batch_status_lines_and_exit(fixtures_path: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

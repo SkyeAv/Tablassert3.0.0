@@ -201,7 +201,8 @@ a rerun never re-converts its own output — and prints one status line per file
 `CONVERTED <input> -> <output>` or `FAILED <input> (<code>)`. One failure never aborts the batch,
 but the command exits non-zero when ANY file failed (the full coded message for every failure is
 printed on stderr). `--out` is optional in directory mode too: without it each `<stem>.v12.yaml`
-lands beside its input.
+lands beside its input. The glob is `*.yaml` ONLY — `.yml` files and every other extension are
+never picked up.
 
 Exit codes: `0` everything converted; `1` any conversion failed; `2` usage error — a missing input
 or `--downloads` path, an `--out` that is not a directory, or a directory holding no `*.yaml`

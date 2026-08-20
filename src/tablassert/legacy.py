@@ -34,7 +34,7 @@ from yaml.nodes import MappingNode, Node
 
 from tablassert.errors import LegacyDuplicateKeyWarning, LegacySourceUnresolvedError, LegacyUnsupportedSyntaxError
 from tablassert.ingests import fastmerge, to_sections
-from tablassert.models import Reindex
+from tablassert.models import Reindex, Section
 
 
 class _LegacyDuplicateMergingSafeLoader(SafeLoader):
@@ -382,6 +382,15 @@ def _merge_duplicate_qualifiers(path: Path, index: int, section: dict[str, Any])
     statement["qualifiers"] = [merged[key] for key in order]
 
 
+def _section_label(index: int, section: dict[str, Any]) -> str:
+    """Identify one expanded section in a diagnostic: its index, plus ``source.local`` when declared."""
+    source: object = section.get("source")
+    local: object = source.get("local") if isinstance(source, dict) else None
+    if isinstance(local, str) and local.strip():
+        return f"section {index} (source.local {local!r})"
+    return f"section {index}"
+
+
 def convert_legacy(path: Path, downloads: Path | None, fetch: bool = False) -> dict[str, Any]:
     """Convert one legacy table config into the v12 ``{template, sections}`` shape.
 
@@ -439,6 +448,14 @@ def convert_legacy(path: Path, downloads: Path | None, fetch: bool = False) -> d
         _merge_duplicate_qualifiers(path, index, merged)
         _rewrite_effect_aliases(path, index, merged)
         _resolve_source(path, index, merged, downloads, fetch)
+        # Enforce the docstring guarantee: EVERY expanded section must construct through the
+        # Section models, so a gap the overlay left (e.g. a template missing source/statement)
+        # fails the conversion here instead of writing a .v12.yaml that fails downstream.
+        try:
+            Section.model_validate(merged)
+        except pydantic.ValidationError as e:
+            problems: str = "; ".join(f"{'.'.join(str(part) for part in err['loc']) or 'section'}: {err['msg']}" for err in e.errors())
+            raise _unsupported(path, f"{_section_label(index, merged)} fails `Section` validation: {problems}") from e
         sections.append(merged)
 
     provenances: list[object] = [section.get("provenance") for section in sections]

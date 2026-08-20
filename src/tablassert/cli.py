@@ -801,6 +801,9 @@ def convert_legacy_command(
         except TablassertError as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from exc
+        except Exception as exc:  # malformed YAML etc: one-line failure, never a raw traceback
+            print(f"FAILED {legacy_path} (error): {type(exc).__name__}: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
         print(f"CONVERTED {legacy_path} -> {target}")
         return
 
