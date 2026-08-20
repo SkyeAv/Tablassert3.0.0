@@ -18,18 +18,22 @@ speed buys nothing here.
 from __future__ import annotations
 
 import collections.abc
+import glob
+import re
 import warnings
 from copy import deepcopy
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath
+from typing import Any, cast
 
+import pydantic
 import yaml
 from yaml import SafeLoader
 from yaml.constructor import ConstructorError
 from yaml.nodes import MappingNode, Node
 
-from tablassert.errors import LegacyDuplicateKeyWarning
-from tablassert.ingests import fastmerge
+from tablassert.errors import LegacyDuplicateKeyWarning, LegacySourceUnresolvedError, LegacyUnsupportedSyntaxError
+from tablassert.ingests import fastmerge, to_sections
+from tablassert.models import Reindex
 
 
 class _LegacyDuplicateMergingSafeLoader(SafeLoader):
@@ -98,3 +102,239 @@ def load_legacy_yaml(p: Path) -> object:
         # only the safe tags and refuses arbitrary-object construction (same stance as
         # ingests.from_yaml's CSafeLoader).
         return yaml.load(f, Loader=_LegacyDuplicateMergingSafeLoader)
+
+
+# --- US-003: legacy -> v12 conversion ---------------------------------------- #
+
+#: The only keys a v12 section carries. Anything else in a legacy template or section entry
+#: has no v12 home, so it is rejected instead of silently dropped.
+SECTION_FIELDS: frozenset[str] = frozenset({"source", "statement", "provenance", "annotations"})
+
+#: Legacy spellings of the removed ``relationship_strength`` annotation, case- and
+#: separator-insensitive (space, underscore, dash, or none). The rewrite RENAMES the
+#: annotation to the canonical ``effect_size`` slot and keeps every other encoding field
+#: untouched; the ``effect_size``/``effect_type`` pairing policy is deliberately NOT
+#: re-implemented here — unpaired halves pass through to ``Section`` validation, which
+#: drops them with an :class:`~tablassert.errors.UnpairedEffectAnnotationWarning`.
+_RELATIONSHIP_STRENGTH: re.Pattern[str] = re.compile(r"^relationship[\s_.\-]*strength$", re.IGNORECASE)
+
+#: A payload directory shaped like ``PMC<n>.<v>`` (the ``s3://pmc-oa-opendata`` article-version
+#: prefix a fetch writes under). Only a resolved payload under such a directory reveals its real
+#: S3 object; anything else keeps the legacy url verbatim rather than guessing one.
+_PAYLOAD_STEM: re.Pattern[str] = re.compile(r"^PMC\d+\.\d+$")
+
+
+def _unsupported(path: Path, detail: str) -> LegacyUnsupportedSyntaxError:
+    return LegacyUnsupportedSyntaxError(path, detail)
+
+
+def _check_block_keys(path: Path, where: str, block: dict[Any, Any]) -> None:
+    """Reject any key the v12 section shape cannot express (no partial silent writes)."""
+    unknown: list[str] = sorted(str(key) for key in block if key not in SECTION_FIELDS)
+    if unknown:
+        raise _unsupported(path, f"`{where}` declares unsupported key(s) {unknown}; a v12 section carries only {sorted(SECTION_FIELDS)}")
+
+
+def _publication(section: dict[str, Any]) -> str | None:
+    """The section's ``provenance.publication`` when declared as a string, else ``None``."""
+    provenance: object = section.get("provenance")
+    if isinstance(provenance, dict):
+        publication: object = provenance.get("publication")
+        if isinstance(publication, str) and publication.strip():
+            return publication
+    return None
+
+
+def _rewrite_effect_aliases(path: Path, index: int, section: dict[str, Any]) -> None:
+    """Rename legacy ``relationship strength`` annotations to ``effect_size`` in place.
+
+    Only the ``annotation`` name is rewritten; ``method``/``encoding`` and every other
+    encoding field pass through untouched. The pairing policy lives on ``Section``.
+    """
+    annotations: object = section.get("annotations")
+    if annotations is None:
+        return
+    if not isinstance(annotations, list):
+        raise _unsupported(path, f"section {index}: `annotations` must hold a list, found {type(annotations).__name__}")
+    for entry in annotations:
+        if not isinstance(entry, dict):
+            raise _unsupported(path, f"section {index}: every `annotations` entry must hold a mapping, found {type(entry).__name__}")
+        name: object = entry.get("annotation")
+        if isinstance(name, str) and _RELATIONSHIP_STRENGTH.match(name):
+            entry["annotation"] = "effect_size"
+
+
+def _check_reindex(path: Path, index: int, source: dict[str, Any]) -> None:
+    """Validate every ``source.reindex`` entry against ``models.Reindex`` without mutating it.
+
+    Valid blocks pass through unchanged; an entry the v12 ``Reindex`` model cannot express
+    fails the WHOLE conversion instead of leaking a half-translated filter into the output.
+    """
+    reindex: object = source.get("reindex")
+    if reindex is None:
+        return
+    if not isinstance(reindex, list):
+        raise _unsupported(path, f"section {index}: `source.reindex` must hold a list, found {type(reindex).__name__}")
+    for entry in reindex:
+        if not isinstance(entry, dict):
+            raise _unsupported(path, f"section {index}: every `source.reindex` entry must hold a mapping, found {type(entry).__name__}")
+        try:
+            Reindex.model_validate(entry)
+        except pydantic.ValidationError as e:
+            problems: str = "; ".join(f"{'.'.join(str(part) for part in err['loc']) or 'entry'}: {err['msg']}" for err in e.errors())
+            raise _unsupported(path, f"section {index}: `source.reindex` entry {entry} is not expressible in v12 ({problems})") from e
+
+
+def _match_payload(downloads: Path, name: str, publication: str | None) -> Path | None:
+    """Find ``name`` under ``downloads`` (recursive), preferring the article's own directory.
+
+    A downloads parent can hold many articles, and generic payload names (``media-1.xlsx``)
+    collide across them, so a match under a directory named after the section's publication
+    wins over an elsewhere match; ties break deterministically on the sorted path.
+    """
+    matches: list[Path] = sorted(downloads.rglob(glob.escape(name)))
+    if not matches:
+        return None
+    if publication:
+        wanted: str = publication.strip().upper()
+        for match in matches:
+            if any(parent.name.upper() == wanted for parent in match.parents):
+                return match
+    return matches[0]
+
+
+def _fetch_payload(path: Path, local: str, downloads: Path | None, name: str, publication: str | None, tried: list[str]) -> Path | None:
+    """Fetch the article payload through the agent's PMC downloader, then retry the match.
+
+    ``tablassert.agent`` is imported LAZILY here (never at module scope): conversion must stay
+    importable in the base environment, and the fetch path is the only piece that needs the
+    agent module. Fetch failures leave the source unresolved, so they surface as
+    ``legacy-source-unresolved`` with the cause chained.
+    """
+    if downloads is None:
+        tried.append("fetch=True needs a downloads directory to fetch into (got None)")
+        return None
+    if publication is None:
+        tried.append("fetch needs `provenance.publication` to know which article to download (none declared)")
+        return None
+    # Below the degenerate-input guards: a fetch=True call that can never fetch must not
+    # import tablassert.agent (legacy conversion stays importable in the base environment).
+    from tablassert.agent import fetch_pmc_article, normalize_pmc_id  # lazy: keep legacy import agent-free
+
+    try:
+        pmc: str = normalize_pmc_id(publication)
+    except ValueError as e:
+        tried.append(f"`provenance.publication` {publication!r} is not a PMC id ({e})")
+        return None
+    target: Path = downloads / pmc
+    tried.append(f"PMC open-access fetch of {pmc} into {target}")
+    try:
+        fetch_pmc_article(pmc, target)
+    except (ValueError, OSError) as e:
+        raise LegacySourceUnresolvedError(path, local, tried) from e
+    return _match_payload(downloads, name, publication)
+
+
+def _resolve_source(path: Path, index: int, section: dict[str, Any], downloads: Path | None, fetch: bool) -> None:
+    """Point ``source.local`` at the real downloaded payload and repair ``source.url``.
+
+    The legacy ``local`` path (``./DATALAKE/...``) is rewritten by basename match against the
+    downloads directory — never kept, since it no longer exists. The url becomes the real S3
+    object only when the resolved payload reveals its ``PMC<n>.<v>`` stem; otherwise the legacy
+    url is kept verbatim (never fabricated).
+    """
+    source: object = section.get("source")
+    if source is None:
+        return  # Section validation owns missing-source failures
+    if not isinstance(source, dict):
+        raise _unsupported(path, f"section {index}: `source` must hold a mapping, found {type(source).__name__}")
+    _check_reindex(path, index, source)
+    local: object = source.get("local")
+    if local is None:
+        return  # Section validation owns missing-local failures
+    if not isinstance(local, str):
+        raise _unsupported(path, f"section {index}: `source.local` must hold a path string, found {type(local).__name__}")
+    name: str = PurePosixPath(local).name
+    publication: str | None = _publication(section)
+    tried: list[str] = []
+    matched: Path | None = None
+    if downloads is not None:
+        tried.append(f"basename {name!r} under {downloads} (recursive)")
+        matched = _match_payload(downloads, name, publication) if name else None
+    if matched is None and fetch:
+        matched = _fetch_payload(path, local, downloads, name, publication, tried)
+    if matched is None:
+        if downloads is None:
+            tried.append("no downloads directory supplied")
+        raise LegacySourceUnresolvedError(path, local, tried)
+    resolved: Path = matched.resolve()
+    source["local"] = str(resolved)
+    stem: str = resolved.parent.name
+    if _PAYLOAD_STEM.match(stem):
+        from tablassert.agent import public_url  # lazy: keep legacy import agent-free
+
+        source["url"] = [public_url(stem, resolved.name)]
+
+
+def convert_legacy(path: Path, downloads: Path | None, fetch: bool = False) -> dict[str, Any]:
+    """Convert one legacy table config into the v12 ``{template, sections}`` shape.
+
+    Expansion REUSES :func:`tablassert.ingests.to_sections` (``fastmerge`` of template over
+    each section), so legacy merge semantics and production merge semantics can never drift;
+    a template-only file yields exactly one section. Each expanded section is then fully
+    specified: annotation aliases renamed, ``reindex`` validated, ``source.local`` resolved
+    against the downloads payload and ``source.url`` repaired. A provenance shared by every
+    section is hoisted into ``template`` (the v12 idiom); divergent provenances stay on
+    their sections. The result serializes via :func:`tablassert.ingests.to_yaml` and every
+    section constructs through the :class:`tablassert.models.Section` models.
+
+    Args:
+        path: Path to the legacy YAML config.
+        downloads: Directory holding downloaded article payloads (``PMC<n>/PMC<n>.<v>/...``);
+            ``None`` when no payload directory exists.
+        fetch: When no local match exists, download the article payload from PMC open access
+            (via ``provenance.publication``) into ``downloads`` before failing.
+
+    Returns:
+        The v12 config dict ``{"template": ..., "sections": [...]}``.
+
+    Raises:
+        LegacyUnsupportedSyntaxError: The file uses a construct v12 cannot express.
+        LegacySourceUnresolvedError: A ``source.local`` stayed unmapped onto a payload.
+    """
+    raw: object = load_legacy_yaml(path)
+    if not isinstance(raw, dict):
+        raise _unsupported(path, f"the file must hold a mapping, found {type(raw).__name__}")
+    unknown: list[str] = sorted(str(key) for key in raw if key not in ("template", "sections"))
+    if unknown:
+        raise _unsupported(path, f"unknown top-level key(s) {unknown}; only `template` and `sections` are supported")
+    template: object = raw.get("template", {})
+    if not isinstance(template, dict):
+        raise _unsupported(path, f"`template` must hold a mapping, found {type(template).__name__}")
+    _check_block_keys(path, "template", template)
+    entries: object = raw.get("sections", [{}])
+    if not isinstance(entries, list):
+        raise _unsupported(path, f"`sections` must hold a list, found {type(entries).__name__}")
+    if not entries:
+        raise _unsupported(path, "`sections` is an empty list; a legacy config without sections omits the key")
+    for position, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise _unsupported(path, f"sections[{position}] must hold a mapping, found {type(entry).__name__}")
+        _check_block_keys(path, f"sections[{position}]", entry)
+
+    sections: list[dict[str, Any]] = []
+    # cast: ``to_sections`` returns one dict per section, but its annotation nests one list too deep.
+    expanded: list[dict[str, Any]] = cast("list[dict[str, Any]]", to_sections(raw, path))
+    for index, merged in enumerate(expanded):
+        merged.pop("config", None)  # stamped by to_sections; not a v12 config field
+        _rewrite_effect_aliases(path, index, merged)
+        _resolve_source(path, index, merged, downloads, fetch)
+        sections.append(merged)
+
+    provenances: list[object] = [section.get("provenance") for section in sections]
+    first: object = provenances[0]
+    if isinstance(first, dict) and all(provenance == first for provenance in provenances):
+        for section in sections:
+            section.pop("provenance", None)
+        return {"template": {"provenance": first}, "sections": sections}
+    return {"template": {}, "sections": sections}
