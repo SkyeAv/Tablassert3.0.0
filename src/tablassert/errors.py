@@ -30,8 +30,6 @@ TablassertErrorCodes = Literal[
     "encoding-list-method-removed",
     "annotation-split-by-requires-column",
     "annotation-split-by-empty",
-    "annotation-effect-size-without-type",
-    "annotation-effect-type-without-size",
     "field-disabled",
     "qualifier-bad-value",
     "qualifier-unsatisfiable",
@@ -83,6 +81,19 @@ class BiolinkRelocationWarning(UserWarning):
     relocated -- onto the inlined ``StudyResult`` for a slot Biolink attaches to no class, or into
     ``supporting_text`` for a name that is not an association slot at all. Its own category so
     callers can silence or assert on relocations without touching the deprecation scaffold.
+    """
+
+
+class UnpairedEffectAnnotationWarning(UserWarning):
+    """One half of the ``effect_size`` / ``effect_type`` pair was declared without its sibling.
+
+    Neither half carries evidence alone: a bare effect size is uninterpretable (0.85 of *what* --
+    an odds ratio or a Spearman rho?), and Biolink PR #1774 only populates ``effect_type``
+    alongside a numeric ``effect_size``, so the build nulls an unpaired type outright. Validation
+    therefore DROPS the unpaired annotation from the section -- with this warning naming what was
+    dropped and from where -- and keeps the section and its edges, instead of failing the whole
+    section over a value the build would have discarded anyway. Its own category so callers can
+    silence or assert on these drops without touching the relocation or deprecation scaffolds.
     """
 
 

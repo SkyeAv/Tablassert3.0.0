@@ -2264,9 +2264,10 @@ pick a predicate the subject/object pair actually permits (see BIOLINK MODELING 
 statistical annotations (p_value / effect_size / effect_type) when that table has them —
 method: column for table-provided columns, method: value for a fixed valid value (e.g.
 effect_type: spearmans_rho when every row is a Spearman correlation). effect_size and effect_type
-are MANDATORY AS A PAIR: either one without the other is a hard validation error that bounces your
-final answer, so a table with an effect-size column also needs its effect_type (method: value when
-every row shares one statistic). Alias spellings count — `odds ratio` and the legacy
+TRAVEL AS A PAIR: an unpaired half is DROPPED from the section with a warning — the edge is kept,
+but the evidence that half carried is LOST — so for maximal evidence retention ALWAYS emit both
+together: a table with an effect-size column also needs its effect_type (method: value when every
+row shares one statistic). Alias spellings count — `odds ratio` and the legacy
 `relationship_strength` both coerce to effect_size. A single-table article is still ONE config with
 ONE section.
 
