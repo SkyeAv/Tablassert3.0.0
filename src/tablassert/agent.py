@@ -856,7 +856,13 @@ def make_derive_config_tool() -> Tool:
             "supplementary table/worksheet, each section owning its OWN source (local path + that file's source.url, "
             "plus sheet/row_slice/delimiter as needed) and its OWN statement (subject/object encodings — column letters "
             "for entity columns, literal CURIEs for fixed chemicals — a biolink predicate, and any statistical "
-            "annotations). A single-table article is still one config with one section. Author the YAML yourself from "
+            "annotations). Guidance — inspect each sheet's first rows to place the header (usually within rows 1-3; "
+            "data starts the row after it) and set `row_slice: [<first data row>, auto]` + the EXACT sheet name; a "
+            'subject/object cell joining multiple entities (separators `;` `|` `,` `/`) takes `explode_by: "<separator>"` '
+            "(one edge per entity); `prioritize` names EVERY plausible biolink Category for the column, best first; "
+            "capture p_value columns and, when every row shares one statistic, pair effect_size (method: column) with "
+            "effect_type (method: value) — an unpaired half is dropped with a warning. A single-table article is still "
+            "one config with one section. Author the YAML yourself from "
             "the inspected data-fenced tables. Call this tool with your candidate YAML; it is returned unchanged for the "
             "schema gate to validate. EVERY section MUST satisfy the Tablassert Section JSON schema (injected below). "
             "Return ONLY the YAML string. An invalid config comes back as a coded error naming the "
@@ -2264,9 +2270,10 @@ pick a predicate the subject/object pair actually permits (see BIOLINK MODELING 
 statistical annotations (p_value / effect_size / effect_type) when that table has them —
 method: column for table-provided columns, method: value for a fixed valid value (e.g.
 effect_type: spearmans_rho when every row is a Spearman correlation). effect_size and effect_type
-are MANDATORY AS A PAIR: either one without the other is a hard validation error that bounces your
-final answer, so a table with an effect-size column also needs its effect_type (method: value when
-every row shares one statistic). Alias spellings count — `odds ratio` and the legacy
+TRAVEL AS A PAIR: an unpaired half is DROPPED from the section with a warning — the edge is kept,
+but the evidence that half carried is LOST — so for maximal evidence retention ALWAYS emit both
+together: a table with an effect-size column also needs its effect_type (method: value when every
+row shares one statistic). Alias spellings count — `odds ratio` and the legacy
 `relationship_strength` both coerce to effect_size. A single-table article is still ONE config with
 ONE section.
 
@@ -2280,9 +2287,9 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
 {{PREDICATE_CHEATSHEET}}
 
 - ANNOTATIONS must name a slot a Biolink association can actually hold. `supporting_study_size`,
-  `sample_size`, `relationship_strength` and the other `supporting_study_*` names exist in the
-  schema but belong to NO class, so their values are rerouted into an inlined StudyResult
-  description rather than emitted on the edge. `q_value`, `fold_change`, `z_score`, `beta` and
+  `sample_size` and the other `supporting_study_*` names exist in the schema but belong to NO
+  class, so their values are rerouted into an inlined StudyResult description rather than
+  emitted on the edge. `q_value`, `fold_change`, `z_score`, `beta` and
   similar are not association slots at all and are folded into `supporting_text`. Prefer
   `p_value`, `adjusted_p_value`, `effect_size`, `effect_type`, `has_evidence`. For FDA
   application numbers, `approval_ids` is a deliberate translator-ingest pass-through: keep
@@ -2299,6 +2306,25 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
 - QUALIFIERS: enum-ranged qualifiers take a literal TOKEN, never a CURIE
   (`object_direction_qualifier: increased`, not a UMLS id), and `species_context_qualifier` is
   disabled — never author it as a qualifier or annotation.
+
+# DERIVATION GUIDANCE (breadth first: map every mappable sheet, capture every evidence slot)
+- HEADERS + row_slice: inspect the first rows BEFORE authoring the source: titles/captions often
+  precede the header (headers usually sit within rows 1-3; data starts the row AFTER the header).
+  Declare `row_slice: [<first data row>, auto]` and the EXACT sheet name read_table reports; omit
+  row_slice only when row 1 already is the header.
+- explode_by: a subject/object cell joining MULTIPLE entities (common separators: `;`, `|`, `,`,
+  `/`) must declare `explode_by: "<separator>"` so EACH entity emits its own edge; without it the
+  joined string maps as ONE unusable blob and the table under-extracts.
+- prioritize: name EVERY plausible biolink Category for the column in priority order, best first
+  (`prioritize: [Gene, ChemicalEntity]`), never a single guess; `avoid` only what you positively
+  know is wrong.
+- STATISTICS: capture p-value columns (`p_value` / `adjusted_p_value`). When every row shares one
+  statistic, emit the PAIR: `{annotation: effect_size, method: column, encoding: <letter>}` +
+  `{annotation: effect_type, method: value, encoding: <statistic>}` — effect_type is generally a
+  method: value encoding and its value is NOT validated or enforced; the PAIRING is (an unpaired
+  half is DROPPED with a warning, edge kept), so always emit both halves together.
+- ONE SECTION PER MAPPABLE SHEET/WORKSHEET: every mappable sheet earns its own section; skipping
+  one silently under-extracts the article's graph.
 
 ## ReAct workflow + planning
 Reason in an explicit ReAct loop (Thought -> Action -> Observation) and re-plan every few steps:

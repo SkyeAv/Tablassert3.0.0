@@ -433,6 +433,59 @@ fixture, `tests/agent_fixtures/GENE_DISEASE/`, is a gene~disease config in multi
 (`{template, sections}`) shape with PMID provenance — used to keep the offline heuristic judge and the
 W3 multi-section validation honest on a distinct config.
 
+## Edge-count acceptance (agent vs reference)
+
+An agent-produced config is only as good as the graph it emits. The acceptance gate is an **edge-count
+fraction**: built over the SAME payload against the SAME fullmap, the agent config must emit at least
+half the KGX edges of a richer hand-curated reference config — `agent_edges >= 0.5 * reference_edges`
+(`REFERENCE_EDGE_FRACTION` in `tests/test_agent_edgecount.py`). A config that reads only one sheet, or
+that skips `explode_by` on a multi-valued column, silently emits far fewer edges; this gate catches it.
+
+**Offline harness (committed fixtures):** `tests/fixtures/edgecount/` ships a synthetic
+PMC10766526-shaped disease x system workbook plus three configs — the improved-agent shape
+(multi-section, correct `sheet` + `row_slice`, `explode_by`/`prioritize` breadth, paired
+`effect_size` + `effect_type` annotations), a strictly richer reference (all three sheets), and an
+intentionally-impoverished single-section no-`explode_by` negative control that MUST fail the gate:
+
+```bash
+uv run --extra qc --extra agent pytest tests/test_agent_edgecount.py -q
+```
+
+**Real runbook (PMC10766526):** run the agent over the downloaded payload, convert the hand-written
+legacy reference config against the same downloads, build one-table graphs for each, and compare the
+`<name>_<version>.edges.ndjson` line counts from `rig.artifact_base_path`:
+
+```bash
+# 1. Run the agent OFFLINE against a local payload (no PMC-AWS fetch)
+tablassert agent PMC10766526 --configuration-file ./graph.yaml \
+  --local PMC10766526=./downloads/PMC10766526
+# accepted config: .tablassert/agent/configs/PMC10766526.yaml
+
+# 2. Convert the hand-written legacy reference config over the same downloads
+tablassert convert-legacy ./legacy/PMC10766526.yaml --downloads ./downloads
+# -> ./legacy/PMC10766526.v12.yaml
+
+# 3. Build each as a one-table graph (same fullmap, same graph name/version conventions)
+tablassert build-kg -f ./agent_graph.yaml       # tables: [.tablassert/agent/configs/PMC10766526.yaml]
+tablassert build-kg -f ./reference_graph.yaml   # tables: [./legacy/PMC10766526.v12.yaml]
+
+# 4. Count edges; acceptance: agent >= 0.5 * reference
+wc -l <agent-graph-name>_<version>.edges.ndjson <reference-graph-name>_<version>.edges.ndjson
+```
+
+The same comparison is scriptable via the env-gated test: set `TABLASSERT_PMC_COMPARE` to a JSON
+array of four paths — the agent config, the reference config, the payload, and the fullmap redb.
+A JSON array (not a colon-separated string) keeps POSIX paths containing `:` and Windows
+drive-letter paths working. The `<agent-config>` and `<reference-config>` may carry relative
+`source.local` paths; both are rebuilt over `<payload>`:
+
+```bash
+TABLASSERT_PMC_COMPARE='[".tablassert/agent/configs/PMC10766526.yaml", "./legacy/PMC10766526.v12.yaml", "./downloads/PMC10766526/PMC10766526.1/table.xlsx", "data/fullmap.redb"]' \
+  uv run --extra qc --extra agent pytest tests/test_agent_edgecount.py::test_real_pmc_comparison -q
+```
+
+Unset, that test skips with a printed reason; the offline fixture tests run regardless.
+
 ## Testing
 
 The agent suite is **fully offline** — no live LLM or network. It uses a `FakeModel` smolagents stub,

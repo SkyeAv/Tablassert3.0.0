@@ -89,6 +89,55 @@ def test_instructions_content() -> None:
     assert "final_answer" in INSTRUCTIONS
 
 
+def test_instructions_carry_us006_derivation_guidance() -> None:
+    """US-006 regression guard: every derivation-guidance block is present in the prompt.
+
+    Covers (a) header-row detection -> row_slice + exact sheet name, (b) explode_by for delimited
+    multi-entity cells, (c) prioritize breadth, (d) p_value capture + the effect_size/effect_type
+    PAIR (value encoding NOT claimed validated/enforced; unpaired halves dropped with a warning per
+    US-001), and (e) one section per mappable sheet.
+    """
+    # (a) header-row detection -> row_slice [start, auto] + exact sheet name
+    assert "HEADERS + row_slice" in INSTRUCTIONS
+    assert "row_slice: [<first data row>, auto]" in INSTRUCTIONS
+    assert "EXACT sheet name" in INSTRUCTIONS
+    # (b) explode_by for delimited multi-entity subject/object cells (common separators named)
+    assert "explode_by" in INSTRUCTIONS
+    for sep in ("`;`", "`|`", "`,`", "`/`"):
+        assert sep in INSTRUCTIONS, f"explode_by guidance missing separator {sep}"
+    # (c) prioritize lists name ALL plausible categories, not a single guess
+    assert "EVERY plausible biolink Category" in INSTRUCTIONS
+    # (d) statistics capture: p_value columns + the effect_size/effect_type PAIR
+    assert "STATISTICS: capture p-value columns" in INSTRUCTIONS
+    assert "adjusted_p_value" in INSTRUCTIONS
+    assert "method: value, encoding: <statistic>" in INSTRUCTIONS
+    assert "NOT validated or enforced" in INSTRUCTIONS  # effect_type value encoding is a convention, not a gate
+    assert "DROPPED with a warning" in INSTRUCTIONS  # US-001 drop-with-warning pairing semantics
+    # (e) one section per mappable sheet reinforced
+    assert "ONE SECTION PER MAPPABLE SHEET" in INSTRUCTIONS.upper()
+    # No stale pre-US-001 pairing claims survive anywhere in the prompt.
+    assert "mandatory pair" not in INSTRUCTIONS.lower()
+    assert "hard validation error" not in INSTRUCTIONS.lower()
+
+
+def test_instructions_annotations_bullet_excludes_relationship_strength() -> None:
+    """The ANNOTATIONS bullet must NOT list `relationship_strength` among StudyResult-rerouted names.
+
+    Why: `relationship_strength` is a legacy ALIAS that `coerce.coerced_target` routes to
+    `effect_size` (pinned by tests/test_lib.py), a real, satisfiable edge slot: the relocation
+    validator keeps effect_size ON the edge, pairing treats it as the effect_size half, and
+    legacy.py renames it to `effect_size`. Listing it among annotation names whose values are
+    rerouted into an inlined StudyResult contradicts that routing and teaches the agent its value
+    is lost when it actually reaches the edge. This guard stops a future prompt edit from
+    re-adding the alias to the bullet. `supporting_study_size`, `sample_size` and the other
+    `supporting_study_*` names genuinely have NO satisfiable target, so they must stay named.
+    """
+    region = INSTRUCTIONS.split("ANNOTATIONS must name", 1)[1].split("MULTIVALUED", 1)[0]
+    assert "relationship_strength" not in region
+    assert "supporting_study_size" in region
+    assert "sample_size" in region
+
+
 def test_step_callback_tallies() -> None:
     """make_step_callback tallies steps/tokens/tool-call quality over duck-typed steps (pure)."""
     metrics: dict[str, object] = {}

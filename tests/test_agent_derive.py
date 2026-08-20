@@ -176,6 +176,23 @@ def test_derive_config_tool_description_mentions_schema_gate() -> None:
     assert "schema" in tool.description.lower()
 
 
+def test_derive_config_tool_description_carries_us006_guidance() -> None:
+    """US-006: the tool description teaches header/row_slice, explode_by, prioritize breadth,
+    p_value capture + the effect_size/effect_type pair (drop-with-warning), one section per sheet."""
+    pytest.importorskip("smolagents")
+    tool = make_derive_config_tool()
+    description: str = tool.description
+    assert "row_slice: [<first data row>, auto]" in description  # (a) header-row detection
+    assert "EXACT sheet name" in description
+    assert "explode_by" in description  # (b) delimited multi-entity cells
+    assert "EVERY plausible biolink Category" in description  # (c) prioritize breadth
+    assert "p_value" in description  # (d) statistics capture
+    assert "effect_size (method: column)" in description
+    assert "effect_type (method: value)" in description
+    assert "dropped with a warning" in description  # US-001 pairing semantics
+    assert "ONE section per mappable" in description  # (e) one section per sheet
+
+
 def test_validate_section_never_raises_on_empty_sections() -> None:
     """A ``template: {}`` config with an explicit empty ``sections: []`` returns False, not a raise.
 

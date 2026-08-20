@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from tablassert import models
 from tablassert.biolink import Categories
 from tablassert.enums import Comparisons, EncodingMethods, Repositories
-from tablassert.errors import BiolinkRelocationWarning
+from tablassert.errors import BiolinkRelocationWarning, UnpairedEffectAnnotationWarning
 from tablassert.ingests import from_yaml, to_sections
 from tablassert.models import (
     Annotation,
@@ -227,54 +227,110 @@ def _section_with(fixtures_path: Path, *annotations: dict[str, Any]) -> Section:
     return Section.model_validate(data)
 
 
-def test_section_rejects_an_effect_size_without_an_effect_type(fixtures_path: Path) -> None:
-    """A bare effect size is uninterpretable, so the pairing is mandatory."""
-    with pytest.raises(ValidationError) as exc_info:
-        _section_with(fixtures_path, {"annotation": "effect_size", "method": "column", "encoding": "C"})
-    assert "annotation-effect-size-without-type" in str(exc_info.value)
+def test_section_drops_an_unpaired_effect_size_with_a_warning(fixtures_path: Path) -> None:
+    """A bare effect size no longer fails the section: it is dropped with a warning and the edge is kept.
+
+    The build would have shipped the uninterpretable value anyway (0.85 of *what*?), so failing the
+    whole section lost strictly more evidence than dropping the one annotation. The warning names the
+    annotation and the section source so the author can find and pair it.
+    """
+    with pytest.warns(UnpairedEffectAnnotationWarning, match="Dropped unpaired `effect_size` annotation from section `test.tsv`"):
+        section: Section = _section_with(fixtures_path, {"annotation": "effect_size", "method": "column", "encoding": "C"})
+    assert section.annotations is None  # the ONLY annotation was the unpaired one, so none remain
 
 
 @pytest.mark.parametrize("alias", ["odds ratio", "relationship_strength"])
-def test_section_rejects_an_unpaired_effect_size_alias(fixtures_path: Path, alias: str) -> None:
-    """Aliases the clean phase renames to `effect_size` need the pairing too, and the message names both spellings.
+def test_section_drops_an_unpaired_effect_size_alias_with_a_warning(fixtures_path: Path, alias: str) -> None:
+    """Aliases coerced to ``effect_size`` are judged (and dropped) exactly like the canonical spelling.
+
+    The clean phase renames these before the build sees them, so the pairing decision must judge the
+    coerced target; the warning still echoes the author's spelling plus its target so it is actionable.
 
     Args:
         fixtures_path: Directory holding the shipped test fixtures.
         alias: Source spelling that coerces to ``effect_size`` (including the legacy name).
     """
-    with pytest.raises(ValidationError) as exc_info:
-        _section_with(fixtures_path, {"annotation": alias, "method": "column", "encoding": "C"})
-    message: str = str(exc_info.value)
-    assert "annotation-effect-size-without-type" in message
-    assert f"`{alias}` (coerced to `effect_size`)" in message
+    with pytest.warns(UnpairedEffectAnnotationWarning, match=rf"Dropped unpaired `{alias}` \(coerced to `effect_size`\)"):
+        section: Section = _section_with(fixtures_path, {"annotation": alias, "method": "column", "encoding": "C"})
+    assert section.annotations is None
 
 
-def test_section_rejects_an_effect_type_without_an_effect_size(fixtures_path: Path) -> None:
-    """The build nulls an unpaired effect_type outright, so config validation rejects it up front."""
-    with pytest.raises(ValidationError) as exc_info:
-        _section_with(fixtures_path, {"annotation": "effect_type", "method": "value", "encoding": "spearmans_rho"})
-    assert "annotation-effect-type-without-size" in str(exc_info.value)
+def test_section_drops_an_unpaired_effect_type_with_a_warning(fixtures_path: Path) -> None:
+    """The reverse direction: an ``effect_type`` without an ``effect_size`` is dropped with a warning.
+
+    Biolink PR #1774 only populates an effect type alongside a numeric effect size (the build nulls
+    it anyway), so the config-time drop changes nothing downstream -- it just stops bouncing the
+    section and tells the author what happened.
+    """
+    with pytest.warns(UnpairedEffectAnnotationWarning, match="Dropped unpaired `effect_type` annotation from section `test.tsv`"):
+        section: Section = _section_with(fixtures_path, {"annotation": "effect_type", "method": "value", "encoding": "spearmans_rho"})
+    assert section.annotations is None
+
+
+def test_section_drops_only_the_unpaired_half_and_keeps_the_rest(fixtures_path: Path) -> None:
+    """The drop is surgical: unrelated annotations survive untouched alongside the missing sibling.
+
+    Guards against the drop blanking the whole annotation list (which would silently lose the
+    p-value evidence the section declared correctly).
+    """
+    with pytest.warns(UnpairedEffectAnnotationWarning):
+        section: Section = _section_with(
+            fixtures_path,
+            {"annotation": "p_value", "method": "column", "encoding": "C"},
+            {"annotation": "effect_size", "method": "column", "encoding": "D"},
+        )
+    assert section.annotations is not None
+    assert [annotation.annotation for annotation in section.annotations] == ["p_value"]
 
 
 @pytest.mark.parametrize(("size", "kind"), [("effect_size", "effect_type"), ("odds ratio", "effect type"), ("relationship_strength", "effect_type")])
-def test_section_accepts_paired_effect_annotations(fixtures_path: Path, size: str, kind: str) -> None:
-    """Declared as a pair -- canonical or aliased, column or literal -- the section validates.
+def test_section_keeps_paired_effect_annotations_without_warning(fixtures_path: Path, size: str, kind: str) -> None:
+    """Declared as a pair -- canonical or aliased, column or literal -- both annotations survive silently.
 
     Args:
         fixtures_path: Directory holding the shipped test fixtures.
         size: Spelling coercing to ``effect_size``.
         kind: Spelling coercing to ``effect_type``.
     """
-    section: Section = _section_with(
-        fixtures_path, {"annotation": size, "method": "column", "encoding": "C"}, {"annotation": kind, "method": "value", "encoding": "spearmans_rho"}
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UnpairedEffectAnnotationWarning)
+        section: Section = _section_with(
+            fixtures_path,
+            {"annotation": size, "method": "column", "encoding": "C"},
+            {"annotation": kind, "method": "value", "encoding": "spearmans_rho"},
+        )
     assert section.annotations is not None
+    assert [annotation.annotation for annotation in section.annotations] == [size, kind]
 
 
 def test_section_without_effect_annotations_is_unaffected(fixtures_path: Path) -> None:
-    """No effect annotation at all -- absent or unrelated -- is not a false positive."""
-    assert Section.model_validate(from_yaml(fixtures_path / "minimal_section.yaml")).annotations is None
-    assert _section_with(fixtures_path, {"annotation": "p_value", "method": "column", "encoding": "C"}).annotations is not None
+    """No effect annotation at all -- absent or unrelated -- is not a false positive for the drop."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UnpairedEffectAnnotationWarning)
+        assert Section.model_validate(from_yaml(fixtures_path / "minimal_section.yaml")).annotations is None
+        section: Section = _section_with(fixtures_path, {"annotation": "p_value", "method": "column", "encoding": "C"})
+    assert section.annotations is not None
+
+
+def test_merged_section_drops_a_template_level_unpaired_effect_type(fixtures_path: Path) -> None:
+    """The drop applies after ``template``/``sections`` expansion, so every entry path sees it.
+
+    A constant ``effect_type`` on the template pairs with each section's own ``effect_size`` column
+    because the lists are concatenated BEFORE validation; with no ``effect_size`` anywhere, the
+    merged section must drop the template-level ``effect_type`` rather than keep a half the build
+    would null.
+    """
+    raw: Any = from_yaml(fixtures_path / "minimal_section_with_sections.yaml")
+    raw["template"]["annotations"] = [{"annotation": "effect_type", "method": "value", "encoding": "correlation_coefficient"}]
+    sections: list[dict[str, Any]] = to_sections(raw, fixtures_path / "minimal_section_with_sections.yaml")  # pyright: ignore
+    for merged in sections:
+        merged.pop("config", None)
+        with pytest.warns(UnpairedEffectAnnotationWarning, match="Dropped unpaired `effect_type`"):
+            section: Section = Section.model_validate(merged)
+        # The merged list was [effect_type (template), p_value (section)]; only the unpaired
+        # half is dropped, so the section's own p_value survives untouched.
+        assert section.annotations is not None
+        assert [annotation.annotation for annotation in section.annotations] == ["p_value"]
 
 
 def test_node_encoding_with_taxon() -> None:

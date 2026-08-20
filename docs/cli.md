@@ -1,8 +1,8 @@
 # CLI Reference
 
 Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The `tablassert` app
-exposes **five subcommands** — `agent`, `build-fullmap`, `build-kg`, `validate`, and `validate-kgx` —
-plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
+exposes **six subcommands** — `agent`, `build-fullmap`, `build-kg`, `convert-legacy`, `validate`,
+and `validate-kgx` — plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
 for the live surface.
 
 ## Command index
@@ -12,6 +12,7 @@ for the live surface.
 | [`agent`](#agent) | Autonomously derive, build, audit, and improve KG configs from PMC articles |
 | [`build-fullmap`](#build-fullmap) | Build the embedded fullmap redb used for entity resolution |
 | [`build-kg`](#build-kg) | Build a KGX NDJSON knowledge graph from a YAML configuration |
+| [`convert-legacy`](#convert-legacy) | Convert legacy table configs into the v12 config shape |
 | [`validate`](#validate) | Validate a graph or table configuration without executing it |
 | [`validate-kgx`](#validate-kgx) | Validate built KGX NDJSON against the Biolink Model |
 
@@ -168,6 +169,84 @@ or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is 
     stage prints a green `✓ Stage N · NAME · elapsed` line above the live block. During Building
     Subgraphs the detail line also shows the per-section phase (`load`, `filter`, `clean`, `encode`,
     `resolve`, `qc`, `edge`, `provenance`, `significance`, `finalize`, `write`).
+
+---
+
+## convert-legacy
+
+Use this to migrate a legacy table config (or a whole directory of them) into the current v12
+`{template, sections}` shape: duplicate mapping keys are merged (never silently dropped),
+exact-duplicate entries the template/section overlay produced are dropped and same-key
+`qualifiers` entries merged into one per key, the removed `relationship_strength` annotation
+is renamed to `effect_size`, every `source.reindex` entry is validated against the v12 model,
+and each `source.local` is resolved onto the real downloaded payload — never left pointing at
+a stale `./DATALAKE` path.
+
+```bash
+tablassert convert-legacy LEGACY-PATH [ARGS]
+```
+
+`LEGACY-PATH` is a single legacy YAML file or a directory of them (non-recursive). Each converted
+config is written as `<stem>.v12.yaml` — beside its input by default, or under `--out` when given.
+
+| Option | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `LEGACY-PATH` | Path | Yes | — | Legacy YAML file, or a directory of `*.yaml` legacy configs |
+| `--downloads`, `-d` | Path | No | `None` | Directory holding the downloaded article payloads (`PMC<n>/PMC<n>.<v>/...`) that each `source.local` is resolved against: the `local` basename is tried first, then each `source.url` entry's basename (the urls hold the real payload filenames), recursively, preferring a hit under the section's own publication directory; an unresolved source lists every basename tried |
+| `--fetch` | Flag | No | `False` | When no local payload match exists, download the article from PMC open access (via `provenance.publication`) into `--downloads` instead of failing the source as unresolved |
+| `--out`, `-o` | Path | No | `None` (beside each input) | Directory the `<stem>.v12.yaml` outputs are written into (created when missing); defaults to each input's own directory |
+
+Directory mode converts every `*.yaml` file — skipping `*.v12.yaml` outputs from earlier runs, so
+a rerun never re-converts its own output — and prints one status line per file:
+`CONVERTED <input> -> <output>` or `FAILED <input> (<code>)`. One failure never aborts the batch,
+but the command exits non-zero when ANY file failed (the full coded message for every failure is
+printed on stderr). `--out` is optional in directory mode too: without it each `<stem>.v12.yaml`
+lands beside its input. The glob is `*.yaml` ONLY — `.yml` files and every other extension are
+never picked up.
+
+Exit codes: `0` everything converted; `1` any conversion failed; `2` usage error — a missing input
+or `--downloads` path, an `--out` that is not a directory, or a directory holding no `*.yaml`
+files. Conversion is all-or-nothing per file: a construct v12 cannot express fails the file with
+`legacy-unsupported-syntax`, and an unresolvable `source.local` fails it with
+`legacy-source-unresolved` — the same coded error `--fetch` ends in when the network is down or
+the article is not open access (a bounded fetch, never a hang).
+
+```bash
+# One file: writes my-table.v12.yaml beside it
+tablassert convert-legacy my-table.yaml --downloads ./downloads
+# One file into an explicit directory (created when missing)
+tablassert convert-legacy my-table.yaml --downloads ./downloads --out ./v12
+# A whole directory in place; fetch any payload not already downloaded
+tablassert convert-legacy ./legacy-configs --downloads ./downloads --fetch
+```
+
+### Runbook: the full MOKG corpus (26 files)
+
+The MOKG corpus (26 legacy table configs) has an executable ingestability acceptance:
+`tests/test_legacy.py::test_corpus_mokg_convert_or_fail_unresolved`, gated on
+`TABLASSERT_MOKG_DIR`. It skips with a printed reason when the variable is unset; when set,
+every corpus file must either convert and validate against the downloads directory
+(`TABLASSERT_MOKG_DOWNLOADS`, recursive basename match with the `source.url` basenames as
+fallback) or fail loudly with exactly `legacy-source-unresolved` — no other error class, no
+silent skip, and at least 15 of the 26 must convert (with the full downloads tree below,
+24 convert; only QIN9 and WAINBERG3 stay unresolved because their payloads are absent):
+
+```bash
+TABLASSERT_MOKG_DIR=/home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG \
+TABLASSERT_MOKG_DOWNLOADS=/home/skyeav/Code/ISB/MultiomicsNext/.tablassert \
+uv run pytest tests/test_legacy.py -q -k corpus
+```
+
+For the remaining files, run the batch with `--fetch` so every open-access article payload
+missing from the downloads directory is downloaded from PMC open access first (network
+required); `--out` keeps the outputs out of the curated corpus directory. QIN9 stays
+unresolved either way — its payload is hosted on figshare, not in the PMC article bundle:
+
+```bash
+tablassert convert-legacy /home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG \
+    --downloads /home/skyeav/Code/ISB/MultiomicsNext/.tablassert \
+    --fetch --out /tmp/mokg-v12
+```
 
 ---
 

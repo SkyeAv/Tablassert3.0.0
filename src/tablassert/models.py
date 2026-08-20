@@ -36,7 +36,7 @@ from tablassert.enums import (
     SourceStatuses,
     Tokens,
 )
-from tablassert.errors import BiolinkRelocationWarning, TablassertErrorCodes, TablassertValidationError
+from tablassert.errors import BiolinkRelocationWarning, TablassertErrorCodes, TablassertValidationError, UnpairedEffectAnnotationWarning
 
 if TYPE_CHECKING:
     import polars as pl
@@ -62,6 +62,22 @@ def _shown(name: str, target: str) -> str:
         Backtick-quoted name, annotated with the coerced target when coercion renamed it.
     """
     return f"`{name}` (coerced to `{target}`)" if target != name else f"`{name}`"
+
+
+def _section_source_label(source: Excel | Text) -> str:
+    """Render a section's source for a diagnostic message: the local path, plus the sheet for Excel.
+
+    Args:
+        source: The section's validated source.
+
+    Returns:
+        A backtick-quoted local path, suffixed with the worksheet name when the source is an
+        Excel file reading one.
+    """
+    label: str = f"`{source.local}`"
+    if isinstance(source, Excel) and source.sheet is not None:
+        label += f" (sheet `{source.sheet}`)"
+    return label
 
 
 class TablaBase(BaseModel):
@@ -628,45 +644,56 @@ class Section(TablaBase):
     annotations: list[Annotation] | None = Field(None, description="Optional extra encoded columns added to each row.")
 
     @model_validator(mode="after")
-    def effect_size_and_type_travel_together(self) -> Self:
-        """Enforce that ``effect_size`` and ``effect_type`` are declared as a pair.
+    def drop_unpaired_effect_annotations(self) -> Self:
+        """Drop an ``effect_size`` / ``effect_type`` annotation declared without its sibling.
 
         A bare effect size is uninterpretable -- 0.85 of *what*, an odds ratio or a Spearman
         rho? -- and Biolink PR #1774 only populates ``effect_type`` alongside a numeric
         ``effect_size``, so the build nulls an unpaired type outright (see
-        ``coerce.coerce_effect_type_columns``). Unlike the ``Annotation`` relocation warnings,
-        this raises: neither half carries meaning without the other, and an unpaired value is
-        discarded rather than merely relocated.
+        ``coerce.coerce_effect_type_columns``). Neither half carries evidence alone, so
+        validation DROPS the unpaired annotation with an :class:`UnpairedEffectAnnotationWarning`
+        naming what was dropped and from where, and keeps the section and its edges: the value was
+        going to be discarded by the build anyway, and failing the section would lose the rest of
+        the table with it.
 
         Lives on ``Section`` rather than ``Annotation`` because an annotation cannot see its
         siblings. Validation runs after ``ingests.to_sections`` expands ``template``/``sections``,
-        so a constant declared once on the template pairs with every section's own column.
+        so a constant declared once on the template pairs with every section's own column -- and
+        an unpaired half declared on the template is dropped from every expanded section.
 
         Names are judged by their coerced target, not their raw spelling, so the aliases the
         clean phase renames (``odds ratio``, the legacy ``relationship_strength``) are seen
         exactly as the build sees them.
         """
-        # First spelling wins: the message echoes what the author actually wrote.
-        declared: dict[str, str] = {}
-        for annotation in self.annotations or []:
+        annotations: list[Annotation] = self.annotations or []
+        targets: set[str] = {coerced_target(str(annotation.annotation)) for annotation in annotations}
+        has_size: bool = "effect_size" in targets
+        has_kind: bool = "effect_type" in targets
+        if has_size == has_kind:
+            return self  # paired or both absent -- nothing to drop
+
+        dropped_target: str = "effect_size" if has_size else "effect_type"
+        sibling: str = "effect_type" if has_size else "effect_size"
+        where: str = _section_source_label(self.source)
+        kept: list[Annotation] = []
+        for annotation in annotations:
             name: str = str(annotation.annotation)
-            declared.setdefault(coerced_target(name), name)
-
-        size: str | None = declared.get("effect_size")
-        kind: str | None = declared.get("effect_type")
-        if size is not None and kind is None:
-            raise TablassertValidationError(
-                f"{_shown(size, 'effect_size')} requires a sibling `effect_type` annotation; a bare effect size is uninterpretable. "
-                "Add e.g. `{annotation: effect_type, method: value, encoding: spearmans_rho}`.",
-                code="annotation-effect-size-without-type",
-            )
-        if kind is not None and size is None:
-            raise TablassertValidationError(
-                f"{_shown(kind, 'effect_type')} requires a sibling `effect_size` annotation; Biolink PR #1774 only populates an effect "
-                "type alongside a numeric effect size, so the build nulls an unpaired `effect_type`.",
-                code="annotation-effect-type-without-size",
-            )
-
+            if coerced_target(name) == dropped_target:
+                reason: str = (
+                    "a bare effect size is uninterpretable without a sibling `effect_type` (0.85 of what -- an odds ratio or a Spearman rho?)"
+                    if dropped_target == "effect_size"
+                    else "Biolink PR #1774 only populates an effect type alongside a numeric effect size, so the build nulls it"
+                )
+                warnings.warn(
+                    f"Dropped unpaired {_shown(name, dropped_target)} annotation from section {where}: {reason}. "
+                    f"Add a sibling `{sibling}` annotation to keep it; the section and its edges are kept regardless.",
+                    UnpairedEffectAnnotationWarning,
+                    stacklevel=2,
+                )
+            else:
+                kept.append(annotation)
+        # validate_assignment re-runs this validator on the set; the kept list is balanced, so it returns at the guard above.
+        self.annotations = kept or None
         return self
 
 

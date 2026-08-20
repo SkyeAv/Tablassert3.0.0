@@ -251,7 +251,7 @@ template:
 
   # Constant across every section. Template and section annotation lists are CONCATENATED,
   # so declaring the effect type once here pairs it with each section's own effect_size
-  # column -- and `effect_size` requires that pairing.
+  # column -- an unpaired half is dropped with an UnpairedEffectAnnotationWarning.
   annotations:
     - {annotation: effect_type, method: value, encoding: correlation_coefficient}
 
