@@ -9,16 +9,18 @@ reference-config fixture's KGX edge count. The fixtures encode the US-006 improv
 payload sheets) so the fraction is meaningful, and an intentionally-impoverished single-section
 no-``explode_by`` config MUST fail the gate (the regression this harness exists to catch).
 
-An env-gated test runs the same gate against REAL PMC artifacts: set
-``TABLASSERT_PMC_COMPARE=<agent-config>:<reference-config>:<payload>:<fullmap-redb>``
-(runbook in ``docs/agent.md``); unset, it skips with a printed reason. Everything offline is
-hermetic and fast; all artifacts land in ``tmp_path``.
+An env-gated test runs the same gate against REAL PMC artifacts: set ``TABLASSERT_PMC_COMPARE``
+to a JSON array of four paths —
+``["<agent-config>", "<reference-config>", "<payload>", "<fullmap-redb>"]`` (runbook in
+``docs/agent.md``); unset, it skips with a printed reason. Everything offline is hermetic and
+fast; all artifacts land in ``tmp_path``.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -166,6 +168,33 @@ def _assert_fraction(agent_edges: int, reference_edges: int) -> None:
     )
 
 
+def _pmc_compare_paths(spec: str) -> tuple[Path, Path, Path, Path]:
+    """Parse ``TABLASSERT_PMC_COMPARE`` as a JSON array of exactly four non-empty path strings.
+
+    A JSON array — not the legacy colon-separated form — so paths may themselves contain ``:``
+    (POSIX) or carry Windows drive-letter prefixes. Every entry is ``expanduser().resolve()``d.
+    Fails loudly via ``pytest.fail`` on any malformed value: a bad gate input must surface as an
+    actionable error, never as a silent skip or fallback.
+    """
+    try:
+        parsed: Any = json.loads(spec)
+    except ValueError as exc:
+        pytest.fail(f"{ENV_PMC_COMPARE} must be a JSON array of four path strings; got invalid JSON {spec!r}: {exc}")
+    if not isinstance(parsed, list):
+        pytest.fail(f"{ENV_PMC_COMPARE} must be a JSON array of four path strings; got non-array JSON {spec!r}")
+    if len(parsed) != 4:
+        pytest.fail(
+            f"{ENV_PMC_COMPARE} must contain exactly four paths "
+            f"(agent config, reference config, payload, fullmap redb); got {len(parsed)} in {spec!r}"
+        )
+    paths: list[Path] = []
+    for entry in parsed:
+        if not isinstance(entry, str) or not entry.strip():
+            pytest.fail(f"{ENV_PMC_COMPARE} entries must be non-empty path strings; got {entry!r} in {spec!r}")
+        paths.append(Path(entry).expanduser().resolve())
+    return (paths[0], paths[1], paths[2], paths[3])
+
+
 @pytest.fixture(scope="module")
 def edge_counts(tmp_path_factory: pytest.TempPathFactory) -> dict[str, int]:
     """Build all three fixture configs once against one tiny real redb; return their edge counts."""
@@ -218,23 +247,108 @@ def test_poor_agent_config_fails_reference_fraction(edge_counts: dict[str, int])
         _assert_fraction(edge_counts["poor"], edge_counts["reference"])
 
 
+def test_pmc_compare_spec_parses_four_paths() -> None:
+    """A well-formed JSON array of four paths parses into expanded, resolved Paths.
+
+    US-010: pins the success contract of the gate input so a future format tweak cannot silently
+    redefine what the four entries (agent config, reference config, payload, fullmap redb) mean;
+    also proves ``~`` expansion and ``resolve()`` are applied to every entry.
+    """
+    entries: list[str] = [".tablassert/a.yaml", "./legacy/b.yaml", "./downloads/table.xlsx", "data/fullmap.redb"]
+    assert _pmc_compare_paths(json.dumps(entries)) == tuple(Path(entry).expanduser().resolve() for entry in entries)
+    tilde: tuple[Path, Path, Path, Path] = _pmc_compare_paths(json.dumps(["~/agent.yaml", "b.yaml", "c.xlsx", "d.redb"]))
+    assert tilde[0] == Path("~/agent.yaml").expanduser().resolve()
+
+
+def test_pmc_compare_spec_accepts_colons_and_drive_letters() -> None:
+    """Paths containing ``:`` (POSIX) or Windows drive letters parse cleanly.
+
+    The whole reason US-010 exists: ``spec.split(":")`` rejected both classes of valid path
+    (CodeRabbit finding on PR #105). This locks in the fix so a future "simplify back to
+    ``split(':')``" cannot regress it.
+    """
+    entries: list[str] = ["/home/ci/odd:dir/agent.yaml", "C:/Users/ci/reference.yaml", "relative:with:colons/table.xlsx", "D:/data/fullmap.redb"]
+    parsed: tuple[Path, Path, Path, Path] = _pmc_compare_paths(json.dumps(entries))
+    assert parsed == tuple(Path(entry).expanduser().resolve() for entry in entries)
+    assert [path.name for path in parsed] == ["agent.yaml", "reference.yaml", "table.xlsx", "fullmap.redb"]
+
+
+def test_pmc_compare_spec_rejects_legacy_colon_form() -> None:
+    """The pre-US-010 colon-separated form is rejected loudly, never silently split.
+
+    Operators upgrading from the old format must get an actionable ``pytest.fail`` naming the env
+    var and echoing their value, so they fix the export instead of wondering why the real PMC
+    comparison silently skips.
+    """
+    legacy: str = "a.yaml:b.yaml:c.xlsx:d.redb"
+    with pytest.raises(pytest.fail.Exception, match=ENV_PMC_COMPARE):
+        _pmc_compare_paths(legacy)
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "{}",
+        '"a.yaml:b.yaml:c.xlsx:d.redb"',
+        '["a.yaml", "b.yaml", "c.xlsx"]',
+        '["a.yaml", "b.yaml", "c.xlsx", "d.redb", "e.yaml"]',
+        '["a.yaml", "b.yaml", "c.xlsx", 4]',
+        '["a.yaml", "", "c.xlsx", "d.redb"]',
+        '["a.yaml", "   ", "c.xlsx", "d.redb"]',
+        '["a.yaml", null, "c.xlsx", "d.redb"]',
+    ],
+)
+def test_pmc_compare_spec_rejects_wrong_shapes(spec: str) -> None:
+    """Every malformed variant fails loudly, naming the env var and echoing the offending value.
+
+    US-010 acceptance criterion: a silent default would let a mistyped gate quietly skip the real
+    PMC comparison, defeating the whole acceptance harness — so each wrong shape gets an explicit
+    ``pytest.fail`` instead of a fallback.
+    """
+    with pytest.raises(pytest.fail.Exception) as excinfo:
+        _pmc_compare_paths(spec)
+    message: str = str(excinfo.value)
+    assert ENV_PMC_COMPARE in message
+    assert spec in message
+
+
+def test_docs_pmc_compare_example_is_valid_json() -> None:
+    """Drift guard: the docs/agent.md runbook example is valid JSON the parser accepts.
+
+    Operators copy-paste the documented command verbatim; if the docs example drifts from the
+    parser's JSON-array contract they only discover it as a ``pytest.fail`` at run time. Parsing
+    the documented value here keeps docs/agent.md and ``_pmc_compare_paths`` in lockstep.
+    """
+    doc: str = (Path(__file__).parent.parent / "docs" / "agent.md").read_text()
+    match: re.Match[str] | None = re.search(r"TABLASSERT_PMC_COMPARE='(\[[^]]*\])'", doc)
+    assert match is not None, "docs/agent.md lost the TABLASSERT_PMC_COMPARE JSON-array example"
+    example: str = match.group(1)
+    entries: Any = json.loads(example)
+    assert isinstance(entries, list)
+    assert len(entries) == 4
+    assert all(isinstance(entry, str) and entry.strip() for entry in entries)
+    _pmc_compare_paths(example)
+
+
 def test_real_pmc_comparison(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """REAL PMC comparison, gated on ``TABLASSERT_PMC_COMPARE``; skips with a reason when unset.
 
-    ``TABLASSERT_PMC_COMPARE=<agent-config>:<reference-config>:<payload>:<fullmap-redb>`` —
-    e.g. the agent's accepted config vs the converted legacy reference config over the
-    downloaded payload, both built against the project fullmap (runbook: ``docs/agent.md``).
+    ``TABLASSERT_PMC_COMPARE`` is a JSON array of four paths —
+    ``["<agent-config>", "<reference-config>", "<payload>", "<fullmap-redb>"]`` — e.g. the
+    agent's accepted config vs the converted legacy reference config over the downloaded payload,
+    both built against the project fullmap (runbook: ``docs/agent.md``).
     """
     spec: str | None = os.environ.get(ENV_PMC_COMPARE)
     if not spec:
-        reason: str = f"set {ENV_PMC_COMPARE}=<agent-config>:<reference-config>:<payload>:<fullmap-redb> to run the real PMC comparison"
+        reason: str = (
+            f"set {ENV_PMC_COMPARE} to a JSON array of four paths — "
+            f'["<agent-config>", "<reference-config>", "<payload>", "<fullmap-redb>"] — '
+            "to run the real PMC comparison (runbook: docs/agent.md)"
+        )
         print(reason)
         pytest.skip(reason)
 
-    parts: list[str] = spec.split(":")
-    if len(parts) != 4 or not all(part.strip() for part in parts):
-        pytest.fail(f"{ENV_PMC_COMPARE} must be <agent-config>:<reference-config>:<payload>:<fullmap-redb>, got {spec!r}")
-    agent_config_path, reference_config_path, payload_path, fullmap_path = (Path(part).expanduser().resolve() for part in parts)
+    agent_config_path, reference_config_path, payload_path, fullmap_path = _pmc_compare_paths(spec)
     for candidate in (agent_config_path, reference_config_path, payload_path, fullmap_path):
         assert candidate.is_file(), f"{ENV_PMC_COMPARE} path does not exist: {candidate}"
 

@@ -473,11 +473,14 @@ tablassert build-kg -f ./reference_graph.yaml   # tables: [./legacy/PMC10766526.
 wc -l <agent-graph-name>_<version>.edges.ndjson <reference-graph-name>_<version>.edges.ndjson
 ```
 
-The same comparison is scriptable via the env-gated test — `<agent-config>` and `<reference-config>`
-may carry relative `source.local` paths; both are rebuilt over `<payload>`:
+The same comparison is scriptable via the env-gated test: set `TABLASSERT_PMC_COMPARE` to a JSON
+array of four paths — the agent config, the reference config, the payload, and the fullmap redb.
+A JSON array (not a colon-separated string) keeps POSIX paths containing `:` and Windows
+drive-letter paths working. The `<agent-config>` and `<reference-config>` may carry relative
+`source.local` paths; both are rebuilt over `<payload>`:
 
 ```bash
-TABLASSERT_PMC_COMPARE=".tablassert/agent/configs/PMC10766526.yaml:./legacy/PMC10766526.v12.yaml:./downloads/PMC10766526/PMC10766526.1/table.xlsx:data/fullmap.redb" \
+TABLASSERT_PMC_COMPARE='[".tablassert/agent/configs/PMC10766526.yaml", "./legacy/PMC10766526.v12.yaml", "./downloads/PMC10766526/PMC10766526.1/table.xlsx", "data/fullmap.redb"]' \
   uv run --extra qc --extra agent pytest tests/test_agent_edgecount.py::test_real_pmc_comparison -q
 ```
 
