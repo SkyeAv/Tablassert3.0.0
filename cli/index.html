@@ -1755,7 +1755,7 @@ YAML configuration file.</p>
 <td>Flag</td>
 <td>No</td>
 <td><code>False</code></td>
-<td>Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, no nodes with no name or an empty name, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace — verbatim <code>original_*</code> fields excepted from the whitespace check, since they are faithful source copies — and fails the build (non-zero exit) on any violation</td>
+<td>Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, every node has a non-empty <code>id</code> and <code>name</code>, every edge has a non-empty <code>subject</code>, <code>predicate</code>, and <code>object</code>, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace — verbatim <code>original_*</code> fields excepted from the whitespace check, since they are faithful source copies — and fails the build (non-zero exit) on any violation</td>
 </tr>
 <tr>
 <td><code>--log</code>, <code>-l</code></td>
