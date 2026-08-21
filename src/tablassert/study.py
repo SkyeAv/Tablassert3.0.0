@@ -17,6 +17,8 @@ _MESSAGES: dict[str, str] = {
     "empty-or-null-values": "null or empty values",
     "duplicate-node-ids": "duplicate node ids",
     "unnamed-nodes": "nodes with no name or an empty name",
+    "unidentified-nodes": "nodes with no id or an empty id",
+    "incomplete-edges": "edges missing subject, predicate, or object",
     "undeclared-nodes": "nodes referenced by edges but not declared in the nodes file",
     "isolated-nodes": "declared nodes participating in no edge",
 }
@@ -48,6 +50,8 @@ class _FileScan:
     whitespace: Counter[str]
     empty_null: Counter[str]
     unnamed: Counter[str]
+    idless: Counter[str]
+    incomplete: Counter[str]
     malformed: int
     missing: bool
     path: Path
@@ -81,15 +85,16 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
 
     Args:
         path: Path to a ``.nodes.ndjson`` or ``.edges.ndjson`` file.
-        edge: ``True`` to collect referenced ids from ``subject``/``object``;
-            ``False`` to collect declared node ``id``s and track duplicates and
-            nodes with no name or an empty name.
+        edge: ``True`` to collect referenced ids from ``subject``/``object`` and
+            assert the three core edge slots are present; ``False`` to collect
+            declared node ``id``s and track duplicates, nodes with no name or
+            an empty name, and nodes with no id or an empty id.
 
     Returns:
         A :class:`_FileScan`; ``missing`` is set (and nothing else) when the
         file does not exist, so a typo'd path can never read as a clean pass.
     """
-    scan: _FileScan = _FileScan(set(), Counter(), Counter(), Counter(), Counter(), 0, not path.is_file(), path)
+    scan: _FileScan = _FileScan(set(), Counter(), Counter(), Counter(), Counter(), Counter(), Counter(), 0, not path.is_file(), path)
     if scan.missing:
         return scan
     with path.open(encoding="utf-8") as handle:
@@ -126,6 +131,17 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
                     ident: object = record.get(role)
                     if isinstance(ident, str):
                         scan.ids.add(ident)
+                # An edge without all three core slots is unusable downstream: KGX
+                # consumers traverse subject -> predicate -> object. Flag a missing
+                # key, a null, or a strip-empty string per slot, counted under the
+                # slot name (e.g. `predicate (2)`) for the examples list. The
+                # writer's strip_nulls deletes a null slot outright, so on pipeline
+                # output a hit means the slot was null upstream and the record
+                # shipped broken -- exactly what this assertion exists to catch.
+                for slot in ("subject", "predicate", "object"):
+                    slot_value: object = record.get(slot)
+                    if slot_value is None or (isinstance(slot_value, str) and not slot_value.strip()):
+                        scan.incomplete[slot] += 1
             else:
                 ident = record.get("id")
                 if isinstance(ident, str):
@@ -134,6 +150,15 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
                     if ident in scan.ids:
                         scan.duplicate_ids[ident] += 1
                     scan.ids.add(ident)
+                # A node with no id is unusable downstream: the id is the graph's join
+                # key -- edges reference nodes only through it. Flag a missing key,
+                # a null, or a strip-empty string, mirroring the name assertion.
+                # Since the id is exactly what is absent, examples key on the node's
+                # name (or `<no name>`).
+                node_id: str = ident if isinstance(ident, str) else "<no id>"
+                name: object = record.get("name")
+                if ident is None or (isinstance(ident, str) and not ident.strip()):
+                    scan.idless[name if isinstance(name, str) and name.strip() else "<no name>"] += 1
                 # A node with no name is unusable downstream: KGX consumers key display
                 # and merging off `name`. Flag a missing key, a null, or a string that
                 # strips to empty. On pipeline output the writer's strip_nulls
@@ -143,8 +168,6 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
                 # non-null names pass -- no writer emits them. Offenders are keyed by
                 # node id (or `<no id>` when the record has no string id) for the
                 # examples list.
-                node_id: str = ident if isinstance(ident, str) else "<no id>"
-                name: object = record.get("name")
                 if name is None or (isinstance(name, str) and not name.strip()):
                     scan.unnamed[node_id] += 1
     return scan
@@ -154,12 +177,13 @@ def study_kgx(nodes_path: Path, edges_path: Path, *, example_limit: int = 10) ->
     """Assert over the final KGX NDJSON files, in the spirit of studyKGtsvs.pl.
 
     Streams both files once each and checks: duplicate node ids, nodes with no
-    name or an empty name, nodes referenced by edges but never declared
-    (``undeclared``), declared nodes participating in no edge (``isolated``),
-    empty/malformed lines, string values carrying leading/trailing whitespace,
-    and null or empty values in any field (a stronger contract than the writer's
-    strip_nulls). Every check is an assertion -- the caller decides whether
-    violations fail the build.
+    name or an empty name, nodes with no id or an empty id, edges missing any
+    of ``subject``/``predicate``/``object``, nodes referenced by edges but
+    never declared (``undeclared``), declared nodes participating in no edge
+    (``isolated``), empty/malformed lines, string values carrying leading/trailing
+    whitespace, and null or empty values in any field (a stronger contract than
+    the writer's strip_nulls). Every check is an assertion -- the caller decides
+    whether violations fail the build.
 
     Args:
         nodes_path: Path to ``<name>_<version>.nodes.ndjson``.
@@ -191,6 +215,12 @@ def study_kgx(nodes_path: Path, edges_path: Path, *, example_limit: int = 10) ->
     if nodes.unnamed:
         examples = [ident for ident, _ in nodes.unnamed.most_common(example_limit)]
         violations.append(StudyViolation("unnamed-nodes", "nodes", sum(nodes.unnamed.values()), examples))
+    if nodes.idless:
+        examples = [name for name, _ in nodes.idless.most_common(example_limit)]
+        violations.append(StudyViolation("unidentified-nodes", "nodes", sum(nodes.idless.values()), examples))
+    if edges.incomplete:
+        examples = [f"{slot} ({n})" for slot, n in edges.incomplete.most_common(example_limit)]
+        violations.append(StudyViolation("incomplete-edges", "edges", sum(edges.incomplete.values()), examples))
     if not nodes.missing and not edges.missing:
         undeclared: list[str] = sorted(edges.ids - nodes.ids)
         if undeclared:
