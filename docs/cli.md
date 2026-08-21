@@ -1,8 +1,8 @@
 # CLI Reference
 
 Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The `tablassert` app
-exposes **five subcommands** — `agent`, `build-fullmap`, `build-kg`, `validate`, and
-`validate-kgx` — plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
+exposes **five subcommands**: `agent`, `build-fullmap`, `build-kg`, `validate`,
+and `validate-kgx`, plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
 for the live surface.
 
 ## Command index
@@ -37,7 +37,7 @@ Use this to autonomously turn one or more PMC articles into audited, improved KG
 (`pip install "tablassert[agent]"`); `--optimize` additionally needs the `[optimize]` extra
 (`pip install "tablassert[optimize]"`, pulls `dspy`). Both are checked after flag validation and
 before any model is built or article fetched, so a missing extra is reported with its install
-command instead of surfacing mid-run — see [When an extra is missing](installation.md#when-an-extra-is-missing).
+command instead of surfacing mid-run; see [When an extra is missing](installation.md#when-an-extra-is-missing).
 
 ```bash
 tablassert agent PMC-IDS... --configuration-file GRAPH.yaml [OPTIONS]
@@ -51,8 +51,8 @@ page lists the flags; see
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `PMC-IDS` (`--pmc-ids`) | list[str] | Yes | — | One or more PMC article ids (positional) |
-| `--configuration-file`, `-f` | Path | Yes | — | Caller-owned Graph YAML; supplies build metadata/fullmap and receives successful absolute table entries |
+| `PMC-IDS` (`--pmc-ids`) | list[str] | Yes | n/a | One or more PMC article ids (positional) |
+| `--configuration-file`, `-f` | Path | Yes | n/a | Caller-owned Graph YAML; supplies build metadata/fullmap and receives successful absolute table entries |
 | `--model-id`, `-m` | str | No | `None` | Model id (env `TABLASSERT_AGENT_MODEL_ID`) |
 | `--api-base`, `-ab` | str | No | `None` | OpenAI-compatible base URL (env `TABLASSERT_AGENT_API_BASE`) |
 | `--api-key`, `-ak` | str | No | `None` | API key secret (env `TABLASSERT_AGENT_API_KEY`) |
@@ -72,7 +72,7 @@ page lists the flags; see
 | `--max-metric-calls` | int | No | `8` | GEPA metric-call budget for `--optimize` |
 | `--dataset` | Path | No | `None` | YAML/JSON list of `{table_summary, coverage_feedback}` examples for `--optimize` (an example may also carry `fullmap`, `workdir`, and `head` to score each proposed config with real coverage) |
 | `--task-model` | str | No | `None` | Fast model id for GEPA's many program evaluations (cheap task LM + strong reflection LM); `--model-id` is the reflection LM. Defaults to the reflection LM |
-| `--gepa-threads` | int | No | `None` | Thread count for GEPA's evaluation pool (`--optimize`) — parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on `_GEPA_BUILD_LOCK` |
+| `--gepa-threads` | int | No | `None` | Thread count for GEPA's evaluation pool (`--optimize`): parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on `_GEPA_BUILD_LOCK` |
 
 ```bash
 tablassert agent PMC11708054 --configuration-file ./graph.yaml
@@ -82,7 +82,7 @@ tablassert agent PMC11708054 -f ./graph.yaml
 
 !!! warning "Secrets"
     Model config comes from the flags above **or** the `TABLASSERT_AGENT_*` environment variables
-    (explicit flags win). Secrets are **never** hardcoded or defaulted — a missing value fails loud
+    (explicit flags win). Secrets are **never** hardcoded or defaulted: a missing value fails loud
     (exit 2) **before** any model is built.
 
 ---
@@ -118,7 +118,7 @@ tablassert build-fullmap --aria2c --output /data/fullmap/fullmap.redb
 By default `build-fullmap` looks for a prebuilt `fullmap.tar.zst` at
 `https://stars.renci.org/var/babel_outputs/<babel-version>/fullmap/<tablassert-version>/` (the version
 directory is the **installed Tablassert package version**, never hardcoded), verifies it against the
-published `sha256sum.txt`, and extracts it beside `--output` in the Rust extension — streaming zstd →
+published `sha256sum.txt`, and extracts it beside `--output` in the Rust extension, streaming zstd →
 tar with the GIL released (the decompressed tar never touches disk), then validating the extracted
 primary + shards against the force-build contract (exact `v5` schema, a recorded `build_id`, the exact
 shard set, and per-shard `build_id` equality) before atomically renaming them into place. If no
@@ -143,12 +143,12 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `GRAPH-CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph YAML |
+| `GRAPH-CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | n/a | Graph YAML |
 | `--release`, `-r` | Flag | No | `False` | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
-| `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, no nodes with no name or an empty name, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace — verbatim `original_*` fields excepted from the whitespace check, since they are faithful source copies — and fails the build (non-zero exit) on any violation |
+| `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON: no duplicate node ids, every node has a non-empty `id` and `name`, every edge has a non-empty `subject`, `predicate`, and `object`, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace (verbatim `original_*` fields excepted from the whitespace check, since they are faithful source copies) and fails the build (non-zero exit) on any violation |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
-| `--threads`, `-t` | int | No | `None` (auto) | Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard — redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count |
+| `--threads`, `-t` | int | No | `None` (auto) | Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard; redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count |
 
 ```bash
 tablassert build-kg graph.yaml --qc --log
@@ -156,13 +156,13 @@ tablassert build-kg graph.yaml --qc --log
 
 Output is written to `rig.artifact_base_path` (created when missing) as `{name}_{version}.nodes.ndjson`,
 `{name}_{version}.edges.ndjson`, and `{name}_{version}.RIG.yaml`; intermediate parquet lands in
-`.tablassert/store/`. The RIG document is audited in memory before it is written — an invalid
+`.tablassert/store/`. The RIG document is audited in memory before it is written: an invalid
 or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is emitted. See
 [Graph Configuration](configuration/graph.md).
 
 ??? info "Build progress & stages"
-    The build runs six parallel stages — Loading Tables → Extracting Sections → Building TCode →
-    Collecting Instructions → Building Subgraphs → Compiling Graph — plus a seventh, Studying Graph,
+    The build runs six parallel stages (Loading Tables → Extracting Sections → Building TCode →
+    Collecting Instructions → Building Subgraphs → Compiling Graph) plus a seventh, Studying Graph,
     only when `--qc` is passed. They run under a three-row live progress block (stage header;
     section bar with count/elapsed/ETA; in-flight item detail). Each completed
     stage prints a green `✓ Stage N · NAME · elapsed` line above the live block. During Building
@@ -173,7 +173,7 @@ or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is 
 
 ## validate
 
-Use this to validate a configuration against a schema without running the build — ideal for CI and
+Use this to validate a configuration against a schema without running the build, ideal for CI and
 pre-commit hooks. The required `--schema` flag selects which schema to validate against (the kind is
 no longer sniffed from the YAML).
 
@@ -184,8 +184,8 @@ tablassert validate -f CONFIGURATION-FILE --schema table
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Configuration file to validate |
-| `--schema`, `-s` | `graph` \| `table` | Yes | — | Schema to validate against: `graph` validates the `Graph` model **and** every referenced table; `table` validates section syntax only |
+| `CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | n/a | Configuration file to validate |
+| `--schema`, `-s` | `graph` \| `table` | Yes | n/a | Schema to validate against: `graph` validates the `Graph` model **and** every referenced table; `table` validates section syntax only |
 
 Exits non-zero on any schema error. See [Table Configuration](configuration/table.md) and
 [Graph Configuration](configuration/graph.md).
@@ -201,7 +201,7 @@ tablassert validate graph.yaml --schema graph
 
 Use this to check that a completed build is actually Biolink-compliant. Where
 [`validate`](#validate) checks your *configuration*, `validate-kgx` checks the *output*: every node
-and edge is constructed as the Biolink Pydantic class named by its own `category` — the same classes
+and edge is constructed as the Biolink Pydantic class named by its own `category`, the same classes
 [`NCATSTranslator/translator-ingests`](https://github.com/NCATSTranslator/translator-ingests) builds
 when it ingests your files.
 
@@ -211,8 +211,8 @@ tablassert validate-kgx --nodes MY_KG_1.0.0.nodes.ndjson --edges MY_KG_1.0.0.edg
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `--nodes`, `-n` | Path | Yes | — | Built `*.nodes.ndjson` file to validate |
-| `--edges`, `-e` | Path | Yes | — | Built `*.edges.ndjson` file to validate |
+| `--nodes`, `-n` | Path | Yes | n/a | Built `*.nodes.ndjson` file to validate |
+| `--edges`, `-e` | Path | Yes | n/a | Built `*.edges.ndjson` file to validate |
 | `--limit` | int | No | `20` | Maximum example failures to retain per file |
 
 Failures are grouped by field and error type, so a systematic modelling problem shows up as one line
@@ -226,7 +226,7 @@ KGX output is Biolink-compliant.
 ```
 
 Exits non-zero when any record fails, so it can gate a release in CI. A missing or misspelled path is
-reported as `file not found` and also exits non-zero — a file that was never read must never count as
+reported as `file not found` and also exits non-zero: a file that was never read must never count as
 a pass.
 
 Edges carrying `effect_size` / `effect_type` are reported invalid until a `biolink-model` release
@@ -246,14 +246,14 @@ The strict count is what `ok` and the exit code use; the pending count is what
 ## Typical workflow
 
 1. Author a table config, then a graph config that references it.
-2. `tablassert validate graph.yaml --schema graph` — fail fast on schema errors.
-3. `tablassert build-kg graph.yaml` — produce KGX NDJSON + RIG (add `--qc` to audit mappings).
-4. `tablassert validate-kgx -n MY_KG_1.0.0.nodes.ndjson -e MY_KG_1.0.0.edges.ndjson` — confirm the
+2. `tablassert validate graph.yaml --schema graph`: fail fast on schema errors.
+3. `tablassert build-kg graph.yaml`: produce KGX NDJSON + RIG (add `--qc` to audit mappings).
+4. `tablassert validate-kgx -n MY_KG_1.0.0.nodes.ndjson -e MY_KG_1.0.0.edges.ndjson`: confirm the
    output validates against the Biolink Model before shipping it downstream.
 
 ## Next Steps
 
-- **[Tutorial](tutorial.md)** — complete example walkthrough
-- **[Configuration Guide](configuration/graph.md)** — YAML configuration reference
-- **[Fullmap](fullmap.md)** — entity-resolution database build and schema
-- **[Agent](agent.md)** — autonomous PMC → KG pipeline depth
+- **[Tutorial](tutorial.md)**: complete example walkthrough
+- **[Configuration Guide](configuration/graph.md)**: YAML configuration reference
+- **[Fullmap](fullmap.md)**: entity-resolution database build and schema
+- **[Agent](agent.md)**: autonomous PMC → KG pipeline depth

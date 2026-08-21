@@ -103,7 +103,7 @@ never lets it surface as a bare `ModuleNotFoundError`. Every one of these paths 
 distribution **and** the command that fixes it:
 
 ```text
-Missing optional dependencies 'scikit-learn', 'sentence-transformers' — required by the QC audit.
+Missing optional dependencies 'scikit-learn', 'sentence-transformers', required by the QC audit.
 Install the [qc] extra: pip install "tablassert[qc]" (uv: uv tool install "tablassert[qc]")
 ```
 
@@ -111,7 +111,7 @@ Where the gap is knowable up front, it is reported up front rather than mid-run:
 
 | Command | Checked | When |
 |---|---|---|
-| `build-kg --qc` | `[qc]` | Before the build starts — the QC audit runs at the very end of the build, so a late failure would cost the entire entity-resolution pass |
+| `build-kg --qc` | `[qc]` | Before the build starts: the QC audit runs at the very end of the build, so a late failure would cost the entire entity-resolution pass |
 | `tablassert agent` | `[agent]` | After flag validation, before any model is built or any article fetched |
 | `tablassert agent --optimize` | `[agent]` + `[optimize]` | Same point; both are reported at once |
 | `build-fullmap --aria2c` | `[aria2]` | Before any download starts |
@@ -121,8 +121,8 @@ rather than a retry loop. Library calls that reach an optional import directly (
 `fullmap_audit()` or the agent's lazy `dspy` import) raise the same message at that point.
 
 The `rt` extra is the exception: it installs `polars[rtcompat]`, which imports as plain `polars`, so
-it cannot be detected by inspection. It is suggested when polars itself fails to import — the usual
-cause being a CPU that lacks the instructions the default polars wheel requires.
+it cannot be detected by inspection. It is suggested when polars itself fails to import; the usual
+cause is a CPU that lacks the instructions the default polars wheel requires.
 
 ### Method 3: Install from GitHub main
 

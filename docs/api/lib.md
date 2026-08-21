@@ -1,6 +1,6 @@
 # Batch Resolution (lib)
 
-The `lib` module exposes `resolve_many()`, a high-level convenience function that batch-resolves an iterable of entity strings to CURIEs — use it in scripts and notebooks when you want results without building LazyFrames or running NLP preprocessing yourself. It wraps the lower-level [`resolve()`](fullmap.md) pipeline (normalization, fullmap lookup, resolution, optional QC audit when `qc=True`) and returns a plain Python list of row dictionaries.
+The `lib` module exposes `resolve_many()`, a high-level convenience function that batch-resolves an iterable of entity strings to CURIEs; use it in scripts and notebooks when you want results without building LazyFrames or running NLP preprocessing yourself. It wraps the lower-level [`resolve()`](fullmap.md) pipeline (normalization, fullmap lookup, resolution, optional QC audit when `qc=True`) and returns a plain Python list of row dictionaries.
 
 ## resolve_many()
 
@@ -31,13 +31,13 @@ For example, if `col="gene"`, each returned row dictionary will contain keys lik
 
 **`entities: Iterable[str]`**
 
-An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the fullmap synonym database. Accepts any iterable — lists, tuples, generators, sets, etc.
+An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the fullmap synonym database. Accepts any iterable: lists, tuples, generators, sets, etc.
 
 Examples: `["TP53", "BRCA1", "EGFR"]`, `("aspirin", "ibuprofen")`, or a generator expression.
 
 **`fullmap: Path`**
 
-Filesystem path to the fullmap redb file, or a base directory containing it (resolved via `fullmap_db_path()` — see [Fullmap](../fullmap.md)).
+Filesystem path to the fullmap redb file, or a base directory containing it (resolved via `fullmap_db_path()`; see [Fullmap](../fullmap.md)).
 
 **`taxon: Optional[str]` (default: `None`)**
 
@@ -61,7 +61,7 @@ Example: `[Categories.GENE]` prevents gene mappings from appearing in the output
 
 Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the deduplication stage adds a category-frequency score (computed in Polars after the SQL query) and prefers the category that appears most frequently across all matched terms in the batch. When `False`, frequency-based tie-breaking is disabled.
 
-This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.
+This is useful when resolving a column of related entities (e.g., all genes): the shared context helps disambiguate terms that map to multiple categories.
 
 **`qc: bool` (default: `False`)**
 
@@ -69,7 +69,7 @@ When `True`, runs the QC audit stage after entity resolution. The QC pipeline va
 
 ### Return Value
 
-Returns a `list[dict[str, Any]]` — one dictionary per resolved entity. The list is produced by calling `polars.DataFrame.to_dicts()` on the collected resolution output.
+Returns a `list[dict[str, Any]]`: one dictionary per resolved entity. The list is produced by calling `polars.DataFrame.to_dicts()` on the collected resolution output.
 
 Each dictionary contains the following keys (where `{col}` is the value of the `col` parameter):
 
@@ -88,7 +88,7 @@ Each dictionary contains the following keys (where `{col}` is the value of the `
 
 ### Pipeline Internals
 
-Internally: wrap the iterable in a single-column LazyFrame; snapshot the raw input to `original_{col}` (returned) and `{col}_pre_resolution` (internal, dropped — mirrors edge output); apply `level_one`/`level_two`; resolve the fullmap path via `fullmap_db_path()`; delegate to `fullmap.resolve()`; optionally run `fullmap_audit()` when `qc=True`; collect and `to_dicts()`.
+Internally: wrap the iterable in a single-column LazyFrame; snapshot the raw input to `original_{col}` (returned) and `{col}_pre_resolution` (internal, dropped; mirrors edge output); apply `level_one`/`level_two`; resolve the fullmap path via `fullmap_db_path()`; delegate to `fullmap.resolve()`; optionally run `fullmap_audit()` when `qc=True`; collect and `to_dicts()`.
 
 ### Example Usage
 
@@ -152,7 +152,7 @@ for row in result:
 | **Context params** | `column_context` exposed; `section_hash`, `config_file`, `tag` not exposed | Fully configurable |
 | **Use case** | Standalone batch lookups, scripting, notebooks | Internal pipeline integration |
 
-`resolve_many()` is designed for ad-hoc and programmatic use — scripts, notebooks, and one-off lookups. For pipeline integration where you need full control over logging, context metadata, and lazy evaluation, use `resolve()` directly.
+`resolve_many()` is designed for ad-hoc and programmatic use: scripts, notebooks, and one-off lookups. For pipeline integration where you need full control over logging, context metadata, and lazy evaluation, use `resolve()` directly.
 
 ### NLP Processing
 
@@ -170,6 +170,6 @@ for row in result:
 
 ## Next Steps
 
-- **[Entity Resolution](fullmap.md)** — Lower-level `resolve()` function details
-- **[Quality Control](qc.md)** — Multi-stage validation of resolved entities
-- **[Configuration](../configuration/table.md)** — YAML-driven entity resolution settings
+- **[Entity Resolution](fullmap.md)** - Lower-level `resolve()` function details
+- **[Quality Control](qc.md)** - Multi-stage validation of resolved entities
+- **[Configuration](../configuration/table.md)** - YAML-driven entity resolution settings
