@@ -1,7 +1,7 @@
 # Tutorial: Your First Knowledge Graph
 
 **By the end of this tutorial you will have built a KGX-compliant knowledge graph from a CSV of
-gene-disease associations** — nodes and edges with standardized CURIEs, biolink categories, provenance,
+gene-disease associations**: nodes and edges with standardized CURIEs, biolink categories, provenance,
 and statistical annotations, ready for NCATS Translator. You'll learn the complete workflow: creating
 configurations, running Tablassert, and examining the output.
 
@@ -119,7 +119,7 @@ rig:
 ```
 
 **Important:** Replace `fullmap` with the path to your fullmap redb (and adjust `tables` if your table
-config lives elsewhere). The `rig:` section is required — see the
+config lives elsewhere). The `rig:` section is required; see the
 [Graph configuration reference](configuration/graph.md) for every field.
 
 **What this does:**
@@ -184,7 +184,7 @@ Example output (p-values are emitted as controlled scientific-notation strings; 
 cat tutorial-output/TUTORIAL_KG_1.0.0.RIG.yaml
 ```
 
-The Resource Ingest Guide records the graph's source metadata and terms of use (`rig.source_info`), ingest utility and scope (`rig.ingest_info`), provenance (`rig.provenance_info`), the generated artifact locations, and a summary of the emitted node and edge types — all validated in memory before the file is written, for NCATS Translator registration.
+The Resource Ingest Guide records the graph's source metadata and terms of use (`rig.source_info`), ingest utility and scope (`rig.ingest_info`), provenance (`rig.provenance_info`), the generated artifact locations, and a summary of the emitted node and edge types, all validated in memory before the file is written, for NCATS Translator registration.
 
 ## Understanding the Transformation
 
