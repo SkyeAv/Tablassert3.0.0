@@ -22,8 +22,8 @@ FIXTURES: Path = Path(__file__).parent / "fixtures"
 # The ALAMV6 table config from docs/configuration/advanced-example.md (template shape),
 # exercising the ``template`` branch of validate_section via to_sections + fastmerge.
 # Kept on the OLD annotation names (sample_size / relationship_strength) on purpose:
-# build-time coercion renames them to supporting_study_size / effect_size, so this
-# doubles as the legacy-config backward-compatibility case. `effect_type` has no legacy
+# build-time coercion renames them to study_size / effect_size, so this doubles as the
+# legacy-config backward-compatibility case. `effect_type` has no legacy
 # spelling, so it stays canonical -- and it is mandatory here, since the legacy
 # `relationship_strength` coerces to `effect_size` and the two must be declared as a pair.
 ALAMV6_TEMPLATE: dict[str, Any] = {

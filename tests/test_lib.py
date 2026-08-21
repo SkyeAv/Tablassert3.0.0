@@ -13,7 +13,7 @@ import tablassert.cli as cli
 import tablassert.lib as lib
 from tablassert import rs
 from tablassert.biolink import ALLOWED_EDGE_FIELDS, EFFECT_TYPE_VALUES, UNSATISFIABLE_EDGE_FIELDS, Categories, validate_kgx
-from tablassert.coerce import _EFFECT_TYPE_ALIASES, _map_effect_type_value
+from tablassert.coerce import _EFFECT_TYPE_ALIASES, _map_effect_type_value, coerce_study_metadata_columns, study_metadata_target
 from tablassert.enums import Repositories
 from tablassert.fullmap import ResolveSpec
 from tablassert.ingests import from_yaml
@@ -886,14 +886,14 @@ def test_sig_prefers_exact_p_value_column() -> None:
     """sig uses exact "p_value" column when present alongside other P-Value columns."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01, 0.1], "adjusted_p_value": [0.5, 0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant", "biolink:suggestive"]
+    assert list(result["statistical_significance_qualifier"]) == ["strongly_significant", "suggestive"]
 
 
 def test_sig_uses_non_exact_p_value_column() -> None:
     """sig falls back to non-exact P-Value column when no exact match."""
     lf: pl.LazyFrame = pl.DataFrame({"adjusted_p_value": [0.01, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant", "biolink:suggestive"]
+    assert list(result["statistical_significance_qualifier"]) == ["strongly_significant", "suggestive"]
 
 
 def test_sig_picks_closest_non_exact_match() -> None:
@@ -902,7 +902,7 @@ def test_sig_picks_closest_non_exact_match() -> None:
     result: pl.DataFrame = lib.sig(lf).collect()
     # "log_p_value" -> raw p_value bucket; "adjusted_p_value_corrected" -> adjusted bucket.
     # The raw bucket is preferred, so 0.01 -> strongly_significant (not 0.5 -> not_significant).
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant"]
+    assert list(result["statistical_significance_qualifier"]) == ["strongly_significant"]
 
 
 # sig omits the qualifier column when no P-Value column exists (biolink class rule)
@@ -918,39 +918,35 @@ def test_sig_marks_null_as_null_qualifier() -> None:
     """sig emits null (not UNSURE) for null P-Values; edges are retained."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [None, 0.01, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == [None, "biolink:strongly_significant", "biolink:suggestive"]
+    assert list(result["statistical_significance_qualifier"]) == [None, "strongly_significant", "suggestive"]
 
 
 def test_sig_marks_suggestive_band() -> None:
-    """sig maps the 0.05 < p <= 0.10 band to biolink:suggestive."""
+    """sig maps the 0.05 < p <= 0.10 band to suggestive."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01, 0.07, 0.1]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant", "biolink:suggestive", "biolink:suggestive"]
+    assert list(result["statistical_significance_qualifier"]) == ["strongly_significant", "suggestive", "suggestive"]
 
 
 def test_sig_very_strongly_significant_band() -> None:
-    """sig maps p <= 0.001 to biolink:very_strongly_significant (boundary included)."""
+    """sig maps p <= 0.001 to very_strongly_significant (boundary included)."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [1e-8, 0.001, 0.002]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == [
-        "biolink:very_strongly_significant",
-        "biolink:very_strongly_significant",
-        "biolink:strongly_significant",
-    ]
+    assert list(result["statistical_significance_qualifier"]) == ["very_strongly_significant", "very_strongly_significant", "strongly_significant"]
 
 
 def test_sig_significant_band_boundary() -> None:
-    """sig maps the 0.01 < p <= 0.05 band to biolink:significant (boundary included)."""
+    """sig maps the 0.01 < p <= 0.05 band to significant (boundary included)."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.05, 0.06]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:significant", "biolink:suggestive"]
+    assert list(result["statistical_significance_qualifier"]) == ["significant", "suggestive"]
 
 
 def test_sig_not_significant_band() -> None:
-    """sig maps p > 0.10 to biolink:not_significant."""
+    """sig maps p > 0.10 to not_significant."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.11, 0.5]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:not_significant", "biolink:not_significant"]
+    assert list(result["statistical_significance_qualifier"]) == ["not_significant", "not_significant"]
 
 
 def test_sig_prefers_raw_p_value_over_adjusted_bucket() -> None:
@@ -963,7 +959,7 @@ def test_sig_prefers_raw_p_value_over_adjusted_bucket() -> None:
     """
     lf: pl.LazyFrame = pl.DataFrame({"P": [0.01], "FDR": [0.001]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:strongly_significant"]
+    assert list(result["statistical_significance_qualifier"]) == ["strongly_significant"]
 
 
 def test_sig_canonical_column_wins_over_higher_scoring_alias() -> None:
@@ -975,7 +971,7 @@ def test_sig_canonical_column_wins_over_higher_scoring_alias() -> None:
     """
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.05], "p vals": [0.001]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
-    assert list(result["statistical_significance_qualifier"]) == ["biolink:significant"]
+    assert list(result["statistical_significance_qualifier"]) == ["significant"]
 
 
 def test_sig_excludes_substring_only_non_pvalue_column() -> None:
@@ -993,16 +989,13 @@ def test_sig_excludes_substring_only_non_pvalue_column() -> None:
 
 
 def test_drop_not_significant_removes_band_keeps_nulls() -> None:
-    """drop_not_significant removes biolink:not_significant rows while keeping null qualifiers."""
+    """drop_not_significant removes not_significant rows while keeping null qualifiers."""
     lf: pl.LazyFrame = pl.DataFrame(
-        {
-            "subject": ["a", "b", "c", "d"],
-            "statistical_significance_qualifier": ["biolink:significant", "biolink:not_significant", None, "biolink:suggestive"],
-        }
+        {"subject": ["a", "b", "c", "d"], "statistical_significance_qualifier": ["significant", "not_significant", None, "suggestive"]}
     ).lazy()
     result: pl.DataFrame = drop_not_significant(lf).collect()
     assert list(result["subject"]) == ["a", "c", "d"]
-    assert "biolink:not_significant" not in list(result["statistical_significance_qualifier"])
+    assert "not_significant" not in list(result["statistical_significance_qualifier"])
 
 
 def test_drop_not_significant_noop_without_column() -> None:
@@ -1014,18 +1007,11 @@ def test_drop_not_significant_noop_without_column() -> None:
 
 
 def test_drop_not_significant_keeps_all_other_bands() -> None:
-    """drop_not_significant keeps every band except biolink:not_significant."""
-    bands: list[str | None] = [
-        "biolink:very_strongly_significant",
-        "biolink:strongly_significant",
-        "biolink:significant",
-        "biolink:suggestive",
-        "biolink:not_significant",
-        None,
-    ]
+    """drop_not_significant keeps every band except not_significant."""
+    bands: list[str | None] = ["very_strongly_significant", "strongly_significant", "significant", "suggestive", "not_significant", None]
     lf: pl.LazyFrame = pl.DataFrame({"q": bands}).lazy()
     result: pl.DataFrame = drop_not_significant(lf, col="q").collect()
-    assert list(result["q"]) == [b for b in bands if b != "biolink:not_significant"]
+    assert list(result["q"]) == [b for b in bands if b != "not_significant"]
 
 
 def test_drop_zero_effect_size_removes_zero_keeps_nonzero_and_nulls() -> None:
@@ -1054,14 +1040,15 @@ def test_numeric_columns_matches_p_value_substring() -> None:
 
 def test_numeric_columns_matches_exact_names() -> None:
     """numeric_columns matches exact effect size and study size names."""
-    names: list[str] = ["effect_size", "supporting_study_size", "cohort", "sample_size", "relationship_strength"]
+    names: list[str] = ["effect_size", "study_size", "cohort", "sample_size", "relationship_strength"]
     result: list[str] = numeric_columns(names)
     assert "effect_size" in result
-    assert "supporting_study_size" in result
+    assert "study_size" in result
     assert "cohort" not in result
     # Old names are superseded: coercion renames them before clean_numeric/format_numeric run.
     assert "sample_size" not in result
     assert "relationship_strength" not in result
+    assert "supporting_study_size" not in result
 
 
 def test_numeric_columns_case_insensitive() -> None:
@@ -1073,12 +1060,12 @@ def test_numeric_columns_case_insensitive() -> None:
 
 def test_clean_numeric_parses_numeric_and_scientific() -> None:
     """clean_numeric coerces numeric and scientific notation strings to Float64."""
-    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "450"], "supporting_study_size": ["1200", "0.42", "-1.2"]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.05", "450"], "study_size": ["1200", "0.42", "-1.2"]}).lazy()
     result: pl.DataFrame = clean_numeric(lf).collect()
     assert result.schema["p_value"] == pl.Float64
-    assert result.schema["supporting_study_size"] == pl.Float64
+    assert result.schema["study_size"] == pl.Float64
     assert result["p_value"].to_list() == [1e-8, 0.05, 450.0]
-    assert result["supporting_study_size"].to_list() == [1200.0, 0.42, -1.2]
+    assert result["study_size"].to_list() == [1200.0, 0.42, -1.2]
 
 
 def test_clean_numeric_nulls_non_numeric() -> None:
@@ -1133,12 +1120,28 @@ def test_format_numeric_emits_p_values_as_scientific_strings() -> None:
     assert result.schema["adjusted_p_value"] == pl.String
 
 
-def test_format_numeric_decimal_general() -> None:
-    """format_numeric renders effect size and study size in decimal general format."""
-    lf: pl.LazyFrame = pl.DataFrame({"effect_size": ["0.85", "0.42", "0.1234"], "supporting_study_size": ["450", "1200", "7"]}).lazy()
+def test_format_numeric_emits_model_typed_numbers() -> None:
+    """format_numeric emits model-typed columns as real JSON numbers.
+
+    biolink-model 4.4.4 types ``effect_size`` ``float`` (PR #1774) and ``study_size``
+    ``int`` on the inlined ``Study`` (PR #1770), so both leave the pipeline as real
+    numbers -- ``numeric_slot_kind`` reads the typing off the installed model, so no
+    controlled-notation string survives for slots the model now owns.
+    """
+    lf: pl.LazyFrame = pl.DataFrame({"effect_size": ["0.85", "0.42", "0.1234"], "study_size": ["450", "1200", "7"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["effect_size"].to_list() == ["0.85", "0.42", "0.1234"]
-    assert result["supporting_study_size"].to_list() == ["450", "1200", "7"]
+    assert result["effect_size"].to_list() == [0.85, 0.42, 0.1234]
+    assert result.schema["effect_size"] == pl.Float64
+    assert result["study_size"].to_list() == [450, 1200, 7]
+    assert result.schema["study_size"] == pl.Int64
+
+
+def test_format_numeric_nulls_invalid_study_counts() -> None:
+    """Fractional, negative, and non-finite study counts become null instead of being rounded."""
+    lf: pl.LazyFrame = pl.DataFrame({"study_size": ["0.42", "-1", "1.9", "2", "NaN"]}).lazy()
+    result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
+    assert result["study_size"].to_list() == [None, None, None, 2, None]
+    assert result.schema["study_size"] == pl.Int64
 
 
 def test_format_numeric_preserves_nulls() -> None:
@@ -1148,11 +1151,16 @@ def test_format_numeric_preserves_nulls() -> None:
     assert result["p_value"].to_list() == ["1.0000e-08", None, "5.0000e-02"]
 
 
-def test_format_numeric_cleans_float_noise() -> None:
-    """format_numeric cleans floating point noise to four significant figures."""
+def test_format_numeric_passes_floats_through() -> None:
+    """format_numeric passes model-typed ``float`` columns through as real floats.
+
+    The old ``{:.4g}`` noise-cleaning string branch retired with biolink-model 4.4.4's
+    ``float`` typing of ``effect_size``: values ship as JSON numbers verbatim.
+    """
     lf: pl.LazyFrame = pl.DataFrame({"effect_size": ["0.85000000001", "0.41999999999"]}).lazy()
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
-    assert result["effect_size"].to_list() == ["0.85", "0.42"]
+    assert result["effect_size"].to_list() == [0.85000000001, 0.41999999999]
+    assert result.schema["effect_size"] == pl.Float64
 
 
 def test_format_numeric_noop_without_numeric_columns() -> None:
@@ -1174,12 +1182,12 @@ def test_format_numeric_nulls_stripped_from_ndjson_rows() -> None:
     ).lazy()
     formatted: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     rows: list[dict[str, Any]] = [strip_nulls(r) for r in formatted.iter_rows(named=True)]
-    assert rows[0] == {"subject": "BRCA1", "p_value": "1.0000e-08", "effect_size": "0.85"}
+    assert rows[0] == {"subject": "BRCA1", "p_value": "1.0000e-08", "effect_size": 0.85}
     assert "p_value" not in rows[1]
     assert rows[1]["subject"] == "TP53"
-    assert rows[1]["effect_size"] == "0.42"
+    assert rows[1]["effect_size"] == 0.42
     assert rows[2]["p_value"] == "0.0000e+00"  # zero survives strip_nulls
-    assert rows[2]["effect_size"] == "1"
+    assert rows[2]["effect_size"] == 1.0
 
 
 def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
@@ -1472,7 +1480,7 @@ def test_sig_works_on_cleaned_float64() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": ["1e-8", "0.5", "N/A"]}).lazy()
     cleaned: pl.LazyFrame = clean_numeric(lf)
     result: pl.DataFrame = lib.sig(cleaned).collect()
-    assert result["statistical_significance_qualifier"].to_list() == ["biolink:very_strongly_significant", "biolink:not_significant", None]
+    assert result["statistical_significance_qualifier"].to_list() == ["very_strongly_significant", "not_significant", None]
 
 
 def test_edge_category_chemical_to_disease() -> None:
@@ -1753,7 +1761,7 @@ def test_study_size_target_matches_common_spellings() -> None:
     """study_size_target matches common study size spellings."""
     names: list[str] = ["n", "N", "sample_size", "sample size", "sample-size", "sample.size", "samplesize", "study size", "cohort size"]
     for n in names:
-        assert study_size_target(n) == "supporting_study_size", n
+        assert study_size_target(n) == "study_size", n
 
 
 def test_study_size_target_matches_count_synonyms() -> None:
@@ -1773,7 +1781,7 @@ def test_study_size_target_matches_count_synonyms() -> None:
         "enrollment_count",
     ]
     for n in names:
-        assert study_size_target(n) == "supporting_study_size", n
+        assert study_size_target(n) == "study_size", n
 
 
 def test_study_size_target_excludes_false_positives() -> None:
@@ -1811,14 +1819,14 @@ def test_study_size_target_matches_cohort_total_and_study_n_variants() -> None:
         "study n",
     ]
     for n in names:
-        assert study_size_target(n) == "supporting_study_size", n
+        assert study_size_target(n) == "study_size", n
 
 
 def test_study_size_target_matches_enrolled_variants() -> None:
     """study_size_target treats 'enrolled' as an 'enrollment' study-size variant."""
     names: list[str] = ["enrolled", "enrolled_count", "enrolled n"]
     for n in names:
-        assert study_size_target(n) == "supporting_study_size", n
+        assert study_size_target(n) == "study_size", n
 
 
 def test_study_size_target_excludes_expanded_near_misses() -> None:
@@ -1847,47 +1855,53 @@ def test_study_size_target_excludes_expanded_near_misses() -> None:
 
 
 def test_coerce_study_size_columns_renames_n_column() -> None:
-    """coerce_study_size_columns renames bare N to supporting_study_size."""
+    """coerce_study_size_columns renames bare N to study_size."""
     lf: pl.LazyFrame = pl.DataFrame({"n": [120, 450]}).lazy()
     result: pl.DataFrame = coerce_study_size_columns(lf).collect()
-    assert "supporting_study_size" in result.columns
+    assert "study_size" in result.columns
     assert "n" not in result.columns
-    assert result["supporting_study_size"].to_list() == [120, 450]
+    assert result["study_size"].to_list() == [120, 450]
 
 
 def test_coerce_study_size_columns_renames_sample_size_column() -> None:
-    """coerce_study_size_columns renames sample_size to supporting_study_size."""
+    """coerce_study_size_columns renames sample_size to study_size."""
     lf: pl.LazyFrame = pl.DataFrame({"sample_size": [1200]}).lazy()
     result: pl.DataFrame = coerce_study_size_columns(lf).collect()
-    assert result.columns == ["supporting_study_size"]
-    assert result["supporting_study_size"].to_list() == [1200]
+    assert result.columns == ["study_size"]
+    assert result["study_size"].to_list() == [1200]
 
 
-def test_coerce_study_size_columns_picks_best_candidate() -> None:
-    """coerce_study_size_columns picks the best candidate and leaves others untouched."""
+def test_coerce_study_size_columns_renames_legacy_supporting_study_size() -> None:
+    """The deprecated ``supporting_study_size`` name is an alias for ``study_size``."""
+    lf: pl.LazyFrame = pl.DataFrame({"supporting_study_size": [1200]}).lazy()
+    result: pl.DataFrame = coerce_study_size_columns(lf).collect()
+    assert result.columns == ["study_size"]
+    assert result["study_size"].to_list() == [1200]
+
+
+def test_coerce_study_size_columns_picks_best_candidate_and_drops_aliases() -> None:
+    """The winning study-size synonym is canonicalized and losing synonyms cannot leak downstream."""
     lf: pl.LazyFrame = pl.DataFrame({"n": [9], "sample size": [1200], "participants": [1250]}).lazy()
     result: pl.DataFrame = coerce_study_size_columns(lf).collect()
-    assert result["supporting_study_size"].to_list() == [1200]
-    assert result["n"].to_list() == [9]
-    assert result["participants"].to_list() == [1250]
+    assert result["study_size"].to_list() == [1200]
+    assert "n" not in result.columns
+    assert "participants" not in result.columns
 
 
-def test_coerce_study_size_columns_noop_when_already_canonical() -> None:
-    """coerce_study_size_columns is a noop when already canonically named."""
-    lf: pl.LazyFrame = pl.DataFrame({"supporting_study_size": [1200], "sample_size": [999]}).lazy()
+def test_coerce_study_size_columns_drops_alias_when_already_canonical() -> None:
+    """An existing canonical study-size column wins and consumes its synonym aliases."""
+    lf: pl.LazyFrame = pl.DataFrame({"study_size": [1200], "sample_size": [999]}).lazy()
     result: pl.DataFrame = coerce_study_size_columns(lf).collect()
-    assert result.columns == ["supporting_study_size", "sample_size"]
-    assert result["supporting_study_size"].to_list() == [1200]
-    assert result["sample_size"].to_list() == [999]
+    assert result.columns == ["study_size"]
+    assert result["study_size"].to_list() == [1200]
 
 
-def test_coerce_study_size_columns_keeps_existing_canonical_over_alias() -> None:
-    """An existing canonical column wins over a higher-scoring spaced alias (no duplicate rename)."""
-    lf: pl.LazyFrame = pl.DataFrame({"supporting_study_size": [1200], "supporting study size": [999]}).lazy()
+def test_coerce_study_size_columns_drops_spaced_alias_when_canonical_exists() -> None:
+    """A canonical value wins over a spaced duplicate without leaving the duplicate as context."""
+    lf: pl.LazyFrame = pl.DataFrame({"study_size": [1200], "supporting study size": [999]}).lazy()
     result: pl.DataFrame = coerce_study_size_columns(lf).collect()
-    assert result.columns == ["supporting_study_size", "supporting study size"]
-    assert result["supporting_study_size"].to_list() == [1200]
-    assert result["supporting study size"].to_list() == [999]
+    assert result.columns == ["study_size"]
+    assert result["study_size"].to_list() == [1200]
 
 
 def test_coerced_target_matches_the_clean_phase_rename() -> None:
@@ -1895,7 +1909,10 @@ def test_coerced_target_matches_the_clean_phase_rename() -> None:
     expected: dict[str, str] = {
         "padj": "adjusted_p_value",
         "p value": "p_value",
-        "sample size": "supporting_study_size",
+        "sample size": "study_size",
+        "supporting_study_size": "study_size",
+        "supporting_study_cohort": "study_cohort",
+        "supporting_study_method_types": "study_method_types",
         "odds ratio": "effect_size",
         "relationship_strength": "effect_size",
         "effect type": "effect_type",
@@ -1904,6 +1921,47 @@ def test_coerced_target_matches_the_clean_phase_rename() -> None:
     }
     for name, target in expected.items():
         assert coerced_target(name) == target, name
+
+
+def test_study_metadata_target_maps_deprecated_slots_to_study_properties() -> None:
+    """study_metadata_target maps each deprecated supporting-study slot to its Study property."""
+    expected: dict[str, str] = {
+        "supporting_study_cohort": "study_cohort",
+        "supporting_study_context": "study_context",
+        "supporting_study_date_range": "study_date_range",
+        "supporting_study_method_description": "study_method_description",
+        "supporting_study_method_types": "study_method_types",
+        "supporting_study_size": "study_size",
+        # Separator variants are anchored too.
+        "supporting study cohort": "study_cohort",
+        "supporting-study-date-range": "study_date_range",
+    }
+    for name, target in expected.items():
+        assert study_metadata_target(name) == target, name
+
+
+def test_study_metadata_target_ignores_non_metadata_names() -> None:
+    """study_metadata_target ignores names that are not deprecated supporting-study slots."""
+    for name in ("study_size", "study_cohort", "sample_size", "cohort", "supporting_text"):
+        assert study_metadata_target(name) is None, name
+
+
+def test_coerce_study_metadata_columns_renames_deprecated_slots() -> None:
+    """coerce_study_metadata_columns renames deprecated slots onto the current Study properties."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"supporting_study_cohort": ["FINNGEN"], "supporting_study_context": ["European ancestry"], "subject": ["A"]}
+    ).lazy()
+    result: pl.DataFrame = coerce_study_metadata_columns(lf).collect()
+    assert sorted(result.columns) == ["study_cohort", "study_context", "subject"]
+    assert result["study_cohort"].to_list() == ["FINNGEN"]
+
+
+def test_coerce_study_metadata_columns_drops_existing_canonical_sibling() -> None:
+    """A declared canonical study_* column wins and consumes a deprecated duplicate."""
+    lf: pl.LazyFrame = pl.DataFrame({"study_size": [10], "supporting_study_size": [99]}).lazy()
+    result: pl.DataFrame = coerce_study_metadata_columns(lf).collect()
+    assert result.columns == ["study_size"]
+    assert result["study_size"].to_list() == [10]
 
 
 # --- Effect-size / effect-type coercion (Biolink PR #1774) --------------------------------------
@@ -2193,7 +2251,7 @@ def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) 
 
 
 # tcode coerces study size columns after annotations and before clean_numeric
-# so downstream numeric_columns/format_numeric see already canonical supporting_study_size names
+# so downstream numeric_columns/format_numeric see already canonical study_size names
 def test_tcode_collect_coerces_study_size_before_clean_numeric(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
@@ -2219,27 +2277,60 @@ def test_tcode_collect_coerces_effect_columns_before_clean_numeric(fixtures_path
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
     study_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_size_columns")
+    metadata_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_metadata_columns")
     size_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_size_columns")
     type_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_type_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
-    assert study_idx < size_idx < type_idx < clean_idx
+    assert study_idx < metadata_idx < size_idx < type_idx < clean_idx
 
 
-def test_coerced_study_size_alias_survives_unknown_folding() -> None:
-    """study size aliases become top-level supporting study size fields before unknown folding."""
+def test_coerced_study_size_alias_reaches_the_inlined_study_not_supporting_text() -> None:
+    """Study-size aliases land on Study and never in supporting_text or StudyResult.description.
+
+    Coercion renames ``sample_size`` to the canonical ``study_size`` (the current Biolink
+    Study property, biolink-model#1770), and ``inline_supporting_study`` consumes it onto
+    the Study BEFORE the unknown-folding sweep runs -- so the value never becomes a
+    ``"study_size: …"`` supporting_text entry.
+    """
     lf: pl.LazyFrame = pl.DataFrame(
         {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "sample_size": [12000], "miscellaneous_notes": ["note"]}
     ).lazy()
-    out: pl.DataFrame = fold_unknown_to_supporting_text(coerce_study_size_columns(lf)).collect()
+    studied: pl.LazyFrame = lib.inline_supporting_study(coerce_study_size_columns(lf), "PMID:1", "data.tsv", True)
+    out: pl.DataFrame = fold_unknown_to_supporting_text(studied).collect()
     assert "sample_size" not in out.columns
-    if "supporting_study_size" in UNSATISFIABLE_EDGE_FIELDS:
-        # Unattached in the installed model: folded rather than emitted unvalidatably.
-        assert "supporting_study_size" not in out.columns
-        assert "supporting_study_size: 12000" in out["supporting_text"].to_list()[0]
-    else:
-        assert out["supporting_study_size"].to_list() == [12000]
+    assert "study_size" not in out.columns
+    assert "study_size: 12000" not in out["supporting_text"].to_list()[0]
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["PMID:1"]
+    assert study["study_size"] == 12000
     assert "miscellaneous_notes: note" in out["supporting_text"].to_list()[0]
+
+
+def test_duplicate_study_aliases_do_not_leak_into_provenance_text() -> None:
+    """Canonical study metadata wins over duplicate legacy aliases at the finalization boundary."""
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "object": ["B"],
+            "predicate": ["related_to"],
+            "extracted_from_row_number": [7],
+            "study_size": [1200],
+            "sample_size": [999],
+            "supporting_study_size": [888],
+            "study_cohort": ["canonical"],
+            "supporting_study_cohort": ["legacy"],
+        }
+    ).lazy()
+    coerced: pl.LazyFrame = coerce_study_metadata_columns(coerce_study_size_columns(lf))
+    out: pl.DataFrame = fold_unknown_to_supporting_text(lib.inline_supporting_study(coerced, "PMID:1", "data.tsv", True)).collect()
+    edge_text: str = json.dumps(out.to_dicts()[0])
+    assert "sample_size" not in edge_text
+    assert "supporting_study_size" not in edge_text
+    assert "supporting_study_cohort" not in edge_text
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["PMID:1"]
+    assert study["study_size"] == 1200
+    assert study["study_cohort"] == "canonical"
+    assert study["has_study_results"] == [{"id": "row:7"}]
 
 
 def test_publications_wraps_curie_as_list() -> None:
@@ -2562,7 +2653,7 @@ def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch
         "tp53": [fake_fullmap_row("tp53", "HGNC:11998", "TP53", "Gene", 9606)],
     }
     install_fake_fullmap(monkeypatch, rows)
-    table_path, _ = write_text_section(
+    table_path, source_path = write_text_section(
         tmp_path,
         "column_cleanup",
         {
@@ -2591,11 +2682,19 @@ def test_compile_subgraph_e2e_column_cleanup_and_numeric_annotations(monkeypatch
     assert result["object"] == "HGNC:11998"
     assert result["original_object"] == "TP 53"
     assert result["p_value"] == "1.0000e-08"
-    # Both slots are unattached in biolink-model 4.4.3, so they are preserved on the
-    # inlined StudyResult instead of being emitted unvalidatably on the edge.
-    described: str = result["has_supporting_studies"][next(iter(result["has_supporting_studies"]))]["has_study_results"][0]["description"]
-    assert "supporting_study_size=1200" in described
-    assert "statistical_significance_qualifier=biolink:very_strongly_significant" in described
+    # biolink-model 4.4.4 attaches ``statistical_significance_qualifier`` to every
+    # association class, so the derived band rides the edge as a bare enum token.
+    assert result["statistical_significance_qualifier"] == "very_strongly_significant"
+    # The ``sample size`` alias is coerced to ``study_size`` and lands as a real int
+    # field on the inlined Study; the StudyResult only anchors the source row.
+    study: dict[str, Any] = result["has_supporting_studies"]["PMID:12345"]
+    assert study["id"] == "PMID:12345"
+    assert study["name"] == source_path.name
+    assert study["study_size"] == 1200
+    # The result only anchors the row; the parquet-level null description is stripped
+    # by the NDJSON writer before emission.
+    assert [r["id"] for r in study["has_study_results"]] == ["row:1"]
+    assert not any(r.get("description") for r in study["has_study_results"])
     assert result["miscellaneous_notes"] == "kept note"
     assert result["publications"] == ["PMID:12345"]
 
@@ -2609,7 +2708,7 @@ def test_compile_subgraph_e2e_release_drops_rows_before_fullmap_lookup(monkeypat
         "droppeddisease": [fake_fullmap_row("droppeddisease", "MONDO:2", "Dropped disease", "Disease", 0)],
     }
     calls: list[list[str]] = install_fake_fullmap(monkeypatch, rows)
-    table_path, _ = write_text_section(
+    table_path, source_path = write_text_section(
         tmp_path,
         "release_drop",
         {
@@ -2630,10 +2729,13 @@ def test_compile_subgraph_e2e_release_drops_rows_before_fullmap_lookup(monkeypat
     assert result.height == 1
     assert result["subject"].to_list() == ["HGNC:1"]
     assert result["object"].to_list() == ["MONDO:1"]
-    described = result["has_supporting_studies"].to_list()[0]
-    assert (
-        "statistical_significance_qualifier=biolink:strongly_significant" in (described[next(iter(described))]["has_study_results"][0]["description"])
-    )
+    # The derived band is a real edge field in biolink-model 4.4.4: bare enum token.
+    assert result["statistical_significance_qualifier"].to_list() == ["strongly_significant"]
+    # Published wrapper with no study metadata remains, but an empty rescue column
+    # cannot justify a row-only StudyResult.
+    study: dict[str, Any] = result["has_supporting_studies"].to_list()[0]["PMCID:PMC0000000"]
+    assert study["name"] == source_path.name
+    assert not study.get("has_study_results")
     assert "droppedgene" not in looked_up
     assert "droppeddisease" not in looked_up
 
@@ -2672,8 +2774,8 @@ def test_compile_subgraph_e2e_release_drops_zero_effect_size_before_fullmap_look
     assert result.height == 1
     assert result["subject"].to_list() == ["HGNC:1"]
     assert result["object"].to_list() == ["MONDO:1"]
-    # effect_size is not yet a numeric Biolink slot, so format_numeric emits it as a string.
-    assert result["effect_size"].to_list() == ["1.5"]
+    # biolink-model 4.4.4 types ``effect_size`` float (PR #1774): a real JSON number.
+    assert result["effect_size"].to_list() == [1.5]
     assert "droppedgene" not in looked_up
     assert "droppeddisease" not in looked_up
 
@@ -3028,47 +3130,161 @@ def test_prune_to_class_preserves_classless_approval_ids() -> None:
 
 
 def test_inline_supporting_study_skips_a_study_with_no_identity_and_nothing_to_carry() -> None:
-    """An unpublished section with nothing routed or pruned emits no ``has_supporting_studies``.
+    """An unpublished section with nothing to carry emits no ``has_supporting_studies``.
 
-    ``study_id`` would be the config filename and the sole StudyResult a row index, so the
-    struct would assert a Study that never existed on every edge. The row and sheet columns
-    are still consumed -- they are never meant to reach the edge.
+    ``study_id`` would be the config stem and the struct would assert a Study that never
+    existed on every edge. The row and sheet columns are still consumed -- they are never
+    meant to reach the edge.
     """
     from tablassert.lib import inline_supporting_study
 
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"], "object": ["B"], "extracted_from_row_number": [6848], "sheet_name": ["Table_S7"]}).lazy()
-    out: pl.DataFrame = inline_supporting_study(lf, "my_table.yaml", None, False).collect()
+    out: pl.DataFrame = inline_supporting_study(lf, "my_table", "my_table.tsv", False).collect()
     assert "has_supporting_studies" not in out.columns
     assert "extracted_from_row_number" not in out.columns
     assert "sheet_name" not in out.columns
     assert out["subject"].to_list() == ["A"]
 
 
-def test_inline_supporting_study_keeps_an_unidentified_study_that_carries_statistics() -> None:
+def test_inline_supporting_study_keeps_an_unidentified_study_that_carries_values() -> None:
     """Without a publication the struct still survives when it has values to preserve.
 
-    The rescue path is the whole reason the fallback id exists: a class-refused value is real
-    evidence, and losing it would be worse than naming its carrier after a config file.
+    The rescue path is the whole reason the fallback id exists: a class-refused value is
+    real evidence, and losing it would be worse than keying its carrier by the config
+    stem. The id (config stem) and name (source filename) stay disjoint, the StudyResult
+    is identified by its scoped ``row:<N>`` CURIE, and the rescued value rides the
+    description.
     """
     from tablassert.lib import PRUNED_COLUMN, inline_supporting_study
 
     lf: pl.LazyFrame = pl.DataFrame(
         {"subject": ["A"], "extracted_from_row_number": [12], PRUNED_COLUMN: [["species_context_qualifier=NCBITaxon:9606"]]}
     ).lazy()
-    out: pl.DataFrame = inline_supporting_study(lf, "my_table.yaml", None, False).collect()
-    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["my_table.yaml"]
-    assert study["has_study_results"][0]["description"] == "species_context_qualifier=NCBITaxon:9606"
-    assert study["has_study_results"][0]["id"] == "my_table.yaml#row12"
+    out: pl.DataFrame = inline_supporting_study(lf, "my_table", "my_table.tsv", False).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["my_table"]
+    assert study["id"] == "my_table"
+    assert study["name"] == "my_table.tsv"
+    assert study["has_study_results"] == [{"id": "row:12", "description": "species_context_qualifier=NCBITaxon:9606"}]
     assert PRUNED_COLUMN not in out.columns
 
 
-def test_inline_supporting_study_keeps_a_published_study_with_no_statistics() -> None:
-    """A real publication earns the struct on its own -- ``PMID:123 row 12`` is real provenance."""
+def test_inline_supporting_study_keeps_a_published_wrapper_with_no_content() -> None:
+    """A real publication earns the wrapper on its own -- id and name stay disjoint fields.
+
+    With no study metadata and nothing rescued there is no StudyResult to anchor: the
+    struct is the bare ``{id, name}`` study wrapper (``has_study_results`` omitted).
+    """
     from tablassert.lib import inline_supporting_study
 
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"], "extracted_from_row_number": [12]}).lazy()
-    out: pl.DataFrame = inline_supporting_study(lf, "PMID:123#Table_S7", "Table_S7", True).collect()
-    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["PMID:123#Table_S7"]
-    assert study["name"] == "Table_S7"
-    assert study["has_study_results"][0]["name"] == "Table_S7 row 12"
-    assert "description" not in study["has_study_results"][0]
+    out: pl.DataFrame = inline_supporting_study(lf, "PMID:123", "Table_S7", True).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["PMID:123"]
+    assert study == {"id": "PMID:123", "name": "Table_S7"}
+
+
+def test_inline_supporting_study_puts_metadata_on_the_study_and_row_on_the_result() -> None:
+    """Study metadata lands as typed Study fields; the StudyResult only anchors the row.
+
+    ``study_size`` / ``study_context`` are the current Biolink Study properties
+    (biolink-model#1770): they are emitted on the Study itself, never duplicated into a
+    description, and the single StudyResult carries the ``row:<N>`` id with no name and
+    no description.
+    """
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "extracted_from_row_number": [42],
+            "study_size": [9],
+            "study_context": ["  European ancestry  "],
+            "study_method_types": ["case-control"],
+        }
+    ).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "PMCID:PMC1", "all correlations", True).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["PMCID:PMC1"]
+    assert study["study_size"] == 9
+    assert study["study_context"] == "European ancestry"
+    assert study["study_method_types"] == ["case-control"]
+    assert study["has_study_results"] == [{"id": "row:42"}]
+    assert "study_size" not in out.columns
+    assert "study_context" not in out.columns
+
+
+def test_inline_supporting_study_omits_a_name_equal_to_the_id() -> None:
+    """A study name duplicating the id is omitted -- id and name never carry the same info."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["A"], "extracted_from_row_number": [1]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "PMID:1", "PMID:1", True).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["PMID:1"]
+    assert study["id"] == "PMID:1"
+    assert study["name"] is None
+
+
+def test_inline_supporting_study_skips_null_or_blank_unpublished_metadata() -> None:
+    """An unpublished fallback study is null when its metadata carries no row value."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"extracted_from_row_number": [1, 2], "study_cohort": [None, "   "]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "table", "data.tsv", False).collect()
+    assert out["has_supporting_studies"].to_list() == [None, None]
+
+
+def test_inline_supporting_study_skips_null_like_method_type_items() -> None:
+    """Blank and null-like list items do not justify an unpublished fallback Study."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"extracted_from_row_number": [1, 2], "study_method_types": [[None, " ", "NA"], ["null", "none", ""]]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "table", "data.tsv", False).collect()
+    assert out["has_supporting_studies"].to_list() == [None, None]
+
+
+def test_inline_supporting_study_skips_invalid_unpublished_numeric_metadata() -> None:
+    """An invalid numeric metadata value does not justify an unpublished fallback Study."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"extracted_from_row_number": [1, 2, 3], "study_size": ["not-a-number", "-5", "1.9"]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "table", "data.tsv", False).collect()
+    assert out["has_supporting_studies"].to_list() == [None, None, None]
+
+
+def test_inline_supporting_study_routes_unsatisfiable_values_without_pruned_values() -> None:
+    """An unattached qualifier is preserved in a routed StudyResult description."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"extracted_from_row_number": [7], "aspect_qualifier": ["increased"]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "table", "data.tsv", False).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["table"]
+    assert study["has_study_results"] == [{"id": "row:7", "description": "aspect_qualifier=increased"}]
+
+
+def test_inline_supporting_study_routes_unsatisfiable_values_with_pruned_values() -> None:
+    """Routed and class-pruned values share one deterministic StudyResult description."""
+    from tablassert.lib import PRUNED_COLUMN, inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame(
+        {"extracted_from_row_number": [7], "aspect_qualifier": ["increased"], PRUNED_COLUMN: [["severity_qualifier=high"]]}
+    ).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "table", "data.tsv", False).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["table"]
+    assert study["has_study_results"] == [{"id": "row:7", "description": "aspect_qualifier=increased; severity_qualifier=high"}]
+
+
+def test_inline_supporting_study_rejects_routed_values_without_row_provenance() -> None:
+    """A routed value without a row cannot receive a valid row:<N> StudyResult id."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"aspect_qualifier": ["increased"]}).lazy()
+    with pytest.raises(ValueError, match="extracted_from_row_number"):
+        inline_supporting_study(lf, "table", "data.tsv", False).collect()
+
+
+def test_inline_supporting_study_metadata_without_row_has_no_result_fallback() -> None:
+    """A direct metadata frame does not invent the invalid static StudyResult id ``result``."""
+    from tablassert.lib import inline_supporting_study
+
+    lf: pl.LazyFrame = pl.DataFrame({"study_size": [9]}).lazy()
+    out: pl.DataFrame = inline_supporting_study(lf, "table", "data.tsv", False).collect()
+    study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["table"]
+    assert study == {"id": "table", "name": "data.tsv", "study_size": 9}

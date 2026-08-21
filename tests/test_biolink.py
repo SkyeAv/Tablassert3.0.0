@@ -14,7 +14,7 @@ import json
 from enum import Enum
 from importlib.resources import files
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import biolink_model.datamodel.pydanticmodel_v2 as bm
 import pytest
@@ -161,20 +161,20 @@ def test_biolink_version_present() -> None:
 
 def test_knowledge_levels_match_biolink() -> None:
     """KnowledgeLevels is exactly the Biolink ``KnowledgeLevelEnum`` value set."""
-    assert {e.value for e in KnowledgeLevels} == {e.value for e in bm.KnowledgeLevelEnum}
+    assert {e.value for e in KnowledgeLevels} == {e.value for e in cast("type[Enum]", bm.KnowledgeLevelEnum)}
 
 
 def test_agent_types_match_biolink() -> None:
     """AgentTypes is exactly the Biolink ``AgentTypeEnum`` value set."""
-    assert {e.value for e in AgentTypes} == {e.value for e in bm.AgentTypeEnum}
+    assert {e.value for e in AgentTypes} == {e.value for e in cast("type[Enum]", bm.AgentTypeEnum)}
 
 
 def test_effect_types_match_pr1774() -> None:
     """EffectTypes is exactly the 25 permissible ``effect_type`` values from Biolink PR #1774.
 
-    Defined locally because the pinned biolink-model 4.4.3 predates the PR
-    (close_mappings intentionally ignored); once biolink-model ships the enum,
-    this becomes a drift guard against ``bm.EffectTypeEnum`` instead.
+    The expected set is recorded here to make the Biolink PR #1774 vocabulary
+    explicit (``close_mappings`` is intentionally ignored); the installed
+    ``bm.EffectTypeEnum`` remains the source of truth for the derived enum.
     """
     expected: set[str] = {
         "regression_coefficient",
@@ -206,6 +206,7 @@ def test_effect_types_match_pr1774() -> None:
     assert len(expected) == 25
     assert {e.value for e in EffectTypes} == expected
     assert set(EFFECT_TYPE_VALUES) == expected
+    assert {e.value for e in cast("type[Enum]", bm.EffectTypeEnum)} == expected
 
 
 def test_categories_match_biolink() -> None:
@@ -232,7 +233,7 @@ def test_qualifiers_are_biolink_slots(schema: SchemaView) -> None:
         assert qualifier.value in slots, qualifier.value
 
 
-# --- Biolink 4.4.3 drift markers ----------------------------------------------------------------
+# --- Biolink drift markers ----------------------------------------------------------------------
 
 
 def test_categories_reflect_4_4_3_renames() -> None:
@@ -276,7 +277,7 @@ def test_edge_categories_include_associations() -> None:
     assert "Association" in values
     assert "GeneToDiseaseAssociation" in values
     assert "ChemicalGeneInteractionAssociation" in values
-    assert len(values) > 100  # Biolink 4.4.3 defines ~106 association subclasses.
+    assert len(values) > 100  # The installed Biolink model defines 100+ association subclasses.
 
 
 # --- ALLOWED_EDGE_FIELDS ------------------------------------------------------------------------
@@ -394,6 +395,8 @@ def test_numeric_slot_kind_matches_model_ranges() -> None:
     """P-values are floats in Biolink, so they must not be emitted as strings."""
     assert numeric_slot_kind("p_value") == "float"
     assert numeric_slot_kind("adjusted_p_value") == "float"
+    assert numeric_slot_kind("study_size") == "int"
+    assert numeric_slot_kind("effect_size") == "float"
     assert numeric_slot_kind("subject") is None
 
 
@@ -401,26 +404,29 @@ def test_known_pending_fields_are_derived_not_hardcoded() -> None:
     """``KNOWN_PENDING_EDGE_FIELDS`` must reflect the *installed* model.
 
     It is exactly "curated Tablassert extra that no Biolink association declares". When
-    ``biolink/biolink-model#1774`` ships, ``effect_size`` / ``effect_type`` become real
-    ``Association`` fields and must drop out of the set with no code change -- so nothing may
-    hardcode either state.
+    ``biolink/biolink-model#1774`` shipped (biolink-model 4.4.4), ``effect_size`` /
+    ``effect_type`` became real ``Association`` fields and dropped out of the set with no
+    code change -- so nothing may hardcode either state.
     """
     owned: set[str] = set()
     for cls in vars(bm).values():
         if inspect.isclass(cls) and inspect.isclass(bm.Association) and issubclass(cls, bm.Association):
             owned |= set(getattr(cls, "model_fields", {}))
     assert frozenset(TABLASERT_EDGE_EXTRAS) - owned == KNOWN_PENDING_EDGE_FIELDS
-    # Today's state, asserted so the pending exemption is visibly scoped.
-    assert {"approval_ids", "effect_size", "effect_type"} <= KNOWN_PENDING_EDGE_FIELDS
+    # Today's state, asserted so the pending exemption is visibly scoped: approval_ids is
+    # still a curated extra, while the effect pair left the set when the model caught up.
+    assert "approval_ids" in KNOWN_PENDING_EDGE_FIELDS
+    assert {"effect_size", "effect_type"} & KNOWN_PENDING_EDGE_FIELDS == set()
     assert KNOWN_PENDING_EDGE_FIELDS <= ALLOWED_EDGE_FIELDS
 
 
 def test_is_pending_problem_only_exempts_extra_forbidden_pending_fields() -> None:
     """The exemption is narrow: a deliberate extra Biolink has not declared, and nothing else."""
-    assert is_pending_problem("effect_size: extra_forbidden")
     assert is_pending_problem("approval_ids: extra_forbidden")
     # Same field, a REAL failure -> not exempt.
-    assert not is_pending_problem("effect_size: missing")
+    assert not is_pending_problem("approval_ids: missing")
+    # ``effect_size`` is a real Association slot since biolink-model 4.4.4 -> never exempt.
+    assert not is_pending_problem("effect_size: extra_forbidden")
     # A genuinely malformed value on a real slot -> never exempt.
     assert not is_pending_problem("p_value: float_parsing")
     assert not is_pending_problem("subject: string_type")
@@ -461,8 +467,8 @@ def test_validate_kgx_separates_pending_extras_from_real_failures(tmp_path: Path
         "agent_type": "data_analysis_pipeline",
     }
     edges.write_text(
-        # Otherwise valid; effect_size is a deliberate extra biolink-model 4.4.3 does not declare (PR #1774).
-        json.dumps({**base, "id": "e1", "effect_size": 1.5})
+        # Otherwise valid; approval_ids is a deliberate curated extra the model does not declare.
+        json.dumps({**base, "id": "e1", "approval_ids": "011111|022222"})
         + "\n"
         # A real defect: p_value is typed float, so a non-numeric string can never validate.
         + json.dumps({**base, "id": "e2", "p_value": "not-a-number"})
@@ -471,11 +477,16 @@ def test_validate_kgx_separates_pending_extras_from_real_failures(tmp_path: Path
         # lax validation coerces them back to the float slot, so this record is fully valid.
         + json.dumps({**base, "id": "e3", "p_value": "1.0000e-03"})
         + "\n"
+        # biolink-model 4.4.4 shipped PR #1774: effect_size / effect_type are real slots,
+        # so this edge is STRICTLY valid -- no pending exemption involved.
+        + json.dumps({**base, "id": "e4", "effect_size": 1.5, "effect_type": "odds_ratio"})
+        + "\n"
     )
     report: dict[str, Any] = validate_kgx(nodes, edges)
-    assert report["edges"]["total"] == 3
-    assert report["edges"]["valid"] == 1  # strict: only the scientific-notation p_value edge passes
-    assert report["edges"]["valid_excluding_pending"] == 2  # the effect_size edge is forgiven
+    assert report["edges"]["total"] == 4
+    assert report["edges"]["valid"] == 2  # strict: the scientific-notation and effect-pair edges pass
+    assert report["edges"]["valid_excluding_pending"] == 3  # the approval_ids edge is forgiven
     assert report["ok"] is False
     assert report["ok_excluding_pending"] is False  # the real defect still fails
-    assert "effect_size: extra_forbidden" in report["edges"]["problems"]
+    assert "approval_ids: extra_forbidden" in report["edges"]["problems"]
+    assert "effect_size: extra_forbidden" not in report["edges"]["problems"]

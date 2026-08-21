@@ -92,12 +92,14 @@ instructions: "# ROLE + TASK\nYou are an expert knowledge-graph (KG) engineer. Y
   \   name, or its caption explicitly establishes that entity for the rows. A hard-coded object applied to every\n   row must\
   \ be justified by the table's actual context.\n3. CAPTURE STATISTICAL ANNOTATIONS, but only under slot names a Biolink association\
   \ can hold: p_value,\n   adjusted_p_value, effect_size, effect_type, has_evidence (method: column, encoding: <letter>,\n   split_by: inspect the cells and use the separator they actually use (\",\"/\";\"/\"|\");\n   omit split_by when each cell holds one value — it is wrapped into a one-element array).\
-  \ A column\n   named q_value/fold_change/z_score/lfsr/beta/standard_error is not an association slot and is folded away\n\
-  \   into supporting_text; supporting_study_size and sample_size belong to NO class and are rerouted into an\n   inlined\
-  \ StudyResult. Map such a column onto the nearest real slot (an adjusted p-value -> adjusted_p_value,\n   a beta/fold-change/rho\
+  \ A column named q_value/padj coerces to adjusted_p_value and beta/odds-ratio/rho coerces to\n\
+  \   effect_size; study-size-like columns (sample_size, supporting_study_size, n) become study_size\n\
+  \   on the edge's inlined supporting Study; only names nothing claims (fold_change alone, z_score,\n\
+  \   lfsr, standard_error) fold into supporting_text. Map such a column onto the nearest real slot\n\
+  \   (an adjusted p-value -> adjusted_p_value,\n   a beta/fold-change/rho\
   \ -> effect_size with the matching effect_type) rather than inventing a name. For effect_type, use method: column when the\
   \ table provides it, else method: value with a fixed valid\n   Biolink effect type (e.g. spearmans_rho) — emit effect_type\
-  \ and effect_size TOGETHER — either one without the other is a hard validation error. Do NOT silently drop statistical\n   columns — they are part of the evidence.\n\
+  \ and effect_size TOGETHER — an unpaired half is dropped with a warning while the edge is kept; invalid effect values become null. Use a valid Biolink effect-type token and treat pairing/coercion warnings as non-fatal.\n\
   4. PICK THE RIGHT OBJECT COLUMN: the object column must actually contain the intended entity. Verify with\n   read_table\
   \ that the column holds the entity type you claim (e.g. a protein-abundance table with UniProt\n   IDs in columns A/B should\
   \ map those, not a gene-symbol column elsewhere).\n5. prioritize GUIDANCE — a wrong prioritize is WORSE than none. Add `prioritize`\

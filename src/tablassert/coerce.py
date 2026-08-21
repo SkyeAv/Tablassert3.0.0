@@ -37,8 +37,11 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
 
     Notes:
         Five-band cascade matches ``StatisticalSignificanceQualifierEnum``
-        verbatim. Boundaries are hardcoded because the enum definitions are
-        canonical.
+        verbatim, bare tokens included: biolink-model 4.4.4 (PR #1766/#1770
+        lineage) attaches the slot to ``Association`` with the enum as its
+        range, so the emitted values are the enum tokens themselves --
+        ``"strongly_significant"``, never a ``biolink:``-prefixed CURIE.
+        Boundaries are hardcoded because the enum definitions are canonical.
 
     Warnings:
         Edges are never dropped here. No p-value column → qualifier absent;
@@ -72,14 +75,14 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
         pl.when(expr.is_null())
         .then(pl.lit(None, dtype=pl.String))
         .when(expr <= 0.001)
-        .then(pl.lit("biolink:very_strongly_significant"))
+        .then(pl.lit("very_strongly_significant"))
         .when(expr <= 0.01)
-        .then(pl.lit("biolink:strongly_significant"))
+        .then(pl.lit("strongly_significant"))
         .when(expr <= 0.05)
-        .then(pl.lit("biolink:significant"))
+        .then(pl.lit("significant"))
         .when(expr <= 0.10)
-        .then(pl.lit("biolink:suggestive"))
-        .otherwise(pl.lit("biolink:not_significant"))
+        .then(pl.lit("suggestive"))
+        .otherwise(pl.lit("not_significant"))
     )
     return lf.with_columns(band.alias(out))
 
@@ -333,7 +336,7 @@ STUDY_SIZE_SINGLETON_PATTERN: re.Pattern[str] = re.compile(
 
 
 def study_size_target(name: str) -> str | None:
-    """Map study-size-like column names to the canonical ``supporting_study_size`` slot.
+    """Map study-size-like column names to the canonical ``study_size`` slot.
 
     Bare ``"n"`` is allowed, but other matches need explicit sample/study-size
     context.
@@ -342,27 +345,28 @@ def study_size_target(name: str) -> str | None:
         name: Raw source column name.
 
     Returns:
-        ``"supporting_study_size"`` when the name matches any of the
-        study-size patterns, else ``None``.
+        ``"study_size"`` when the name matches any of the study-size patterns,
+        else ``None``.
     """
     if STUDY_SIZE_EXACT_PATTERN.search(name):
-        return "supporting_study_size"
+        return "study_size"
     if STUDY_SIZE_COUNT_PATTERN.search(name):
-        return "supporting_study_size"
+        return "study_size"
     if STUDY_SIZE_PREFIX_PATTERN.search(name):
-        return "supporting_study_size"
+        return "study_size"
     if STUDY_SIZE_SUFFIX_PATTERN.search(name):
-        return "supporting_study_size"  # pragma: no cover -- documented subset of COUNT (unit<_SEP>n); kept explicit, never reached
+        return "study_size"  # pragma: no cover -- documented subset of COUNT (unit<_SEP>n); kept explicit, never reached
     if STUDY_SIZE_SINGLETON_PATTERN.search(name):
-        return "supporting_study_size"
+        return "study_size"
     return None
 
 
 def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """Rename study-size-like columns to Biolink KGX-compliant ``supporting_study_size``.
+    """Rename study-size-like columns to the current Biolink ``study_size`` Study slot.
 
-    Picks a single best fuzzy match and leaves other candidate columns
-    untouched.
+    Picks a single best fuzzy match and drops the other study-size aliases so
+    synonym columns cannot leak into ``supporting_text`` or a ``StudyResult``
+    description.
 
     Args:
         lf: Source LazyFrame.
@@ -370,7 +374,6 @@ def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     Returns:
         LazyFrame with the chosen column renamed (no-op if no match).
     """
-    # Picks a single best fuzzy match and leaves other candidate columns untouched.
     from rapidfuzz import fuzz
 
     names: list[str] = lf.collect_schema().names()
@@ -378,13 +381,81 @@ def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     if not candidates:
         return lf
 
-    target: str = "supporting_study_size"
+    target: str = "study_size"
     reference: str = target.replace("_", " ")
     # An existing canonical column always wins; fuzzy ranking only picks among aliases.
     chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
-    if chosen == target:
-        return lf
-    return lf.rename({chosen: target})
+    aliases: list[str] = [c for c in candidates if c != chosen]
+    out: pl.LazyFrame = lf if chosen == target else lf.rename({chosen: target})
+    return out.drop(aliases) if aliases else out
+
+
+# --- Study metadata (Biolink PR #1770 replacements) ---------------------------
+# The deprecated ``supporting study *`` association slots each name their exact
+# replacement Study node property (``deprecated_element_has_exact_replacement``).
+# Whole-name, separator-anchored patterns (same convention as the study-size
+# machinery above) accept spaced/underscored/hyphenated/dotted spellings.
+STUDY_METADATA_RENAMES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(rf"^ supporting {_SEP} study {_SEP} cohort $", re.IGNORECASE | re.VERBOSE), "study_cohort"),
+    (re.compile(rf"^ supporting {_SEP} study {_SEP} context $", re.IGNORECASE | re.VERBOSE), "study_context"),
+    (re.compile(rf"^ supporting {_SEP} study {_SEP} date {_SEP} range $", re.IGNORECASE | re.VERBOSE), "study_date_range"),
+    (re.compile(rf"^ supporting {_SEP} study {_SEP} method {_SEP} description $", re.IGNORECASE | re.VERBOSE), "study_method_description"),
+    (re.compile(rf"^ supporting {_SEP} study {_SEP} method {_SEP} types? $", re.IGNORECASE | re.VERBOSE), "study_method_types"),
+    (re.compile(rf"^ supporting {_SEP} study {_SEP} size $", re.IGNORECASE | re.VERBOSE), "study_size"),
+)
+
+
+def study_metadata_target(name: str) -> str | None:
+    """Map a deprecated ``supporting study *`` column name to its ``study_*`` replacement.
+
+    Args:
+        name: Raw source column name.
+
+    Returns:
+        The current Biolink ``Study`` property name, or ``None`` when the name
+        is not a deprecated supporting-study metadata slot.
+    """
+    for pattern, target in STUDY_METADATA_RENAMES:
+        if pattern.search(name):
+            return target
+    return None
+
+
+def coerce_study_metadata_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Rename deprecated ``supporting_study_*`` columns onto current ``study_*`` slots.
+
+    Biolink PR #1770 deprecated the six ``supporting study *`` association slots
+    and replaced each with a ``Study`` node property; this op performs that exact
+    replacement on column names so the values reach the inlined ``Study`` as real
+    typed fields. A canonical target wins over a deprecated sibling, and duplicate
+    aliases are dropped because they are synonyms rather than independent annotations.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        LazyFrame with every renamable deprecated column renamed or dropped when
+        its canonical target is already present.
+    """
+    names: list[str] = lf.collect_schema().names()
+    aliases_by_target: dict[str, list[str]] = {}
+    for name in names:
+        target: str | None = study_metadata_target(name)
+        if target is not None and target != name:
+            aliases_by_target.setdefault(target, []).append(name)
+
+    renames: dict[str, str] = {}
+    drops: list[str] = []
+    for target, aliases in aliases_by_target.items():
+        if target in names:
+            drops.extend(aliases)
+            continue
+        chosen: str = aliases[0]
+        renames[chosen] = target
+        drops.extend(aliases[1:])
+
+    out: pl.LazyFrame = lf.rename(renames) if renames else lf
+    return out.drop(drops) if drops else out
 
 
 # --- Effect-type name fragments ----------------------------------------------
@@ -536,11 +607,13 @@ def coerced_target(name: str) -> str:
     Notes:
         Classifier order mirrors the op order in ``Tcode._source_ops``:
         ``coerce_pvalue_columns`` runs first, so a p/q-value alias is claimed
-        before the study-size and effect classifiers ever see it. Config-time
-        validators judge this target rather than the raw name so they see a
-        name exactly as the build will.
+        before the study-size, study-metadata and effect classifiers ever see
+        it. Config-time validators judge this target rather than the raw name
+        so they see a name exactly as the build will.
     """
-    return pvalue_target(name) or study_size_target(name) or effect_size_target(name) or effect_type_target(name) or name
+    return (
+        pvalue_target(name) or study_size_target(name) or study_metadata_target(name) or effect_size_target(name) or effect_type_target(name) or name
+    )
 
 
 def coerce_effect_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:

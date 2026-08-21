@@ -145,7 +145,7 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `GRAPH-CONFIGURATION-FILE` (`--configuration-file`, `-f`) | Path | Yes | — | Graph YAML |
-| `--release`, `-r` | Flag | No | `False` | Emit a slim, significant-only graph (drops `biolink:not_significant` edges before resolution) |
+| `--release`, `-r` | Flag | No | `False` | Emit a slim, significant-only graph (drops `not_significant` edges before resolution) |
 | `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, every node has a non-empty `id` and `name`, every edge has a non-empty `subject`, `predicate`, and `object`, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace — verbatim `original_*` fields excepted from the whitespace check, since they are faithful source copies — and fails the build (non-zero exit) on any violation |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
@@ -177,7 +177,7 @@ or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is 
 Use this to migrate a legacy table config (or a whole directory of them) into the current v12
 `{template, sections}` shape: duplicate mapping keys are merged (never silently dropped),
 exact-duplicate entries the template/section overlay produced are dropped and same-key
-`qualifiers` entries merged into one per key, the removed `relationship_strength` annotation
+`qualifiers` entries merged into one per key, the legacy `relationship_strength` annotation
 is renamed to `effect_size`, every `source.reindex` entry is validated against the v12 model,
 and each `source.local` is resolved onto the real downloaded payload — never left pointing at
 a stale `./DATALAKE` path.
@@ -298,7 +298,7 @@ Failures are grouped by field and error type, so a systematic modelling problem 
 rather than a million:
 
 ```text
-biolink-model 4.4.3
+biolink-model 4.4.4
 nodes: 424141/424141 valid (0 failures)
 edges: 2000085/2000085 valid (0 failures)
 KGX output is Biolink-compliant.
@@ -308,10 +308,10 @@ Exits non-zero when any record fails, so it can gate a release in CI. A missing 
 reported as `file not found` and also exits non-zero — a file that was never read must never count as
 a pass.
 
-Edges carrying `effect_size` / `effect_type` are reported invalid until a `biolink-model` release
-ships [#1774](https://github.com/biolink/biolink-model/pull/1774), because 4.4.3 declares neither on
-`Association`. The translator-ingest `approval_ids` pass-through is also intentionally absent from
-that model. These curated fields are counted separately as *pending* rather than treated as defects:
+`effect_size` / `effect_type` are real `Association` fields in biolink-model 4.4.4
+([#1774](https://github.com/biolink/biolink-model/pull/1774)) and therefore validate as normal
+model-typed values. The translator-ingest `approval_ids` pass-through remains intentionally absent
+from that model and is counted separately as *pending* rather than treated as a defect:
 
 ```text
 edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)

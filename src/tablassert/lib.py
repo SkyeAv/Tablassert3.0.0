@@ -16,6 +16,7 @@ from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
     DISABLED_EDGE_FIELDS,
     ENUM_RANGED_QUALIFIERS,
+    STUDY_METADATA_FIELDS,
     UNSATISFIABLE_EDGE_FIELDS,
     Categories,
     EdgeCategories,
@@ -31,6 +32,7 @@ from tablassert.coerce import (
     coerce_effect_size_columns,
     coerce_effect_type_columns,
     coerce_pvalue_columns,
+    coerce_study_metadata_columns,
     coerce_study_size_columns,
     coerced_target,
     effect_size_target,
@@ -376,96 +378,182 @@ Never reaches output -- :func:`inline_supporting_study` folds it into the
 ``StudyResult`` description and drops it.
 """
 
+_NULL_LIKE_TEXT: tuple[str, ...] = ("", "na", "nan", "null", "none")
 
-def inline_supporting_study(lf: pl.LazyFrame, study_id: str, sheet: str | None, identified: bool = True) -> pl.LazyFrame:
+
+def _has_nonblank_study_value(col: str, dtype: Any) -> pl.Expr:
+    """Return a row-wise presence test for a routed Study value."""
+    value: pl.Expr = pl.col(col)
+    if isinstance(dtype, pl.List):
+        normalized: pl.Expr = value.list.eval(pl.element().cast(pl.String).str.strip_chars().str.to_lowercase())
+        present: pl.Expr = normalized.list.eval(pl.element().is_not_null() & ~pl.element().is_in(_NULL_LIKE_TEXT)).list.sum()
+        return present.gt(0).fill_null(False)
+    kind: str | None = numeric_slot_kind(col)
+    if kind == "int":
+        number: pl.Expr = value.cast(pl.Float64, strict=False)
+        return (number.is_finite() & (number >= 0) & (number.floor() == number)).fill_null(False)
+    if kind == "float":
+        return value.cast(pl.Float64, strict=False).is_finite().fill_null(False)
+    if dtype == pl.String:
+        text: pl.Expr = value.cast(pl.String).str.strip_chars().str.to_lowercase()
+        return text.is_not_null() & ~text.is_in(_NULL_LIKE_TEXT)
+    if dtype in {pl.Float32, pl.Float64}:
+        return value.cast(pl.Float64, strict=False).is_finite().fill_null(False)
+    return value.is_not_null()
+
+
+def _study_metadata_expr(col: str, dtype: Any) -> pl.Expr:
+    """Build a Study field expression, normalizing scalar method types to a list."""
+    value: pl.Expr = pl.col(col)
+    kind: str | None = numeric_slot_kind(col)
+    if kind == "int":
+        number: pl.Expr = value.cast(pl.Float64, strict=False)
+        valid_count: pl.Expr = number.is_finite() & (number >= 0) & (number.floor() == number)
+        return pl.when(valid_count).then(number.cast(pl.Int64, strict=False)).otherwise(None).alias(col)
+    if kind == "float":
+        return value.cast(pl.Float64, strict=False).alias(col)
+    if col != "study_method_types":
+        if dtype == pl.String:
+            text: pl.Expr = value.cast(pl.String).str.strip_chars()
+            return pl.when(text.is_null() | text.str.to_lowercase().is_in(_NULL_LIKE_TEXT)).then(None).otherwise(text).alias(col)
+        return value.alias(col)
+
+    if isinstance(dtype, pl.List):
+        cleaned: pl.Expr = value.list.eval(pl.element().cast(pl.String).str.strip_chars())
+        valid: pl.Expr = cleaned.list.eval(
+            pl.when(pl.element().is_null() | pl.element().str.to_lowercase().is_in(_NULL_LIKE_TEXT)).then(None).otherwise(pl.element())
+        ).list.drop_nulls()
+        return pl.when(valid.list.len() == 0).then(pl.lit(None, dtype=pl.List(pl.String))).otherwise(valid).alias(col)
+
+    text: pl.Expr = value.cast(pl.String).str.strip_chars()
+    return (
+        pl.when(text.is_null() | text.str.to_lowercase().is_in(_NULL_LIKE_TEXT))
+        .then(pl.lit(None, dtype=pl.List(pl.String)))
+        .otherwise(pl.concat_list(text))
+        .alias(col)
+    )
+
+
+def inline_supporting_study(lf: pl.LazyFrame, study_id: str, study_name: str | None, identified: bool = True) -> pl.LazyFrame:
     """Attach table provenance and homeless statistics as an inlined Biolink ``Study``.
 
     Follows the COHD/ICEES pattern in ``translator-ingests``: the edge carries
     ``has_supporting_studies`` (``dict[str, Study]``, ``inlined: true`` on
-    ``Association``) and each ``Study`` carries ``has_study_results``. The Study is
+    ``Association``) and each ``Study`` may carry ``has_study_results``. The Study is
     deliberately *not* written to the nodes file, matching those ingests.
 
-    Two kinds of column are routed here rather than left on the edge:
+    The struct is shaped by the current Biolink Model (4.4.4+):
 
-    * the sheet name and source row number, which previously became
-      ``"sheet_name: Table_S7"`` strings inside ``supporting_text`` -- a slot whose
-      Biolink meaning is a supporting sentence, not a key/value dump;
-    * any column in :data:`biolink.UNSATISFIABLE_EDGE_FIELDS`, i.e. declared in the
-      LinkML schema but attached to no Pydantic class under the *installed*
-      biolink-model. With ``biolink/biolink-model#1770`` applied the
-      ``supporting_study_*`` slots become real ``Association`` fields and are left
-      flat on the edge instead; nothing here is hardcoded to either state.
+    * ``Study.id`` is a real identifier -- the section's publication CURIE -- and
+      ``Study.name`` a DISJOINT human label (worksheet or source filename); the two
+      are never composed into one string.
+    * Study-level metadata declared as annotations (``study_size``, ``study_cohort``,
+      ``study_context``, ``study_date_range``, ``study_method_description``,
+      ``study_method_types`` -- see :data:`biolink.STUDY_METADATA_FIELDS`) lands as
+      real typed fields ON the Study. Biolink PR #1770 deprecated the old
+      ``supporting_study_*`` association slots in favor of exactly these Study node
+      properties; the coercion phase renames the legacy spellings onto them before
+      this op runs.
+    * Each ``StudyResult`` is identified by the scoped CURIE ``row:<N>`` (its source
+      row; local to the containing inlined Study -- results are never standalone
+      nodes) and carries NO name: row provenance is fully expressed by the id.
+    * ``StudyResult.description`` preserves only what has no structured home:
+      leftover unsatisfiable columns and class-pruned qualifiers, as ``col=value``
+      entries.
 
     **Nothing to say, nothing emitted.** Biolink defines ``has supporting studies`` as
     "studies that produced information used as evidence", so the struct has to earn its
     place. An UNIDENTIFIED section -- one whose ``study_id`` fell back to the config
-    filename because it declares no publication -- with no routed statistics and nothing
-    pruned would otherwise emit a Study named ``my_table.yaml`` whose only StudyResult is a
-    row index into a file the pipeline regenerates. That is a fabricated study on every
-    edge, and no translator-ingests source models evidence that way. In that case the
-    struct is skipped; the routed/sheet/row columns are dropped either way. A section WITH
-    a publication keeps the full struct unchanged -- ``PMID:123#Table_S7 row 12`` is real
-    provenance -- as does any section that has statistics to carry.
+    stem because it declares no publication -- with no study metadata, no routed
+    columns and nothing pruned would otherwise emit a Study named after a config file
+    on every edge. That is a fabricated study, and no translator-ingests source models
+    evidence that way. In that case the struct is skipped; the metadata/routed/sheet/row
+    columns are dropped either way. A section WITH a publication always keeps the
+    wrapper -- the publication CURIE is genuine provenance -- as does any section that
+    has content to carry.
 
     ``study_id`` is a per-section constant, so it can key a static struct field.
 
     Args:
         lf: Edges LazyFrame after annotation and provenance ops.
-        study_id: Stable study identifier (``"<publication>#<sheet>"``).
-        sheet: Worksheet name, when the source is a spreadsheet.
-        identified: Whether ``study_id`` names a real publication rather than falling back
-            to the config filename. ``False`` lets a contentless study be skipped.
+        study_id: Stable study identifier (publication CURIE, or the config stem when
+            unidentified).
+        study_name: Human-readable study label (worksheet or source filename), or
+            ``None`` to omit it.
+        identified: Whether ``study_id`` names a real publication rather than falling
+            back to the config stem. ``False`` lets a contentless study be skipped.
 
     Returns:
-        LazyFrame with ``has_supporting_studies`` appended (when it carries anything) and
-        the routed columns dropped.
+        LazyFrame with ``has_supporting_studies`` appended (when it carries anything)
+        and the metadata/routed columns dropped.
     """
-    names: list[str] = lf.collect_schema().names()
-    routed: list[str] = sorted(c for c in names if c in UNSATISFIABLE_EDGE_FIELDS and c not in DISABLED_EDGE_FIELDS)
+    schema: Any = lf.collect_schema()
+    names: list[str] = schema.names()
+    metadata: list[str] = sorted(c for c in names if c in STUDY_METADATA_FIELDS)
+    routed: list[str] = sorted(
+        c for c in names if c in UNSATISFIABLE_EDGE_FIELDS and c not in DISABLED_EDGE_FIELDS and c not in STUDY_METADATA_FIELDS
+    )
     disabled: list[str] = sorted(c for c in names if c in DISABLED_EDGE_FIELDS)
     row: str = "extracted_from_row_number"
     has_row: bool = row in names
     pruned: bool = PRUNED_COLUMN in names
+    content_columns: list[str] = [*metadata, *routed, *([PRUNED_COLUMN] if pruned else [])]
+    has_content: pl.Expr = pl.lit(False)
+    for col in content_columns:
+        has_content = has_content | _has_nonblank_study_value(col, schema[col])
+
     drop: list[str] = [
+        *metadata,
         *routed,
         *disabled,
         *([row] if has_row else []),
         *(["sheet_name"] if "sheet_name" in names else []),
         *([PRUNED_COLUMN] if pruned else []),
     ]
-    if not identified and not routed and not pruned:
+    if not identified and not content_columns:
         return lf.drop(drop)
 
-    result_id: pl.Expr = pl.concat_str([pl.lit(f"{study_id}#row"), pl.col(row).cast(pl.String)]) if has_row else pl.lit(f"{study_id}#result")
-    label: str = f"{sheet} row " if sheet else "row "
-    result_name: pl.Expr = pl.concat_str([pl.lit(label), pl.col(row).cast(pl.String)]) if has_row else pl.lit(sheet or study_id)
+    if not has_row and (routed or pruned):
+        raise ValueError("StudyResult descriptions require `extracted_from_row_number` for a row:<N> id")
 
-    # Statistics with no Association slot are preserved as a readable summary rather
-    # than silently dropped; `StudyResult.has_attribute` is `list[str]` (not inlined),
-    # so typed Attributes would require emitting Attribute rows into the nodes file.
-    fields: list[pl.Expr] = [result_id.alias("id"), result_name.alias("name")]
-    if routed or pruned:
-        parts: list[pl.Expr] = []
-        for col in routed:
-            text: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars()
-            blank: pl.Expr = text.is_null() | (text.str.len_chars() == 0)
-            parts.append(pl.when(blank).then(pl.lit(None, dtype=pl.String)).otherwise(pl.concat_str([pl.lit(f"{col}="), text])))
-        # Qualifiers the resolved association class refuses (see `prune_to_class`) are
-        # appended to the routed statistics. Build from whichever sources exist: an
-        # empty list literal would be a zero-length series and fail to broadcast.
-        summary: pl.Expr
-        if parts and pruned:
-            summary = pl.concat_list(parts).list.drop_nulls().list.concat(pl.col(PRUNED_COLUMN))
-        elif parts:
-            summary = pl.concat_list(parts)
-        else:
-            summary = pl.col(PRUNED_COLUMN)
-        fields.append(summary.list.drop_nulls().list.join("; ").alias("description"))
+    normalized_name: str | None = None if study_name == study_id else study_name
+    study_fields: list[pl.Expr] = [
+        pl.lit(study_id).alias("id"),
+        pl.lit(normalized_name, dtype=pl.String).alias("name"),
+        *(_study_metadata_expr(c, schema[c]) for c in metadata),
+    ]
+    # A StudyResult exists only for a row that carries content worth anchoring: study
+    # metadata, leftover unsatisfiable columns, or class-pruned values. A direct frame
+    # without a row index can still carry Study metadata, but cannot invent a result id.
+    if has_row and content_columns:
+        result_id: pl.Expr = pl.concat_str([pl.lit("row:"), pl.col(row).cast(pl.String)])
+        fields: list[pl.Expr] = [result_id.alias("id")]
+        if routed or pruned:
+            parts: list[pl.Expr] = []
+            for col in routed:
+                text: pl.Expr = pl.col(col).cast(pl.String).str.strip_chars()
+                blank: pl.Expr = text.is_null() | (text.str.len_chars() == 0) | text.str.to_lowercase().is_in(_NULL_LIKE_TEXT)
+                parts.append(pl.when(blank).then(pl.lit(None, dtype=pl.String)).otherwise(pl.concat_str([pl.lit(f"{col}="), text])))
+            # Qualifiers the resolved association class refuses (see `prune_to_class`) are
+            # appended to the routed leftovers. Build from whichever sources exist: an
+            # empty list literal would be a zero-length series and fail to broadcast.
+            summary: pl.Expr
+            if parts and pruned:
+                summary = pl.concat_list(parts).list.drop_nulls().list.concat(pl.col(PRUNED_COLUMN))
+            elif parts:
+                summary = pl.concat_list(parts)
+            else:
+                summary = pl.col(PRUNED_COLUMN)
+            joined: pl.Expr = summary.list.drop_nulls().list.join("; ")
+            fields.append(pl.when(joined.str.len_chars() == 0).then(pl.lit(None, dtype=pl.String)).otherwise(joined).alias("description"))
+        result: pl.Expr = pl.concat_list(pl.struct(fields))
+        study_fields.append(pl.when(has_content).then(result).otherwise(None).alias("has_study_results"))
 
-    study: pl.Expr = pl.struct(
-        pl.lit(study_id).alias("id"), pl.lit(sheet or study_id).alias("name"), pl.concat_list(pl.struct(fields)).alias("has_study_results")
-    )
-    out: pl.LazyFrame = lf.with_columns(pl.struct(study.alias(study_id)).alias("has_supporting_studies"))
+    study: pl.Expr = pl.struct(study_fields)
+    supporting: pl.Expr = pl.struct(study.alias(study_id))
+    if not identified:
+        supporting = pl.when(has_content).then(supporting).otherwise(None)
+    out: pl.LazyFrame = lf.with_columns(supporting.alias("has_supporting_studies"))
     return out.drop(drop)
 
 
@@ -566,9 +654,9 @@ def numeric_columns(names: list[str]) -> list[str]:
     """Return column names that should be coerced and formatted as numbers.
 
     P-value columns by substring plus the exact ``effect_size`` and
-    study-size fields. The old ``sample_size`` / ``relationship_strength``
-    names are absent on purpose: the column coercions rename them to
-    ``supporting_study_size`` / ``effect_size`` before ``clean_numeric`` /
+    ``study_size`` fields. The old ``sample_size`` / ``relationship_strength`` /
+    ``supporting_study_size`` names are absent on purpose: the column coercions
+    rename them to ``study_size`` / ``effect_size`` before ``clean_numeric`` /
     ``format_numeric`` run.
 
     Args:
@@ -578,7 +666,7 @@ def numeric_columns(names: list[str]) -> list[str]:
         Subset of ``names`` destined for numeric coercion/formatting.
     """
     # P-value columns by substring plus exact effect-size and study-size fields.
-    exact: set[str] = {"effect_size", "supporting_study_size"}
+    exact: set[str] = {"effect_size", "study_size"}
     return [c for c in names if ("p_value" in c.lower()) or (c in exact)]
 
 
@@ -611,12 +699,12 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     here and downstream runs in Pydantic's lax mode, which coerces the numeric string
     back -- so the notation control costs no KGX validity.
 
-    Remaining numeric columns (``effect_size`` / ``supporting_study_size``) that a
-    future biolink model types ``int`` / ``float`` (e.g. once
-    ``biolink/biolink-model#1770`` / ``#1774`` land) are emitted as real JSON numbers;
-    today's untyped ones keep the controlled decimal general string notation
-    (``{:.4g}``) because they end up in human-readable text (the inlined
-    ``StudyResult`` description or ``supporting_text``). Null values stay null.
+    Remaining numeric columns are emitted as real JSON numbers when the installed
+    biolink model types them ``int`` / ``float`` -- ``effect_size`` (``float``,
+    biolink-model#1774) and ``study_size`` (``int`` on the inlined ``Study``,
+    biolink-model#1770) -- and keep the controlled decimal general string notation
+    (``{:.4g}``) only while a slot stays untyped, since such values end up in
+    human-readable text. Null values stay null.
 
     Args:
         lf: Source LazyFrame.
@@ -643,7 +731,9 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
             if kind == "float":
                 continue
             if kind == "int":
-                df = df.with_columns(pl.col(c).round().cast(pl.Int64, strict=False).alias(c))
+                number: pl.Expr = pl.col(c).cast(pl.Float64, strict=False)
+                valid_count: pl.Expr = number.is_finite() & (number >= 0) & (number.floor() == number)
+                df = df.with_columns(pl.when(valid_count).then(number.cast(pl.Int64, strict=False)).otherwise(None).alias(c))
                 continue
             fmt = "{:.4g}"
         formatted: list[str | None] = [None if v is None else fmt.format(v) for v in df[c].to_list()]
@@ -750,8 +840,8 @@ def idx(lf: pl.LazyFrame, col: str = "extracted_from_row_number") -> pl.LazyFram
         LazyFrame with the index column appended.
 
     Notes:
-        Matches pre-8.0.0 behavior; folded into ``supporting_text`` by
-        ``compile_graph``.
+        Matches pre-8.0.0 behavior; ``inline_supporting_study`` consumes the
+        column as the scoped ``StudyResult.id`` (``row:<N>``), not as edge text.
     """
     return lf.with_row_index(col, offset=1)
 
@@ -875,7 +965,7 @@ def reindex(df: pl.LazyFrame, col: str, op: Callable, comp: str | int | float, c
 
 
 def drop_not_significant(lf: pl.LazyFrame, col: str = "statistical_significance_qualifier") -> pl.LazyFrame:
-    """Drop release-mode edges whose significance qualifier is ``biolink:not_significant``.
+    """Drop release-mode edges whose significance qualifier is ``not_significant``.
 
     Args:
         lf: Source LazyFrame.
@@ -887,12 +977,14 @@ def drop_not_significant(lf: pl.LazyFrame, col: str = "statistical_significance_
     Notes:
         Only filters when the qualifier column exists; no-op for sections
         without a ``p_value`` column. ``ne_missing`` keeps null qualifiers
-        (null p-value → null qualifier → kept, not dropped).
+        (null p-value → null qualifier → kept, not dropped). The band value is
+        the bare ``StatisticalSignificanceQualifierEnum`` token -- biolink-model
+        4.4.4 types the slot with that enum, so no ``biolink:`` prefix exists.
     """
     names: list[str] = lf.collect_schema().names()
     if col not in names:
         return lf
-    return lf.filter(pl.col(col).cast(pl.String).ne_missing("biolink:not_significant"))
+    return lf.filter(pl.col(col).cast(pl.String).ne_missing("not_significant"))
 
 
 def drop_zero_effect_size(lf: pl.LazyFrame, col: str = "effect_size") -> pl.LazyFrame:
@@ -1073,6 +1165,7 @@ class Tcode(Section):
             else None,
             (coerce_pvalue_columns, ()),
             (coerce_study_size_columns, ()),
+            (coerce_study_metadata_columns, ()),
             (coerce_effect_size_columns, ()),
             (coerce_effect_type_columns, ()),
             (clean_numeric, ()),
@@ -1160,15 +1253,19 @@ class Tcode(Section):
         knowledge_level = override.knowledge_level if override else self.provenance.knowledge_level
         agent_type = override.agent_type if override else self.provenance.agent_type
         publication_values = override.publications if override else [publication_curie(self.provenance.repo, self.provenance.publication or "")]
-        # The study is the table itself: one publication, one worksheet. Both are
-        # section constants, so the study id can key a static struct field.
+        # The study is the table itself: one publication, one worksheet/table. The
+        # publication CURIE is the study's IDENTIFIER; the worksheet or source filename
+        # is its human-readable NAME. The two stay disjoint fields and are never composed
+        # into one string, so neither ever duplicates the other.
         sheet: str | None = self.source.sheet if self.source.kind == Files.EXCEL else None  # pyright: ignore
-        # No publication means no study to name: the fallback below is a filename, not an
-        # identifier, so `inline_supporting_study` skips the struct unless it has statistics
-        # to carry.
+        # No publication means no study to name: the fallback id is the config stem (the
+        # YAML filename without its extension), not an identifier, so
+        # `inline_supporting_study` skips the struct unless it has content to carry.
         identified: bool = bool(publication_values)
-        publication: str = publication_values[0] if publication_values else (self.config.name or "study")
-        study_id: str = f"{publication}#{sheet}" if sheet else publication
+        study_id: str = publication_values[0] if publication_values else self.config.stem
+        study_name: str | None = sheet if sheet is not None else Path(self.source.local).name
+        if study_name == study_id:
+            study_name = None
         return [
             (value, ("predicate", "biolink:" + self.statement.predicate)),
             (edge_category, ("biolink:" + self.statement.predicate,)),
@@ -1185,9 +1282,12 @@ class Tcode(Section):
             (publications, (publication_values,)) if publication_values else None,
             # Prune first so class-rejected values are handed to the study rather than lost.
             (prune_to_class, ()),
-            (inline_supporting_study, (study_id, sheet, identified)),
-            (trim, ()),
+            # Format numeric columns BEFORE the study struct absorbs them, so the inlined
+            # Study carries the model-typed value (`study_size` an int, biolink #1770)
+            # rather than a raw float.
             (format_numeric, ()),
+            (inline_supporting_study, (study_id, study_name, identified)),
+            (trim, ()),
             (to_store, (self.store, self.config.name)),
         ]
 
@@ -1222,6 +1322,7 @@ PHASE_OF: dict[Callable, str] = {
     head: "filter",
     coerce_pvalue_columns: "clean",
     coerce_study_size_columns: "clean",
+    coerce_study_metadata_columns: "clean",
     coerce_effect_size_columns: "clean",
     coerce_effect_type_columns: "clean",
     clean_numeric: "clean",
