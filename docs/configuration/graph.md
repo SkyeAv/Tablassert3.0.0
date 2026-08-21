@@ -1,6 +1,6 @@
 # Graph Configuration Reference
 
-Graph configurations orchestrate one or more [table configurations](table.md) into a single knowledge-graph build — author one to produce KGX output with `tablassert build-kg` (see the [CLI reference](../cli.md#build-kg)). To check a single table config on its own, use `tablassert validate <table.yaml> --schema table`.
+Graph configurations orchestrate one or more [table configurations](table.md) into a single knowledge-graph build: author one to produce KGX output with `tablassert build-kg` (see the [CLI reference](../cli.md#build-kg)). To check a single table config on its own, use `tablassert validate <table.yaml> --schema table`.
 
 ## Purpose
 
@@ -11,7 +11,7 @@ A graph configuration file specifies:
 - Database location for entity resolution
 - The **required `rig:` section**: all Resource Ingest Guide (RIG) metadata emitted as `<name>_<version>.RIG.yaml`
 
-QC auditing and verbose logging are controlled at build time via the `build-kg --qc` and `build-kg --log` flags — they are **not** graph-config fields.
+QC auditing and verbose logging are controlled at build time via the `build-kg --qc` and `build-kg --log` flags: they are **not** graph-config fields.
 
 ## Schema
 
@@ -29,7 +29,7 @@ The legacy top-level RIG fields (`description`, `contributions`, `ui_explanation
 
 ### The `rig:` section
 
-The `rig:` section carries every human-authored RIG fact. Its shape mirrors the released [RIG schema](https://github.com/biolink/resource-ingest-guide-schema), so the generated `.RIG.yaml` is always schema-shaped. The generator derives only mechanical facts from the build (generated artifact file entries, observed edge/node type summaries) and **validates the complete document before writing anything** — a build never leaves behind an invalid or incomplete RIG.
+The `rig:` section carries every human-authored RIG fact. Its shape mirrors the released [RIG schema](https://github.com/biolink/resource-ingest-guide-schema), so the generated `.RIG.yaml` is always schema-shaped. The generator derives only mechanical facts from the build (generated artifact file entries, observed edge/node type summaries) and **validates the complete document before writing anything**, so a build never leaves behind an invalid or incomplete RIG.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -66,7 +66,7 @@ The `rig:` section carries every human-authored RIG fact. Its shape mirrors the 
 | `ingest_categories` | List[Enum] | No | Defaults to `[translator_knowledge_creator]`; also `primary_knowledge_provider`, `aggregation_provider`, `aggregation_interpreter`, `supporting_data_provider`, `ontology_provider`, `node_property_only_provider`, `other` |
 | `utility` | String | Yes | Why the source is ingested and its utility for Translator use cases |
 | `scope` | String | Yes | High-level narrative of what is included and excluded |
-| `relevant_files` | List[Object] | No | **Upstream** source files: `file_name`, `location` (URL), optional `description`. Entries are cross-checked against the table configs' source URLs/local files — an entry matching no configured source fails the build |
+| `relevant_files` | List[Object] | No | **Upstream** source files: `file_name`, `location` (URL), optional `description`. Entries are cross-checked against the table configs' source URLs/local files, and an entry matching no configured source fails the build |
 | `included_content` | List[Object] | No | Upstream `file_name` / `included_records` / optional `fields_used` entries |
 | `filtered_content` | List[Object] | No | `file_name` / `filtered_records` / `rationale` entries |
 | `future_considerations` | List[Object] | No | `category` (`edge_content`, `node_property_content`, `edge_property_content`, `other`), `consideration`, optional `relevant_files` |
@@ -87,7 +87,7 @@ Everything under `target_info.edge_type_info` and `target_info.node_type_info` i
 
 - **Edge types** (one per observed predicate): subject/object categories resolved from the emitted nodes, list-valued `knowledge_level`/`agent_type`, role-separated `primary_knowledge_sources` / `supporting_data_sources` / `aggregator_knowledge_sources` from each edge's `sources` retrieval provenance, observed `edge_properties`, qualifier shapes (enumerated literal values or identifier prefixes for CURIE-valued qualifiers), and `source_files` taken from the upstream `source_record_urls` (never the output filenames).
 - **Node types**: observed categories and the identifier prefixes actually emitted (`source_identifier_types`); categories with prefix-less identifiers get a factual free-text entry.
-- **UI explanation**: `rig.ui_explanation` (when set) followed by the built-in Tablassert explanation — the default text is always present.
+- **UI explanation**: `rig.ui_explanation` (when set) followed by the built-in Tablassert explanation; the default text is always present.
 
 ### Built-in RIG validation
 
@@ -211,7 +211,7 @@ When the generated RIG will back a PR to [`NCATSTranslator/translator-ingests`](
 - Use an **infores that is registered** (or being registered) in the [information resource registry](https://github.com/biolink/information-resource-registry).
 - Replace any `file://` artifact base with the **public https location** where the KGX files will be served.
 - Fill `terms_of_use_info` with the source's actual license/terms assessment, and `data_versioning_and_releases` with how the upstream source releases data.
-- Describe upstream source files in `rig.ingest_info.relevant_files` / `included_content` / `filtered_content` — the generator cross-checks them against your table configs but the semantics are yours.
+- Describe upstream source files in `rig.ingest_info.relevant_files` / `included_content` / `filtered_content`: the generator cross-checks them against your table configs but the semantics are yours.
 - Give every edge type's provenance real contributors under `rig.provenance_info.contributions`.
 
 ## Next Steps

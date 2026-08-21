@@ -1,8 +1,8 @@
 # Advanced Example: Real-World Configuration
 
 A fully-annotated real-world table configuration (ALAMV6.yaml) showing complex regex, taxonomic
-filtering, and statistical annotations working together. **Source:** microbiome–chemical correlation
-analysis from PMC11708054 — an Excel file from which we extract correlations between gut microbiota
+filtering, and statistical annotations working together. **Source:** microbiome-chemical correlation
+analysis from PMC11708054, an Excel file from which we extract correlations between gut microbiota
 and tamoxifen metabolites.
 
 ## Full Configuration
@@ -66,22 +66,22 @@ template:
       encoding: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction
 ```
 
-`miscellaneous_notes` is a freetext escape hatch — use `method: value` for a constant note across the
+`miscellaneous_notes` is a freetext escape hatch: use `method: value` for a constant note across the
 whole table or `method: column` to pull per-row notes from the source (see
 [allow-list and auto-folding](table.md#allow-list-and-auto-folding)).
 
 ## Key Techniques
 
-- **Excel column letters** — `encoding: A`/`B`/`C` reference the first/second/third columns of the
+- **Excel column letters**: `encoding: A`/`B`/`C` reference the first/second/third columns of the
   headerless source (organism names, Spearman rho, p-value).
-- **Regex pipeline** — the subject runs three substitutions in order: `.*g__` → ``
+- **Regex pipeline**: the subject runs three substitutions in order: `.*g__` → ``
   (`d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`), then `;s__` → ` `
   (`Lactobacillus;s__rhamnosus` → `Lactobacillus rhamnosus`), then `sp` → `sp. `.
-- **Taxonomic filtering** — `prioritize: [OrganismTaxon]` + `avoid: [Gene]` stop "Lactobacillus"
+- **Taxonomic filtering**: `prioritize: [OrganismTaxon]` + `avoid: [Gene]` stop "Lactobacillus"
   resolving to a similarly-named gene.
-- **Mixed annotations** — `method: value` for constants (same every row), `method: column` for
+- **Mixed annotations**: `method: value` for constants (same every row), `method: column` for
   per-row values.
-- **Subject-predicate-object** — subject varies per row (column), predicate `correlated_with` is
+- **Subject-predicate-object**: subject varies per row (column), predicate `correlated_with` is
   fixed, object `CHEBI:41774` is fixed → `Lactobacillus rhamnosus --[correlated_with]--> 13C-tamoxifen`.
 
 ??? note "Regex dialect constraint"
@@ -101,8 +101,8 @@ whole table or `method: column` to pull per-row notes from the source (see
 
 **Edges:** Allow-listed annotation columns (`supporting_study_size`, `p_value`, `effect_size`,
 `effect_type`) stay as
-top-level edge fields (numeric annotations as controlled-notation strings). Any non-Biolink-slot name —
-here `assertion_method`, `multiple_testing_correction_method`, `miscellaneous_notes` — folds into the
+top-level edge fields (numeric annotations as controlled-notation strings). Any non-Biolink-slot name
+(here `assertion_method`, `multiple_testing_correction_method`, `miscellaneous_notes`) folds into the
 edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically), alongside the built-in
 `extracted_from_row_number`:
 
@@ -208,7 +208,7 @@ template:
 ```
 
 Each column-mapped node gets its own `prioritize` list to guide disambiguation. `remove` strips each
-listed pattern (replace with empty string); `regex` applies an ordered `pattern`→`replacement` list —
+listed pattern (replace with empty string); `regex` applies an ordered `pattern`→`replacement` list;
 both transform cell text in place before resolution, and neither drops rows.
 
 ---
@@ -217,7 +217,7 @@ both transform cell text in place before resolution, and neither drops rows.
 
 Wide tables where each column encodes a different object (e.g., 24 metabolite columns for the same
 microbe rows). Sections inherit the template's `source`, `provenance`, and `subject`, overriding only
-the `object` (and optionally `row_slice`) per section — one section entry per metabolite column keeps a
+the `object` (and optionally `row_slice`) per section: one section entry per metabolite column keeps a
 24-metabolite config out of 24 separate files.
 
 ```yaml

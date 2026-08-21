@@ -1,10 +1,10 @@
 # Quality Control (qc)
 
-The `qc` module validates entity-resolution mappings through a four-stage pipeline (exact, fuzzy, abbreviation expansion, SapBERT semantic similarity) — it runs behind `build-kg --qc` and `resolve_many(qc=True)` to keep only high-confidence assertions.
+The `qc` module validates entity-resolution mappings through a four-stage pipeline (exact, fuzzy, abbreviation expansion, SapBERT semantic similarity); it runs behind `build-kg --qc` and `resolve_many(qc=True)` to keep only high-confidence assertions.
 
-QC runtime support is optional. Install `tablassert[qc]` to enable it — the extra pulls `scikit-learn` and `sentence-transformers` (`torch` and `numpy` arrive transitively); `rapidfuzz` is a core dependency and is always available.
+QC runtime support is optional. Install `tablassert[qc]` to enable it: the extra pulls `scikit-learn` and `sentence-transformers` (`torch` and `numpy` arrive transitively); `rapidfuzz` is a core dependency and is always available.
 
-`fullmap_audit()` checks the whole extra before it does any work and raises `QcRuntimeMissingError` naming every absent package and the install command. Checking up front matters because the two packages are needed at different stages — `scikit-learn` from the start, `sentence-transformers` only if Stage 4 is reached — so a half-installed extra would otherwise fail after the audit had already run. `build-kg --qc` performs the same check before the build begins, since the audit does not run until the very end of the build.
+`fullmap_audit()` checks the whole extra before it does any work and raises `QcRuntimeMissingError` naming every absent package and the install command. Checking up front matters because the two packages are needed at different stages (`scikit-learn` from the start, `sentence-transformers` only if Stage 4 is reached), so a half-installed extra would otherwise fail after the audit had already run. `build-kg --qc` performs the same check before the build begins, since the audit does not run until the very end of the build.
 
 ## fullmap_audit()
 
@@ -61,7 +61,7 @@ Context fields used in QC failure logs for traceability.
 
 Returns a Polars LazyFrame containing only the rows whose `col` value (CURIE) has **at least one** passing pre-resolution/preferred-name pair.
 
-QC scores unique `(CURIE, pre_resolution, preferred_name)` pairs, but the result is joined back to the input via a **semi-join on the CURIE column** (`df.join(passed.select(col), on=col, how="semi")`). The retention granularity is therefore the CURIE, not the individual pair: if *any* pair for a CURIE passes any stage, *every* input row sharing that CURIE is kept — including rows that were themselves part of a failed pair. A CURIE (and thus all of its rows) is dropped only when *none* of its pairs pass any stage. Failed pairs are logged with section/config/column context and their fuzzy/SapBERT scores.
+QC scores unique `(CURIE, pre_resolution, preferred_name)` pairs, but the result is joined back to the input via a **semi-join on the CURIE column** (`df.join(passed.select(col), on=col, how="semi")`). The retention granularity is therefore the CURIE, not the individual pair: if *any* pair for a CURIE passes any stage, *every* input row sharing that CURIE is kept, including rows that were themselves part of a failed pair. A CURIE (and thus all of its rows) is dropped only when *none* of its pairs pass any stage. Failed pairs are logged with section/config/column context and their fuzzy/SapBERT scores.
 
 ### Four-Stage Pipeline
 
@@ -107,7 +107,7 @@ or fuzz.partial_token_sort_ratio(original, preferred) >= 80
 _is_abbrev(original, preferred_name) or _is_abbrev(preferred_name, original)
 ```
 
-The matcher scans the short form right-to-left against the long form (case-insensitively); the first character of the short form must land on a word boundary of the long form. This rescues the class both fuzzy matching and embedding similarity can miss — `AML` ↔ `acute myeloid leukemia`.
+The matcher scans the short form right-to-left against the long form (case-insensitively); the first character of the short form must land on a word boundary of the long form. This rescues the class both fuzzy matching and embedding similarity can miss: `AML` ↔ `acute myeloid leukemia`.
 
 **Performance:** O(n) character scans per row, no model inference.
 
@@ -131,7 +131,7 @@ return similarity >= qc.SIMILARITY_THRESHOLD  # 0.5
 
 **Model:** `cambridgeltl/SapBERT-from-PubMedBERT-fulltext`
 
-**Backend:** [sentence-transformers](https://www.sbert.net/) (PyTorch). Embeddings are compared with scikit-learn's `cosine_similarity`. SapBERT's self-alignment pretraining pulls UMLS synonym pairs together in embedding space, which fits this stage's task — deciding whether two names denote the same entity — better than the NLI/STS-trained BioBERT it replaced. The 0.5 threshold was carried over from that BioBERT gate and has not been re-tuned for SapBERT's score distribution.
+**Backend:** [sentence-transformers](https://www.sbert.net/) (PyTorch). Embeddings are compared with scikit-learn's `cosine_similarity`. SapBERT's self-alignment pretraining pulls UMLS synonym pairs together in embedding space, which fits this stage's task, deciding whether two names denote the same entity, better than the NLI/STS-trained BioBERT it replaced. The 0.5 threshold was carried over from that BioBERT gate and has not been re-tuned for SapBERT's score distribution.
 
 **Lazy-loaded** on the first `fullmap_audit()` call that reaches the embedding stage via `get_sapbert()`, then cached globally for the lifetime of the process.
 
@@ -191,7 +191,7 @@ Output: 990 rows (700 + 250 + 10 + 30)
 
 ### Rejection Logging
 
-When `log=True`, each rejected CURIE is logged at INFO level with its context and the scores that caused the rejection: `curie`, `original`, `preferred`, `col`, `fuzz` (partial token sort ratio), `config`, `hash`, and — when the SapBERT stage ran — `sapbert` (cosine similarity).
+When `log=True`, each rejected CURIE is logged at INFO level with its context and the scores that caused the rejection: `curie`, `original`, `preferred`, `col`, `fuzz` (partial token sort ratio), `config`, `hash`, and, when the SapBERT stage ran, `sapbert` (cosine similarity).
 
 ### Integration with Pipeline
 
