@@ -2112,24 +2112,20 @@ PMC10766526-shaped disease x system workbook plus three configs: the improved-ag
 intentionally-impoverished single-section no-<code>explode_by</code> negative control that MUST fail the gate:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>uv<span class="w"> </span>run<span class="w"> </span>--extra<span class="w"> </span>qc<span class="w"> </span>--extra<span class="w"> </span>agent<span class="w"> </span>pytest<span class="w"> </span>tests/test_agent_edgecount.py<span class="w"> </span>-q
 </code></pre></div>
-<p><strong>Real runbook (PMC10766526):</strong> run the agent over the downloaded payload, convert the hand-written
-legacy reference config against the same downloads, build one-table graphs for each, and compare the
+<p><strong>Real runbook (PMC10766526):</strong> run the agent over the downloaded payload, build one-table graphs
+for the agent config and the already-converted v12 reference config, and compare the
 <code>&lt;name&gt;_&lt;version&gt;.edges.ndjson</code> line counts from <code>rig.artifact_base_path</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># 1. Run the agent OFFLINE against a local payload (no PMC-AWS fetch)</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC10766526<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--local<span class="w"> </span><span class="nv">PMC10766526</span><span class="o">=</span>./downloads/PMC10766526
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># accepted config: .tablassert/agent/configs/PMC10766526.yaml</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># 2. Convert the hand-written legacy reference config over the same downloads</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>./legacy/PMC10766526.yaml<span class="w"> </span>--downloads<span class="w"> </span>./downloads
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># -&gt; ./legacy/PMC10766526.v12.yaml</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># 2. Build each as a one-table graph (same fullmap, same graph name/version conventions)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./agent_graph.yaml<span class="w">       </span><span class="c1"># tables: [.tablassert/agent/configs/PMC10766526.yaml]</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./reference_graph.yaml<span class="w">   </span><span class="c1"># tables: [./legacy/PMC10766526.v12.yaml]</span>
 <a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># 3. Build each as a one-table graph (same fullmap, same graph name/version conventions)</span>
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./agent_graph.yaml<span class="w">       </span><span class="c1"># tables: [.tablassert/agent/configs/PMC10766526.yaml]</span>
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./reference_graph.yaml<span class="w">   </span><span class="c1"># tables: [./legacy/PMC10766526.v12.yaml]</span>
-<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>
-<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="c1"># 4. Count edges; acceptance: agent &gt;= 0.5 * reference</span>
-<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>wc<span class="w"> </span>-l<span class="w"> </span>&lt;agent-graph-name&gt;_&lt;version&gt;.edges.ndjson<span class="w"> </span>&lt;reference-graph-name&gt;_&lt;version&gt;.edges.ndjson
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># 3. Count edges; acceptance: agent &gt;= 0.5 * reference</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>wc<span class="w"> </span>-l<span class="w"> </span>&lt;agent-graph-name&gt;_&lt;version&gt;.edges.ndjson<span class="w"> </span>&lt;reference-graph-name&gt;_&lt;version&gt;.edges.ndjson
 </code></pre></div>
 <p>The same comparison is scriptable via the env-gated test: set <code>TABLASSERT_PMC_COMPARE</code> to a JSON
 array of four paths: the agent config, the reference config, the payload, and the fullmap redb.
