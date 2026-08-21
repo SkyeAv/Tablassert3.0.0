@@ -1,16 +1,16 @@
 # Fullmap
 
 Build a fullmap once and every `resolve()` / `resolve_many()` call maps free text to the right
-biological CURIE — the completeness and freshness of this database directly sets how many of your
+biological CURIE; the completeness and freshness of this database directly sets how many of your
 entities resolve correctly and how trustworthy the resulting graph is.
 
 Fullmap is Tablassert's embedded entity-resolution database: a small set of [redb](https://github.com/cberner/redb)
-files — a primary file holding the dimensions, CURIEs, and schema metadata, plus hash-sharded RECORDS
-files (`fullmap.s0.redb` … `fullmap.s15.redb` by default) holding the term→postings index — containing
-biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS
-Translator BABEL export files.
+files containing biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance,
+built from NCATS Translator BABEL export files. It comprises a primary file holding the dimensions,
+CURIEs, and schema metadata, plus hash-sharded RECORDS files (`fullmap.s0.redb` … `fullmap.s15.redb`
+by default) holding the term→postings index.
 
-Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step required by default (this is an in-process redb shard scheme, not the older external DuckDB shards). If you opt into `build-fullmap --aria2c` / `-a`, only the download stage uses the bundled aria2c binary from the optional `[aria2]` extra (`pip install "tablassert[aria2]"`; Linux/Windows wheels only).
+Fullmap is built entirely in-process by Tablassert's own Rust extension: no external tool or install step required by default (this is an in-process redb shard scheme, not the older external DuckDB shards). If you opt into `build-fullmap --aria2c` / `-a`, only the download stage uses the bundled aria2c binary from the optional `[aria2]` extra (`pip install "tablassert[aria2]"`; Linux/Windows wheels only).
 
 ## Build Command
 
@@ -30,23 +30,23 @@ cache directory, BABEL snapshot version, worker threads, the optional `--aria2c`
 and the `--force` / `-f` rebuild flag), their defaults, and more examples.
 
 By default, `build-fullmap` first downloads a **prebuilt** database published for this Tablassert
-version — a `fullmap.tar.zst` under `.../fullmap/<tablassert-version>/` (the version directory is the
+version, a `fullmap.tar.zst` under `.../fullmap/<tablassert-version>/` (the version directory is the
 installed package version, never hardcoded), verified against a co-published `sha256sum.txt` and
 extracted beside `--output` entirely in the Rust extension: it streams the archive through zstd → tar
 (the multi-GB decompressed tar is never materialized on disk) with the GIL released, extracts into a
-temp directory on the output's filesystem, and — before renaming anything into place — validates the
+temp directory on the output's filesystem, and, before renaming anything into place, validates the
 bundle against the same contract a `--force` build must satisfy: the `meta` schema tag is exactly
 `tablassert.fullmap.v5`, a `build_id` is recorded, the shard files are exactly the set the primary
 advertises (no gaps, no extras), and every shard's `build_id` equals the primary's. Only a bundle that
 passes is atomically renamed into place (primary → `--output`, shards beside it); any failure raises
 and the command falls back to the from-scratch build below. If no prebuilt is published for this
 version it falls back the same way; `--force` / `-f` skips the prebuilt attempt and always builds. The
-optional `--aria2c` / `-a` accelerates **either** download — the multi-GB prebuilt archive is the ideal
+optional `--aria2c` / `-a` accelerates **either** download: the multi-GB prebuilt archive is the ideal
 aria2 use case.
 
 Two facts matter most when planning a build:
 
-- The BABEL **version** flag selects a RENCI BABEL snapshot date (default `2026jul22`) — *not*
+- The BABEL **version** flag selects a RENCI BABEL snapshot date (default `2026jul22`), *not*
   Tablassert's package version. Bumping it fetches a different snapshot and requires rebuilding; the
   value used is recorded in the primary's `meta` table (`source_version`).
 - With **threads** left unset, the Rust build caps workers at `min(available_CPUs, MemAvailable_GB / 2)`
@@ -57,13 +57,13 @@ Two facts matter most when planning a build:
 
 The build is a parallel, **memory-bounded** pipeline executed by the Rust extension:
 
-1. **Download** — fetch BABEL class and synonym files from RENCI into the cache (resumable, reused). By default this uses Tablassert's Python downloader; `--aria2c` / `-a` opts into the bundled `aria2c` binary from the `[aria2]` extra, preserving aria2 resume control files across dropped downloads and failing loud if the extra is missing, unsupported on the current platform, or the download fails.
-2. **Equivalents index** — parse class files into sorted on-disk runs, then k-way merge them into a
+1. **Download**: fetch BABEL class and synonym files from RENCI into the cache (resumable, reused). By default this uses Tablassert's Python downloader; `--aria2c` / `-a` opts into the bundled `aria2c` binary from the `[aria2]` extra, preserving aria2 resume control files across dropped downloads and failing loud if the extra is missing, unsupported on the current platform, or the download fails.
+2. **Equivalents index**: parse class files into sorted on-disk runs, then k-way merge them into a
    memory-mapped index mapping each primary CURIE to its equivalents.
-3. **Synonym pass** — a producer/consumer pool streams byte-bounded line-chunks; workers dedup CURIEs,
+3. **Synonym pass**: a producer/consumer pool streams byte-bounded line-chunks; workers dedup CURIEs,
    accumulate normalized-term → (CURIE, source) postings, and spill per-shard runs to disk so peak RAM
    stays flat regardless of input size.
-4. **Write** — one redb transaction writes the primary tables, then `shard_count` independent k-way
+4. **Write**: one redb transaction writes the primary tables, then `shard_count` independent k-way
    merges write the shard `records` files in parallel (one thread per shard).
 
 ??? note "Pipeline details"
@@ -72,32 +72,32 @@ The build is a parallel, **memory-bounded** pipeline executed by the Rust extens
     memory budget; the [mimalloc](https://github.com/microsoft/mimalloc) allocator keeps heavy
     multi-threaded allocation from bloating resident memory.
 
-    - **Download** — files come from `https://stars.renci.org/var/babel_outputs` via resumable,
+    - **Download**: files come from `https://stars.renci.org/var/babel_outputs` via resumable,
       range-request downloads; cached files are reused. Passing `--aria2c` / `-a` switches only this
       stage to the bundled `aria2c` binary from the optional `[aria2]` extra, using aria2's segmented
       HTTP downloads and retry/resume control files while suppressing aria2's own progress UI so
       Tablassert's progress bar stays clean.
       The progress detail remains file-level (`aria2c downloading`) rather than byte-level in this mode.
-    - **Equivalents index** — class files parse in parallel into sorted on-disk runs, k-way merged into a
+    - **Equivalents index**: class files parse in parallel into sorted on-disk runs, k-way merged into a
       single memory-mapped CURIE→equivalents index; only a compact `(hash, offset)` index lives in RAM,
       the string data is mmap'd.
-    - **Synonym pass** — uses **intra-file parallelism**: a small pool of producer threads
+    - **Synonym pass**: uses **intra-file parallelism**: a small pool of producer threads
       decompresses/reads the synonym files and pushes byte-bounded line-chunks through a bounded channel,
       and every worker draws from one shared queue, so the few very large files
       (protein/smallmolecule/gene/drugchemicalconflated) are processed by **all** workers, not one thread
       each. Per row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources),
       assigns compact integer CURIE IDs via a hash-keyed dedup map (`xxh3_128(curie) → id`), and
       accumulates normalized-term → (CURIE, source) postings. Each worker drains its per-CURIE rows and
-      term postings to bounded on-disk spill runs once its buffer fills — the term postings partitioned
+      term postings to bounded on-disk spill runs once its buffer fills, the term postings partitioned
       per-shard at spill time (each `run_s{shard}_{id}.bin` holds only terms with
       `xxh64(term) & (shards-1)` matching that shard), which keeps peak RAM flat regardless of input size
       and lets the write phase merge each shard independently. Dead terms (purely numeric, or generic
       labels like `none`/`nan`/`null`) are skipped, since they can never be queried.
-    - **Write** — a single redb write transaction in the primary file emits the dimension tables
+    - **Write**: a single redb write transaction in the primary file emits the dimension tables
       (`prefixes`, `categories`, `sources`), the `curies` table (streamed from its spill runs), and the
       `meta` schema tag (recording the shard count). The `records` table is then written **in parallel
       across the shard files**: building on the per-shard spill partitioning, the write phase runs
-      `shard_count` independent k-way merges — one thread per shard, each merging only its own shard's
+      `shard_count` independent k-way merges, one thread per shard, each merging only its own shard's
       runs and inserting the merged term groups inline into that shard's redb file (one database per
       shard, since redb allows a single writer per file) in hash-sorted batches for near-sequential B-tree
       appends (each batch is appended through redb's end-of-table cursor API, the faster ascending
@@ -127,7 +127,7 @@ override only when targeting an unusual machine.
 ## Output Artifact
 
 A primary redb file (default `./fullmap/data/fullmap.redb`) plus its sibling RECORDS shard files
-(`fullmap.s0.redb` … `fullmap.s15.redb` — one per shard, named after the output
+(`fullmap.s0.redb` … `fullmap.s15.redb`, one per shard, named after the output
 file stem in the same directory). The shard count is fixed at 16 (the read path
 still honors the count recorded in an existing database's `meta` table). Together
 they hold six tables (see `rust/src/fullmap.rs`):
@@ -141,21 +141,21 @@ they hold six tables (see `rust/src/fullmap.rs`):
 | `curies` | Compact `u32` id → CURIE record (CURIE, preferred name, category, taxon, source) (primary file) |
 | `meta` | Schema version tag (`tablassert.fullmap.v5`), the shard count (`shards`), and the BABEL `source_version` used to build the file (primary file) |
 
-The shard files must remain alongside the primary file — lookups discover them as siblings of the
+The shard files must remain alongside the primary file: lookups discover them as siblings of the
 resolved primary path.
 
 Lookups (`lookup_fullmap_terms`) check the primary's `meta` schema tag before reading `records`, read the
 `shards` count to open exactly that many shard files, and fan the query terms out across the shards in
 parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or
 missing tag raises rather than silently reading incompatible data. Databases built under the older
-`v1`/`v2`/`v3`/`v4` schemas are rejected — there is no automatic schema migration, so a schema bump
+`v1`/`v2`/`v3`/`v4` schemas are rejected: there is no automatic schema migration, so a schema bump
 (including the v3→v4 move to sharded files and the v4→v5 move to the redb 4 engine) requires rebuilding
 via `tablassert build-fullmap`.
 
 Readers open every fullmap file READ-ONLY with a SHARED file lock (redb ≥ 3 `ReadOnlyDatabase`), so any
 number of processes can run lookups against the same fullmap concurrently; only a `build-fullmap` rebuild
 (an exclusive-lock writer) briefly blocks readers. Each lookup pins one primary-plus-shards file
-generation — cached handles are validated against the file's `(dev, ino)` on every use — so a reader
+generation, cached handles are validated against the file's `(dev, ino)` on every use, so a reader
 follows a rebuild on the next lookup.
 
 ## Usage in Graph Config
@@ -194,6 +194,6 @@ rig:
 
 ## Programmatic Usage
 
-Pass the fullmap path (file or base directory) as the `fullmap` argument to `resolve_many()` — see
+Pass the fullmap path (file or base directory) as the `fullmap` argument to `resolve_many()`; see
 [Batch Resolution](api/lib.md) for the full reference and example, and
 [Entity Resolution](api/fullmap.md) for the lower-level `resolve()` API.
