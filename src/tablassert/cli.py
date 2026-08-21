@@ -665,7 +665,8 @@ def build_kg(
     "tablassert[qc]"``); it is checked before the build starts, because the audit stage
     runs LAST and a missing extra would otherwise surface only after entity resolution
     has finished. It also runs a final study stage that asserts over the emitted NDJSON
-    -- no duplicate node ids, no undeclared or isolated nodes, no malformed lines or
+    -- no duplicate node ids, no nodes with no name or an empty name, no undeclared or
+    isolated nodes, no malformed lines, no null or empty values in any field, and no
     stray whitespace -- and fails the build (non-zero exit) when any assertion is
     violated.
     """

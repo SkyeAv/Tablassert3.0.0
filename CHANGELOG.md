@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- **The final graph QC now asserts no field in the emitted NDJSON is null or empty, and that every node carries a name.** `build-kg --qc`'s stage-7 study pass (in the spirit of `studyKGtsvs.pl`) gained two assertions. `empty-or-null-values`: any field in the nodes or edges file whose value is JSON `null`, a string that strips to empty, or an empty container — checked recursively, so a null or blank nested inside an `attributes` list counts — fails the build. The check is deliberately stricter than the NDJSON writer's `strip_nulls` (`rust/src/json.rs`), which scrubs dict entries at every depth but passes array scalars (`["x", ""]`) and emptied nested objects (`[{}]`) through verbatim; the study stage now asserts the stronger contract — no null or empty value anywhere — so the first such shape to reach an emitted file fails the build loudly instead of shipping silently. Null-like *strings* (`NA`/`NaN`/`null`/`none`) are also dropped by the writer but are neither null nor empty, and are deliberately not flagged; the `original_*` whitespace exemption does not extend to emptiness. `unnamed-nodes`: a node record whose `name` key is missing, `null`, or strips to empty fails the build — the missing-key case is what pipeline output surfaces, since `strip_nulls` deletes empty and null-like names before the file is written. Both report offenders per field or per node id, capped at 10 examples like the other assertions.
+
 ## 12.1.0 - 2026-08-18
 
 ### Added
