@@ -499,14 +499,31 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
 
     Notes:
         Split out of ``resolve`` so ``resolve_batch`` can apply per-column
-        matches from one shared redb fetch.
+        matches from one shared redb fetch. ``resolve_batch`` calls the eager
+        twin directly so the whole batch materializes the frame only once.
     """
-    # Split out of resolve so resolve_batch can apply per-column matches from one shared redb fetch.
+    # Collection point: join after redb query, then re-lazy.
+    return _join_matches_eager(lf.collect(), col, matches, tag, drop_unresolved).lazy()
+
+
+def _join_matches_eager(df: pl.DataFrame, col: str, matches: pl.DataFrame, tag: str = "_two", drop_unresolved: bool = True) -> pl.DataFrame:
+    """Eager core of ``join_matches``: join ranked matches into an in-memory frame.
+
+    Args:
+        df: Source DataFrame, already materialized.
+        col: Column being resolved.
+        matches: Ranked matches for this column from ``filter_and_rank``.
+        tag: Suffix used to derive the level-two column name.
+        drop_unresolved: When True rows whose ``col`` did not match are dropped;
+            when False the row is kept and the resolved columns stay null.
+
+    Returns:
+        DataFrame with resolved columns; rows whose ``col`` did not match are
+        dropped unless ``drop_unresolved`` is False.
+    """
     l1: str = col
     l2: str = l1 + tag
 
-    # Collection point: join after redb query, then re-lazy.
-    df: pl.DataFrame = lf.collect()
     result: pl.DataFrame = df.join(matches.filter(pl.col("NLP_LEVEL").eq(1)), left_on=l1, right_on="term", how="left", suffix="_l1")
 
     l2_matches: pl.DataFrame = matches.filter(pl.col("NLP_LEVEL").eq(2))
@@ -522,7 +539,7 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
         # nullable qualifier keeps the edge and leaves the column null for the null-stripper.
         result = result.filter(pl.col(col).is_not_null())
 
-    return result.lazy()
+    return result
 
 
 class ResolveSpec(NamedTuple):
@@ -616,27 +633,32 @@ def resolve_batch(
             code="resolve-bad-specs",
         )
 
-    terms_by_col: dict[str, pl.LazyFrame] = {spec.col: distinct(lf, spec.col, spec.col + tag) for spec in specs}
-    collected_terms: dict[str, pl.DataFrame] = {col: terms.collect() for col, terms in terms_by_col.items()}
+    # Single collection point: the upstream plan (scan, encodings, NLP normalization)
+    # executes exactly once here. Per-column term extraction, unmatched logging, and
+    # the join backs all run against this in-memory frame, instead of re-executing
+    # the whole lazy plan once per column as separate collects.
+    df: pl.DataFrame = lf.collect()
 
-    union_terms: list[str] = pl.concat([t.select("term") for t in collected_terms.values()]).unique().get_column("term").to_list()
+    terms_by_col: dict[str, pl.DataFrame] = {spec.col: distinct(df.lazy(), spec.col, spec.col + tag).collect() for spec in specs}
+
+    union_terms: list[str] = pl.concat([t.select("term") for t in terms_by_col.values()]).unique().get_column("term").to_list()
 
     rows: list[dict[str, object]] = lookup_rows(db, union_terms, threads=threads) if union_terms else []
     raw: pl.DataFrame = pl.DataFrame(rows)
 
-    result: pl.LazyFrame = lf
+    result: pl.DataFrame = df
     for spec in specs:
         if on_phase is not None:
             on_phase(f"resolve:{spec.col}")
-        terms_df: pl.DataFrame = collected_terms[spec.col]
+        terms_df: pl.DataFrame = terms_by_col[spec.col]
         matches: pl.DataFrame = filter_and_rank(
             raw, terms_df, spec.taxon, spec.prioritize, spec.avoid, column_context, spec.exclude_prefixes, spec.exclude_regex
         )
         if log:
-            log_unmatched(spec.col, terms_by_col[spec.col], matches, section_hash, config_file)
-        result = join_matches(result, spec.col, matches, tag, drop_unresolved=not spec.nullable)
+            log_unmatched(spec.col, terms_df.lazy(), matches, section_hash, config_file)
+        result = _join_matches_eager(result, spec.col, matches, tag, drop_unresolved=not spec.nullable)
 
-    return result
+    return result.lazy()
 
 
 def resolve(
