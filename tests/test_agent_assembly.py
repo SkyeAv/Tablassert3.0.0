@@ -125,9 +125,9 @@ def test_instructions_annotations_bullet_excludes_relationship_strength() -> Non
 
     Why: `relationship_strength` is a legacy ALIAS that `coerce.coerced_target` routes to
     `effect_size` (pinned by tests/test_lib.py), a real, satisfiable edge slot: the relocation
-    validator keeps effect_size ON the edge, pairing treats it as the effect_size half, and
-    legacy.py renames it to `effect_size`. Listing it among annotation names whose values are
-    rerouted into an inlined StudyResult contradicts that routing and teaches the agent its value
+    validator keeps effect_size ON the edge, and pairing treats it as the effect_size half.
+    Listing it among annotation names whose values are rerouted into an inlined StudyResult
+    contradicts that routing and teaches the agent its value
     is lost when it actually reaches the edge. This guard stops a future prompt edit from
     re-adding the alias to the bullet. `supporting_study_size`, `sample_size` and the other
     `supporting_study_*` names genuinely have NO satisfiable target, so they must stay named.
