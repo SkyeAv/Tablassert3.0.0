@@ -66,7 +66,12 @@ def test_unnamed_nodes(tmp_path: Path) -> None:
         ),
     )
     edges: Path = _write_ndjson(
-        tmp_path / "e.ndjson", _records({"subject": "A:1", "object": "A:5"}, {"subject": "A:2", "object": "A:3"}, {"subject": "A:4", "object": "A:5"})
+        tmp_path / "e.ndjson",
+        _records(
+            {"subject": "A:1", "predicate": "biolink:related_to", "object": "A:5"},
+            {"subject": "A:2", "predicate": "biolink:related_to", "object": "A:3"},
+            {"subject": "A:4", "predicate": "biolink:related_to", "object": "A:5"},
+        ),
     )
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     violation: study.StudyViolation = checks["unnamed-nodes"]
@@ -76,13 +81,105 @@ def test_unnamed_nodes(tmp_path: Path) -> None:
 
 
 def test_unnamed_node_without_id(tmp_path: Path) -> None:
-    """A nameless record with no string id is still counted, keyed as ``<no id>``."""
+    """A nameless record with no string id trips both node assertions.
+
+    It has neither id nor name, so it counts under `unnamed-nodes` (keyed
+    `<no id>`) and under `unidentified-nodes` (keyed `<no name>`, since the
+    name is exactly what is absent).
+    """
     nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records({"name": ""}, {"id": "A:1", "name": "x"}))
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "object": "A:1"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "predicate": "biolink:related_to", "object": "A:1"}))
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
-    violation: study.StudyViolation = checks["unnamed-nodes"]
-    assert violation.count == 1
-    assert violation.examples == ["<no id>"]
+    assert checks["unnamed-nodes"].count == 1
+    assert checks["unnamed-nodes"].examples == ["<no id>"]
+    assert checks["unidentified-nodes"].count == 1
+    assert checks["unidentified-nodes"].examples == ["<no name>"]
+
+
+def test_unidentified_nodes(tmp_path: Path) -> None:
+    """A missing, null, or empty node id fails the unidentified assertion, keyed by name."""
+    nodes: Path = _write_ndjson(
+        tmp_path / "n.ndjson",
+        _records(
+            {"name": "insulin"},
+            {"id": None, "name": "IGF1"},
+            {"id": "", "name": "EGFR"},
+            {"id": "   ", "name": "GAPDH"},
+            {"id": "A:1", "name": "valid"},
+        ),
+    )
+    # The edge references only the well-formed node, so no other assertion fires.
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "predicate": "biolink:related_to", "object": "A:1"}))
+    checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
+    violation: study.StudyViolation = checks["unidentified-nodes"]
+    assert violation.label == "nodes"
+    assert violation.count == 4
+    assert sorted(violation.examples) == ["EGFR", "GAPDH", "IGF1", "insulin"]
+
+
+def test_unidentified_examples_capped(tmp_path: Path) -> None:
+    """Unidentified-node examples are capped while the count stays exact."""
+    nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records(*({"name": f"n{i}"} for i in range(30))))
+    _, edges = _clean(tmp_path)
+    checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges, example_limit=10))
+    assert checks["unidentified-nodes"].count == 30
+    assert len(checks["unidentified-nodes"].examples) == 10
+
+
+def test_non_string_id_is_not_unidentified(tmp_path: Path) -> None:
+    """A non-string, non-null id passes the unidentified assertion, like non-string names.
+
+    No writer emits a non-string id; the assertion targets absent ids, not their
+    JSON types. Note such a node is invisible to every id-based check (duplicate,
+    undeclared, isolated all collect string ids only) -- which is why a writer
+    emitting one would be a separate bug to fix, not one to silently accept here.
+    """
+    nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records({"id": 5, "name": "a"}, {"id": "A:1", "name": "b"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "predicate": "biolink:related_to", "object": "A:1"}))
+    assert study.study_kgx(nodes, edges) == []
+
+
+def test_incomplete_edges(tmp_path: Path) -> None:
+    """An edge missing any of subject/predicate/object fails, counted per slot.
+
+    A missing key, a null, and a strip-empty string all count; examples carry
+    the slot name and per-slot totals, matching the whitespace example format.
+    """
+    nodes, _ = _clean(tmp_path)
+    edges: Path = _write_ndjson(
+        tmp_path / "e.ndjson",
+        _records(
+            {"predicate": "biolink:related_to", "object": "HGNC:5"},
+            {"subject": "HGNC:5", "predicate": None, "object": "HGNC:6"},
+            {"subject": "HGNC:5", "predicate": "biolink:related_to", "object": ""},
+            {"subject": "HGNC:5", "predicate": "biolink:related_to", "object": "HGNC:6"},
+        ),
+    )
+    checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
+    violation: study.StudyViolation = checks["incomplete-edges"]
+    assert violation.label == "edges"
+    assert violation.count == 3
+    assert sorted(violation.examples) == ["object (1)", "predicate (1)", "subject (1)"]
+
+
+def test_non_string_edge_slots_are_not_incomplete(tmp_path: Path) -> None:
+    """Non-string, non-null edge slots pass the incomplete assertion.
+
+    Mirrors the id/name convention: the assertion targets absent slots, not
+    their JSON types; no writer emits a non-string slot.
+    """
+    nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records({"id": "A:1", "name": "a"}, {"id": "A:2", "name": "b"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "predicate": 5, "object": "A:2"}))
+    checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
+    assert "incomplete-edges" not in checks
+
+
+def test_incomplete_edges_clean_pass(tmp_path: Path) -> None:
+    """Edges carrying all three core slots raise no incomplete-edges violation."""
+    nodes, _ = _clean(tmp_path)
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "predicate": "biolink:related_to", "object": "HGNC:6"}))
+    checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
+    assert "incomplete-edges" not in checks
 
 
 def test_unnamed_examples_capped(tmp_path: Path) -> None:
@@ -97,7 +194,7 @@ def test_unnamed_examples_capped(tmp_path: Path) -> None:
 def test_non_string_name_is_not_unnamed(tmp_path: Path) -> None:
     """A non-string, non-null name passes; the assertion targets absent/empty names only."""
     nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records({"id": "A:1", "name": 5}, {"id": "A:2", "name": "x"}))
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "object": "A:2"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "predicate": "biolink:related_to", "object": "A:2"}))
     assert study.study_kgx(nodes, edges) == []
 
 
@@ -149,7 +246,13 @@ def test_empty_or_null_writer_pass_through_shapes(tmp_path: Path) -> None:
             {"id": "A:4", "name": "d", "nested": [[]]},
         ),
     )
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "object": "A:2"}, {"subject": "A:3", "object": "A:4"}))
+    edges: Path = _write_ndjson(
+        tmp_path / "e.ndjson",
+        _records(
+            {"subject": "A:1", "predicate": "biolink:related_to", "object": "A:2"},
+            {"subject": "A:3", "predicate": "biolink:related_to", "object": "A:4"},
+        ),
+    )
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     violation: study.StudyViolation = checks["empty-or-null-values"]
     assert violation.count == 4
@@ -178,7 +281,7 @@ def test_original_fields_empty_still_flagged(tmp_path: Path) -> None:
     nodes: Path = _write_ndjson(
         tmp_path / "n.ndjson", _records({"id": "A:1", "name": "a", "original_subject": None}, {"id": "A:2", "name": "b", "original_object": ""})
     )
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "object": "A:2"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "predicate": "biolink:related_to", "object": "A:2"}))
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     violation: study.StudyViolation = checks["empty-or-null-values"]
     assert violation.count == 2
@@ -192,14 +295,20 @@ def test_null_like_strings_are_not_empty_or_null(tmp_path: Path) -> None:
     bad-token sweep already guarantees the spellings never reach the final output.
     """
     nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records({"id": "A:1", "name": "NA"}, {"id": "A:2", "name": "b", "source": "none"}))
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "object": "A:2"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "A:1", "predicate": "biolink:related_to", "object": "A:2"}))
     assert study.study_kgx(nodes, edges) == []
 
 
 def test_undeclared_nodes(tmp_path: Path) -> None:
     """Edge subject/object ids missing from the nodes file fail the undeclared assertion."""
     nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records({"id": "HGNC:5", "name": "a"}))
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "object": "HGNC:6"}, {"subject": "HGNC:7", "object": "HGNC:5"}))
+    edges: Path = _write_ndjson(
+        tmp_path / "e.ndjson",
+        _records(
+            {"subject": "HGNC:5", "predicate": "biolink:related_to", "object": "HGNC:6"},
+            {"subject": "HGNC:7", "predicate": "biolink:related_to", "object": "HGNC:5"},
+        ),
+    )
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     assert checks["undeclared-nodes"].count == 2
     assert checks["undeclared-nodes"].examples == ["HGNC:6", "HGNC:7"]
@@ -210,7 +319,7 @@ def test_isolated_nodes(tmp_path: Path) -> None:
     nodes: Path = _write_ndjson(
         tmp_path / "n.ndjson", _records({"id": "HGNC:5", "name": "a"}, {"id": "HGNC:6", "name": "b"}, {"id": "HGNC:7", "name": "c"})
     )
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "object": "HGNC:6"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "predicate": "biolink:related_to", "object": "HGNC:6"}))
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     assert checks["isolated-nodes"].count == 1
     assert checks["isolated-nodes"].examples == ["HGNC:7"]
@@ -219,7 +328,10 @@ def test_isolated_nodes(tmp_path: Path) -> None:
 def test_malformed_lines(tmp_path: Path) -> None:
     """Empty lines, invalid JSON, and non-object lines all count as malformed."""
     nodes, _ = _clean(tmp_path)
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", [json.dumps({"subject": "HGNC:5", "object": "HGNC:6"}), "", "{not json", '["a list"]'])
+    edges: Path = _write_ndjson(
+        tmp_path / "e.ndjson",
+        [json.dumps({"subject": "HGNC:5", "predicate": "biolink:related_to", "object": "HGNC:6"}), "", "{not json", '["a list"]'],
+    )
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     assert checks["malformed-lines"].label == "edges"
     assert checks["malformed-lines"].count == 3
@@ -228,7 +340,7 @@ def test_malformed_lines(tmp_path: Path) -> None:
 def test_whitespace_values(tmp_path: Path) -> None:
     """Leading/trailing whitespace in string values is counted per field."""
     nodes: Path = _write_ndjson(tmp_path / "n.ndjson", _records({"id": "HGNC:5", "name": " padded"}, {"id": "HGNC:6 ", "name": "x"}))
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "object": "HGNC:6"}))
+    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "predicate": "biolink:related_to", "object": "HGNC:6"}))
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     violation: study.StudyViolation = checks["whitespace-values"]
     assert violation.label == "nodes"
@@ -246,7 +358,10 @@ def test_whitespace_allowed_in_original_fields(tmp_path: Path) -> None:
     nodes: Path = _write_ndjson(
         tmp_path / "n.ndjson", _records({"id": "HGNC:5", "original_name": " padded source ", "name": " padded"}, {"id": "HGNC:6", "name": "b"})
     )
-    edges: Path = _write_ndjson(tmp_path / "e.ndjson", _records({"subject": "HGNC:5", "object": "HGNC:6", "original_subject": " raw gene "}))
+    edges: Path = _write_ndjson(
+        tmp_path / "e.ndjson",
+        _records({"subject": "HGNC:5", "predicate": "biolink:related_to", "object": "HGNC:6", "original_subject": " raw gene "}),
+    )
     checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
     violation: study.StudyViolation = checks["whitespace-values"]
     # Only the genuinely padded `name` field is flagged; the `original_*` slots are not.
