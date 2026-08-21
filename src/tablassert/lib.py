@@ -1089,9 +1089,10 @@ class Tcode(Section):
             db: Path to the fullmap redb used for entity resolution.
 
         Returns:
-            Raw op list: one ``node_prep`` block per node column, the single
-            shared ``resolve_batch`` op, then per-column ``fullmap_audit`` ops
-            when QC is enabled.
+            Raw op list: one ``node_prep`` block per node column, ``trim`` to drop
+            the spent raw ``column_<n>`` columns, the single shared
+            ``resolve_batch`` op, then per-column ``fullmap_audit`` ops when QC is
+            enabled.
         """
         # Subject/object/qualifiers share one resolve_batch call instead of one per column.
         # Enum-ranged qualifiers are excluded from resolution: their range is a closed
@@ -1124,6 +1125,10 @@ class Tcode(Section):
             # Encode only: no pre-resolution snapshot and no NLP normalization, both of
             # which exist to feed entity resolution these columns never undergo.
             [self.encoding(x, x.qualifier) for x in literals],
+            # Raw ``column_<n>`` columns are dead weight once the encodings above have
+            # copied them into named slots; trim before resolution so the frame that
+            # resolve_batch materializes and joins stays narrow.
+            (trim, ()),
             # ``"_two"`` is spelled explicitly (it is ``resolve_batch``'s own default tag)
             # only so ``threads`` can follow positionally: ``compile_subgraph`` applies op
             # args positionally (``on_phase`` arrives separately as a keyword).
@@ -1144,7 +1149,9 @@ class Tcode(Section):
 
         Returns:
             Raw op list: predicate and edge category, provenance metadata,
-            then the trim/format/write finalize ops.
+            then the format/write finalize ops. (``trim`` now runs earlier, in
+            ``_node_ops``, so resolution joins never carry the spent raw
+            ``column_<n>`` columns.)
         """
         override = self.provenance.override
         # The edge primary knowledge source is ALWAYS the explicit graph-level infores
@@ -1186,7 +1193,6 @@ class Tcode(Section):
             # Prune first so class-rejected values are handed to the study rather than lost.
             (prune_to_class, ()),
             (inline_supporting_study, (study_id, sheet, identified)),
-            (trim, ()),
             (format_numeric, ()),
             (to_store, (self.store, self.config.name)),
         ]
@@ -1240,7 +1246,6 @@ PHASE_OF: dict[Callable, str] = {
     sig: "significance",
     drop_not_significant: "significance",
     drop_zero_effect_size: "significance",
-    trim: "finalize",
     format_numeric: "finalize",
     to_store: "write",
 }
