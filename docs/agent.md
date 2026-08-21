@@ -417,7 +417,7 @@ tablassert agent PMC11708054 --configuration-file ./graph.yaml \
   rather than a validity-only proxy.
 - `workdir`: the directory a proposed config's relative `source.local` resolves against (LLMs mimic the
   exemplar's `./downloads/...` paths), so coverage is measured on the actual table.
-- `head`: default `true`: score a fast 5-row preview; set `false` for full-fidelity coverage builds.
+- `head`: defaults to `true`, which scores a fast 5-row preview; set `false` for full-fidelity coverage builds.
 
 `--max-metric-calls` bounds the GEPA metric budget. `save_optimized_instructions` /
 `load_optimized_instructions` persist and reload the prompt (a `{instructions, descriptions}` mapping).
