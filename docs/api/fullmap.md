@@ -1,6 +1,6 @@
 # Entity Resolution (fullmap)
 
-The `fullmap` module resolves free-text strings to standardized biological CURIEs against the embedded redb database — call `resolve()` for low-level, LazyFrame-based entity resolution inside a pipeline.
+The `fullmap` module resolves free-text strings to standardized biological CURIEs against the embedded redb database: call `resolve()` for low-level, LazyFrame-based entity resolution inside a pipeline.
 
 ## resolve()
 
@@ -37,7 +37,7 @@ Column name containing text strings to resolve.
 
 **`db: Path`**
 
-Path to the fullmap redb file (already resolved — see `fullmap_db_path()` and [Fullmap](../fullmap.md)).
+Path to the fullmap redb file (already resolved; see `fullmap_db_path()` and [Fullmap](../fullmap.md)).
 
 **`taxon: Optional[str]`**
 
@@ -74,8 +74,8 @@ Controls category-frequency tie-breaking when multiple matches exist for a term.
 Suffix appended to `col` to locate the `level_two` output column.
 
 `resolve()` expects the LazyFrame to already have two NLP columns applied upstream:
-- `col` — the `level_one` output (whitespace stripped, lowercased)
-- `col + tag` — the `level_two` output (non-word characters removed via `\W+`)
+- `col`: the `level_one` output (whitespace stripped, lowercased)
+- `col + tag`: the `level_two` output (non-word characters removed via `\W+`)
 
 The default `"_two"` matches `level_two`'s default tag.
 
@@ -188,7 +188,7 @@ Rows without a valid CURIE are filtered from the returned frame.
 
 ### Provenance Tracking
 
-Every resolved entity carries its source database, source version (snapshot date), and the matched synonym that triggered the match — enabling auditing and quality control. Case is handled by the NLP levels above: `level_one` matches any case variant, `level_two` further strips punctuation for hyphenated or slash-delimited names.
+Every resolved entity carries its source database, source version (snapshot date), and the matched synonym that triggered the match, enabling auditing and quality control. Case is handled by the NLP levels above: `level_one` matches any case variant, `level_two` further strips punctuation for hyphenated or slash-delimited names.
 
 ## Integration with QC
 
