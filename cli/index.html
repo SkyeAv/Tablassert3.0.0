@@ -1383,8 +1383,8 @@
 
 <h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
 <p>Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The <code>tablassert</code> app
-exposes <strong>six subcommands</strong> — <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>convert-legacy</code>, <code>validate</code>,
-and <code>validate-kgx</code> — plus an app-level <code>--version</code> flag. Run <code>tablassert --help</code> (or <code>&lt;command&gt; --help</code>)
+exposes <strong>six subcommands</strong>: <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>convert-legacy</code>, <code>validate</code>,
+and <code>validate-kgx</code>, plus an app-level <code>--version</code> flag. Run <code>tablassert --help</code> (or <code>&lt;command&gt; --help</code>)
 for the live surface.</p>
 <h2 id="command-index">Command index<a class="headerlink" href="#command-index" title="Permanent link">&para;</a></h2>
 <table>
@@ -1453,7 +1453,7 @@ flag is unrelated: it selects a <strong>RENCI BABEL snapshot date</strong> (defa
 (<code>pip install "tablassert[agent]"</code>); <code>--optimize</code> additionally needs the <code>[optimize]</code> extra
 (<code>pip install "tablassert[optimize]"</code>, pulls <code>dspy</code>). Both are checked after flag validation and
 before any model is built or article fetched, so a missing extra is reported with its install
-command instead of surfacing mid-run — see <a href="../installation/#when-an-extra-is-missing">When an extra is missing</a>.</p>
+command instead of surfacing mid-run; see <a href="../installation/#when-an-extra-is-missing">When an extra is missing</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC-IDS...<span class="w"> </span>--configuration-file<span class="w"> </span>GRAPH.yaml<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
 </code></pre></div>
 <p>PMC ids are passed positionally (also accepted as <code>--pmc-ids</code>). The required graph target is accepted
@@ -1476,14 +1476,14 @@ page lists the flags; see
 <td><code>PMC-IDS</code> (<code>--pmc-ids</code>)</td>
 <td>list[str]</td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>One or more PMC article ids (positional)</td>
 </tr>
 <tr>
 <td><code>--configuration-file</code>, <code>-f</code></td>
 <td>Path</td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>Caller-owned Graph YAML; supplies build metadata/fullmap and receives successful absolute table entries</td>
 </tr>
 <tr>
@@ -1624,7 +1624,7 @@ page lists the flags; see
 <td>int</td>
 <td>No</td>
 <td><code>None</code></td>
-<td>Thread count for GEPA's evaluation pool (<code>--optimize</code>) — parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on <code>_GEPA_BUILD_LOCK</code></td>
+<td>Thread count for GEPA's evaluation pool (<code>--optimize</code>): parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on <code>_GEPA_BUILD_LOCK</code></td>
 </tr>
 </tbody>
 </table>
@@ -1635,7 +1635,7 @@ page lists the flags; see
 <div class="admonition warning">
 <p class="admonition-title">Secrets</p>
 <p>Model config comes from the flags above <strong>or</strong> the <code>TABLASSERT_AGENT_*</code> environment variables
-(explicit flags win). Secrets are <strong>never</strong> hardcoded or defaulted — a missing value fails loud
+(explicit flags win). Secrets are <strong>never</strong> hardcoded or defaulted: a missing value fails loud
 (exit 2) <strong>before</strong> any model is built.</p>
 </div>
 <hr />
@@ -1710,7 +1710,7 @@ builds from RENCI BABEL exports instead (download class + synonym files, then bu
 <p>By default <code>build-fullmap</code> looks for a prebuilt <code>fullmap.tar.zst</code> at
 <code>https://stars.renci.org/var/babel_outputs/&lt;babel-version&gt;/fullmap/&lt;tablassert-version&gt;/</code> (the version
 directory is the <strong>installed Tablassert package version</strong>, never hardcoded), verifies it against the
-published <code>sha256sum.txt</code>, and extracts it beside <code>--output</code> in the Rust extension — streaming zstd →
+published <code>sha256sum.txt</code>, and extracts it beside <code>--output</code> in the Rust extension, streaming zstd →
 tar with the GIL released (the decompressed tar never touches disk), then validating the extracted
 primary + shards against the force-build contract (exact <code>v5</code> schema, a recorded <code>build_id</code>, the exact
 shard set, and per-shard <code>build_id</code> equality) before atomically renaming them into place. If no
@@ -1740,7 +1740,7 @@ YAML configuration file.</p>
 <td><code>GRAPH-CONFIGURATION-FILE</code> (<code>--configuration-file</code>, <code>-f</code>)</td>
 <td>Path</td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>Graph YAML</td>
 </tr>
 <tr>
@@ -1755,7 +1755,7 @@ YAML configuration file.</p>
 <td>Flag</td>
 <td>No</td>
 <td><code>False</code></td>
-<td>Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON — no duplicate node ids, every node has a non-empty <code>id</code> and <code>name</code>, every edge has a non-empty <code>subject</code>, <code>predicate</code>, and <code>object</code>, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace — verbatim <code>original_*</code> fields excepted from the whitespace check, since they are faithful source copies — and fails the build (non-zero exit) on any violation</td>
+<td>Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the <code>[qc]</code> extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON: no duplicate node ids, every node has a non-empty <code>id</code> and <code>name</code>, every edge has a non-empty <code>subject</code>, <code>predicate</code>, and <code>object</code>, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace (verbatim <code>original_*</code> fields excepted from the whitespace check, since they are faithful source copies) and fails the build (non-zero exit) on any violation</td>
 </tr>
 <tr>
 <td><code>--log</code>, <code>-l</code></td>
@@ -1776,7 +1776,7 @@ YAML configuration file.</p>
 <td>int</td>
 <td>No</td>
 <td><code>None</code> (auto)</td>
-<td>Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard — redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count</td>
+<td>Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard; redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count</td>
 </tr>
 </tbody>
 </table>
@@ -1784,13 +1784,13 @@ YAML configuration file.</p>
 </code></pre></div>
 <p>Output is written to <code>rig.artifact_base_path</code> (created when missing) as <code>{name}_{version}.nodes.ndjson</code>,
 <code>{name}_{version}.edges.ndjson</code>, and <code>{name}_{version}.RIG.yaml</code>; intermediate parquet lands in
-<code>.tablassert/store/</code>. The RIG document is audited in memory before it is written — an invalid
+<code>.tablassert/store/</code>. The RIG document is audited in memory before it is written: an invalid
 or incomplete RIG fails the build with <code>[rig-validation-failed]</code> and nothing is emitted. See
 <a href="../configuration/graph/">Graph Configuration</a>.</p>
 <details class="info">
 <summary>Build progress &amp; stages</summary>
-<p>The build runs six parallel stages — Loading Tables → Extracting Sections → Building TCode →
-Collecting Instructions → Building Subgraphs → Compiling Graph — plus a seventh, Studying Graph,
+<p>The build runs six parallel stages (Loading Tables → Extracting Sections → Building TCode →
+Collecting Instructions → Building Subgraphs → Compiling Graph) plus a seventh, Studying Graph,
 only when <code>--qc</code> is passed. They run under a three-row live progress block (stage header;
 section bar with count/elapsed/ETA; in-flight item detail). Each completed
 stage prints a green <code>✓ Stage N · NAME · elapsed</code> line above the live block. During Building
@@ -1804,12 +1804,12 @@ Subgraphs the detail line also shows the per-section phase (<code>load</code>, <
 exact-duplicate entries the template/section overlay produced are dropped and same-key
 <code>qualifiers</code> entries merged into one per key, the removed <code>relationship_strength</code> annotation
 is renamed to <code>effect_size</code>, every <code>source.reindex</code> entry is validated against the v12 model,
-and each <code>source.local</code> is resolved onto the real downloaded payload — never left pointing at
+and each <code>source.local</code> is resolved onto the real downloaded payload, never left pointing at
 a stale <code>./DATALAKE</code> path.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>LEGACY-PATH<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
 </code></pre></div>
 <p><code>LEGACY-PATH</code> is a single legacy YAML file or a directory of them (non-recursive). Each converted
-config is written as <code>&lt;stem&gt;.v12.yaml</code> — beside its input by default, or under <code>--out</code> when given.</p>
+config is written as <code>&lt;stem&gt;.v12.yaml</code>, beside its input by default, or under <code>--out</code> when given.</p>
 <table>
 <thead>
 <tr>
@@ -1825,7 +1825,7 @@ config is written as <code>&lt;stem&gt;.v12.yaml</code> — beside its input by 
 <td><code>LEGACY-PATH</code></td>
 <td>Path</td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>Legacy YAML file, or a directory of <code>*.yaml</code> legacy configs</td>
 </tr>
 <tr>
@@ -1851,18 +1851,18 @@ config is written as <code>&lt;stem&gt;.v12.yaml</code> — beside its input by 
 </tr>
 </tbody>
 </table>
-<p>Directory mode converts every <code>*.yaml</code> file — skipping <code>*.v12.yaml</code> outputs from earlier runs, so
-a rerun never re-converts its own output — and prints one status line per file:
+<p>Directory mode converts every <code>*.yaml</code> file (skipping <code>*.v12.yaml</code> outputs from earlier runs, so
+a rerun never re-converts its own output) and prints one status line per file:
 <code>CONVERTED &lt;input&gt; -&gt; &lt;output&gt;</code> or <code>FAILED &lt;input&gt; (&lt;code&gt;)</code>. One failure never aborts the batch,
 but the command exits non-zero when ANY file failed (the full coded message for every failure is
 printed on stderr). <code>--out</code> is optional in directory mode too: without it each <code>&lt;stem&gt;.v12.yaml</code>
-lands beside its input. The glob is <code>*.yaml</code> ONLY — <code>.yml</code> files and every other extension are
+lands beside its input. The glob is <code>*.yaml</code> ONLY: <code>.yml</code> files and every other extension are
 never picked up.</p>
-<p>Exit codes: <code>0</code> everything converted; <code>1</code> any conversion failed; <code>2</code> usage error — a missing input
+<p>Exit codes: <code>0</code> everything converted; <code>1</code> any conversion failed; <code>2</code> usage error (a missing input
 or <code>--downloads</code> path, an <code>--out</code> that is not a directory, or a directory holding no <code>*.yaml</code>
-files. Conversion is all-or-nothing per file: a construct v12 cannot express fails the file with
+files). Conversion is all-or-nothing per file: a construct v12 cannot express fails the file with
 <code>legacy-unsupported-syntax</code>, and an unresolvable <code>source.local</code> fails it with
-<code>legacy-source-unresolved</code> — the same coded error <code>--fetch</code> ends in when the network is down or
+<code>legacy-source-unresolved</code>, the same coded error <code>--fetch</code> ends in when the network is down or
 the article is not open access (a bounded fetch, never a hang).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># One file: writes my-table.v12.yaml beside it</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>my-table.yaml<span class="w"> </span>--downloads<span class="w"> </span>./downloads
@@ -1877,7 +1877,7 @@ the article is not open access (a bounded fetch, never a hang).</p>
 <code>TABLASSERT_MOKG_DIR</code>. It skips with a printed reason when the variable is unset; when set,
 every corpus file must either convert and validate against the downloads directory
 (<code>TABLASSERT_MOKG_DOWNLOADS</code>, recursive basename match with the <code>source.url</code> basenames as
-fallback) or fail loudly with exactly <code>legacy-source-unresolved</code> — no other error class, no
+fallback) or fail loudly with exactly <code>legacy-source-unresolved</code>: no other error class, no
 silent skip, and at least 15 of the 26 must convert (with the full downloads tree below,
 24 convert; only QIN9 and WAINBERG3 stay unresolved because their payloads are absent):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">TABLASSERT_MOKG_DIR</span><span class="o">=</span>/home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG<span class="w"> </span><span class="se">\</span>
@@ -1887,14 +1887,14 @@ silent skip, and at least 15 of the 26 must convert (with the full downloads tre
 <p>For the remaining files, run the batch with <code>--fetch</code> so every open-access article payload
 missing from the downloads directory is downloaded from PMC open access first (network
 required); <code>--out</code> keeps the outputs out of the curated corpus directory. QIN9 stays
-unresolved either way — its payload is hosted on figshare, not in the PMC article bundle:</p>
+unresolved either way: its payload is hosted on figshare, not in the PMC article bundle:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>tablassert<span class="w"> </span>convert-legacy<span class="w"> </span>/home/skyeav/Code/ISB/TableConfigs/TABLE/MOKG<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>--downloads<span class="w"> </span>/home/skyeav/Code/ISB/MultiomicsNext/.tablassert<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>--fetch<span class="w"> </span>--out<span class="w"> </span>/tmp/mokg-v12
 </code></pre></div>
 <hr />
 <h2 id="validate">validate<a class="headerlink" href="#validate" title="Permanent link">&para;</a></h2>
-<p>Use this to validate a configuration against a schema without running the build — ideal for CI and
+<p>Use this to validate a configuration against a schema without running the build, ideal for CI and
 pre-commit hooks. The required <code>--schema</code> flag selects which schema to validate against (the kind is
 no longer sniffed from the YAML).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
@@ -1915,14 +1915,14 @@ no longer sniffed from the YAML).</p>
 <td><code>CONFIGURATION-FILE</code> (<code>--configuration-file</code>, <code>-f</code>)</td>
 <td>Path</td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>Configuration file to validate</td>
 </tr>
 <tr>
 <td><code>--schema</code>, <code>-s</code></td>
 <td><code>graph</code> | <code>table</code></td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>Schema to validate against: <code>graph</code> validates the <code>Graph</code> model <strong>and</strong> every referenced table; <code>table</code> validates section syntax only</td>
 </tr>
 </tbody>
@@ -1936,7 +1936,7 @@ no longer sniffed from the YAML).</p>
 <h2 id="validate-kgx">validate-kgx<a class="headerlink" href="#validate-kgx" title="Permanent link">&para;</a></h2>
 <p>Use this to check that a completed build is actually Biolink-compliant. Where
 <a href="#validate"><code>validate</code></a> checks your <em>configuration</em>, <code>validate-kgx</code> checks the <em>output</em>: every node
-and edge is constructed as the Biolink Pydantic class named by its own <code>category</code> — the same classes
+and edge is constructed as the Biolink Pydantic class named by its own <code>category</code>, the same classes
 <a href="https://github.com/NCATSTranslator/translator-ingests"><code>NCATSTranslator/translator-ingests</code></a> builds
 when it ingests your files.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
@@ -1956,14 +1956,14 @@ when it ingests your files.</p>
 <td><code>--nodes</code>, <code>-n</code></td>
 <td>Path</td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>Built <code>*.nodes.ndjson</code> file to validate</td>
 </tr>
 <tr>
 <td><code>--edges</code>, <code>-e</code></td>
 <td>Path</td>
 <td>Yes</td>
-<td>—</td>
+<td>n/a</td>
 <td>Built <code>*.edges.ndjson</code> file to validate</td>
 </tr>
 <tr>
@@ -1983,7 +1983,7 @@ rather than a million:</p>
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>KGX output is Biolink-compliant.
 </code></pre></div>
 <p>Exits non-zero when any record fails, so it can gate a release in CI. A missing or misspelled path is
-reported as <code>file not found</code> and also exits non-zero — a file that was never read must never count as
+reported as <code>file not found</code> and also exits non-zero: a file that was never read must never count as
 a pass.</p>
 <p>Edges carrying <code>effect_size</code> / <code>effect_type</code> are reported invalid until a <code>biolink-model</code> release
 ships <a href="https://github.com/biolink/biolink-model/pull/1774">#1774</a>, because 4.4.3 declares neither on
@@ -1997,17 +1997,17 @@ that model. These curated fields are counted separately as <em>pending</em> rath
 <h2 id="typical-workflow">Typical workflow<a class="headerlink" href="#typical-workflow" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Author a table config, then a graph config that references it.</li>
-<li><code>tablassert validate graph.yaml --schema graph</code> — fail fast on schema errors.</li>
-<li><code>tablassert build-kg graph.yaml</code> — produce KGX NDJSON + RIG (add <code>--qc</code> to audit mappings).</li>
-<li><code>tablassert validate-kgx -n MY_KG_1.0.0.nodes.ndjson -e MY_KG_1.0.0.edges.ndjson</code> — confirm the
+<li><code>tablassert validate graph.yaml --schema graph</code>: fail fast on schema errors.</li>
+<li><code>tablassert build-kg graph.yaml</code>: produce KGX NDJSON + RIG (add <code>--qc</code> to audit mappings).</li>
+<li><code>tablassert validate-kgx -n MY_KG_1.0.0.nodes.ndjson -e MY_KG_1.0.0.edges.ndjson</code>: confirm the
    output validates against the Biolink Model before shipping it downstream.</li>
 </ol>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><a href="../tutorial/">Tutorial</a></strong> — complete example walkthrough</li>
-<li><strong><a href="../configuration/graph/">Configuration Guide</a></strong> — YAML configuration reference</li>
-<li><strong><a href="../fullmap/">Fullmap</a></strong> — entity-resolution database build and schema</li>
-<li><strong><a href="../agent/">Agent</a></strong> — autonomous PMC → KG pipeline depth</li>
+<li><strong><a href="../tutorial/">Tutorial</a></strong>: complete example walkthrough</li>
+<li><strong><a href="../configuration/graph/">Configuration Guide</a></strong>: YAML configuration reference</li>
+<li><strong><a href="../fullmap/">Fullmap</a></strong>: entity-resolution database build and schema</li>
+<li><strong><a href="../agent/">Agent</a></strong>: autonomous PMC → KG pipeline depth</li>
 </ul>
 
 

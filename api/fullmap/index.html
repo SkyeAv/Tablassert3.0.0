@@ -1387,7 +1387,7 @@
 
 
 <h1 id="entity-resolution-fullmap">Entity Resolution (fullmap)<a class="headerlink" href="#entity-resolution-fullmap" title="Permanent link">&para;</a></h1>
-<p>The <code>fullmap</code> module resolves free-text strings to standardized biological CURIEs against the embedded redb database — call <code>resolve()</code> for low-level, LazyFrame-based entity resolution inside a pipeline.</p>
+<p>The <code>fullmap</code> module resolves free-text strings to standardized biological CURIEs against the embedded redb database: call <code>resolve()</code> for low-level, LazyFrame-based entity resolution inside a pipeline.</p>
 <h2 id="resolve">resolve()<a class="headerlink" href="#resolve" title="Permanent link">&para;</a></h2>
 <p>Primary entity resolution function, querying the embedded fullmap redb database.</p>
 <h3 id="function-signature">Function Signature<a class="headerlink" href="#function-signature" title="Permanent link">&para;</a></h3>
@@ -1412,7 +1412,7 @@
 <p><strong><code>col: str</code></strong></p>
 <p>Column name containing text strings to resolve.</p>
 <p><strong><code>db: Path</code></strong></p>
-<p>Path to the fullmap redb file (already resolved — see <code>fullmap_db_path()</code> and <a href="../../fullmap/">Fullmap</a>).</p>
+<p>Path to the fullmap redb file (already resolved; see <code>fullmap_db_path()</code> and <a href="../../fullmap/">Fullmap</a>).</p>
 <p><strong><code>taxon: Optional[str]</code></strong></p>
 <p>Optional NCBI Taxon ID for filtering results.</p>
 <p>Example: <code>"9606"</code> filters to human-specific entities.</p>
@@ -1431,8 +1431,8 @@
 <p><strong><code>tag: str</code> (default: <code>"_two"</code>)</strong></p>
 <p>Suffix appended to <code>col</code> to locate the <code>level_two</code> output column.</p>
 <p><code>resolve()</code> expects the LazyFrame to already have two NLP columns applied upstream:
-- <code>col</code> — the <code>level_one</code> output (whitespace stripped, lowercased)
-- <code>col + tag</code> — the <code>level_two</code> output (non-word characters removed via <code>\W+</code>)</p>
+- <code>col</code>: the <code>level_one</code> output (whitespace stripped, lowercased)
+- <code>col + tag</code>: the <code>level_two</code> output (non-word characters removed via <code>\W+</code>)</p>
 <p>The default <code>"_two"</code> matches <code>level_two</code>'s default tag.</p>
 <p><strong><code>threads: Optional[int]</code> (default: <code>None</code>)</strong></p>
 <p>Optional worker-thread count passed through to the Rust lookup for parallel term batching.</p>
@@ -1570,7 +1570,7 @@
 - Preferred for disease names and free text</p>
 <p>Rows without a valid CURIE are filtered from the returned frame.</p>
 <h3 id="provenance-tracking">Provenance Tracking<a class="headerlink" href="#provenance-tracking" title="Permanent link">&para;</a></h3>
-<p>Every resolved entity carries its source database, source version (snapshot date), and the matched synonym that triggered the match — enabling auditing and quality control. Case is handled by the NLP levels above: <code>level_one</code> matches any case variant, <code>level_two</code> further strips punctuation for hyphenated or slash-delimited names.</p>
+<p>Every resolved entity carries its source database, source version (snapshot date), and the matched synonym that triggered the match, enabling auditing and quality control. Case is handled by the NLP levels above: <code>level_one</code> matches any case variant, <code>level_two</code> further strips punctuation for hyphenated or slash-delimited names.</p>
 <h2 id="integration-with-qc">Integration with QC<a class="headerlink" href="#integration-with-qc" title="Permanent link">&para;</a></h2>
 <p>Entity resolution output is validated by <code>fullmap_audit()</code> from the <code>qc</code> module before being included in the knowledge graph.</p>
 <p>See <a href="../qc/">Quality Control</a> for details.</p>

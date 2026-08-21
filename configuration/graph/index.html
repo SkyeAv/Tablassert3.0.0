@@ -1487,7 +1487,7 @@
 
 
 <h1 id="graph-configuration-reference">Graph Configuration Reference<a class="headerlink" href="#graph-configuration-reference" title="Permanent link">&para;</a></h1>
-<p>Graph configurations orchestrate one or more <a href="../table/">table configurations</a> into a single knowledge-graph build — author one to produce KGX output with <code>tablassert build-kg</code> (see the <a href="../../cli/#build-kg">CLI reference</a>). To check a single table config on its own, use <code>tablassert validate &lt;table.yaml&gt; --schema table</code>.</p>
+<p>Graph configurations orchestrate one or more <a href="../table/">table configurations</a> into a single knowledge-graph build: author one to produce KGX output with <code>tablassert build-kg</code> (see the <a href="../../cli/#build-kg">CLI reference</a>). To check a single table config on its own, use <code>tablassert validate &lt;table.yaml&gt; --schema table</code>.</p>
 <h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
 <p>A graph configuration file specifies:</p>
 <ul>
@@ -1496,7 +1496,7 @@
 <li>Database location for entity resolution</li>
 <li>The <strong>required <code>rig:</code> section</strong>: all Resource Ingest Guide (RIG) metadata emitted as <code>&lt;name&gt;_&lt;version&gt;.RIG.yaml</code></li>
 </ul>
-<p>QC auditing and verbose logging are controlled at build time via the <code>build-kg --qc</code> and <code>build-kg --log</code> flags — they are <strong>not</strong> graph-config fields.</p>
+<p>QC auditing and verbose logging are controlled at build time via the <code>build-kg --qc</code> and <code>build-kg --log</code> flags: they are <strong>not</strong> graph-config fields.</p>
 <h2 id="schema">Schema<a class="headerlink" href="#schema" title="Permanent link">&para;</a></h2>
 <h3 id="required-fields">Required Fields<a class="headerlink" href="#required-fields" title="Permanent link">&para;</a></h3>
 <table>
@@ -1537,7 +1537,7 @@
 </table>
 <p>The legacy top-level RIG fields (<code>description</code>, <code>contributions</code>, <code>ui_explanation</code>, <code>infores</code>) are <strong>rejected</strong> with a migration pointer; they now live under <code>rig:</code>.</p>
 <h3 id="the-rig-section">The <code>rig:</code> section<a class="headerlink" href="#the-rig-section" title="Permanent link">&para;</a></h3>
-<p>The <code>rig:</code> section carries every human-authored RIG fact. Its shape mirrors the released <a href="https://github.com/biolink/resource-ingest-guide-schema">RIG schema</a>, so the generated <code>.RIG.yaml</code> is always schema-shaped. The generator derives only mechanical facts from the build (generated artifact file entries, observed edge/node type summaries) and <strong>validates the complete document before writing anything</strong> — a build never leaves behind an invalid or incomplete RIG.</p>
+<p>The <code>rig:</code> section carries every human-authored RIG fact. Its shape mirrors the released <a href="https://github.com/biolink/resource-ingest-guide-schema">RIG schema</a>, so the generated <code>.RIG.yaml</code> is always schema-shaped. The generator derives only mechanical facts from the build (generated artifact file entries, observed edge/node type summaries) and <strong>validates the complete document before writing anything</strong>, so a build never leaves behind an invalid or incomplete RIG.</p>
 <table>
 <thead>
 <tr>
@@ -1716,7 +1716,7 @@
 <td><code>relevant_files</code></td>
 <td>List[Object]</td>
 <td>No</td>
-<td><strong>Upstream</strong> source files: <code>file_name</code>, <code>location</code> (URL), optional <code>description</code>. Entries are cross-checked against the table configs' source URLs/local files — an entry matching no configured source fails the build</td>
+<td><strong>Upstream</strong> source files: <code>file_name</code>, <code>location</code> (URL), optional <code>description</code>. Entries are cross-checked against the table configs' source URLs/local files, and an entry matching no configured source fails the build</td>
 </tr>
 <tr>
 <td><code>included_content</code></td>
@@ -1775,7 +1775,7 @@
 <ul>
 <li><strong>Edge types</strong> (one per observed predicate): subject/object categories resolved from the emitted nodes, list-valued <code>knowledge_level</code>/<code>agent_type</code>, role-separated <code>primary_knowledge_sources</code> / <code>supporting_data_sources</code> / <code>aggregator_knowledge_sources</code> from each edge's <code>sources</code> retrieval provenance, observed <code>edge_properties</code>, qualifier shapes (enumerated literal values or identifier prefixes for CURIE-valued qualifiers), and <code>source_files</code> taken from the upstream <code>source_record_urls</code> (never the output filenames).</li>
 <li><strong>Node types</strong>: observed categories and the identifier prefixes actually emitted (<code>source_identifier_types</code>); categories with prefix-less identifiers get a factual free-text entry.</li>
-<li><strong>UI explanation</strong>: <code>rig.ui_explanation</code> (when set) followed by the built-in Tablassert explanation — the default text is always present.</li>
+<li><strong>UI explanation</strong>: <code>rig.ui_explanation</code> (when set) followed by the built-in Tablassert explanation; the default text is always present.</li>
 </ul>
 <h3 id="built-in-rig-validation">Built-in RIG validation<a class="headerlink" href="#built-in-rig-validation" title="Permanent link">&para;</a></h3>
 <p>Before the <code>.RIG.yaml</code> is written, the build audits the assembled document and fails with <code>[rig-validation-failed]</code> (writing nothing) when:</p>
@@ -1885,7 +1885,7 @@
 <li>Use an <strong>infores that is registered</strong> (or being registered) in the <a href="https://github.com/biolink/information-resource-registry">information resource registry</a>.</li>
 <li>Replace any <code>file://</code> artifact base with the <strong>public https location</strong> where the KGX files will be served.</li>
 <li>Fill <code>terms_of_use_info</code> with the source's actual license/terms assessment, and <code>data_versioning_and_releases</code> with how the upstream source releases data.</li>
-<li>Describe upstream source files in <code>rig.ingest_info.relevant_files</code> / <code>included_content</code> / <code>filtered_content</code> — the generator cross-checks them against your table configs but the semantics are yours.</li>
+<li>Describe upstream source files in <code>rig.ingest_info.relevant_files</code> / <code>included_content</code> / <code>filtered_content</code>: the generator cross-checks them against your table configs but the semantics are yours.</li>
 <li>Give every edge type's provenance real contributors under <code>rig.provenance_info.contributions</code>.</li>
 </ul>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>

@@ -1443,7 +1443,7 @@
 
 
 <h1 id="batch-resolution-lib">Batch Resolution (lib)<a class="headerlink" href="#batch-resolution-lib" title="Permanent link">&para;</a></h1>
-<p>The <code>lib</code> module exposes <code>resolve_many()</code>, a high-level convenience function that batch-resolves an iterable of entity strings to CURIEs — use it in scripts and notebooks when you want results without building LazyFrames or running NLP preprocessing yourself. It wraps the lower-level <a href="../fullmap/"><code>resolve()</code></a> pipeline (normalization, fullmap lookup, resolution, optional QC audit when <code>qc=True</code>) and returns a plain Python list of row dictionaries.</p>
+<p>The <code>lib</code> module exposes <code>resolve_many()</code>, a high-level convenience function that batch-resolves an iterable of entity strings to CURIEs; use it in scripts and notebooks when you want results without building LazyFrames or running NLP preprocessing yourself. It wraps the lower-level <a href="../fullmap/"><code>resolve()</code></a> pipeline (normalization, fullmap lookup, resolution, optional QC audit when <code>qc=True</code>) and returns a plain Python list of row dictionaries.</p>
 <h2 id="resolve_many">resolve_many()<a class="headerlink" href="#resolve_many" title="Permanent link">&para;</a></h2>
 <p>Standalone batch entity resolution function. Accepts a column name, an iterable of text strings, and a path to the fullmap database, then returns resolved CURIEs and metadata as a list of row dictionaries.</p>
 <h3 id="function-signature">Function Signature<a class="headerlink" href="#function-signature" title="Permanent link">&para;</a></h3>
@@ -1463,10 +1463,10 @@
 <p>Column name used internally to label the Polars Series and DataFrame columns during resolution. This name propagates through the NLP and resolution pipeline and determines the keys in each returned row dictionary.</p>
 <p>For example, if <code>col="gene"</code>, each returned row dictionary will contain keys like <code>"gene"</code>, <code>"gene_name"</code>, <code>"gene_category"</code>, etc.</p>
 <p><strong><code>entities: Iterable[str]</code></strong></p>
-<p>An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the fullmap synonym database. Accepts any iterable — lists, tuples, generators, sets, etc.</p>
+<p>An iterable of text strings to resolve. Each string is treated as a candidate entity name that will be normalized and matched against the fullmap synonym database. Accepts any iterable: lists, tuples, generators, sets, etc.</p>
 <p>Examples: <code>["TP53", "BRCA1", "EGFR"]</code>, <code>("aspirin", "ibuprofen")</code>, or a generator expression.</p>
 <p><strong><code>fullmap: Path</code></strong></p>
-<p>Filesystem path to the fullmap redb file, or a base directory containing it (resolved via <code>fullmap_db_path()</code> — see <a href="../../fullmap/">Fullmap</a>).</p>
+<p>Filesystem path to the fullmap redb file, or a base directory containing it (resolved via <code>fullmap_db_path()</code>; see <a href="../../fullmap/">Fullmap</a>).</p>
 <p><strong><code>taxon: Optional[str]</code> (default: <code>None</code>)</strong></p>
 <p>Optional NCBI Taxon ID for filtering results to a specific organism.</p>
 <p>Example: <code>"9606"</code> restricts <strong>gene</strong> matches to human-specific entries; non-gene categories (e.g., diseases, chemicals) are returned regardless of taxon. When <code>None</code>, no taxon filtering is applied and matches from all organisms are returned.</p>
@@ -1478,11 +1478,11 @@
 <p>Example: <code>[Categories.GENE]</code> prevents gene mappings from appearing in the output, even if they would otherwise be the best match.</p>
 <p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
 <p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the deduplication stage adds a category-frequency score (computed in Polars after the SQL query) and prefers the category that appears most frequently across all matched terms in the batch. When <code>False</code>, frequency-based tie-breaking is disabled.</p>
-<p>This is useful when resolving a column of related entities (e.g., all genes) — the shared context helps disambiguate terms that map to multiple categories.</p>
+<p>This is useful when resolving a column of related entities (e.g., all genes): the shared context helps disambiguate terms that map to multiple categories.</p>
 <p><strong><code>qc: bool</code> (default: <code>False</code>)</strong></p>
 <p>When <code>True</code>, runs the QC audit stage after entity resolution. The QC pipeline validates mappings through a four-stage audit: exact match, fuzzy matching via rapidfuzz, abbreviation expansion (Schwartz-Hearst), and SapBERT sentence embeddings with cosine similarity. Mappings that fail all four stages are dropped from the returned list (in addition to the unresolved-entity filtering performed by <code>resolve()</code>). Requires the QC runtime to be installed (<code>tablassert[qc]</code>); see <a href="../qc/">Quality Control</a> for the stage thresholds and backend.</p>
 <h3 id="return-value">Return Value<a class="headerlink" href="#return-value" title="Permanent link">&para;</a></h3>
-<p>Returns a <code>list[dict[str, Any]]</code> — one dictionary per resolved entity. The list is produced by calling <code>polars.DataFrame.to_dicts()</code> on the collected resolution output.</p>
+<p>Returns a <code>list[dict[str, Any]]</code>: one dictionary per resolved entity. The list is produced by calling <code>polars.DataFrame.to_dicts()</code> on the collected resolution output.</p>
 <p>Each dictionary contains the following keys (where <code>{col}</code> is the value of the <code>col</code> parameter):</p>
 <table>
 <thead>
@@ -1537,7 +1537,7 @@
 </table>
 <p><strong>Important:</strong> Only entities that successfully resolve to a CURIE are included in the output. Unresolved entities are filtered out by <code>resolve()</code>. The returned list may therefore be shorter than the input iterable.</p>
 <h3 id="pipeline-internals">Pipeline Internals<a class="headerlink" href="#pipeline-internals" title="Permanent link">&para;</a></h3>
-<p>Internally: wrap the iterable in a single-column LazyFrame; snapshot the raw input to <code>original_{col}</code> (returned) and <code>{col}_pre_resolution</code> (internal, dropped — mirrors edge output); apply <code>level_one</code>/<code>level_two</code>; resolve the fullmap path via <code>fullmap_db_path()</code>; delegate to <code>fullmap.resolve()</code>; optionally run <code>fullmap_audit()</code> when <code>qc=True</code>; collect and <code>to_dicts()</code>.</p>
+<p>Internally: wrap the iterable in a single-column LazyFrame; snapshot the raw input to <code>original_{col}</code> (returned) and <code>{col}_pre_resolution</code> (internal, dropped; mirrors edge output); apply <code>level_one</code>/<code>level_two</code>; resolve the fullmap path via <code>fullmap_db_path()</code>; delegate to <code>fullmap.resolve()</code>; optionally run <code>fullmap_audit()</code> when <code>qc=True</code>; collect and <code>to_dicts()</code>.</p>
 <h3 id="example-usage">Example Usage<a class="headerlink" href="#example-usage" title="Permanent link">&para;</a></h3>
 <h4 id="basic-gene-resolution">Basic Gene Resolution<a class="headerlink" href="#basic-gene-resolution" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
@@ -1632,7 +1632,7 @@
 </tr>
 </tbody>
 </table>
-<p><code>resolve_many()</code> is designed for ad-hoc and programmatic use — scripts, notebooks, and one-off lookups. For pipeline integration where you need full control over logging, context metadata, and lazy evaluation, use <code>resolve()</code> directly.</p>
+<p><code>resolve_many()</code> is designed for ad-hoc and programmatic use: scripts, notebooks, and one-off lookups. For pipeline integration where you need full control over logging, context metadata, and lazy evaluation, use <code>resolve()</code> directly.</p>
 <h3 id="nlp-processing">NLP Processing<a class="headerlink" href="#nlp-processing" title="Permanent link">&para;</a></h3>
 <p><code>resolve_many()</code> applies <code>level_one</code> (strip + lowercase → column <code>{col}</code>) and <code>level_two</code> (remove <code>\W+</code> → column <code>{col}_two</code>) before resolution. Level one (case-insensitive exact) is preferred; level two is the fallback for terms with punctuation or special characters.</p>
 <h3 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h3>
@@ -1645,9 +1645,9 @@
 <p><code>resolve_many()</code> is a self-contained entry point. It does not require any prior setup beyond having a fullmap database available. For full pipeline builds, use the CLI (<code>tablassert build-kg</code>) which orchestrates resolution through the <code>Tcode</code> class.</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><a href="../fullmap/">Entity Resolution</a></strong> — Lower-level <code>resolve()</code> function details</li>
-<li><strong><a href="../qc/">Quality Control</a></strong> — Multi-stage validation of resolved entities</li>
-<li><strong><a href="../../configuration/table/">Configuration</a></strong> — YAML-driven entity resolution settings</li>
+<li><strong><a href="../fullmap/">Entity Resolution</a></strong> - Lower-level <code>resolve()</code> function details</li>
+<li><strong><a href="../qc/">Quality Control</a></strong> - Multi-stage validation of resolved entities</li>
+<li><strong><a href="../../configuration/table/">Configuration</a></strong> - YAML-driven entity resolution settings</li>
 </ul>
 
 

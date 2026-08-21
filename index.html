@@ -1237,19 +1237,19 @@
 
 <h1 id="tablassert">Tablassert<a class="headerlink" href="#tablassert" title="Permanent link">&para;</a></h1>
 <p>Tablassert turns biomedical tables (Excel, CSV, TSV) into NCATS Translator-compliant KGX knowledge
-graphs — declaratively, with entity resolution built in and optional quality control. <strong>Installing?</strong>
+graphs, declaratively, with entity resolution built in and optional quality control. <strong>Installing?</strong>
 See <a href="installation/">Installation</a>. <strong>First build?</strong> Follow the <a href="tutorial/">Tutorial</a>. <strong>Automating?</strong>
 Use the <a href="cli/">CLI</a> or the autonomous <a href="agent/">Agent</a>.</p>
 <h2 id="why-tablassert">Why Tablassert<a class="headerlink" href="#why-tablassert" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Declarative YAML configuration</strong> — define data transformations without code</li>
-<li><strong>Entity resolution</strong> — map free text to biological entities (genes, diseases, chemicals) with
+<li><strong>Declarative YAML configuration</strong>: define data transformations without code</li>
+<li><strong>Entity resolution</strong>: map free text to biological entities (genes, diseases, chemicals) with
   taxonomic filtering and provenance, backed by an embedded redb database</li>
-<li><strong>Optional quality control</strong> — four-stage audit (exact → fuzzy → abbreviation → SapBERT embeddings) flags
+<li><strong>Optional quality control</strong>: four-stage audit (exact → fuzzy → abbreviation → SapBERT embeddings) flags
   low-confidence mappings</li>
-<li><strong>KGX compliance</strong> — emits NCATS Translator-compatible node/edge NDJSON with Biolink categories and
+<li><strong>KGX compliance</strong>: emits NCATS Translator-compatible node/edge NDJSON with Biolink categories and
   predicates</li>
-<li><strong>Performance &amp; reproducibility</strong> — lazy Polars pipelines and a UV-based, deterministic development
+<li><strong>Performance &amp; reproducibility</strong>: lazy Polars pipelines and a UV-based, deterministic development
   environment</li>
 </ul>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
@@ -1260,18 +1260,18 @@ Use the <a href="cli/">CLI</a> or the autonomous <a href="agent/">Agent</a>.</p>
 the full install matrix, extras, and development setup.</p>
 <h2 id="documentation-sections">Documentation Sections<a class="headerlink" href="#documentation-sections" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><a href="installation/">Installation</a></strong> — install methods, extras, and development setup</li>
-<li><strong><a href="cli/">CLI Reference</a></strong> — complete command-line flag reference</li>
-<li><strong><a href="tutorial/">Tutorial</a></strong> — step-by-step example with synthetic data</li>
-<li><strong><a href="examples/">Use Case Gallery</a></strong> — real-world configuration patterns</li>
-<li><strong><a href="configuration/graph/">Configuration</a></strong> — graph and table configuration reference</li>
-<li><strong><a href="api/fullmap/">API Reference</a></strong> — core functions documentation</li>
+<li><strong><a href="installation/">Installation</a></strong>: install methods, extras, and development setup</li>
+<li><strong><a href="cli/">CLI Reference</a></strong>: complete command-line flag reference</li>
+<li><strong><a href="tutorial/">Tutorial</a></strong>: step-by-step example with synthetic data</li>
+<li><strong><a href="examples/">Use Case Gallery</a></strong>: real-world configuration patterns</li>
+<li><strong><a href="configuration/graph/">Configuration</a></strong>: graph and table configuration reference</li>
+<li><strong><a href="api/fullmap/">API Reference</a></strong>: core functions documentation</li>
 </ul>
 <h2 id="authors">Authors<a class="headerlink" href="#authors" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><a href="mailto:sgoetz@isbscience.org">Skye Lane Goetz</a></strong> — Institute for Systems Biology</li>
-<li><strong><a href="mailto:gglusman@isbscience.org">Gwênlyn Glusman</a></strong> — Institute for Systems Biology</li>
-<li><strong>Jared C. Roach</strong> — Institute for Systems Biology</li>
+<li><strong><a href="mailto:sgoetz@isbscience.org">Skye Lane Goetz</a></strong>: Institute for Systems Biology</li>
+<li><strong><a href="mailto:gglusman@isbscience.org">Gwênlyn Glusman</a></strong>: Institute for Systems Biology</li>
+<li><strong>Jared C. Roach</strong>: Institute for Systems Biology</li>
 </ul>
 <h2 id="license">License<a class="headerlink" href="#license" title="Permanent link">&para;</a></h2>
 <p>See repository for license information.</p>

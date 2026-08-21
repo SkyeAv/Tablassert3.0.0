@@ -1387,11 +1387,11 @@
 
 
 <h1 id="utilities-utils">Utilities (utils)<a class="headerlink" href="#utilities-utils" title="Permanent link">&para;</a></h1>
-<p>The <code>tablassert.utils</code> module provides the shared working-directory constants and a compact hashing helper used throughout the CLI — import it for deterministic section hashes and the <code>.tablassert/</code> artifact layout. Deterministic UUID generation for KGX edge identifiers lives in the Rust extension (<code>tablassert.rs</code>) and is documented below as well.</p>
+<p>The <code>tablassert.utils</code> module provides the shared working-directory constants and a compact hashing helper used throughout the CLI; import it for deterministic section hashes and the <code>.tablassert/</code> artifact layout. Deterministic UUID generation for KGX edge identifiers lives in the Rust extension (<code>tablassert.rs</code>) and is documented below as well.</p>
 <h2 id="constants">Constants<a class="headerlink" href="#constants" title="Permanent link">&para;</a></h2>
-<p><strong><code>BASE: Path</code></strong> — <code>Path("./.tablassert")</code></p>
+<p><strong><code>BASE: Path</code></strong>: <code>Path("./.tablassert")</code></p>
 <p>The single parent working directory. All runtime artifacts live beneath it.</p>
-<p><strong><code>STORE: Path</code></strong> — <code>BASE / "store"</code></p>
+<p><strong><code>STORE: Path</code></strong>: <code>BASE / "store"</code></p>
 <p>Intermediate parquet storage for compiled subgraphs (<code>.tablassert/store/</code>). Created on import.</p>
 <p>The loguru sink (<code>.tablassert/log/tablassert.log</code>, <code>log.LOGASSERT</code>) and the cached SapBERT model (<code>.tablassert/sapbert/</code>, <code>qc.MODEL</code>) are likewise derived from <code>BASE</code>.</p>
 <h2 id="mkhash">mkhash()<a class="headerlink" href="#mkhash" title="Permanent link">&para;</a></h2>

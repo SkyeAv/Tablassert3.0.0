@@ -1595,11 +1595,11 @@
 
 <h1 id="autonomous-agent-agent-extra">Autonomous Agent (<code>[agent]</code> extra)<a class="headerlink" href="#autonomous-agent-agent-extra" title="Permanent link">&para;</a></h1>
 <p><strong>Why this exists:</strong> hand-authoring a Tablassert config for every PMC supplementary table does not scale.
-The optional <code>[agent]</code> extra makes it autonomous — point it at <strong>PubMed Central (PMC)</strong> article IDs and it
+The optional <code>[agent]</code> extra makes it autonomous: point it at <strong>PubMed Central (PMC)</strong> article IDs and it
 <strong>derives the config for you</strong>, then builds, audits, and iteratively improves the graph until the entity
 resolution <em>maps</em> (coverage threshold). The outcome is an <strong>NCATS Translator-compliant KGX knowledge
-graph</strong> per article — a claim the loop verifies rather than asserts, by constructing every emitted
-record as its own Biolink class (see <a href="#biolink-validity">Biolink validity</a>) — with the whole loop
+graph</strong> per article, a claim the loop verifies rather than asserts, by constructing every emitted
+record as its own Biolink class (see <a href="#biolink-validity">Biolink validity</a>), with the whole loop
 scored on <strong>quality / cost / wrong tool calls</strong>.</p>
 <p>Under the hood it is built on <a href="https://github.com/huggingface/smolagents">smolagents</a> <code>CodeAgent</code> (a
 ReAct loop) and <a href="https://dspy.ai">DSPy</a> GEPA for prompt optimization.</p>
@@ -1661,7 +1661,7 @@ the <code>[optimize]</code> extra (<code>dspy</code>): <code>pip install "tablas
 </tbody>
 </table>
 <h2 id="pmc-aws-data-source">PMC-AWS data source<a class="headerlink" href="#pmc-aws-data-source" title="Permanent link">&para;</a></h2>
-<p>Tables are fetched from the <strong>new</strong> PMC open-access S3 bucket — the sanctioned bulk path.</p>
+<p>Tables are fetched from the <strong>new</strong> PMC open-access S3 bucket, the sanctioned bulk path.</p>
 <table>
 <thead>
 <tr>
@@ -1694,9 +1694,9 @@ failing fast (cheap checks before any large download and before any model call):
 <li>Enumerates version prefixes via S3 <code>list-objects-v2</code> (<code>?list-type=2&amp;prefix=PMC&lt;n&gt;.&amp;delimiter=/</code>) and
    selects the <strong>latest</strong> version (numeric, so <code>PMC&lt;n&gt;.10</code> beats <code>PMC&lt;n&gt;.2</code>); older versions are ignored.</li>
 <li>Checks the latest version's <code>.json</code> metadata for open access (<code>is_pmc_openaccess</code> / a <code>CC*</code>
-   <code>license_code</code>) — <strong>before</strong> any large download (not open access ⇒ <code>PermissionError</code> immediately).</li>
+   <code>license_code</code>), <strong>before</strong> any large download (not open access ⇒ <code>PermissionError</code> immediately).</li>
 <li>Enumerates the version's objects (<code>?list-type=2&amp;prefix=PMC&lt;n&gt;.&lt;v&gt;/</code>) and confirms a data table is
-   present (a file with extension <code>.xlsx .xls .csv .tsv</code>) — <strong>before</strong> any large download (none ⇒
+   present (a file with extension <code>.xlsx .xls .csv .tsv</code>), <strong>before</strong> any large download (none ⇒
    <code>FileNotFoundError</code>).</li>
 <li>Downloads only the <strong>useful</strong> files to <code>outdir/&lt;prefix&gt;/&lt;file&gt;</code> and returns their paths: the main text
    (<code>.xml</code>/<code>.nxml</code>/<code>.txt</code>/<code>.pdf</code>), the <code>.json</code> metadata, and every data table. Binary media (images,
@@ -1734,7 +1734,7 @@ given for an id, the supervisor locates the files there and <strong>does not fet
 config to be re-fetchable). A <code>--local</code> directory that does not exist fails loud (exit 2).</p>
 <h2 id="model-configuration">Model configuration<a class="headerlink" href="#model-configuration" title="Permanent link">&para;</a></h2>
 <p>The agent talks to an <strong>OpenAI-compatible</strong> endpoint (e.g. a Qwen endpoint). Configuration comes from
-CLI flags <strong>and</strong> environment variables — <strong>secrets are never hardcoded</strong>, and the command <strong>fails
+CLI flags <strong>and</strong> environment variables: <strong>secrets are never hardcoded</strong>, and the command <strong>fails
 loudly</strong> if any required value is unset.</p>
 <table>
 <thead>
@@ -1762,14 +1762,14 @@ loudly</strong> if any required value is unset.</p>
 </tr>
 <tr>
 <td><code>--backend</code>, <code>-b</code></td>
-<td>—</td>
+<td>n/a</td>
 <td><code>openai</code> (default) or <code>litellm</code></td>
 </tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_MODEL_ID</span><span class="o">=</span><span class="s2">&quot;qwen3-max&quot;</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_API_BASE</span><span class="o">=</span><span class="s2">&quot;https://YOUR-ENDPOINT.example.com/v1&quot;</span><span class="w">   </span><span class="c1"># placeholder</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_API_KEY</span><span class="o">=</span><span class="s2">&quot;sk-***&quot;</span><span class="w">                                  </span><span class="c1"># placeholder — never commit a real key</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TABLASSERT_AGENT_API_KEY</span><span class="o">=</span><span class="s2">&quot;sk-***&quot;</span><span class="w">                                  </span><span class="c1"># placeholder: never commit a real key</span>
 </code></pre></div>
 <p>If a value is missing, <code>tablassert agent</code> prints a message naming the exact flag/env var and exits
 non-zero <strong>before</strong> any model call.</p>
@@ -1787,27 +1787,27 @@ artifact metadata, and existing table list. Flags: <code>--max-steps</code>/<cod
 <code>--max-improve-iters</code>/<code>-mi</code>, <code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
 <code>--judge-model</code>, <code>--judge-threshold</code>, <code>--biolink-threshold</code>, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
 (<code>--instructions-file</code>, <code>--instructions-out</code>, <code>--max-metric-calls</code>, <code>--dataset</code>).
-The <a href="../cli/#agent">CLI reference — <code>agent</code></a> is the authoritative flag table; the list here is a compact
+The <a href="../cli/#agent">CLI reference: <code>agent</code></a> is the authoritative flag table; the list here is a compact
 reminder.</p>
 <h3 id="what-the-supervisor-does">What the supervisor does<a class="headerlink" href="#what-the-supervisor-does" title="Permanent link">&para;</a></h3>
-<p>The <strong>outer supervisor is deterministic Python</strong> (not an LLM) — smolagents' #1 practice is deterministic
+<p>The <strong>outer supervisor is deterministic Python</strong> (not an LLM); smolagents' #1 practice is deterministic
 control flow over agentic decisions. For each PMC id it:</p>
 <ol>
 <li><strong>Fetches</strong> the latest-version article payload (<code>fetch_pmc_article</code>: main text + metadata + all tables;
    fails fast on not-open-access / no-table) and presents <strong>all</strong> candidate tables to the agent.</li>
 <li>Runs the <strong>inner <code>CodeAgent</code></strong> to <em>derive</em> an initial table config (<code>pmc_article_context</code> → <code>read_table</code>
    → <code>derive_config</code>, every section gated by the Section JSON schema). The agent maps <strong>each</strong> mappable
-   table/worksheet as its own section — <strong>one config per paper</strong> (see below).</li>
+   table/worksheet as its own section, <strong>one config per paper</strong> (see below).</li>
 <li><strong>Builds + audits</strong> in one deterministic mega-tool (<code>build_and_audit</code>: validate → build → QC → coverage
    → <strong>Biolink validity</strong>).</li>
 <li><strong>Improves</strong> while coverage <code>&lt; map_threshold</code> and budget remains: <code>propose_config_edit</code> → rebuild →
-   <strong>accept iff no worse on coverage <em>or</em> Biolink validity and strictly better on one</strong> (monotonic —
+   <strong>accept iff no worse on coverage <em>or</em> Biolink validity and strictly better on one</strong> (monotonic:
    regressions on either axis are rejected, so a coverage win can no longer be bought with invalid KGX).</li>
 <li><strong>Records</strong> metrics, <strong>checkpoints</strong>, and moves to the next config.</li>
 </ol>
 <p>A config that won't map after <code>--max-improve-iters</code> is marked <code>SKIPPED: &lt;reason&gt;</code> and the supervisor
-advances — one difficult article never aborts the batch. A config that <strong>builds</strong> but whose fullmap
-coverage <strong>cannot be measured</strong> (an unreproducible source frame) is marked <code>BUILT_UNMEASURED</code> — a
+advances: one difficult article never aborts the batch. A config that <strong>builds</strong> but whose fullmap
+coverage <strong>cannot be measured</strong> (an unreproducible source frame) is marked <code>BUILT_UNMEASURED</code>, a
 terminal <strong>non-failure</strong> that is neither a certified <code>MAPPED</code> nor counted as a <code>SKIPPED</code>; the best
 config is still written and is reusable by the full pipeline. Coverage measurement itself is
 multi-cwd: a relative <code>source.local</code> is resolved against the build workdir as well as the current
@@ -1816,13 +1816,13 @@ directory before a config is declared unmeasurable.</p>
 <p>Two opt-in extensions layer on top of the deterministic improve loop (both reuse the configured
 endpoint; neither is required):</p>
 <ul>
-<li><strong><code>--reflexion</code></strong> — when the deterministic <code>propose_config_edit</code> stalls, a tier-2 LLM reflexion
+<li><strong><code>--reflexion</code></strong>: when the deterministic <code>propose_config_edit</code> stalls, a tier-2 LLM reflexion
   improver reflects on the coverage feedback and proposes an edit that may change predicate/source
   (same model config).</li>
-<li><strong><code>--judge-model</code> / <code>--judge-threshold</code></strong> — a semantic judge scores the built output; when
+<li><strong><code>--judge-model</code> / <code>--judge-threshold</code></strong>: a semantic judge scores the built output; when
   <code>--judge-model</code> is set, <code>MAPPED</code> additionally requires the normalized score to clear
   <code>--judge-threshold</code> (<code>0.5</code> when unset). Without <code>--judge-model</code> the coverage gate alone decides.</li>
-<li><strong><code>--biolink-threshold</code></strong> — <code>MAPPED</code> additionally requires the built KGX's Biolink pass rate to
+<li><strong><code>--biolink-threshold</code></strong>: <code>MAPPED</code> additionally requires the built KGX's Biolink pass rate to
   clear it. Defaults to <code>0.0</code> (report only): the rate is always measured and recorded, and raising
   the threshold turns that measurement into a terminal gate. See
   <a href="#biolink-validity">Biolink validity</a> below.</li>
@@ -1830,7 +1830,7 @@ endpoint; neither is required):</p>
 <h3 id="biolink-validity">Biolink validity<a class="headerlink" href="#biolink-validity" title="Permanent link">&para;</a></h3>
 <p>Coverage answers <em>did the terms resolve?</em> It says nothing about whether the resulting records are
 consumable. The agent therefore validates <strong>its own output</strong>: after each build, <code>build_and_audit</code>
-constructs every emitted node and edge as the Biolink Pydantic class named by its own <code>category</code> —
+constructs every emitted node and edge as the Biolink Pydantic class named by its own <code>category</code>,
 the same check <a href="../cli/#validate-kgx"><code>tablassert validate-kgx</code></a> runs, and the same classes
 <code>translator-ingests</code> builds. Four fields land in the audit report:</p>
 <table>
@@ -1861,7 +1861,7 @@ the same check <a href="../cli/#validate-kgx"><code>tablassert validate-kgx</cod
 </table>
 <p><strong><code>demoted_edge_pct</code> is the predicate signal.</strong> Tablassert derives an edge's association class from
 the (subject category, object category) pair, then <code>resolve_association_class</code> gives up as much of
-that class as the predicate requires. A predicate the class forbids is <strong>never an error</strong> — it
+that class as the predicate requires. A predicate the class forbids is <strong>never an error</strong>: it
 silently demotes the edge and discards every qualifier and evidence slot that class declared. So
 <code>gene_associated_with_condition</code> on a gene~disease table builds cleanly, maps perfectly, and produces
 <code>biolink:Association</code> edges. Nothing but this number tells you.</p>
@@ -1880,7 +1880,7 @@ cannot drift from the model the build validates against:</p>
 these on <code>Association</code>, so a strict check rejects edges carrying them. <code>biolink_valid_pct</code>
 exempts them (and the other curated KGX carryovers) so the agent is scored on <strong>its own</strong>
 decisions.
-The exempt set is <em>derived</em> — <code>TABLASERT_EDGE_EXTRAS - &lt;fields any association declares&gt;</code> — so it
+The exempt set is <em>derived</em> (<code>TABLASERT_EDGE_EXTRAS - &lt;fields any association declares&gt;</code>), so it
 empties itself when the model catches up, with no code change.</p>
 </div>
 <p>Two related silent behaviours the agent's prompt now names, since neither raises:</p>
@@ -1889,17 +1889,17 @@ empties itself when the model catches up, with no code change.</p>
   attached to <strong>no</strong> Pydantic class, so its value is routed onto the inlined <code>StudyResult</code> rather than
   emitted on the edge. Names that are not association slots at all (<code>q_value</code>, <code>fold_change</code>, …) are
   folded into <code>supporting_text</code>. Authoring either now emits a <code>BiolinkRelocationWarning</code> naming where
-  the value actually went — a warning, not an error: nothing is lost, and every existing config
+  the value actually went, a warning, not an error: nothing is lost, and every existing config
   keeps building.</li>
 <li>Enum-ranged qualifiers take a literal token (<code>object_direction_qualifier: increased</code>), never a
   CURIE, and are deliberately <strong>not</strong> entity-resolved. <code>map_coverage</code> skips them for the same reason
   the build does, so they no longer depress a config's coverage score for working correctly.</li>
 </ul>
 <h3 id="multi-section-configs-one-per-paper">Multi-section configs (one per paper)<a class="headerlink" href="#multi-section-configs-one-per-paper" title="Permanent link">&para;</a></h3>
-<p>The agent authors <strong>one table config per paper</strong> that may contain <strong>multiple sections</strong> — one per
+<p>The agent authors <strong>one table config per paper</strong> that may contain <strong>multiple sections</strong>, one per
 mappable supplementary table/worksheet. The config is shaped as <code>{template, sections}</code>:</p>
 <ul>
-<li><strong><code>template</code></strong> carries the shared per-paper <strong>provenance</strong> (<code>repo</code> + <code>publication</code>) and nothing else —
+<li><strong><code>template</code></strong> carries the shared per-paper <strong>provenance</strong> (<code>repo</code> + <code>publication</code>) and nothing else:
   in particular <strong>no <code>source</code></strong>.</li>
 <li><strong><code>sections</code></strong> is a list with one entry per table; <strong>each section owns its own <code>source</code></strong> (its own
   <code>local</code> path <strong>and</strong> its own <code>source.url</code> download link, plus <code>sheet</code>/<code>row_slice</code>/<code>delimiter</code> as
@@ -2011,47 +2011,47 @@ gate can only answer true/false and would otherwise swallow the reason.</p>
 <h2 id="prompt-engineering">Prompt engineering<a class="headerlink" href="#prompt-engineering" title="Permanent link">&para;</a></h2>
 <p>The agent's <code>instructions</code> make the techniques explicit:</p>
 <ul>
-<li><strong>ReAct + planning</strong> — <code>CodeAgent</code> is a ReAct loop; <code>planning_interval=3</code> re-plans every few steps.</li>
-<li><strong>Structured / constrained output</strong> — <code>derive_config</code> injects the Section JSON schema; a
+<li><strong>ReAct + planning</strong>: <code>CodeAgent</code> is a ReAct loop; <code>planning_interval=3</code> re-plans every few steps.</li>
+<li><strong>Structured / constrained output</strong>: <code>derive_config</code> injects the Section JSON schema; a
   <code>final_answer_checks=[validate_table_config]</code> gate means the agent can only terminate with a config
   whose <strong>every section</strong> is schema-valid (multi-section configs are validated section-by-section).</li>
-<li><strong>Few-shot exemplars</strong> — the tutorial gene~disease section, the ALAMV6 organism~chemical section, and a
+<li><strong>Few-shot exemplars</strong>: the tutorial gene~disease section, the ALAMV6 organism~chemical section, and a
   multi-section config (one config, two tables, each section its own source/url).</li>
-<li><strong>Reflexion-style self-critique</strong> — <code>propose_config_edit</code> / <code>reflexion_improve</code> reflect on failing rows,
+<li><strong>Reflexion-style self-critique</strong>: <code>propose_config_edit</code> / <code>reflexion_improve</code> reflect on failing rows,
   error codes, and unresolved terms, then make a targeted, schema-valid edit.</li>
-<li><strong>Error-recovery prompting</strong> — tools return rich coded errors; the prompt directs the agent to read the
+<li><strong>Error-recovery prompting</strong>: tools return rich coded errors; the prompt directs the agent to read the
   code + message and fix precisely that field, never repeating an unchanged config.</li>
-<li><strong>Context trimming</strong> — a <code>step_callback</code> tallies tokens/steps and failed/wrong/redundant tool calls, and
+<li><strong>Context trimming</strong>: a <code>step_callback</code> tallies tokens/steps and failed/wrong/redundant tool calls, and
   trims large old observations to save tokens.</li>
 </ul>
 <h3 id="prompt-injection-defenses">Prompt-injection defenses<a class="headerlink" href="#prompt-injection-defenses" title="Permanent link">&para;</a></h3>
 <p>PMC article text and tables are <strong>untrusted data</strong>. Defenses:</p>
 <ul>
-<li><strong>Data-fence + spotlighting</strong> — <code>read_table</code> wraps content in <code>&lt;&lt;&lt;PMC_DATA_BEGIN&gt;&gt;&gt;</code> /
+<li><strong>Data-fence + spotlighting</strong>: <code>read_table</code> wraps content in <code>&lt;&lt;&lt;PMC_DATA_BEGIN&gt;&gt;&gt;</code> /
   <code>&lt;&lt;&lt;PMC_DATA_END&gt;&gt;&gt;</code> preceded by a guardrail; the instructions state that fenced content is DATA, never
   instructions, and any embedded commands are ignored.</li>
-<li><strong>Minimal authorized imports</strong> — the executor allowlist is just <code>["yaml"]</code>, so a hijacked agent cannot
+<li><strong>Minimal authorized imports</strong>: the executor allowlist is exactly <code>["yaml"]</code>, so a hijacked agent cannot
   <code>import os</code>/<code>subprocess</code>.</li>
 </ul>
 <h2 id="evaluation-optimization-loop">Evaluation &amp; optimization loop<a class="headerlink" href="#evaluation-optimization-loop" title="Permanent link">&para;</a></h2>
 <p>The harness scores every run on three objectives and optimizes them as a black box.</p>
 <p><strong>Deterministic metrics (gate the loop):</strong></p>
 <ul>
-<li><strong>Quality</strong> — fullmap mapping coverage (0.40), <strong>Biolink pass rate</strong> (0.25), KG node/edge <strong>F1</strong> vs
+<li><strong>Quality</strong>: fullmap mapping coverage (0.40), <strong>Biolink pass rate</strong> (0.25), KG node/edge <strong>F1</strong> vs
   the reference graph (0.15), QC audit pass rate (0.10), and config schema validity (0.10, and a hard
   gate: an invalid config scores 0).</li>
-<li><strong>Cost</strong> — <code>RunResult.token_usage</code> + step count (the API is free; tokens are the proxy).</li>
-<li><strong>Reliability</strong> — failed / wrong / redundant tool-call counts from the <code>ActionStep</code> logs.</li>
+<li><strong>Cost</strong>: <code>RunResult.token_usage</code> + step count (the API is free; tokens are the proxy).</li>
+<li><strong>Reliability</strong>: failed / wrong / redundant tool-call counts from the <code>ActionStep</code> logs.</li>
 </ul>
 <p><strong>LLM-as-judge (semantic dimensions only):</strong> a pointwise <strong>0–3</strong> rubric over schema validity, coverage,
 <strong>Biolink validity</strong>, QC pass, predicate/category appropriateness, provenance completeness, efficiency,
-and tool-call cleanliness — with <strong>position</strong> (both orderings averaged) and <strong>verbosity</strong> bias mitigation. Deterministic
+and tool-call cleanliness, with <strong>position</strong> (both orderings averaged) and <strong>verbosity</strong> bias mitigation. Deterministic
 metrics gate the rest; the judge only scores what a metric cannot. Without a judge model, an offline
 deterministic heuristic is used.</p>
 <p><strong>Optimizers:</strong></p>
 <ul>
-<li><strong>Reflexion</strong> — the simple first-increment retry (<code>reflexion_improve</code>).</li>
-<li><strong>GEPA</strong> — <code>dspy.GEPA(metric=gepa_metric, candidate_selection_strategy="pareto", …)</code> optimizes the
+<li><strong>Reflexion</strong>: the simple first-increment retry (<code>reflexion_improve</code>).</li>
+<li><strong>GEPA</strong>: <code>dspy.GEPA(metric=gepa_metric, candidate_selection_strategy="pareto", …)</code> optimizes the
   agent's <code>instructions</code> + tool <code>description</code>s + exemplars as a <strong>black box</strong> from textual feedback
   (<code>gepa_metric</code> returns <code>dspy.Prediction(score=weighted_quality, feedback="&lt;failing rows + error codes +
   Biolink problems + demoted-edge fraction + wrong-call list&gt;")</code>). It is system-agnostic, Pareto-native, and needs few rollouts.</li>
@@ -2065,7 +2065,7 @@ wrong-calls ↓) and its <strong>knee</strong> (best quality per unit cost).</p>
 proposes the few instruction edits, and an optional <strong>fast task LM</strong> (<code>--task-model</code>) runs the many
 candidate program evaluations. Pointing <code>--task-model</code> at a cheap model (e.g. a flash model) keeps the
 run fast while the strong model does the thinking; without <code>--task-model</code> the reflection LM is used for
-both. <code>--gepa-threads</code> parallelizes GEPA's candidate <strong>LM forward passes</strong> only — the coverage-scoring
+both. <code>--gepa-threads</code> parallelizes GEPA's candidate <strong>LM forward passes</strong> only: the coverage-scoring
 builds stay serialized on the process-wide <code>_GEPA_BUILD_LOCK</code> (<code>agent.py</code>, since <code>os.chdir</code> is
 process-global), so a higher thread count does not speed up the expensive build/coverage step.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
@@ -2081,12 +2081,12 @@ process-global), so a higher thread count does not speed up the expensive build/
 <p><code>--dataset</code> is a YAML/JSON list of examples. Each example carries <code>table_summary</code> and
 <code>coverage_feedback</code> (the program inputs); it MAY also carry:</p>
 <ul>
-<li><code>fullmap</code> — a fullmap path. When present, the GEPA metric scores each proposed config with <strong>real
+<li><code>fullmap</code>: a fullmap path. When present, the GEPA metric scores each proposed config with <strong>real
   fullmap coverage</strong> (via a <code>build_and_audit</code> head-sample), so GEPA optimizes the genuine objective
   rather than a validity-only proxy.</li>
-<li><code>workdir</code> — the directory a proposed config's relative <code>source.local</code> resolves against (LLMs mimic the
+<li><code>workdir</code>: the directory a proposed config's relative <code>source.local</code> resolves against (LLMs mimic the
   exemplar's <code>./downloads/...</code> paths), so coverage is measured on the actual table.</li>
-<li><code>head</code> — default <code>true</code>: score a fast 5-row preview; set <code>false</code> for full-fidelity coverage builds.</li>
+<li><code>head</code>: defaults to <code>true</code>, which scores a fast 5-row preview; set <code>false</code> for full-fidelity coverage builds.</li>
 </ul>
 <p><code>--max-metric-calls</code> bounds the GEPA metric budget. <code>save_optimized_instructions</code> /
 <code>load_optimized_instructions</code> persist and reload the prompt (a <code>{instructions, descriptions}</code> mapping).
@@ -2095,18 +2095,18 @@ live model; the offline suite exercises this path via an injectable <code>gepa_c
 <h3 id="golden-fixture">Golden fixture<a class="headerlink" href="#golden-fixture" title="Permanent link">&para;</a></h3>
 <p><code>tests/agent_fixtures/PMC11708054/</code> is an offline replay pair: the ALAMV6 reference config, a small
 <strong>synthetic</strong> source table, and a trimmed reference config (CC-BY attribution to PMC11708054; the
-reference KGX is computed in-test against a tiny real redb — nothing large is committed). A second
+reference KGX is computed in-test against a tiny real redb; nothing large is committed). A second
 fixture, <code>tests/agent_fixtures/GENE_DISEASE/</code>, is a gene~disease config in multi-section
-(<code>{template, sections}</code>) shape with PMID provenance — used to keep the offline heuristic judge and the
+(<code>{template, sections}</code>) shape with PMID provenance, used to keep the offline heuristic judge and the
 W3 multi-section validation honest on a distinct config.</p>
 <h2 id="edge-count-acceptance-agent-vs-reference">Edge-count acceptance (agent vs reference)<a class="headerlink" href="#edge-count-acceptance-agent-vs-reference" title="Permanent link">&para;</a></h2>
 <p>An agent-produced config is only as good as the graph it emits. The acceptance gate is an <strong>edge-count
 fraction</strong>: built over the SAME payload against the SAME fullmap, the agent config must emit at least
-half the KGX edges of a richer hand-curated reference config — <code>agent_edges &gt;= 0.5 * reference_edges</code>
+half the KGX edges of a richer hand-curated reference config: <code>agent_edges &gt;= 0.5 * reference_edges</code>
 (<code>REFERENCE_EDGE_FRACTION</code> in <code>tests/test_agent_edgecount.py</code>). A config that reads only one sheet, or
 that skips <code>explode_by</code> on a multi-valued column, silently emits far fewer edges; this gate catches it.</p>
 <p><strong>Offline harness (committed fixtures):</strong> <code>tests/fixtures/edgecount/</code> ships a synthetic
-PMC10766526-shaped disease x system workbook plus three configs — the improved-agent shape
+PMC10766526-shaped disease x system workbook plus three configs: the improved-agent shape
 (multi-section, correct <code>sheet</code> + <code>row_slice</code>, <code>explode_by</code>/<code>prioritize</code> breadth, paired
 <code>effect_size</code> + <code>effect_type</code> annotations), a strictly richer reference (all three sheets), and an
 intentionally-impoverished single-section no-<code>explode_by</code> negative control that MUST fail the gate:</p>
@@ -2132,7 +2132,7 @@ legacy reference config against the same downloads, build one-table graphs for e
 <a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>wc<span class="w"> </span>-l<span class="w"> </span>&lt;agent-graph-name&gt;_&lt;version&gt;.edges.ndjson<span class="w"> </span>&lt;reference-graph-name&gt;_&lt;version&gt;.edges.ndjson
 </code></pre></div>
 <p>The same comparison is scriptable via the env-gated test: set <code>TABLASSERT_PMC_COMPARE</code> to a JSON
-array of four paths — the agent config, the reference config, the payload, and the fullmap redb.
+array of four paths: the agent config, the reference config, the payload, and the fullmap redb.
 A JSON array (not a colon-separated string) keeps POSIX paths containing <code>:</code> and Windows
 drive-letter paths working. The <code>&lt;agent-config&gt;</code> and <code>&lt;reference-config&gt;</code> may carry relative
 <code>source.local</code> paths; both are rebuilt over <code>&lt;payload&gt;</code>:</p>
@@ -2141,7 +2141,7 @@ drive-letter paths working. The <code>&lt;agent-config&gt;</code> and <code>&lt;
 </code></pre></div>
 <p>Unset, that test skips with a printed reason; the offline fixture tests run regardless.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
-<p>The agent suite is <strong>fully offline</strong> — no live LLM or network. It uses a <code>FakeModel</code> smolagents stub,
+<p>The agent suite is <strong>fully offline</strong>: no live LLM or network. It uses a <code>FakeModel</code> smolagents stub,
 mocked/snapshotted PMC data, a tiny real redb (<code>rs.build_fullmap_db</code>), and injectable GEPA stubs.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent

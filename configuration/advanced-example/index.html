@@ -1288,8 +1288,8 @@
 
 <h1 id="advanced-example-real-world-configuration">Advanced Example: Real-World Configuration<a class="headerlink" href="#advanced-example-real-world-configuration" title="Permanent link">&para;</a></h1>
 <p>A fully-annotated real-world table configuration (ALAMV6.yaml) showing complex regex, taxonomic
-filtering, and statistical annotations working together. <strong>Source:</strong> microbiome–chemical correlation
-analysis from PMC11708054 — an Excel file from which we extract correlations between gut microbiota
+filtering, and statistical annotations working together. <strong>Source:</strong> microbiome-chemical correlation
+analysis from PMC11708054, an Excel file from which we extract correlations between gut microbiota
 and tamoxifen metabolites.</p>
 <h2 id="full-configuration">Full Configuration<a class="headerlink" href="#full-configuration" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">template</span><span class="p">:</span>
@@ -1349,20 +1349,20 @@ and tamoxifen metabolites.</p>
 <a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">value</span>
 <a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="w">      </span><span class="nt">encoding</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction</span>
 </code></pre></div>
-<p><code>miscellaneous_notes</code> is a freetext escape hatch — use <code>method: value</code> for a constant note across the
+<p><code>miscellaneous_notes</code> is a freetext escape hatch: use <code>method: value</code> for a constant note across the
 whole table or <code>method: column</code> to pull per-row notes from the source (see
 <a href="../table/#allow-list-and-auto-folding">allow-list and auto-folding</a>).</p>
 <h2 id="key-techniques">Key Techniques<a class="headerlink" href="#key-techniques" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Excel column letters</strong> — <code>encoding: A</code>/<code>B</code>/<code>C</code> reference the first/second/third columns of the
+<li><strong>Excel column letters</strong>: <code>encoding: A</code>/<code>B</code>/<code>C</code> reference the first/second/third columns of the
   headerless source (organism names, Spearman rho, p-value).</li>
-<li><strong>Regex pipeline</strong> — the subject runs three substitutions in order: <code>.*g__</code> → <code>`
+<li><strong>Regex pipeline</strong>: the subject runs three substitutions in order: <code>.*g__</code> → <code>`
   (</code>d__Bacteria;p__Firmicutes;g__Lactobacillus<code>→</code>Lactobacillus<code>), then</code>;s__<code>→</code> <code>(</code>Lactobacillus;s__rhamnosus<code>→</code>Lactobacillus rhamnosus<code>), then</code>sp<code>→</code>sp. `.</li>
-<li><strong>Taxonomic filtering</strong> — <code>prioritize: [OrganismTaxon]</code> + <code>avoid: [Gene]</code> stop "Lactobacillus"
+<li><strong>Taxonomic filtering</strong>: <code>prioritize: [OrganismTaxon]</code> + <code>avoid: [Gene]</code> stop "Lactobacillus"
   resolving to a similarly-named gene.</li>
-<li><strong>Mixed annotations</strong> — <code>method: value</code> for constants (same every row), <code>method: column</code> for
+<li><strong>Mixed annotations</strong>: <code>method: value</code> for constants (same every row), <code>method: column</code> for
   per-row values.</li>
-<li><strong>Subject-predicate-object</strong> — subject varies per row (column), predicate <code>correlated_with</code> is
+<li><strong>Subject-predicate-object</strong>: subject varies per row (column), predicate <code>correlated_with</code> is
   fixed, object <code>CHEBI:41774</code> is fixed → <code>Lactobacillus rhamnosus --[correlated_with]--&gt; 13C-tamoxifen</code>.</li>
 </ul>
 <details class="note">
@@ -1380,8 +1380,8 @@ transformations as a chain of simple substitutions, or capture leftover context 
 </code></pre></div></p>
 <p><strong>Edges:</strong> Allow-listed annotation columns (<code>supporting_study_size</code>, <code>p_value</code>, <code>effect_size</code>,
 <code>effect_type</code>) stay as
-top-level edge fields (numeric annotations as controlled-notation strings). Any non-Biolink-slot name —
-here <code>assertion_method</code>, <code>multiple_testing_correction_method</code>, <code>miscellaneous_notes</code> — folds into the
+top-level edge fields (numeric annotations as controlled-notation strings). Any non-Biolink-slot name
+(here <code>assertion_method</code>, <code>multiple_testing_correction_method</code>, <code>miscellaneous_notes</code>) folds into the
 edge's <code>supporting_text</code> list as <code>"name: value"</code> entries (sorted alphabetically), alongside the built-in
 <code>extracted_from_row_number</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
@@ -1474,13 +1474,13 @@ correlation tables linking two biological entities per row (e.g., metabolite ↔
 <a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">annotation</span><span class="p">:</span><span class="w"> </span><span class="nv">effect_type</span><span class="p p-Indicator">,</span><span class="nt"> method</span><span class="p">:</span><span class="w"> </span><span class="nv">value</span><span class="p p-Indicator">,</span><span class="nt"> encoding</span><span class="p">:</span><span class="w"> </span><span class="nv">correlation_coefficient</span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>Each column-mapped node gets its own <code>prioritize</code> list to guide disambiguation. <code>remove</code> strips each
-listed pattern (replace with empty string); <code>regex</code> applies an ordered <code>pattern</code>→<code>replacement</code> list —
+listed pattern (replace with empty string); <code>regex</code> applies an ordered <code>pattern</code>→<code>replacement</code> list;
 both transform cell text in place before resolution, and neither drops rows.</p>
 <hr />
 <h2 id="template-sections-wide-table">Template + Sections (wide table)<a class="headerlink" href="#template-sections-wide-table" title="Permanent link">&para;</a></h2>
 <p>Wide tables where each column encodes a different object (e.g., 24 metabolite columns for the same
 microbe rows). Sections inherit the template's <code>source</code>, <code>provenance</code>, and <code>subject</code>, overriding only
-the <code>object</code> (and optionally <code>row_slice</code>) per section — one section entry per metabolite column keeps a
+the <code>object</code> (and optionally <code>row_slice</code>) per section: one section entry per metabolite column keeps a
 24-metabolite config out of 24 separate files.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">template</span><span class="p">:</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">source</span><span class="p">:</span>

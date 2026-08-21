@@ -1216,7 +1216,7 @@
 
 
 <h1 id="development">Development<a class="headerlink" href="#development" title="Permanent link">&para;</a></h1>
-<p>Set up a Tablassert dev environment and learn the contributor workflow — build the Rust extension,
+<p>Set up a Tablassert dev environment and learn the contributor workflow: build the Rust extension,
 run the test and docs gates locally, and lint/format. The canonical contributor guide is <a href="https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a>.</p>
 <h2 id="setup-from-source">Setup from source<a class="headerlink" href="#setup-from-source" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/SkyeAv/Tablassert.git
@@ -1245,7 +1245,7 @@ run the test and docs gates locally, and lint/format. The canonical contributor 
 <p>This site is built with MkDocs Material. After editing anything under <code>docs/</code> or <code>mkdocs.yml</code>, validate the whole site locally before committing:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict
 </code></pre></div>
-<p><code>--strict</code> promotes any warning — a dead cross-link, a nav entry pointing at a missing file, or a missing referenced doc — to a build failure, so documentation drift is caught here rather than only on the deployed site. Style and PR expectations live in the canonical contributor guide, <a href="https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a>.</p>
+<p><code>--strict</code> promotes any warning (a dead cross-link, a nav entry pointing at a missing file, or a missing referenced doc) to a build failure, so documentation drift is caught here rather than only on the deployed site. Style and PR expectations live in the canonical contributor guide, <a href="https://github.com/SkyeAv/Tablassert/blob/main/CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a>.</p>
 <h2 id="fullmap-builds">Fullmap builds<a class="headerlink" href="#fullmap-builds" title="Permanent link">&para;</a></h2>
 <p>Fullmap build environment variables are documented in <a href="../fullmap/#build-tunables-environment">Fullmap: Build Tunables</a>. If a full build hits <code>EMFILE</code> / <code>Too many open files</code>, raise the NOFILE limit before rerunning:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">ulimit</span><span class="w"> </span>-n<span class="w"> </span><span class="m">65535</span>

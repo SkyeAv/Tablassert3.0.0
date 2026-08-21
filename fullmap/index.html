@@ -1273,14 +1273,14 @@
 
 <h1 id="fullmap">Fullmap<a class="headerlink" href="#fullmap" title="Permanent link">&para;</a></h1>
 <p>Build a fullmap once and every <code>resolve()</code> / <code>resolve_many()</code> call maps free text to the right
-biological CURIE — the completeness and freshness of this database directly sets how many of your
+biological CURIE; the completeness and freshness of this database directly sets how many of your
 entities resolve correctly and how trustworthy the resulting graph is.</p>
 <p>Fullmap is Tablassert's embedded entity-resolution database: a small set of <a href="https://github.com/cberner/redb">redb</a>
-files — a primary file holding the dimensions, CURIEs, and schema metadata, plus hash-sharded RECORDS
-files (<code>fullmap.s0.redb</code> … <code>fullmap.s15.redb</code> by default) holding the term→postings index — containing
-biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance, built from NCATS
-Translator BABEL export files.</p>
-<p>Fullmap is built entirely in-process by Tablassert's own Rust extension — no external tool or install step required by default (this is an in-process redb shard scheme, not the older external DuckDB shards). If you opt into <code>build-fullmap --aria2c</code> / <code>-a</code>, only the download stage uses the bundled aria2c binary from the optional <code>[aria2]</code> extra (<code>pip install "tablassert[aria2]"</code>; Linux/Windows wheels only).</p>
+files containing biological synonyms, CURIEs, Biolink categories, taxon IDs, and source provenance,
+built from NCATS Translator BABEL export files. It comprises a primary file holding the dimensions,
+CURIEs, and schema metadata, plus hash-sharded RECORDS files (<code>fullmap.s0.redb</code> … <code>fullmap.s15.redb</code>
+by default) holding the term→postings index.</p>
+<p>Fullmap is built entirely in-process by Tablassert's own Rust extension: no external tool or install step required by default (this is an in-process redb shard scheme, not the older external DuckDB shards). If you opt into <code>build-fullmap --aria2c</code> / <code>-a</code>, only the download stage uses the bundled aria2c binary from the optional <code>[aria2]</code> extra (<code>pip install "tablassert[aria2]"</code>; Linux/Windows wheels only).</p>
 <h2 id="build-command">Build Command<a class="headerlink" href="#build-command" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>tablassert<span class="w"> </span>build-fullmap
@@ -1295,22 +1295,22 @@ Translator BABEL export files.</p>
 cache directory, BABEL snapshot version, worker threads, the optional <code>--aria2c</code> / <code>-a</code> downloader,
 and the <code>--force</code> / <code>-f</code> rebuild flag), their defaults, and more examples.</p>
 <p>By default, <code>build-fullmap</code> first downloads a <strong>prebuilt</strong> database published for this Tablassert
-version — a <code>fullmap.tar.zst</code> under <code>.../fullmap/&lt;tablassert-version&gt;/</code> (the version directory is the
+version, a <code>fullmap.tar.zst</code> under <code>.../fullmap/&lt;tablassert-version&gt;/</code> (the version directory is the
 installed package version, never hardcoded), verified against a co-published <code>sha256sum.txt</code> and
 extracted beside <code>--output</code> entirely in the Rust extension: it streams the archive through zstd → tar
 (the multi-GB decompressed tar is never materialized on disk) with the GIL released, extracts into a
-temp directory on the output's filesystem, and — before renaming anything into place — validates the
+temp directory on the output's filesystem, and, before renaming anything into place, validates the
 bundle against the same contract a <code>--force</code> build must satisfy: the <code>meta</code> schema tag is exactly
 <code>tablassert.fullmap.v5</code>, a <code>build_id</code> is recorded, the shard files are exactly the set the primary
 advertises (no gaps, no extras), and every shard's <code>build_id</code> equals the primary's. Only a bundle that
 passes is atomically renamed into place (primary → <code>--output</code>, shards beside it); any failure raises
 and the command falls back to the from-scratch build below. If no prebuilt is published for this
 version it falls back the same way; <code>--force</code> / <code>-f</code> skips the prebuilt attempt and always builds. The
-optional <code>--aria2c</code> / <code>-a</code> accelerates <strong>either</strong> download — the multi-GB prebuilt archive is the ideal
+optional <code>--aria2c</code> / <code>-a</code> accelerates <strong>either</strong> download: the multi-GB prebuilt archive is the ideal
 aria2 use case.</p>
 <p>Two facts matter most when planning a build:</p>
 <ul>
-<li>The BABEL <strong>version</strong> flag selects a RENCI BABEL snapshot date (default <code>2026jul22</code>) — <em>not</em>
+<li>The BABEL <strong>version</strong> flag selects a RENCI BABEL snapshot date (default <code>2026jul22</code>), <em>not</em>
   Tablassert's package version. Bumping it fetches a different snapshot and requires rebuilding; the
   value used is recorded in the primary's <code>meta</code> table (<code>source_version</code>).</li>
 <li>With <strong>threads</strong> left unset, the Rust build caps workers at <code>min(available_CPUs, MemAvailable_GB / 2)</code>
@@ -1320,13 +1320,13 @@ aria2 use case.</p>
 <h3 id="data-pipeline">Data Pipeline<a class="headerlink" href="#data-pipeline" title="Permanent link">&para;</a></h3>
 <p>The build is a parallel, <strong>memory-bounded</strong> pipeline executed by the Rust extension:</p>
 <ol>
-<li><strong>Download</strong> — fetch BABEL class and synonym files from RENCI into the cache (resumable, reused). By default this uses Tablassert's Python downloader; <code>--aria2c</code> / <code>-a</code> opts into the bundled <code>aria2c</code> binary from the <code>[aria2]</code> extra, preserving aria2 resume control files across dropped downloads and failing loud if the extra is missing, unsupported on the current platform, or the download fails.</li>
-<li><strong>Equivalents index</strong> — parse class files into sorted on-disk runs, then k-way merge them into a
+<li><strong>Download</strong>: fetch BABEL class and synonym files from RENCI into the cache (resumable, reused). By default this uses Tablassert's Python downloader; <code>--aria2c</code> / <code>-a</code> opts into the bundled <code>aria2c</code> binary from the <code>[aria2]</code> extra, preserving aria2 resume control files across dropped downloads and failing loud if the extra is missing, unsupported on the current platform, or the download fails.</li>
+<li><strong>Equivalents index</strong>: parse class files into sorted on-disk runs, then k-way merge them into a
    memory-mapped index mapping each primary CURIE to its equivalents.</li>
-<li><strong>Synonym pass</strong> — a producer/consumer pool streams byte-bounded line-chunks; workers dedup CURIEs,
+<li><strong>Synonym pass</strong>: a producer/consumer pool streams byte-bounded line-chunks; workers dedup CURIEs,
    accumulate normalized-term → (CURIE, source) postings, and spill per-shard runs to disk so peak RAM
    stays flat regardless of input size.</li>
-<li><strong>Write</strong> — one redb transaction writes the primary tables, then <code>shard_count</code> independent k-way
+<li><strong>Write</strong>: one redb transaction writes the primary tables, then <code>shard_count</code> independent k-way
    merges write the shard <code>records</code> files in parallel (one thread per shard).</li>
 </ol>
 <details class="note">
@@ -1336,32 +1336,32 @@ rather than RAM, so a full BABEL build (hundreds of millions of CURIEs) complete
 memory budget; the <a href="https://github.com/microsoft/mimalloc">mimalloc</a> allocator keeps heavy
 multi-threaded allocation from bloating resident memory.</p>
 <ul>
-<li><strong>Download</strong> — files come from <code>https://stars.renci.org/var/babel_outputs</code> via resumable,
+<li><strong>Download</strong>: files come from <code>https://stars.renci.org/var/babel_outputs</code> via resumable,
   range-request downloads; cached files are reused. Passing <code>--aria2c</code> / <code>-a</code> switches only this
   stage to the bundled <code>aria2c</code> binary from the optional <code>[aria2]</code> extra, using aria2's segmented
   HTTP downloads and retry/resume control files while suppressing aria2's own progress UI so
   Tablassert's progress bar stays clean.
   The progress detail remains file-level (<code>aria2c downloading</code>) rather than byte-level in this mode.</li>
-<li><strong>Equivalents index</strong> — class files parse in parallel into sorted on-disk runs, k-way merged into a
+<li><strong>Equivalents index</strong>: class files parse in parallel into sorted on-disk runs, k-way merged into a
   single memory-mapped CURIE→equivalents index; only a compact <code>(hash, offset)</code> index lives in RAM,
   the string data is mmap'd.</li>
-<li><strong>Synonym pass</strong> — uses <strong>intra-file parallelism</strong>: a small pool of producer threads
+<li><strong>Synonym pass</strong>: uses <strong>intra-file parallelism</strong>: a small pool of producer threads
   decompresses/reads the synonym files and pushes byte-bounded line-chunks through a bounded channel,
   and every worker draws from one shared queue, so the few very large files
   (protein/smallmolecule/gene/drugchemicalconflated) are processed by <strong>all</strong> workers, not one thread
   each. Per row, the build collects dimension sets (CURIE prefixes, Biolink categories, sources),
   assigns compact integer CURIE IDs via a hash-keyed dedup map (<code>xxh3_128(curie) → id</code>), and
   accumulates normalized-term → (CURIE, source) postings. Each worker drains its per-CURIE rows and
-  term postings to bounded on-disk spill runs once its buffer fills — the term postings partitioned
+  term postings to bounded on-disk spill runs once its buffer fills, the term postings partitioned
   per-shard at spill time (each <code>run_s{shard}_{id}.bin</code> holds only terms with
   <code>xxh64(term) &amp; (shards-1)</code> matching that shard), which keeps peak RAM flat regardless of input size
   and lets the write phase merge each shard independently. Dead terms (purely numeric, or generic
   labels like <code>none</code>/<code>nan</code>/<code>null</code>) are skipped, since they can never be queried.</li>
-<li><strong>Write</strong> — a single redb write transaction in the primary file emits the dimension tables
+<li><strong>Write</strong>: a single redb write transaction in the primary file emits the dimension tables
   (<code>prefixes</code>, <code>categories</code>, <code>sources</code>), the <code>curies</code> table (streamed from its spill runs), and the
   <code>meta</code> schema tag (recording the shard count). The <code>records</code> table is then written <strong>in parallel
   across the shard files</strong>: building on the per-shard spill partitioning, the write phase runs
-  <code>shard_count</code> independent k-way merges — one thread per shard, each merging only its own shard's
+  <code>shard_count</code> independent k-way merges, one thread per shard, each merging only its own shard's
   runs and inserting the merged term groups inline into that shard's redb file (one database per
   shard, since redb allows a single writer per file) in hash-sorted batches for near-sequential B-tree
   appends (each batch is appended through redb's end-of-table cursor API, the faster ascending
@@ -1433,7 +1433,7 @@ override only when targeting an unusual machine.</p>
 </table>
 <h2 id="output-artifact">Output Artifact<a class="headerlink" href="#output-artifact" title="Permanent link">&para;</a></h2>
 <p>A primary redb file (default <code>./fullmap/data/fullmap.redb</code>) plus its sibling RECORDS shard files
-(<code>fullmap.s0.redb</code> … <code>fullmap.s15.redb</code> — one per shard, named after the output
+(<code>fullmap.s0.redb</code> … <code>fullmap.s15.redb</code>, one per shard, named after the output
 file stem in the same directory). The shard count is fixed at 16 (the read path
 still honors the count recorded in an existing database's <code>meta</code> table). Together
 they hold six tables (see <code>rust/src/fullmap.rs</code>):</p>
@@ -1471,19 +1471,19 @@ they hold six tables (see <code>rust/src/fullmap.rs</code>):</p>
 </tr>
 </tbody>
 </table>
-<p>The shard files must remain alongside the primary file — lookups discover them as siblings of the
+<p>The shard files must remain alongside the primary file: lookups discover them as siblings of the
 resolved primary path.</p>
 <p>Lookups (<code>lookup_fullmap_terms</code>) check the primary's <code>meta</code> schema tag before reading <code>records</code>, read the
 <code>shards</code> count to open exactly that many shard files, and fan the query terms out across the shards in
 parallel (releasing the GIL, one reader per non-empty shard, re-merged into input order); a mismatched or
 missing tag raises rather than silently reading incompatible data. Databases built under the older
-<code>v1</code>/<code>v2</code>/<code>v3</code>/<code>v4</code> schemas are rejected — there is no automatic schema migration, so a schema bump
+<code>v1</code>/<code>v2</code>/<code>v3</code>/<code>v4</code> schemas are rejected: there is no automatic schema migration, so a schema bump
 (including the v3→v4 move to sharded files and the v4→v5 move to the redb 4 engine) requires rebuilding
 via <code>tablassert build-fullmap</code>.</p>
 <p>Readers open every fullmap file READ-ONLY with a SHARED file lock (redb ≥ 3 <code>ReadOnlyDatabase</code>), so any
 number of processes can run lookups against the same fullmap concurrently; only a <code>build-fullmap</code> rebuild
 (an exclusive-lock writer) briefly blocks readers. Each lookup pins one primary-plus-shards file
-generation — cached handles are validated against the file's <code>(dev, ino)</code> on every use — so a reader
+generation, cached handles are validated against the file's <code>(dev, ino)</code> on every use, so a reader
 follows a rebuild on the next lookup.</p>
 <h2 id="usage-in-graph-config">Usage in Graph Config<a class="headerlink" href="#usage-in-graph-config" title="Permanent link">&para;</a></h2>
 <p>The <code>fullmap:</code> field in a graph configuration points at either the redb file directly or a base
@@ -1517,7 +1517,7 @@ directory. Tablassert resolves it via <code>fullmap_db_path()</code>:</p>
 <a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./published/my-graph</span>
 </code></pre></div>
 <h2 id="programmatic-usage">Programmatic Usage<a class="headerlink" href="#programmatic-usage" title="Permanent link">&para;</a></h2>
-<p>Pass the fullmap path (file or base directory) as the <code>fullmap</code> argument to <code>resolve_many()</code> — see
+<p>Pass the fullmap path (file or base directory) as the <code>fullmap</code> argument to <code>resolve_many()</code>; see
 <a href="../api/lib/">Batch Resolution</a> for the full reference and example, and
 <a href="../api/fullmap/">Entity Resolution</a> for the lower-level <code>resolve()</code> API.</p>
 

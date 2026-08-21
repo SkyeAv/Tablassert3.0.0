@@ -1282,7 +1282,7 @@
 
 
 <h1 id="use-case-gallery">Use Case Gallery<a class="headerlink" href="#use-case-gallery" title="Permanent link">&para;</a></h1>
-<p><strong>Turn real tabular sources — CSV, TSV, or Excel — into KGX-compliant nodes and edges.</strong> Each pattern
+<p><strong>Turn real tabular sources (CSV, TSV, or Excel) into KGX-compliant nodes and edges.</strong> Each pattern
 below leads with the data type and the outcome it produces, then gives a complete, schema-valid
 configuration and the techniques that make it work.</p>
 <h2 id="gene-disease-associations">Gene-Disease Associations<a class="headerlink" href="#gene-disease-associations" title="Permanent link">&para;</a></h2>
@@ -1411,7 +1411,7 @@ with a regex pipeline on the way.</p>
 </code></pre></div>
 <p><strong>Key techniques:</strong></p>
 <ul>
-<li><strong>Regex pipeline</strong> cleans raw taxonomic strings (<code>d__Bacteria;p__Firmicutes;g__Lactobacillus</code> → <code>Lactobacillus</code>). Patterns must be Polars <code>str.replace_all()</code>-compatible (Rust <code>regex</code> engine) — no backreferences (<code>\1</code>, <code>\2</code>, …) or lookarounds (<code>(?=...)</code>, <code>(?&lt;=...)</code>, <code>(?!...)</code>, <code>(?&lt;!...)</code>); plain and non-capturing groups are supported, so chain several simple substitutions when needed.</li>
+<li><strong>Regex pipeline</strong> cleans raw taxonomic strings (<code>d__Bacteria;p__Firmicutes;g__Lactobacillus</code> → <code>Lactobacillus</code>). Patterns must be Polars <code>str.replace_all()</code>-compatible (Rust <code>regex</code> engine): no backreferences (<code>\1</code>, <code>\2</code>, …) or lookarounds (<code>(?=...)</code>, <code>(?&lt;=...)</code>, <code>(?!...)</code>, <code>(?&lt;!...)</code>); plain and non-capturing groups are supported, so chain several simple substitutions when needed.</li>
 <li><strong>Avoid list</strong> (<code>avoid: [Gene]</code>) prevents organism names resolving to gene entities; <strong>fixed-value object</strong> (<code>method: value</code>) assigns the same metabolite CURIE to all rows.</li>
 </ul>
 <hr />
@@ -1465,7 +1465,7 @@ template + sections.</p>
 </code></pre></div>
 <p><strong>Key techniques:</strong></p>
 <ul>
-<li><strong>Template + sections</strong> avoids repeating source and provenance for each pathway column — each section provides its own predicate and object while inheriting the shared subject and source.</li>
+<li><strong>Template + sections</strong> avoids repeating source and provenance for each pathway column: each section provides its own predicate and object while inheriting the shared subject and source.</li>
 <li><strong>Per-section annotations</strong> tag edges with the pathway database source.</li>
 </ul>
 <hr />
@@ -1509,7 +1509,7 @@ edges (reindex on column values).</p>
 <p><strong>Key techniques:</strong></p>
 <ul>
 <li><strong>Reindex filtering</strong> keeps only rows where column C (p-value) &lt; 0.05 AND column D (sample size) &gt;= 100; multiple reindex conditions are ANDed together.</li>
-<li><strong>Comparison operators</strong> — <code>lt</code> (less than), <code>ge</code> (greater or equal), <code>eq</code>, <code>ne</code>, <code>gt</code>, <code>le</code>.</li>
+<li><strong>Comparison operators</strong>: <code>lt</code> (less than), <code>ge</code> (greater or equal), <code>eq</code>, <code>ne</code>, <code>gt</code>, <code>le</code>.</li>
 </ul>
 <hr />
 <h2 id="null-handling-with-forward-fill">Null Handling with Forward Fill<a class="headerlink" href="#null-handling-with-forward-fill" title="Permanent link">&para;</a></h2>
@@ -1542,7 +1542,7 @@ empty cells (forward fill).</p>
 <p><strong>Key techniques:</strong></p>
 <ul>
 <li><strong>Forward fill</strong> (<code>fill: forward</code>) propagates the last non-null value downward, mapping subcategory rows to their parent category.</li>
-<li><strong>Other fill strategies</strong> — <code>backward</code>, <code>min</code>, <code>max</code>, <code>mean</code>, <code>zero</code>, <code>one</code>.</li>
+<li><strong>Other fill strategies</strong>: <code>backward</code>, <code>min</code>, <code>max</code>, <code>mean</code>, <code>zero</code>, <code>one</code>.</li>
 </ul>
 <hr />
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
