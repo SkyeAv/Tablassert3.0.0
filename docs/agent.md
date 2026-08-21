@@ -65,12 +65,13 @@ failing fast (cheap checks before any large download and before any model call):
    (`.xml`/`.nxml`/`.txt`/`.pdf`), the `.json` metadata, and every data table. Binary media (images,
    `.docx`) are skipped. `fetch_pmc_tables` remains as a thin wrapper returning only the table files.
 
-The main text is wired into the agent via the `pmc_article_context` tool, which parses the JATS `.xml`
-into a compact, data-fenced summary (title, abstract, section outline, and a supplementary-table manifest
-with labels/captions). A `.txt` is a fenced excerpt; a `.pdf` is extracted to a fenced excerpt via
-`pdfminer.six` (so PDF-only articles still give the agent main-text context). For Excel tables,
-`read_table` lists **all worksheets** and reads a chosen one via `sheet=` (set `source.sheet` in the
-config), so the agent can check every table and every sheet before authoring a config.
+The main text and every candidate table are wired into the agent TWICE, deliberately: the supervisor
+pre-renders the `pmc_article_context` summary (JATS title/abstract/outline/supplementary manifest) and
+a head preview of **every** candidate table **and every Excel worksheet** directly into the task text
+(`render_task_context`), so the agent can author a config with **zero inspection tool calls**. The
+`pmc_article_context` / `read_table` tools stay registered as fallbacks for rows beyond a preview (for
+Excel, `read_table` lists **all worksheets** and reads a chosen one via `sheet=` (set `source.sheet`
+in the config).
 
 !!! failure "The old paths are dead"
     The legacy `s3://pmc-open-access` bucket, the FTP `oa_file_list.csv`, and the per-article `tar.gz`
@@ -149,9 +150,11 @@ control flow over agentic decisions. For each PMC id it:
 
 1. **Fetches** the latest-version article payload (`fetch_pmc_article`: main text + metadata + all tables;
    fails fast on not-open-access / no-table) and presents **all** candidate tables to the agent.
-2. Runs the **inner `CodeAgent`** to *derive* an initial table config (`pmc_article_context` → `read_table`
-   → `derive_config`, every section gated by the Section JSON schema). The agent maps **each** mappable
-   table/worksheet as its own section, **one config per paper** (see below).
+2. Runs the **inner `CodeAgent`** to *derive* an initial table config (the task already contains the
+   article summary + head previews of every table/worksheet, so the typical path is just `derive_config`;
+   `pmc_article_context` / `read_table` remain fallbacks; every section gated by the Section JSON
+   schema). The agent maps **each** mappable table/worksheet as its own section, **one config per paper**
+   (see below).
 3. **Builds + audits** in one deterministic mega-tool (`build_and_audit`: validate → build → QC → coverage
    → **Biolink validity**).
 4. **Improves** while coverage `< map_threshold` and budget remains: `propose_config_edit` → rebuild →
@@ -332,7 +335,11 @@ gate can only answer true/false and would otherwise swallow the reason.
 
 The agent's `instructions` make the techniques explicit:
 
-- **ReAct + planning**: `CodeAgent` is a ReAct loop; `planning_interval=3` re-plans every few steps.
+- **ReAct, planning off**: `CodeAgent` is a ReAct loop, but periodic re-planning is disabled
+  (`planning_interval=None`): each planning turn is a whole extra LLM round trip carrying the full
+  prompt, and the task already prescribes a fixed short workflow (derive → build → optional edit →
+  answer). The prompt caps in-agent improve rounds at two; the supervisor's deterministic improve loop
+  continues after the agent finishes.
 - **Structured / constrained output**: `derive_config` injects the Section JSON schema; a
   `final_answer_checks=[validate_table_config]` gate means the agent can only terminate with a config
   whose **every section** is schema-valid (multi-section configs are validated section-by-section).
