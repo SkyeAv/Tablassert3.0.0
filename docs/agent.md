@@ -451,8 +451,8 @@ intentionally-impoverished single-section no-`explode_by` negative control that 
 uv run --extra qc --extra agent pytest tests/test_agent_edgecount.py -q
 ```
 
-**Real runbook (PMC10766526):** run the agent over the downloaded payload, convert the hand-written
-legacy reference config against the same downloads, build one-table graphs for each, and compare the
+**Real runbook (PMC10766526):** run the agent over the downloaded payload, build one-table graphs
+for the agent config and the already-converted v12 reference config, and compare the
 `<name>_<version>.edges.ndjson` line counts from `rig.artifact_base_path`:
 
 ```bash
@@ -461,15 +461,11 @@ tablassert agent PMC10766526 --configuration-file ./graph.yaml \
   --local PMC10766526=./downloads/PMC10766526
 # accepted config: .tablassert/agent/configs/PMC10766526.yaml
 
-# 2. Convert the hand-written legacy reference config over the same downloads
-tablassert convert-legacy ./legacy/PMC10766526.yaml --downloads ./downloads
-# -> ./legacy/PMC10766526.v12.yaml
-
-# 3. Build each as a one-table graph (same fullmap, same graph name/version conventions)
+# 2. Build each as a one-table graph (same fullmap, same graph name/version conventions)
 tablassert build-kg -f ./agent_graph.yaml       # tables: [.tablassert/agent/configs/PMC10766526.yaml]
 tablassert build-kg -f ./reference_graph.yaml   # tables: [./legacy/PMC10766526.v12.yaml]
 
-# 4. Count edges; acceptance: agent >= 0.5 * reference
+# 3. Count edges; acceptance: agent >= 0.5 * reference
 wc -l <agent-graph-name>_<version>.edges.ndjson <reference-graph-name>_<version>.edges.ndjson
 ```
 
