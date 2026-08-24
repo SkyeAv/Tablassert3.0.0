@@ -1,0 +1,33 @@
+template:
+  source:
+    kind: text
+    local: payload.placeholder
+    url:
+      - https://pmc.ncbi.nlm.nih.gov/articles/PMC11865420/
+    delimiter: ","
+    reindex:
+      - column: C
+        comparison: eq
+        comparator: Y
+  statement:
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+        - Case
+    predicate: treated_by
+    object:
+      method: value
+      encoding: CHEBI:50381
+      prioritize:
+        - SmallMolecule
+  provenance:
+    repo: PMC
+    publication: PMC11865420
+  annotations:
+    - annotation: miscellaneous notes
+      method: value
+      encoding:
+        "Miglustat-treated patients only (miglustat=Y). 12 of 22 patients received
+        miglustat treatment. Source: Supplementary Table 3 clinical assessment and NPC1
+        gene variants."

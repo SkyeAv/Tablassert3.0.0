@@ -1,0 +1,65 @@
+template:
+  source:
+    kind: excel
+    local: payload.placeholder
+    url:
+      - https://pmc-oa-opendata.s3.amazonaws.com/PMC11000384.1/13073_2024_1307_MOESM1_ESM.xlsx
+    sheet: Table S3
+    row_slice:
+      - 2
+      - auto
+  statement:
+    subject:
+      method: column
+      encoding: A
+      taxon: 9606
+      prioritize:
+        - Gene
+    predicate: gene_associated_with_condition
+    object:
+      method: column
+      encoding: AN
+      explode_by: ;
+      prefix: "OMIM:"
+      remove:
+        - ^\.$
+  provenance:
+    repo: PMC
+    publication: PMC11000384
+  annotations:
+    - annotation: variant_identifier
+      method: column
+      encoding: B
+    - annotation: chromosome
+      method: column
+      encoding: D
+    - annotation: position_hg19
+      method: column
+      encoding: E
+    - annotation: reference_allele
+      method: column
+      encoding: F
+    - annotation: alternate_allele
+      method: column
+      encoding: G
+    - annotation: variant_class
+      method: column
+      encoding: H
+    - annotation: af_popmax
+      method: column
+      encoding: Q
+    - annotation: af_qgp
+      method: column
+      encoding: R
+    - annotation: clinvar_significance
+      method: column
+      encoding: AE
+    - annotation: acmg_classification
+      method: column
+      encoding: AF
+    - annotation: miscellaneous_notes
+      method: value
+      encoding:
+        "Pathogenic/Likely Pathogenic (P/LP) variants in Mendelian genes from
+        6,045 Qatari whole genomes. OMIM IDs are semicolon-separated phenotype identifiers.
+        Population: Qatari (Middle Eastern) biobank cohort."

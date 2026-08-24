@@ -1,0 +1,71 @@
+template:
+  source:
+    kind: excel
+    local: payload.placeholder
+    url:
+      - https://pmc-oa-opendata.s3.amazonaws.com/PMC11326326.1/media-5.xlsx
+    row_slice:
+      - 1
+      - auto
+  provenance:
+    repo: PMC
+    publication: PMC11326326
+sections:
+  - source:
+      sheet: BDT6-PRS_Disease_Associations
+    statement:
+      subject:
+        method: column
+        encoding: A
+        prioritize:
+          - Disease
+      predicate: related_to
+      object:
+        method: column
+        encoding: B
+        prioritize:
+          - EnvironmentalExposure
+    annotations:
+      - annotation: N
+        method: column
+        encoding: C
+      - annotation: N_Event
+        method: column
+        encoding: D
+      - annotation: Coef
+        method: column
+        encoding: E
+      - annotation: SE
+        method: column
+        encoding: F
+      - annotation: HR
+        method: column
+        encoding: G
+      - annotation: P
+        method: column
+        encoding: H
+      - annotation: P FDR
+        method: column
+        encoding: I
+  - source:
+      sheet: BDT7-DiseaseDefinitions
+    statement:
+      subject:
+        method: column
+        encoding: A
+        prioritize:
+          - Disease
+      predicate: related_to
+      object:
+        method: value
+        encoding: ICD definition
+    annotations:
+      - annotation: include
+        method: column
+        encoding: B
+      - annotation: code_type
+        method: column
+        encoding: C
+      - annotation: code
+        method: column
+        encoding: D
