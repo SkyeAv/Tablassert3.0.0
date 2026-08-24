@@ -356,16 +356,12 @@ def value(lf: pl.LazyFrame, col: str, x: object) -> pl.LazyFrame:
 def _retrieval_source(resource_id: str, resource_role: str, upstream: list[str] | None = None, urls: list[str] | None = None) -> pl.Expr:
     """Build one ``RetrievalSource`` struct expression.
 
-    Every entry declares the same five fields so that :func:`retrieval_sources` can
+    Every entry declares the same four fields so that :func:`retrieval_sources` can
     ``concat_list`` them into a single ``list[struct]`` column; absent list fields are
     typed nulls, which the Rust null-stripper removes from the emitted JSON.
     """
     empty: pl.Expr = pl.lit(None, dtype=pl.List(pl.String))
     return pl.struct(
-        # `id` duplicates `resource_id`, but RetrievalSource inherits `id` from
-        # `entity` and the generated Pydantic classes require it, so omitting it
-        # fails KGX validation. Stays until biolink-model #1706/#1731 land.
-        pl.lit(resource_id).alias("id"),
         pl.lit(resource_id).alias("resource_id"),
         pl.lit(resource_role).alias("resource_role"),
         (pl.concat_list([pl.lit(x) for x in upstream]) if upstream else empty).alias("upstream_resource_ids"),

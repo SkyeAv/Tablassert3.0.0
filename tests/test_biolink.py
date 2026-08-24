@@ -453,6 +453,29 @@ def test_validate_kgx_never_passes_a_missing_file(tmp_path: Path) -> None:
     assert report["edges"]["missing"] is True
 
 
+def test_validate_kgx_accepts_resource_id_only_retrieval_sources(tmp_path: Path) -> None:
+    """Validation aliases ``resource_id`` to the pinned model's inherited ``id`` in memory only."""
+    nodes: Path = tmp_path / "n.ndjson"
+    edges: Path = tmp_path / "e.ndjson"
+    nodes.write_text(json.dumps({"id": "HGNC:11998", "name": "TP53", "category": ["biolink:Gene"]}) + "\n")
+    edge: dict[str, Any] = {
+        "id": "e1",
+        "subject": "HGNC:11998",
+        "predicate": "biolink:associated_with",
+        "object": "MONDO:0008903",
+        "category": ["biolink:Association"],
+        "knowledge_level": "statistical_association",
+        "agent_type": "data_analysis_pipeline",
+        "sources": [{"resource_id": "infores:test", "resource_role": "primary_knowledge_source"}],
+    }
+    edges.write_text(json.dumps(edge) + "\n")
+
+    report: dict[str, Any] = validate_kgx(nodes, edges)
+    assert "id" not in json.loads(edges.read_text())["sources"][0]
+    assert report["edges"]["valid"] == 1
+    assert report["ok"] is True
+
+
 def test_validate_kgx_separates_pending_extras_from_real_failures(tmp_path: Path) -> None:
     """``valid_excluding_pending`` forgives a deliberate extra; ``valid`` stays strict."""
     nodes: Path = tmp_path / "n.ndjson"
