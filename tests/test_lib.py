@@ -778,6 +778,92 @@ def test_tcode_collect_upstream_source_record_urls_rehome_urls(fixtures_path: Pa
     assert by_resource["infores:other-source"]["source_record_urls"] is None
 
 
+def test_tcode_collect_explicit_sources_override_replaces_derivation(fixtures_path: Path) -> None:
+    """``override.sources`` is forwarded as the op's ``explicit`` arg and emitted verbatim, in order."""
+    template: list[dict[str, Any]] = [
+        {
+            "resource_id": "infores:multiomics-drugapprovals",
+            "resource_role": "aggregator_knowledge_source",
+            "upstream_resource_ids": ["infores:dailymed", "infores:faers"],
+            "source_record_urls": ["https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge_id}"],
+        },
+        {"resource_id": "infores:faers", "resource_role": "primary_knowledge_source"},
+        {"resource_id": "infores:dailymed", "resource_role": "supporting_data_source"},
+    ]
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    data["provenance"] = {"override": {"sources": template}}
+    store: Path = Path("/tmp/sectionhash.parquet")
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "name": "MULTIOMICS_KG", "infores": "infores:multiomics-kg"}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    source_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0] is retrieval_sources]
+    assert len(source_ops) == 1
+    # The template is forwarded (with unset optional fields dropped) as the fifth op arg.
+    source_args: tuple[Any, ...] = source_ops[0][1]  # pyright: ignore[reportAssignmentType]
+    assert source_args[4] == template
+
+    result: pl.DataFrame = source_ops[0][0](pl.LazyFrame({"subject": ["A"]}), *source_args).collect()
+    sources: list[dict[str, Any]] = result["sources"].to_list()[0]
+    assert [s["resource_id"] for s in sources] == ["infores:multiomics-drugapprovals", "infores:faers", "infores:dailymed"]
+    assert [s["resource_role"] for s in sources] == ["aggregator_knowledge_source", "primary_knowledge_source", "supporting_data_source"]
+    # `resource_id` is the sole identifier on each entry (no `id` mirror, #115).
+    assert all("id" not in s for s in sources)
+    # The `{edge_id}` placeholder stays unresolved at this stage: the edge id is a
+    # content hash assigned by the final dedup stage, after subgraphs are written.
+    assert sources[0]["source_record_urls"] == ["https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge_id}"]
+    assert sources[0]["upstream_resource_ids"] == ["infores:dailymed", "infores:faers"]
+    # Entries without urls/upstream emit typed nulls, like the default path.
+    assert sources[1]["source_record_urls"] is None
+    assert sources[1]["upstream_resource_ids"] is None
+    assert sources[2]["source_record_urls"] is None
+
+
+def test_resolve_edge_id_placeholders(tmp_path: Path) -> None:
+    """The post-dedup sweep substitutes each record's own ``id`` for ``{edge_id}``, edges file only."""
+    edges: Path = tmp_path / "graph.edges.ndjson"
+    with_placeholder: dict[str, Any] = {
+        "id": "uuid-1",
+        "subject": "CURIE:1",
+        "sources": [
+            {
+                "id": "infores:multiomics-drugapprovals",
+                "resource_id": "infores:multiomics-drugapprovals",
+                "resource_role": "aggregator_knowledge_source",
+                "source_record_urls": ["https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge_id}", "https://example.org/static"],
+            }
+        ],
+    }
+    without_placeholder: dict[str, Any] = {
+        "id": "uuid-2",
+        "subject": "CURIE:2",
+        "sources": [{"id": "infores:faers", "resource_id": "infores:faers", "resource_role": "primary_knowledge_source"}],
+    }
+    plain_without: str = json.dumps(without_placeholder)
+    edges.write_text(json.dumps(with_placeholder) + "\n" + plain_without + "\n", encoding="utf-8")
+
+    lib._resolve_edge_id_placeholders(edges)
+
+    lines: list[str] = edges.read_text(encoding="utf-8").splitlines()
+    resolved: dict[str, Any] = json.loads(lines[0])
+    assert resolved["sources"][0]["source_record_urls"] == [
+        "https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id=uuid-1",
+        "https://example.org/static",
+    ]
+    assert resolved["id"] == "uuid-1"
+    # Lines without the marker pass through untouched.
+    assert lines[1] == plain_without
+    assert not (tmp_path / "graph.edges.ndjson.placeholder.tmp").exists()
+
+    # A file without the marker is left byte-identical.
+    clean: Path = tmp_path / "clean.edges.ndjson"
+    content: str = plain_without + "\n"
+    clean.write_text(content, encoding="utf-8")
+    lib._resolve_edge_id_placeholders(clean)
+    assert clean.read_text(encoding="utf-8") == content
+
+
 def test_tcode_original_value_before_regex_for_columns(fixtures_path: Path) -> None:
     """tcode captures original value before regex for column encoded nodes."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import operator
 import re
@@ -44,7 +45,7 @@ from tablassert.coerce import (
 from tablassert.enums import EncodingMethods, Files, InformationResources, Repositories, Tokens
 from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
-from tablassert.models import Encoding, NodeEncoding, Qualifier, RIGConfig, Section
+from tablassert.models import EDGE_ID_PLACEHOLDER, Encoding, NodeEncoding, Qualifier, RIGConfig, Section
 from tablassert.nlp import level_one, level_two
 from tablassert.qc import fullmap_audit
 from tablassert.rig import (
@@ -554,7 +555,12 @@ def inline_supporting_study(lf: pl.LazyFrame, study_id: str, study_name: str | N
 
 
 def retrieval_sources(
-    lf: pl.LazyFrame, primary: str, upstream: list[str], urls: list[str], upstream_urls: dict[str, list[str]] | None = None
+    lf: pl.LazyFrame,
+    primary: str,
+    upstream: list[str],
+    urls: list[str],
+    upstream_urls: dict[str, list[str]] | None = None,
+    explicit: list[dict[str, Any]] | None = None,
 ) -> pl.LazyFrame:
     """Add the Biolink ``sources`` retrieval-provenance column.
 
@@ -572,18 +578,32 @@ def retrieval_sources(
     its own ``source_record_urls`` and the primary entry emits none (the primary is
     the transforming resource, not a downloadable record).
 
+    When ``explicit`` is given, exactly those entries are emitted, in order, and
+    ``primary``/``upstream``/``urls``/``upstream_urls`` are ignored. Each entry
+    template carries ``resource_id``, ``resource_role``, and optional
+    ``upstream_resource_ids``/``source_record_urls``; ``source_record_urls`` values
+    may contain the literal ``{edge_id}`` placeholder, which is NOT resolved here
+    (the edge id is only assigned at the final dedup stage) but in a post-dedup
+    sweep of the final edges NDJSON.
+
     Args:
         lf: Source LazyFrame.
         primary: Infores CURIE of the primary knowledge source.
         upstream: Infores CURIEs of upstream/supporting data sources.
         urls: Source record URLs for the primary entry (ignored when ``upstream_urls`` is set).
         upstream_urls: Optional per-upstream source record URLs keyed by infores CURIE.
+        explicit: Optional explicit entry templates emitted verbatim, in order.
 
     Returns:
         LazyFrame with a ``sources`` ``list[struct]`` column appended.
     """
-    if upstream_urls is not None:
-        entries: list[pl.Expr] = [_retrieval_source(primary, "primary_knowledge_source", upstream)]
+    if explicit is not None:
+        entries: list[pl.Expr] = [
+            _retrieval_source(entry["resource_id"], entry["resource_role"], entry.get("upstream_resource_ids"), entry.get("source_record_urls"))
+            for entry in explicit
+        ]
+    elif upstream_urls is not None:
+        entries = [_retrieval_source(primary, "primary_knowledge_source", upstream)]
         entries.extend(_retrieval_source(x, "supporting_data_source", urls=upstream_urls.get(x)) for x in upstream)
     else:
         entries = [_retrieval_source(primary, "primary_knowledge_source", upstream, urls)]
@@ -1253,6 +1273,12 @@ class Tcode(Section):
             if override and override.upstream_source_record_urls is not None
             else None
         )
+        # An explicit `sources` template replaces the derived primary/upstream
+        # emission entirely; the model already forbids combining it with
+        # `upstream_resource_ids`/`upstream_source_record_urls`.
+        explicit_sources: list[dict[str, Any]] | None = (
+            [entry.model_dump(exclude_none=True) for entry in override.sources] if override and override.sources is not None else None
+        )
         knowledge_level = override.knowledge_level if override else self.provenance.knowledge_level
         agent_type = override.agent_type if override else self.provenance.agent_type
         publication_values = override.publications if override else [publication_curie(self.provenance.repo, self.provenance.publication or "")]
@@ -1278,8 +1304,9 @@ class Tcode(Section):
             # RetrievalSource); current translator-ingests emits no flat
             # `primary_knowledge_source` scalar, so neither do we. A per-upstream URL
             # mapping (override.upstream_source_record_urls) re-homes the record URLs
-            # from the primary entry onto the matching supporting entries.
-            (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(u) for u in self.source.url], upstream_urls))
+            # from the primary entry onto the matching supporting entries; an explicit
+            # `sources` template (override.sources) replaces the whole derivation.
+            (retrieval_sources, (primary_knowledge_source, upstream_ids, [str(u) for u in self.source.url], upstream_urls, explicit_sources))
             if primary_knowledge_source
             else None,
             (publications, (publication_values,)) if publication_values else None,
@@ -1520,6 +1547,44 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
     p_in.unlink()
 
 
+def _resolve_edge_id_placeholders(edges_path: Path) -> None:
+    """Resolve ``{edge_id}`` placeholders in a final edges NDJSON file.
+
+    The edge ``id`` is a deterministic content hash assigned by the Rust deduper
+    after subgraphs are written, so explicit ``override.sources`` record URLs
+    cannot embed it during the polars build: the literal placeholder is what
+    gets hashed, and this post-dedup sweep substitutes each record's own id into
+    every string inside every ``sources[].source_record_urls`` list. The pass is
+    skipped entirely when no line contains the marker (cheap substring precheck,
+    no full parse), leaving the file byte-identical.
+
+    Args:
+        edges_path: Path to the deduplicated ``*.edges.ndjson`` file.
+
+    Returns:
+        ``None``; rewrites ``edges_path`` in place via a temp file when any
+        placeholder was resolved.
+    """
+    tmp_path: Path = edges_path.with_name(edges_path.name + ".placeholder.tmp")
+    resolved: bool = False
+    with edges_path.open("r", encoding="utf-8") as src, tmp_path.open("w", encoding="utf-8") as dst:
+        for line in src:
+            if EDGE_ID_PLACEHOLDER not in line:
+                dst.write(line)
+                continue
+            record: dict[str, Any] = json.loads(line)
+            for source in record.get("sources") or []:
+                urls: list[str] | None = source.get("source_record_urls")
+                if urls:
+                    source["source_record_urls"] = [url.replace(EDGE_ID_PLACEHOLDER, record["id"]) for url in urls]
+            dst.write(json.dumps(record, ensure_ascii=False) + "\n")
+            resolved = True
+    if resolved:
+        tmp_path.replace(edges_path)
+    else:
+        tmp_path.unlink()
+
+
 def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Fold any non-Biolink edge column into ``supporting_text`` as ``col: value`` strings.
 
@@ -1631,6 +1696,12 @@ def _write_ndjson(
     ``compile_graph``; each commented phase boundary below is a hook point for
     the US-009 ``on_phase`` progress callback.
 
+    Dedup assigns each edge ``id`` as the deterministic content hash of the
+    PRE-resolution record -- the literal ``{edge_id}`` placeholder in explicit
+    ``override.sources`` record URLs is what gets hashed -- and the placeholder
+    sweep that follows substitutes the assigned id into the final edges file
+    only, keeping ids deterministic.
+
     Args:
         subnodes: Per-section node LazyFrames from ``_collect_subframes``.
         subedges: Per-section edge LazyFrames from ``_collect_subframes``.
@@ -1665,6 +1736,9 @@ def _write_ndjson(
     if on_phase is not None:
         on_phase("dedup")
     dedup_stream(edges_tmp, is_edges=True)
+    # The deduper hashes the record WITH the literal `{edge_id}` placeholder still
+    # in place, so edge ids stay deterministic regardless of this resolution pass.
+    _resolve_edge_id_placeholders(edges_tmp.with_suffix(""))
     dedup_stream(nodes_tmp, is_edges=False)
 
     # Phase: rig. Summaries come from the FINAL deduplicated KGX files, and the

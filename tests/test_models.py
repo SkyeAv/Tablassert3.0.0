@@ -647,6 +647,109 @@ def test_manual_provenance_rejects_infores_key() -> None:
     assert "infores" in str(exc_info.value)
 
 
+def test_manual_provenance_accepts_explicit_sources_template() -> None:
+    """an explicit ``sources`` template emits valid RetrievalSource entries verbatim."""
+    override = ManualProvenance(  # pyright: ignore
+        sources=[
+            {
+                "resource_id": "infores:multiomics-drugapprovals",
+                "resource_role": "aggregator_knowledge_source",
+                "upstream_resource_ids": ["infores:dailymed", "infores:faers"],
+                "source_record_urls": ["https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge_id}"],
+            },
+            {"resource_id": "infores:faers", "resource_role": "primary_knowledge_source"},
+            {"resource_id": "infores:dailymed", "resource_role": "supporting_data_source"},
+        ]
+    )
+    assert override.sources is not None
+    assert [entry.resource_id for entry in override.sources] == ["infores:multiomics-drugapprovals", "infores:faers", "infores:dailymed"]
+    assert override.sources[0].source_record_urls == ["https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge_id}"]
+    assert override.sources[1].upstream_resource_ids is None
+
+
+def test_manual_provenance_sources_rejects_bad_role() -> None:
+    """``sources.resource_role`` must be a Biolink ResourceRoleEnum value."""
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(sources=[{"resource_id": "infores:external-source", "resource_role": "knowledge_source"}])  # pyright: ignore
+    assert "override-bad-sources" in str(exc_info.value)
+
+
+def test_manual_provenance_sources_rejects_non_infores_ids() -> None:
+    """``sources`` resource_id and upstream entries must be infores CURIEs."""
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(sources=[{"resource_id": "external-source", "resource_role": "primary_knowledge_source"}])  # pyright: ignore
+    assert "override-bad-sources" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            sources=[{"resource_id": "infores:external-source", "resource_role": "primary_knowledge_source", "upstream_resource_ids": ["dailymed"]}]
+        )
+    assert "override-bad-sources" in str(exc_info.value)
+
+
+def test_manual_provenance_sources_rejects_non_url_record_urls() -> None:
+    """``sources.source_record_urls`` entries must be http(s) URLs once ``{edge_id}`` is stripped."""
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            sources=[{"resource_id": "infores:external-source", "resource_role": "primary_knowledge_source", "source_record_urls": ["not-a-url"]}]
+        )
+    assert "override-bad-sources" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            sources=[
+                {
+                    "resource_id": "infores:external-source",
+                    "resource_role": "primary_knowledge_source",
+                    "source_record_urls": ["ftp://example.org/{edge_id}"],
+                }
+            ]
+        )
+    assert "override-bad-sources" in str(exc_info.value)
+
+
+def test_manual_provenance_sources_rejects_upstream_field_combinations() -> None:
+    """``sources`` is mutually exclusive with the upstream fields it subsumes."""
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            sources=[{"resource_id": "infores:external-source", "resource_role": "primary_knowledge_source"}],
+            upstream_resource_ids=["infores:upstream-source"],
+        )
+    assert "override-bad-sources" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            sources=[{"resource_id": "infores:external-source", "resource_role": "primary_knowledge_source"}],
+            upstream_source_record_urls={"infores:upstream-source": ["https://example.org/dataset"]},
+        )
+    assert "override-bad-sources" in str(exc_info.value)
+
+
+def test_manual_provenance_sources_rejects_incoherent_templates() -> None:
+    """``sources`` must be non-empty, deduplicated, and carry a primary/aggregator entry."""
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(sources=[])  # pyright: ignore
+    assert "override-bad-sources" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            sources=[
+                {"resource_id": "infores:external-source", "resource_role": "primary_knowledge_source"},
+                {"resource_id": "infores:external-source", "resource_role": "supporting_data_source"},
+            ]
+        )
+    assert "override-bad-sources" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        ManualProvenance(  # pyright: ignore
+            sources=[
+                {"resource_id": "infores:external-source", "resource_role": "supporting_data_source"},
+                {"resource_id": "infores:other-source", "resource_role": "supporting_data_source"},
+            ]
+        )
+    assert "override-bad-sources" in str(exc_info.value)
+
+
 def test_provenance_override_replaces_publication_requirement() -> None:
     """publication is required unless manual provenance override is set."""
     p = Provenance(override={"upstream_resource_ids": ["infores:external-source"], "publications": ["PMCID:PMC1234567"]})  # pyright: ignore

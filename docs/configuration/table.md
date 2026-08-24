@@ -428,7 +428,7 @@ provenance:
 
 #### Manual provenance override
 
-Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section's upstream sources, publications, and KL/AT. The primary entry of the edge `sources` list (`resource_role: primary_knowledge_source`) is **not** overridable per section; it always derives from the graph-level `infores` (see [Graph](graph.md)); put manual infores CURIEs in `upstream_resource_ids`.
+Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section's upstream sources, publications, and KL/AT. The primary entry of the edge `sources` list (`resource_role: primary_knowledge_source`) is **not** re-targetable per section via `upstream_resource_ids`; it derives from the graph-level `infores` (see [Graph](graph.md)) unless an explicit [`sources` template](#explicit-sources-template) is given. Put manual infores CURIEs in `upstream_resource_ids`.
 
 ```yaml
 provenance:
@@ -445,13 +445,49 @@ Override fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `sources` | List[Object] | No | Explicit retrieval-`sources` entry templates replacing the derived primary/upstream emission entirely. Mutually exclusive with `upstream_resource_ids` and `upstream_source_record_urls` (the template subsumes both). See [Explicit sources template](#explicit-sources-template). |
 | `upstream_resource_ids` | List[String] | No | Manual upstream source infores CURIEs replacing the repo-derived `PMC`/`PMID` source map, the sanctioned place for manual infores. Each entry must start with `infores:`. |
 | `upstream_source_record_urls` | Map[String, List[URL]] | No | Per-upstream source record URLs keyed by infores CURIE; every key must appear in `upstream_resource_ids`. When set, the section's `source.url` values serve the RIG only and are NOT emitted on the primary `sources` entry; each listed upstream supporting entry carries its own `source_record_urls` instead. |
 | `publications` | List[String] | No | Manual publication CURIEs. Entries must currently start with `PMCID:`; PMID compatibility for manual overrides is intentionally deferred. |
 | `knowledge_level` | String | No | Override-specific KL value. Defaults to `statistical_association`. |
 | `agent_type` | String | No | Override-specific AT value. Defaults to `data_analysis_pipeline`. |
 
-Tablassert emits the graph-level infores (or `infores:<graph-name>` when unset) as the primary entry of the Biolink `sources` list on each edge, `{resource_id: "infores:multiomics-kg", resource_role: "primary_knowledge_source", upstream_resource_ids: [...], source_record_urls: [...]}`, with one additional `supporting_data_source` entry per upstream. When `override.upstream_source_record_urls` is set, the primary entry emits no `source_record_urls` and each mapped supporting entry carries its own instead. No flat `primary_knowledge_source` scalar is emitted: current translator-ingests practice carries retrieval provenance only in `sources`, and the Biolink `RetrievalSource` class is where `resource_id` / `upstream_resource_ids` / `source_record_urls` are defined. Each retrieval-source entry uses `resource_id` as its sole identifier. The override cannot set a per-section primary source; manual infores CURIEs belong in `upstream_resource_ids`. Older flat `resource_id` / `primary_knowledge_source` output has been removed so generated KGX matches the Biolink edge contract.
+Tablassert emits the graph-level infores (or `infores:<graph-name>` when unset) as the primary entry of the Biolink `sources` list on each edge, `{resource_id: "infores:multiomics-kg", resource_role: "primary_knowledge_source", upstream_resource_ids: [...], source_record_urls: [...]}`, with one additional `supporting_data_source` entry per upstream. When `override.upstream_source_record_urls` is set, the primary entry emits no `source_record_urls` and each mapped supporting entry carries its own instead. When `override.sources` is set, that derivation is skipped entirely and the template entries are emitted verbatim, in order. No flat `primary_knowledge_source` scalar is emitted: current translator-ingests practice carries retrieval provenance only in `sources`, and the Biolink `RetrievalSource` class is where `resource_id` / `upstream_resource_ids` / `source_record_urls` are defined. Each retrieval-source entry uses `resource_id` as its sole identifier. Without `override.sources`, the override cannot set a per-section primary source; manual infores CURIEs belong in `upstream_resource_ids`. Older flat `resource_id` / `primary_knowledge_source` output has been removed so generated KGX matches the Biolink edge contract.
+
+#### Explicit sources template
+
+`override.sources` replaces the derived `sources` list with an explicit, ordered template — one Biolink `RetrievalSource` struct per entry. Use it when the emitted provenance must differ structurally from the "graph infores as primary + one supporting entry per upstream" shape, e.g. to mark the graph as an `aggregator_knowledge_source` with the real primary elsewhere.
+
+```yaml
+provenance:
+  override:
+    sources:
+      - resource_id: infores:multiomics-drugapprovals
+        resource_role: aggregator_knowledge_source
+        upstream_resource_ids: [infores:dailymed, infores:faers]
+        source_record_urls:
+          - "https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge_id}"
+      - resource_id: infores:faers
+        resource_role: primary_knowledge_source
+      - resource_id: infores:dailymed
+        resource_role: supporting_data_source
+```
+
+Entry fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `resource_id` | String | Yes | Infores CURIE of this entry (its sole identifier on output). Must start with `infores:`, and must be unique within the template. |
+| `resource_role` | String | Yes | One of the Biolink `ResourceRoleEnum` values: `primary_knowledge_source`, `aggregator_knowledge_source`, or `supporting_data_source`. Anything else fails KGX validation downstream, so it is rejected at config time. |
+| `upstream_resource_ids` | List[String] | No | Upstream infores CURIEs carried by this entry; each must start with `infores:`. |
+| `source_record_urls` | List[String] | No | Source record URLs carried by this entry. Each entry must be an absolute `http(s)://` URL, optionally containing the `{edge_id}` placeholder (see below). |
+
+Validation rules (all reported with error code `override-bad-sources`):
+
+- `sources` is **mutually exclusive** with `upstream_resource_ids` and `upstream_source_record_urls` — the template subsumes both, so combining them fails loudly.
+- When set, the list must be **non-empty**, `resource_id` values must be **unique**, and at least one entry must carry role `primary_knowledge_source` or `aggregator_knowledge_source`.
+
+**The `{edge_id}` placeholder.** A `source_record_urls` entry may embed the literal string `{edge_id}` to build per-edge URLs (e.g. a drill-down page keyed by edge id). The edge `id` is a deterministic content hash assigned at the final dedup stage — *after* subgraphs are written — so the placeholder cannot be interpolated during the table build. Instead, the literal placeholder is emitted into the subgraph (and is what the content hash covers, keeping ids deterministic), and a post-dedup sweep of the final `*.edges.ndjson` replaces `{edge_id}` with each record's own `id` in every `sources[].source_record_urls` string. Files without the marker are left byte-identical.
 
 ### Annotations
 
