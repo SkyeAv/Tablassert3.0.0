@@ -205,14 +205,7 @@ def test_compile_graph_unlinks_stale_tmp_outputs(monkeypatch: Any, tmp_path: Pat
             "agent_type": ["manual_agent"],
             "primary_knowledge_source": ["infores:un-kg"],
             "sources": [
-                [
-                    {
-                        "id": "infores:un-kg",
-                        "resource_id": "infores:un-kg",
-                        "resource_role": "primary_knowledge_source",
-                        "source_record_urls": ["https://example.org/un.tsv"],
-                    }
-                ]
+                [{"resource_id": "infores:un-kg", "resource_role": "primary_knowledge_source", "source_record_urls": ["https://example.org/un.tsv"]}]
             ],
         }
     ).write_parquet(sub)
