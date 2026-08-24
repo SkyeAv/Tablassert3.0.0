@@ -643,6 +643,40 @@ def is_multivalued(cls: type[Any], field: str) -> bool:
     return any(get_origin(arg) is list for arg in get_args(annotation))
 
 
+@cache
+def _retrieval_source_id_required() -> bool:
+    """Whether the installed model still requires the inherited source ``id`` field."""
+    retrieval_source: Any = getattr(_bm, "RetrievalSource", None)
+    id_field: Any = getattr(retrieval_source, "model_fields", {}).get("id")
+    return id_field is not None and id_field.is_required()
+
+
+def _validation_record(record: dict[str, Any], *, edge: bool) -> dict[str, Any]:
+    """Add only in-memory compatibility aliases needed by the installed Biolink model.
+
+    ``RetrievalSource`` in the currently pinned model still requires the inherited
+    ``Entity.id`` even though ``resource_id`` is the canonical provenance identifier
+    emitted by Tablassert. The alias is used solely for Pydantic validation; it never
+    changes the decoded KGX record or the files written by the pipeline.
+    """
+    if not edge:
+        return record
+    if not _retrieval_source_id_required():
+        return record
+    sources: Any = record.get("sources")
+    if not isinstance(sources, list):
+        return record
+    normalized: list[Any] = []
+    changed: bool = False
+    for source in sources:
+        if isinstance(source, dict) and "id" not in source and "resource_id" in source:
+            normalized.append({**source, "id": source["resource_id"]})
+            changed = True
+        else:
+            normalized.append(source)
+    return {**record, "sources": normalized} if changed else record
+
+
 def validate_record(record: dict[str, Any], *, edge: bool) -> list[str]:
     """Validate one KGX record against the Biolink class named by its ``category``.
 
@@ -659,7 +693,7 @@ def validate_record(record: dict[str, Any], *, edge: bool) -> list[str]:
     category: str = categories[0] if isinstance(categories, list) and categories else str(categories or "")
     cls: type[Any] = association_class(category) if edge else node_class(category)
     try:
-        cls(**record)
+        cls(**_validation_record(record, edge=edge))
     except ValidationError as error:
         return [f"{'.'.join(str(part) for part in item['loc']) or '?'}: {item['type']}" for item in error.errors()]
     return []
