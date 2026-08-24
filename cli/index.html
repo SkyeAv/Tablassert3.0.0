@@ -1834,12 +1834,18 @@ a pass.</p>
 <code>approval_ids</code> pass-through, and the KGX denormalized carryovers (<code>synonym</code>, <code>xref</code>, <code>relation</code>,
 <code>provided_by</code>, ...). Tablassert emits them on purpose, so they are counted separately as <em>pending</em>
 rather than treated as defects. The set is derived from the installed package, so a field leaves it
-the moment a <code>biolink-model</code> release declares it — as <code>effect_size</code> / <code>effect_type</code> did when 4.4.4
+the moment a <code>biolink-model</code> release declares it, as <code>effect_size</code> / <code>effect_type</code> did when 4.4.4
 shipped <a href="https://github.com/biolink/biolink-model/pull/1774">#1774</a>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
 </code></pre></div>
 <p>The strict count is what <code>ok</code> and the exit code use; the pending count is what
 <a href="#agent"><code>tablassert agent</code></a> optimizes against, so a deliberate gap never reads as a modelling error.</p>
+<p>Retrieval-source entries are the mirror case. Tablassert emits <code>resource_id</code> as each <code>sources</code> entry's
+sole identifier, while the pinned model still requires the inherited <code>Entity.id</code> on <code>RetrievalSource</code>.
+The validator supplies that <code>id</code> to its own in-memory copy of the record whenever the installed model
+requires it, so compliant output validates without the duplicate identifier ever being written to disk.
+The decoded record and the built NDJSON are untouched, and the alias stops being applied on its own
+once a model release drops the requirement.</p>
 <hr />
 <h2 id="typical-workflow">Typical workflow<a class="headerlink" href="#typical-workflow" title="Permanent link">&para;</a></h2>
 <ol>
