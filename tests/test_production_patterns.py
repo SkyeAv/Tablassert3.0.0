@@ -491,8 +491,9 @@ def test_copysign_transformation_in_pipeline(tmp_path: Path, monkeypatch: pytest
 
     edges: list[dict[str, Any]] = _parse_edges(edge_text)
     assert len(edges) == 1
-    # copysign(0.85, -1) == -0.85, emitted in the controlled {:.4g} decimal notation.
-    assert edges[0]["effect_size"] == "-0.85"
+    # copysign(0.85, -1) == -0.85, emitted as a real JSON number now that biolink-model
+    # 4.4.4 types `effect_size` as a float Association slot (PR #1774).
+    assert edges[0]["effect_size"] == -0.85
     assert edges[0]["effect_type"] == "spearmans_rho"
 
 

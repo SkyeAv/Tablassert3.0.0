@@ -219,7 +219,7 @@ Failures are grouped by field and error type, so a systematic modelling problem 
 rather than a million:
 
 ```text
-biolink-model 4.4.3
+biolink-model 4.4.4
 nodes: 424141/424141 valid (0 failures)
 edges: 2000085/2000085 valid (0 failures)
 KGX output is Biolink-compliant.
@@ -229,10 +229,12 @@ Exits non-zero when any record fails, so it can gate a release in CI. A missing 
 reported as `file not found` and also exits non-zero: a file that was never read must never count as
 a pass.
 
-Edges carrying `effect_size` / `effect_type` are reported invalid until a `biolink-model` release
-ships [#1774](https://github.com/biolink/biolink-model/pull/1774), because 4.4.3 declares neither on
-`Association`. The translator-ingest `approval_ids` pass-through is also intentionally absent from
-that model. These curated fields are counted separately as *pending* rather than treated as defects:
+Some edges carry fields the installed model declares on no association: the translator-ingest
+`approval_ids` pass-through, and the KGX denormalized carryovers (`synonym`, `xref`, `relation`,
+`provided_by`, ...). Tablassert emits them on purpose, so they are counted separately as *pending*
+rather than treated as defects. The set is derived from the installed package, so a field leaves it
+the moment a `biolink-model` release declares it — as `effect_size` / `effect_type` did when 4.4.4
+shipped [#1774](https://github.com/biolink/biolink-model/pull/1774):
 
 ```text
 edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)

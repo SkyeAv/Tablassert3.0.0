@@ -2,7 +2,10 @@
 
 Production configurations vendored from sibling repositories. In every file each
 `local:` value was rewritten to `local: payload.placeholder` (validation never reads
-payloads); everything else is byte-identical to the source.
+payloads). The three `dakp/` configs additionally have their `avoid:` entry
+`AffinityMeasurement` rewritten to `ProteinLigandAssayResult`, the name biolink-model
+4.4.4 renamed that class to; the original spelling no longer validates. Everything else
+is byte-identical to the source.
 
 ## positive/
 
