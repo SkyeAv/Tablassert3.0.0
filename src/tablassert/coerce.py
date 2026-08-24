@@ -48,8 +48,6 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
         null p-value → null qualifier. The qualifier may only be set when
         ``p_value``/``adjusted_p_value`` is populated (Biolink class rule).
     """
-    from rapidfuzz import fuzz
-
     names: list[str] = lf.collect_schema().names()
     # Same rigorous classification as ``coerce_pvalue_columns``: a column is a significance
     # source only when ``pvalue_target`` accepts it — NOT by naive substring — so non-p-value
@@ -66,11 +64,14 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
     # bucket is present. Raw p-value is the canonical significance source; adjusted is the fallback.
     preferred: str = col if col in buckets else next(iter(buckets))
     candidates: list[str] = buckets[preferred]
-    reference: str = preferred.replace("_", " ")
-    # An existing canonical column always wins; fuzzy ranking only picks among aliases
-    # (same rule as ``coerce_pvalue_columns``).
-    chosen: str = preferred if preferred in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
+    # Same selection rule as ``coerce_pvalue_columns``: canonical wins, then a
+    # raw candidate beats a -log10 alias, then fuzzy ranking among what is left.
+    chosen: str = _best_candidate(candidates, preferred, preferred)
     expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
+    # A -log10(p) score column must be un-logged before banding, or the bands
+    # invert (a score of 8 means p = 1e-8, not p = 8.0 -> not_significant).
+    if is_neglog10_column(chosen):
+        expr = _unlog10(expr)
     band: pl.Expr = (
         pl.when(expr.is_null())
         .then(pl.lit(None, dtype=pl.String))
@@ -173,6 +174,54 @@ SIGNIFICANCE_FLAG_PATTERN: re.Pattern[str] = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# A -log10(p/q) score column: an explicit negation marker (negative / negated /
+# neg / -) before a log/log10 p-or-q token ("negative log p value" — the
+# mokg-v12 HOYER1 spelling, "negative log10 p value", "-log10(p)",
+# "neg log10 q value"). The trailing token must be a *complete* p/q-value
+# token (or a bare delimited P), so the [pq] cannot swallow the first letter
+# of an unrelated word ("negative log protein" stays out). A plain
+# "log10 p value" without a negation marker does NOT match: the sign
+# convention is ambiguous there, so those columns keep riding verbatim rather
+# than being un-logged on a guess.
+NEGLOG10_PVALUE_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    (?<![A-Za-z0-9])
+    (?: negative | negated | neg | - )
+    [\s_.\-()]*
+    log (?: 10 )?
+    [\s_.\-()]*
+    (?:
+        [pq] {_SEP} {_VALUE} {_NUMQUAL}    # complete p/q-value token ("log p value", "log q-value", "log pvalue")
+        | p (?! [A-Za-z0-9])               # bare P standing alone ("-log10(p)", "-log10 P")
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def is_neglog10_column(name: str) -> bool:
+    """Return True when a column reports a -log10(p/q) score instead of the raw p/q value.
+
+    Args:
+        name: Raw source column name.
+
+    Returns:
+        True when the name carries an explicit negation marker before a
+        log/log10 p-or-q token, else False. Plain ``log``/``log10`` spellings
+        without a marker are deliberately excluded (sign convention
+        ambiguous), as is everything without a log token at all.
+    """
+    return bool(NEGLOG10_PVALUE_PATTERN.search(name))
+
+
+def _unlog10(expr: pl.Expr) -> pl.Expr:
+    """Convert a -log10 score expression back to its original scale (10**-x).
+
+    Float64 underflow floors extreme scores at ``0.0`` — indistinguishable
+    from ``p ~ 0`` in practice, and the significance band is identical either
+    way. Nulls stay null.
+    """
+    return pl.lit(10.0) ** (-expr)
 
 
 def pvalue_target(name: str) -> str | None:
@@ -215,10 +264,37 @@ def pvalue_target(name: str) -> str | None:
     return "adjusted_p_value" if is_adjusted else "p_value"
 
 
+def _best_candidate(candidates: list[str], target: str, chosen: str) -> str:
+    """Pick the column a numeric p/q-value slot should read from.
+
+    A raw (non-neglog) candidate is always preferred over a -log10 alias of
+    the same statistic: the raw column holds the p/q value itself, while the
+    alias needs un-logging. Fuzzy ranking only runs when no raw candidate
+    exists (or only neglog candidates do), so a short raw name ("P", "FDR")
+    can no longer lose to a long -log10 alias it would then be un-logged over.
+
+    Args:
+        candidates: Column names bucketed onto ``target`` by ``pvalue_target``.
+        target: Canonical slot name (``p_value`` / ``adjusted_p_value``).
+        chosen: The canonical name when it is itself among the candidates
+            (the existing canonical-wins rule), else a sentinel that is not.
+
+    Returns:
+        The winning column name.
+    """
+    from rapidfuzz import fuzz
+
+    pool: list[str] = [c for c in candidates if not is_neglog10_column(c)] or candidates
+    return chosen if chosen in pool else max(pool, key=lambda c: fuzz.ratio(c, target.replace("_", " ")))
+
+
 def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Rename p-value-like columns to Biolink KGX-compliant ``p_value`` / ``adjusted_p_value``.
 
     Picks a single best fuzzy match per target when multiple candidates exist.
+    A chosen column that reports a -log10(p/q) score (see
+    :func:`is_neglog10_column`) is un-logged (``p = 10**-x``) as it is renamed,
+    so the slot receives the p-value the model types it as.
 
     Args:
         lf: Source LazyFrame.
@@ -226,9 +302,6 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     Returns:
         LazyFrame with the chosen columns renamed (no-op if no candidates).
     """
-    # Picks a single best fuzzy match per target when multiple candidates exist.
-    from rapidfuzz import fuzz
-
     names: list[str] = lf.collect_schema().names()
     buckets: dict[str, list[str]] = {}
     for n in names:
@@ -237,14 +310,23 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             buckets.setdefault(target, []).append(n)
 
     renames: dict[str, str] = {}
+    unlog_targets: list[str] = []
     for target, candidates in buckets.items():
-        reference: str = target.replace("_", " ")
-        # An existing canonical column always wins; fuzzy ranking only picks among aliases.
-        chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
+        # An existing canonical column always wins; a raw candidate beats a
+        # -log10 alias before fuzzy ranking has any say.
+        chosen: str = _best_candidate(candidates, target, target)
         if chosen != target:
             renames[chosen] = target
+        # A -log10(p) score must be un-logged when it lands on the numeric slot.
+        if is_neglog10_column(chosen):
+            unlog_targets.append(target)
 
-    return lf.rename(renames) if renames else lf
+    if not renames and not unlog_targets:
+        return lf
+    out: pl.LazyFrame = lf.rename(renames) if renames else lf
+    if unlog_targets:
+        out = out.with_columns([_unlog10(pl.col(t).cast(pl.Float64, strict=False)).alias(t) for t in unlog_targets])
+    return out
 
 
 # --- Study-size fragments ----------------------------------------------------
