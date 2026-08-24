@@ -1873,24 +1873,29 @@ cannot drift from the model the build validates against:</p>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>- any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
 </code></pre></div>
 <div class="admonition note">
-<p class="admonition-title"><code>effect_size</code> / <code>effect_type</code> / <code>approval_ids</code> are exempt</p>
-<p>Tablassert emits <code>effect_size</code> / <code>effect_type</code> deliberately, pending
-<a href="https://github.com/biolink/biolink-model/pull/1774">biolink-model#1774</a>, and emits
-<code>approval_ids</code> as a translator-ingest pass-through. The installed model declares none of
-these on <code>Association</code>, so a strict check rejects edges carrying them. <code>biolink_valid_pct</code>
-exempts them (and the other curated KGX carryovers) so the agent is scored on <strong>its own</strong>
-decisions.
-The exempt set is <em>derived</em> (<code>TABLASERT_EDGE_EXTRAS - &lt;fields any association declares&gt;</code>), so it
-empties itself when the model catches up, with no code change.</p>
+<p class="admonition-title"><code>approval_ids</code> is exempt</p>
+<p>Tablassert emits <code>approval_ids</code> as a translator-ingest pass-through; the installed model
+declares no such slot on <code>Association</code>, so a strict check rejects edges carrying it.
+<code>biolink_valid_pct</code> exempts it (and the other curated KGX carryovers) so the agent is
+scored on <strong>its own</strong> decisions.
+The exempt set is <em>derived</em> from <code>TABLASERT_EDGE_EXTRAS</code> minus the fields any association
+declares, so it empties itself when the model catches up. That is exactly what happened to
+<code>effect_size</code> and <code>effect_type</code>: they were exempt pending
+<a href="https://github.com/biolink/biolink-model/pull/1774">biolink-model#1774</a>, and dropped out
+of the set when biolink-model 4.4.4 shipped them as real <code>Association</code> slots.</p>
 </div>
 <p>Two related silent behaviours the agent's prompt now names, since neither raises:</p>
 <ul>
-<li>An annotation like <code>supporting_study_size</code> or <code>sample_size</code> is declared in the LinkML schema but
-  attached to <strong>no</strong> Pydantic class, so its value is routed onto the inlined <code>StudyResult</code> rather than
-  emitted on the edge. Names that are not association slots at all (<code>q_value</code>, <code>fold_change</code>, …) are
-  folded into <code>supporting_text</code>. Authoring either now emits a <code>BiolinkRelocationWarning</code> naming where
-  the value actually went, a warning, not an error: nothing is lost, and every existing config
-  keeps building.</li>
+<li>An annotation like <code>supporting_study_size</code> or <code>sample_size</code> names study-level metadata.
+  biolink-model 4.4.4 (<a href="https://github.com/biolink/biolink-model/pull/1770">PR #1770</a>)
+  deprecated the old <code>supporting_study_*</code> association slots and replaced them with <code>Study</code>
+  node properties, so the value is carried on the edge's inlined supporting <code>Study</code> (as
+  <code>study_size</code>, <code>study_cohort</code>, and related fields) rather than emitted on the edge.
+  <code>relationship_strength</code> is not one of these. It is a legacy alias coerced to the real edge
+  slot <code>effect_size</code>. Names that are not association slots at all (<code>fold_change</code> alone,
+  <code>z_score</code>, and similar names) are folded into <code>supporting_text</code>. Authoring any relocated
+  name emits a <code>BiolinkRelocationWarning</code> naming where the value actually went, a warning,
+  not an error: nothing is lost, and every existing config keeps building.</li>
 <li>Enum-ranged qualifiers take a literal token (<code>object_direction_qualifier: increased</code>), never a
   CURIE, and are deliberately <strong>not</strong> entity-resolved. <code>map_coverage</code> skips them for the same reason
   the build does, so they no longer depress a config's coverage score for working correctly.</li>
