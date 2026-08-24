@@ -233,7 +233,7 @@ Some edges carry fields the installed model declares on no association: the tran
 `approval_ids` pass-through, and the KGX denormalized carryovers (`synonym`, `xref`, `relation`,
 `provided_by`, ...). Tablassert emits them on purpose, so they are counted separately as *pending*
 rather than treated as defects. The set is derived from the installed package, so a field leaves it
-the moment a `biolink-model` release declares it — as `effect_size` / `effect_type` did when 4.4.4
+the moment a `biolink-model` release declares it, as `effect_size` / `effect_type` did when 4.4.4
 shipped [#1774](https://github.com/biolink/biolink-model/pull/1774):
 
 ```text
@@ -242,6 +242,13 @@ edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model supp
 
 The strict count is what `ok` and the exit code use; the pending count is what
 [`tablassert agent`](#agent) optimizes against, so a deliberate gap never reads as a modelling error.
+
+Retrieval-source entries are the mirror case. Tablassert emits `resource_id` as each `sources` entry's
+sole identifier, while the pinned model still requires the inherited `Entity.id` on `RetrievalSource`.
+The validator supplies that `id` to its own in-memory copy of the record whenever the installed model
+requires it, so compliant output validates without the duplicate identifier ever being written to disk.
+The decoded record and the built NDJSON are untouched, and the alias stops being applied on its own
+once a model release drops the requirement.
 
 ---
 
