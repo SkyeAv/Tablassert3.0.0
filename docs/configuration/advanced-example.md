@@ -1,8 +1,8 @@
 # Advanced Example: Real-World Configuration
 
 A fully-annotated real-world table configuration (ALAMV6.yaml) showing complex regex, taxonomic
-filtering, and statistical annotations working together. **Source:** microbiome–chemical correlation
-analysis from PMC11708054 — an Excel file from which we extract correlations between gut microbiota
+filtering, and statistical annotations working together. **Source:** microbiome-chemical correlation
+analysis from PMC11708054, an Excel file from which we extract correlations between gut microbiota
 and tamoxifen metabolites.
 
 ## Full Configuration
@@ -66,22 +66,22 @@ template:
       encoding: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction
 ```
 
-`miscellaneous_notes` is a freetext escape hatch — use `method: value` for a constant note across the
+`miscellaneous_notes` is a freetext escape hatch: use `method: value` for a constant note across the
 whole table or `method: column` to pull per-row notes from the source (see
 [allow-list and auto-folding](table.md#allow-list-and-auto-folding)).
 
 ## Key Techniques
 
-- **Excel column letters** — `encoding: A`/`B`/`C` reference the first/second/third columns of the
+- **Excel column letters**: `encoding: A`/`B`/`C` reference the first/second/third columns of the
   headerless source (organism names, Spearman rho, p-value).
-- **Regex pipeline** — the subject runs three substitutions in order: `.*g__` → ``
+- **Regex pipeline**: the subject runs three substitutions in order: `.*g__` → ``
   (`d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`), then `;s__` → ` `
   (`Lactobacillus;s__rhamnosus` → `Lactobacillus rhamnosus`), then `sp` → `sp. `.
-- **Taxonomic filtering** — `prioritize: [OrganismTaxon]` + `avoid: [Gene]` stop "Lactobacillus"
+- **Taxonomic filtering**: `prioritize: [OrganismTaxon]` + `avoid: [Gene]` stop "Lactobacillus"
   resolving to a similarly-named gene.
-- **Mixed annotations** — `method: value` for constants (same every row), `method: column` for
+- **Mixed annotations**: `method: value` for constants (same every row), `method: column` for
   per-row values.
-- **Subject-predicate-object** — subject varies per row (column), predicate `correlated_with` is
+- **Subject-predicate-object**: subject varies per row (column), predicate `correlated_with` is
   fixed, object `CHEBI:41774` is fixed → `Lactobacillus rhamnosus --[correlated_with]--> 13C-tamoxifen`.
 
 ??? note "Regex dialect constraint"
@@ -102,10 +102,10 @@ whole table or `method: column` to pull per-row notes from the source (see
 **Edges:** Allow-listed annotation columns (`p_value`, `effect_size`, `effect_type`) stay as
 top-level edge fields (`p_value` in controlled scientific-notation string form, `effect_size` as a real
 JSON number since biolink-model 4.4.4). Study metadata (`study_size`, here declared as a constant)
-lands on the edge's inlined supporting `Study` — the `Study.id` is the publication CURIE, `Study.name`
+lands on the edge's inlined supporting `Study`; the `Study.id` is the publication CURIE, `Study.name`
 the worksheet, and the single `StudyResult` anchors the source row as its `row:<N>` id. Any
-non-Biolink-slot name — here `assertion_method`, `multiple_testing_correction_method`,
-`miscellaneous_notes` — folds into the edge's `supporting_text` list as `"name: value"` entries
+non-Biolink-slot name such as `assertion_method`, `multiple_testing_correction_method`, and
+`miscellaneous_notes` folds into the edge's `supporting_text` list as `"name: value"` entries
 (sorted alphabetically):
 
 ```json
@@ -114,9 +114,6 @@ non-Biolink-slot name — here `assertion_method`, `multiple_testing_correction_
   "subject": "NCBITaxon:47715",
   "predicate": "biolink:correlated_with",
   "object": "CHEBI:41774",
-  "p_value": "1.0000e-03",
-  "effect_size": 0.85,
-  "effect_type": "spearmans_rho",
   "has_supporting_studies": {
     "PMCID:PMC11708054": {
       "id": "PMCID:PMC11708054",
@@ -125,6 +122,9 @@ non-Biolink-slot name — here `assertion_method`, `multiple_testing_correction_
       "has_study_results": [{"id": "row:3"}]
     }
   },
+  "p_value": "1.0000e-03",
+  "effect_size": 0.85,
+  "effect_type": "spearmans_rho",
   "supporting_text": [
     "assertion_method: Spearman correlation",
     "miscellaneous_notes: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction",
@@ -216,7 +216,7 @@ template:
 ```
 
 Each column-mapped node gets its own `prioritize` list to guide disambiguation. `remove` strips each
-listed pattern (replace with empty string); `regex` applies an ordered `pattern`→`replacement` list —
+listed pattern (replace with empty string); `regex` applies an ordered `pattern`→`replacement` list;
 both transform cell text in place before resolution, and neither drops rows.
 
 ---
@@ -225,7 +225,7 @@ both transform cell text in place before resolution, and neither drops rows.
 
 Wide tables where each column encodes a different object (e.g., 24 metabolite columns for the same
 microbe rows). Sections inherit the template's `source`, `provenance`, and `subject`, overriding only
-the `object` (and optionally `row_slice`) per section — one section entry per metabolite column keeps a
+the `object` (and optionally `row_slice`) per section: one section entry per metabolite column keeps a
 24-metabolite config out of 24 separate files.
 
 ```yaml

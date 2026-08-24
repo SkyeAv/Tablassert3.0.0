@@ -114,21 +114,21 @@ uv run pre-commit install --install-hooks
 
 Hooks are split across two stages so that committing stays cheap while the checks that most often break CI still run before anything leaves your machine.
 
-On every **commit** — fast, auto-fixing:
+On every **commit**, fast and auto-fixing:
 
 - `ruff`: fixes lint issues where possible.
 - `ruff-format`: formats Python files.
 - `cargo-fmt`: runs `cargo fmt --check --manifest-path rust/Cargo.toml`.
 - `uv-lock-check`: runs `uv lock --check` when `pyproject.toml` or `uv.lock` changes, so a dependency edit that was never relocked fails here instead of as an opaque CI sync error.
 
-On every **push** — the whole-repo gates:
+On every **push**, the whole-repo gates:
 
 - `pyright`: the same type check CI runs.
 - `cargo-clippy`: all targets, warnings denied.
 
 The ruff hooks cover the **whole tree**, matching CI's `ruff check .`. They used to be scoped to `src/` and `tests/`, which meant `examples/` could only ever fail in CI.
 
-The full pytest suite and `cargo test` are deliberately in neither stage — they rebuild the Rust extension, and CI shards them across four runners far faster than a local serial run. Use `make check` when you want everything locally.
+The full pytest suite and `cargo test` are deliberately in neither stage; they rebuild the Rust extension, and CI shards them across four runners far faster than a local serial run. Use `make check` when you want everything locally.
 
 ## Running subsets
 

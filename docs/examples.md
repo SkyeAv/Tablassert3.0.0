@@ -1,6 +1,6 @@
 # Use Case Gallery
 
-**Turn real tabular sources — CSV, TSV, or Excel — into KGX-compliant nodes and edges.** Each pattern
+**Turn real tabular sources (CSV, TSV, or Excel) into KGX-compliant nodes and edges.** Each pattern
 below leads with the data type and the outcome it produces, then gives a complete, schema-valid
 configuration and the techniques that make it work.
 
@@ -147,7 +147,7 @@ template:
 
 **Key techniques:**
 
-- **Regex pipeline** cleans raw taxonomic strings (`d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`). Patterns must be Polars `str.replace_all()`-compatible (Rust `regex` engine) — no backreferences (`\1`, `\2`, …) or lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`); plain and non-capturing groups are supported, so chain several simple substitutions when needed.
+- **Regex pipeline** cleans raw taxonomic strings (`d__Bacteria;p__Firmicutes;g__Lactobacillus` → `Lactobacillus`). Patterns must be Polars `str.replace_all()`-compatible (Rust `regex` engine): no backreferences (`\1`, `\2`, …) or lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`); plain and non-capturing groups are supported, so chain several simple substitutions when needed.
 - **Avoid list** (`avoid: [Gene]`) prevents organism names resolving to gene entities; **fixed-value object** (`method: value`) assigns the same metabolite CURIE to all rows.
 
 ---
@@ -207,7 +207,7 @@ sections:
 
 **Key techniques:**
 
-- **Template + sections** avoids repeating source and provenance for each pathway column — each section provides its own predicate and object while inheriting the shared subject and source.
+- **Template + sections** avoids repeating source and provenance for each pathway column: each section provides its own predicate and object while inheriting the shared subject and source.
 - **Per-section annotations** tag edges with the pathway database source.
 
 ---
@@ -257,7 +257,7 @@ template:
 **Key techniques:**
 
 - **Reindex filtering** keeps only rows where column C (p-value) < 0.05 AND column D (sample size) >= 100; multiple reindex conditions are ANDed together.
-- **Comparison operators** — `lt` (less than), `ge` (greater or equal), `eq`, `ne`, `gt`, `le`.
+- **Comparison operators**: `lt` (less than), `ge` (greater or equal), `eq`, `ne`, `gt`, `le`.
 
 ---
 
@@ -296,7 +296,7 @@ template:
 **Key techniques:**
 
 - **Forward fill** (`fill: forward`) propagates the last non-null value downward, mapping subcategory rows to their parent category.
-- **Other fill strategies** — `backward`, `min`, `max`, `mean`, `zero`, `one`.
+- **Other fill strategies**: `backward`, `min`, `max`, `mean`, `zero`, `one`.
 
 ---
 

@@ -41,8 +41,6 @@ TablassertErrorCodes = Literal[
     "rig-terms-empty",
     "rig-legacy-keys",
     "rig-validation-failed",
-    "legacy-unsupported-syntax",
-    "legacy-source-unresolved",
 ]
 
 
@@ -96,19 +94,6 @@ class UnpairedEffectAnnotationWarning(UserWarning):
     dropped and from where -- and keeps the section and its edges, instead of failing the whole
     section over a value the build would have discarded anyway. Its own category so callers can
     silence or assert on these drops without touching the relocation or deprecation scaffolds.
-    """
-
-
-class LegacyDuplicateKeyWarning(UserWarning):
-    """A legacy YAML config declared the same mapping key more than once.
-
-    PyYAML's default construction silently keeps only the LAST occurrence of a duplicate key,
-    dropping everything earlier occurrences contributed — unnoticed data loss in human-curated
-    legacy configs that accumulated duplicates over years. The legacy loader instead MERGES the
-    occurrences (dict+dict deep-merged, list+list extended, later value wins otherwise) and fires
-    this warning naming the key and line so the curator can fix the source file. Its own category
-    so callers can silence or assert on duplicate merges without touching the relocation or
-    deprecation scaffolds.
     """
 
 
@@ -188,36 +173,6 @@ class GraphValidationError(TablassertError):
 class SectionValidationError(TablassertError):
     def __init__(self, config: Path, section_hash: str, detail: str) -> None:
         super().__init__(f"Section validation failed: {config} (hash {section_hash[:8]})\n{detail}", code="section-validation-failed")
-
-
-class LegacyUnsupportedSyntaxError(TablassertError):
-    """A legacy config carries a construct the v12 converter cannot translate.
-
-    Conversion is all-or-nothing: raising instead of skipping keeps a
-    half-understood legacy file from ever producing a partial v12 config that
-    silently drops whatever the converter did not recognize.
-    """
-
-    def __init__(self, config: Path, detail: str) -> None:
-        super().__init__(f"Legacy config {config} uses a construct unsupported by the v12 conversion: {detail}", code="legacy-unsupported-syntax")
-
-
-class LegacySourceUnresolvedError(TablassertError):
-    """A legacy ``source.local`` could not be mapped onto a real payload file.
-
-    The converter NEVER keeps a stale legacy path (``./DATALAKE/...``): a config
-    pointing at a file that does not exist would only fail deep inside a build.
-    Resolution needs the downloads directory holding the fetched payload — and,
-    when it is missing, ``fetch=True`` to download the article from PMC open access.
-    """
-
-    def __init__(self, config: Path, local: str, tried: Sequence[str]) -> None:
-        locations: str = "; ".join(tried)
-        super().__init__(
-            f"Legacy config {config}: cannot resolve `source.local` {local!r} to a downloaded payload — tried: {locations}. "
-            "Supply the downloads directory holding the article payload, or pass fetch=True to download it from PMC open access.",
-            code="legacy-source-unresolved",
-        )
 
 
 class BabelDownloadError(TablassertError):

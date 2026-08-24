@@ -2,15 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tablassert.errors import (
-    DOCS_URL,
-    BabelDownloadError,
-    GraphValidationError,
-    LegacySourceUnresolvedError,
-    LegacyUnsupportedSyntaxError,
-    QcRuntimeMissingError,
-    SectionValidationError,
-)
+from tablassert.errors import DOCS_URL, BabelDownloadError, GraphValidationError, QcRuntimeMissingError, SectionValidationError
 
 
 def test_qc_runtime_missing_error_code_and_docs_url() -> None:
@@ -55,29 +47,3 @@ def test_babel_download_error_code_and_docs_url() -> None:
     err: BabelDownloadError = BabelDownloadError("https://stars.renci.org/var/babel_outputs/x.gz", 5, RuntimeError("network down"))
     assert err.code == "babel-download-failed"
     assert str(err).endswith(DOCS_URL + "babel-download-failed")
-
-
-def test_legacy_unsupported_syntax_error_code_and_docs_url() -> None:
-    """Guard: an untranslatable legacy construct carries a stable slug and a docs link.
-
-    The conversion must fail ALL-OR-NOTHING with an actionable code, never a bare
-    traceback and never a half-converted config.
-    """
-    err: LegacyUnsupportedSyntaxError = LegacyUnsupportedSyntaxError(Path("table.yaml"), "unknown top-level key(s) ['statement']")
-    assert err.code == "legacy-unsupported-syntax"
-    assert str(err).endswith(DOCS_URL + "legacy-unsupported-syntax")
-
-
-def test_legacy_source_unresolved_error_code_and_docs_url() -> None:
-    """Guard: an unmapped legacy ``source.local`` carries a stable slug and a docs link.
-
-    The message names the stale path and every location tried, so the fix (supply the
-    downloads directory, or fetch=True) is mechanical.
-    """
-    err: LegacySourceUnresolvedError = LegacySourceUnresolvedError(
-        Path("table.yaml"), "./DATALAKE/A.xlsx", ["basename 'A.xlsx' under /dl (recursive)"]
-    )
-    assert err.code == "legacy-source-unresolved"
-    message: str = str(err)
-    assert "./DATALAKE/A.xlsx" in message
-    assert message.endswith(DOCS_URL + "legacy-source-unresolved")

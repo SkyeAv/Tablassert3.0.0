@@ -1,14 +1,14 @@
 # Utilities (utils)
 
-The `tablassert.utils` module provides the shared working-directory constants and a compact hashing helper used throughout the CLI — import it for deterministic section hashes and the `.tablassert/` artifact layout. Deterministic UUID generation for KGX edge identifiers lives in the Rust extension (`tablassert.rs`) and is documented below as well.
+The `tablassert.utils` module provides the shared working-directory constants and a compact hashing helper used throughout the CLI; import it for deterministic section hashes and the `.tablassert/` artifact layout. Deterministic UUID generation for KGX edge identifiers lives in the Rust extension (`tablassert.rs`) and is documented below as well.
 
 ## Constants
 
-**`BASE: Path`** — `Path("./.tablassert")`
+**`BASE: Path`**: `Path("./.tablassert")`
 
 The single parent working directory. All runtime artifacts live beneath it.
 
-**`STORE: Path`** — `BASE / "store"`
+**`STORE: Path`**: `BASE / "store"`
 
 Intermediate parquet storage for compiled subgraphs (`.tablassert/store/`). Created on import.
 

@@ -1,6 +1,6 @@
 # Table Configuration Reference
 
-Table configurations define how Tablassert transforms tabular data (Excel, CSV, TSV) into knowledge-graph assertions — author one per source table to declare its source, triple mappings, entity-resolution rules, provenance, and optional edge annotations.
+Table configurations define how Tablassert transforms tabular data (Excel, CSV, TSV) into knowledge-graph assertions: author one per source table to declare its source, triple mappings, entity-resolution rules, provenance, and optional edge annotations.
 
 ## Template vs Sections
 
@@ -89,8 +89,8 @@ Defines the data file location and format.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"excel"`, but specify it explicitly in configs. |
-| `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
-| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the primary `sources` entry's `source_record_urls` list and in the RIG; when `provenance.override.upstream_source_record_urls` is set, RIG only — the per-upstream mapping determines edge placement). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
+| `local` | Path | Yes | Local file path the source is read from. The file must already exist here; Tablassert does not download it. |
+| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the primary `sources` entry's `source_record_urls` list and in the RIG; when `provenance.override.upstream_source_record_urls` is set, RIG only; the per-upstream mapping determines edge placement). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
 | `sheet` | String | No | Sheet name. Defaults to `"Sheet1"`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -107,15 +107,15 @@ source:
   row_slice: [1, auto]  # Start at the second physical row, read to end
 ```
 
-> **Specify `kind` explicitly.** Tablassert selects the reader purely from the declared `kind` — `excel` reads a workbook (`sheet`), `text` scans delimited text (`delimiter`); the file on disk is never inspected to infer its format. Because `kind` carries a default, a source whose `kind` is omitted or does not match the actual file is still accepted and fed to the wrong reader, surfacing only later as a read error or garbled rows. Stating `kind` explicitly makes a mis-declared source fail fast.
+> **Specify `kind` explicitly.** Tablassert selects the reader purely from the declared `kind`: `excel` reads a workbook (`sheet`), `text` scans delimited text (`delimiter`); the file on disk is never inspected to infer its format. Because `kind` carries a default, a source whose `kind` is omitted or does not match the actual file is still accepted and fed to the wrong reader, surfacing only later as a read error or garbled rows. Stating `kind` explicitly makes a mis-declared source fail fast.
 
 #### Text Source (CSV/TSV)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | String | No | Source kind. Model default is `"text"`, but specify it explicitly in configs. |
-| `local` | Path | Yes | Local file path the source is read from. The file must already exist here — Tablassert does not download it. |
-| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the primary `sources` entry's `source_record_urls` list and in the RIG; when `provenance.override.upstream_source_record_urls` is set, RIG only — the per-upstream mapping determines edge placement). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
+| `local` | Path | Yes | Local file path the source is read from. The file must already exist here; Tablassert does not download it. |
+| `url` | List[URL] | Yes | One or more source URLs recorded as provenance (emitted as the primary `sources` entry's `source_record_urls` list and in the RIG; when `provenance.override.upstream_source_record_urls` is set, RIG only; the per-upstream mapping determines edge placement). At least one URL is required; supply multiple to back a single section with several links. Format-validated only; not fetched. |
 | `delimiter` | String | No | Field delimiter. Defaults to `","`. |
 | `row_slice` | List[PositiveInt\|"auto"] | No | Two-value zero-based crop bounds: `[start, stop]`. Each value may be a positive integer or `"auto"`. Mutually exclusive with `rows`. |
 | `rows` | List[PositiveInt] | No | Zero-based row indices to keep after any `row_slice` crop. Mutually exclusive with `row_slice`. |
@@ -214,7 +214,7 @@ At runtime those letters are converted internally to Polars column names such as
 
 #### `split_by`
 
-**`split_by`** — annotations only; splits each cell of a `method: column` encoding into a real JSON array.
+**`split_by`**: annotations only; splits each cell of a `method: column` encoding into a real JSON array.
 
 ```yaml
 annotations:
@@ -226,18 +226,18 @@ annotations:
 
 The separator is a property of the data, not of the slot. Inspect the table's cells and set `split_by` to the separator the cells actually use: `","` for comma-joined ids like `"EFO:0001,EFO:0002"` above, `";"` for `"EFO:0001;EFO:0002"`, `"|"` only if the cells happen to be pipe-joined.
 
-`split_by` is the one multivalued encoding: every row's cell becomes its own JSON array, so an array that differs per row — the shape a literal can never express — is declared directly. Values are trimmed and blanks dropped; a null cell stays null.
+`split_by` is the one multivalued encoding: every row's cell becomes its own JSON array, so an array that differs per row, the shape a literal can never express, is declared directly. Values are trimmed and blanks dropped; a null cell stays null.
 
-Single-value cells need no `split_by` at all: `prune_to_class` wraps a scalar bound for a uniformly multivalued slot into a one-element list, so a lone `EFO:0001` cell already emits as `has_evidence: ["EFO:0001"]`. Reach for it when the cells actually join multiple values. Leave such a column without `split_by` and the joined cell stays a scalar: the same wrapping yields a one-element list holding the whole string — `has_evidence: ["EFO:0001;EFO:0002"]` — structurally valid Biolink that hands consumers one unusable blob instead of two ids.
+Single-value cells need no `split_by` at all: `prune_to_class` wraps a scalar bound for a uniformly multivalued slot into a one-element list, so a lone `EFO:0001` cell already emits as `has_evidence: ["EFO:0001"]`. Reach for it when the cells actually join multiple values. Leave such a column without `split_by` and the joined cell stays a scalar: the same wrapping yields a one-element list holding the whole string (`has_evidence: ["EFO:0001;EFO:0002"]`), structurally valid Biolink that hands consumers one unusable blob instead of two ids.
 
-`split_by` requires `method: column` and rejects an empty separator, which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator. (The earlier annotation `delimiter` field — unrelated to the `source.delimiter` CSV/TSV separator — was replaced by `split_by`.)
+`split_by` requires `method: column` and rejects an empty separator, which would split into individual characters. It is unrelated to the `source.delimiter` CSV/TSV field separator. (The earlier annotation `delimiter` field, unrelated to the `source.delimiter` CSV/TSV separator, was replaced by `split_by`.)
 
-**`split_by` and `explode_by` are the same split, with different destinations.** Both read a delimited cell through one shared primitive — items trimmed, blanks dropped (so `"a;b;"` and `"a;;b"` yield two items, not three), a null cell left null — and then differ only in what they do with the items:
+**`split_by` and `explode_by` are the same split, with different destinations.** Both read a delimited cell through one shared primitive, with items trimmed, blanks dropped (so `"a;b;"` and `"a;;b"` yield two items, not three), and a null cell left null; they then differ only in what they do with the items:
 
 | | Destination | Use for |
 |---|---|---|
-| `explode_by` | one **row** per item | node encodings — each item is its own entity, producing its own edge |
-| `split_by` | one **array** on the row | annotations — the items are one multivalued slot on a single edge |
+| `explode_by` | one **row** per item | node encodings: each item is its own entity, producing its own edge |
+| `split_by` | one **array** on the row | annotations: the items are one multivalued slot on a single edge |
 
 So `explode_by` is not an alternative to `split_by` for a multivalued annotation: it multiplies edges rather than filling one edge's array.
 
@@ -295,7 +295,7 @@ subject:
 
 Executed in order.
 
-> **Regex dialect:** Patterns are passed directly to Polars `str.replace_all()`, which uses the Rust [`regex`](https://docs.rs/regex/) crate. Only features supported by that engine work — in particular, **backreferences (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not supported** and will raise an error at parse time. Plain groups `(...)` and non-capturing groups `(?:...)` *are* supported. Stick to character classes, anchors (`^`, `$`), quantifiers, alternation (`a|b`), and grouping if needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a `miscellaneous notes` annotation instead.
+> **Regex dialect:** Patterns are passed directly to Polars `str.replace_all()`, which uses the Rust [`regex`](https://docs.rs/regex/) crate. Only features supported by that engine work: in particular, **backreferences (`\1`, `\2`, …) and lookarounds (`(?=...)`, `(?<=...)`, `(?!...)`, `(?<!...)`) are not supported** and will raise an error at parse time. Plain groups `(...)` and non-capturing groups `(?:...)` *are* supported. Stick to character classes, anchors (`^`, `$`), quantifiers, alternation (`a|b`), and grouping if needed. If a transformation is too complex to express, prefer chaining several simple substitutions or capturing the residual context in a `miscellaneous notes` annotation instead.
 
 **`remove: list[regex]`** - Regex patterns to remove
 
@@ -305,7 +305,7 @@ subject:
   remove: ["^NA "]  # Strip leading "NA " prefix from cell text
 ```
 
-Each entry is applied as a regex replace-with-empty-string on the cell text in place (rows are not dropped). Same regex constraints apply as the `regex` field — Polars-compatible patterns only, no backreferences or lookarounds.
+Each entry is applied as a regex replace-with-empty-string on the cell text in place (rows are not dropped). Same regex constraints apply as the `regex` field: Polars-compatible patterns only, no backreferences or lookarounds.
 
 **`prefix` / `suffix`** - Add text
 
@@ -379,23 +379,23 @@ still emitted on resolved nodes.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `qualifier` | String | Yes | Biolink qualifier from the `Qualifiers` enum (e.g., `"anatomical_context_qualifier"`). Each qualifier key may be declared at most once per statement (`qualifier-duplicated`). |
-| `nullable` | Boolean | No | Default `false`. When `true`, a blank or unresolvable `method: column` cell **keeps the edge** and omits the qualifier for that row; when `false` (the default) such a row is dropped, exactly like an unresolved subject/object. Only valid with `method: column` — a literal qualifier can never be null (`qualifier-nullable-literal`). |
+| `nullable` | Boolean | No | Default `false`. When `true`, a blank or unresolvable `method: column` cell **keeps the edge** and omits the qualifier for that row; when `false` (the default) such a row is dropped, exactly like an unresolved subject/object. Only valid with `method: column`; a literal qualifier can never be null (`qualifier-nullable-literal`). |
 | (inherits NodeEncoding) | | | All NodeEncoding fields available |
 
-**Example — required qualifier (dense column, default):**
+**Example: required qualifier (dense column, default)**
 ```yaml
 qualifiers:
   - {qualifier: anatomical_context_qualifier, method: value, encoding: UBERON:0000061}
 ```
 
-**Example — optional qualifier (sparse column, `nullable: true`):**
+**Example: optional qualifier (sparse column, `nullable: true`)**
 
 A qualifier is a node encoding resolved through the fullmap alongside subject/object,
 so by default a blank or unresolved qualifier cell drops the whole edge. That is the
 right default (an edge should not silently lose a declared context), but it forbids
-per-edge *optional* qualifiers — e.g. a `disease_context_qualifier` on conditional
+per-edge *optional* qualifiers, e.g. a `disease_context_qualifier` on conditional
 contraindications where most rows carry no context. Set `nullable: true` on a
-`method: column` qualifier to keep such rows and simply omit the qualifier key for
+`method: column` qualifier to keep such rows and omit the qualifier key for
 them (the null value is stripped from the edge):
 
 ```yaml
@@ -428,7 +428,7 @@ provenance:
 
 #### Manual provenance override
 
-Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section's upstream sources, publications, and KL/AT. The primary entry of the edge `sources` list (`resource_role: primary_knowledge_source`) is **not** overridable per section — it always derives from the graph-level `infores` (see [Graph](graph.md)); put manual infores CURIEs in `upstream_resource_ids`.
+Use `provenance.override` when a table comes from another knowledge graph or source system whose Translator provenance cannot be derived from a PMC/PMID publication. The override is wired like the other Tablassert model classes and wins over the repo/publication auto-generation for that section's upstream sources, publications, and KL/AT. The primary entry of the edge `sources` list (`resource_role: primary_knowledge_source`) is **not** overridable per section; it always derives from the graph-level `infores` (see [Graph](graph.md)); put manual infores CURIEs in `upstream_resource_ids`.
 
 ```yaml
 provenance:
@@ -445,13 +445,13 @@ Override fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `upstream_resource_ids` | List[String] | No | Manual upstream source infores CURIEs replacing the repo-derived `PMC`/`PMID` source map — the sanctioned place for manual infores. Each entry must start with `infores:`. |
-| `upstream_source_record_urls` | Map[String, List[URL]] | No | Per-upstream source record URLs keyed by infores CURIE; every key must appear in `upstream_resource_ids`. When set, the section's `source.url` values serve the RIG only and are NOT emitted on the primary `sources` entry — each listed upstream supporting entry carries its own `source_record_urls` instead. |
+| `upstream_resource_ids` | List[String] | No | Manual upstream source infores CURIEs replacing the repo-derived `PMC`/`PMID` source map, the sanctioned place for manual infores. Each entry must start with `infores:`. |
+| `upstream_source_record_urls` | Map[String, List[URL]] | No | Per-upstream source record URLs keyed by infores CURIE; every key must appear in `upstream_resource_ids`. When set, the section's `source.url` values serve the RIG only and are NOT emitted on the primary `sources` entry; each listed upstream supporting entry carries its own `source_record_urls` instead. |
 | `publications` | List[String] | No | Manual publication CURIEs. Entries must currently start with `PMCID:`; PMID compatibility for manual overrides is intentionally deferred. |
 | `knowledge_level` | String | No | Override-specific KL value. Defaults to `statistical_association`. |
 | `agent_type` | String | No | Override-specific AT value. Defaults to `data_analysis_pipeline`. |
 
-Tablassert emits the graph-level infores (or `infores:<graph-name>` when unset) as the primary entry of the Biolink `sources` list on each edge — `{resource_id: "infores:multiomics-kg", resource_role: "primary_knowledge_source", upstream_resource_ids: [...], source_record_urls: [...]}` — with one additional `supporting_data_source` entry per upstream. When `override.upstream_source_record_urls` is set, the primary entry emits no `source_record_urls` and each mapped supporting entry carries its own instead. No flat `primary_knowledge_source` scalar is emitted: current translator-ingests practice carries retrieval provenance only in `sources`, and the Biolink `RetrievalSource` class is where `resource_id` / `upstream_resource_ids` / `source_record_urls` are defined. (Each entry also mirrors `resource_id` into `id` because the generated Biolink classes still require it; that mirror disappears once biolink-model [#1706](https://github.com/biolink/biolink-model/issues/1706) lands.) The override cannot set a per-section primary source; manual infores CURIEs belong in `upstream_resource_ids`. Older flat `resource_id` / `primary_knowledge_source` output has been removed so generated KGX matches the Biolink edge contract.
+Tablassert emits the graph-level infores (or `infores:<graph-name>` when unset) as the primary entry of the Biolink `sources` list on each edge, `{resource_id: "infores:multiomics-kg", resource_role: "primary_knowledge_source", upstream_resource_ids: [...], source_record_urls: [...]}`, with one additional `supporting_data_source` entry per upstream. When `override.upstream_source_record_urls` is set, the primary entry emits no `source_record_urls` and each mapped supporting entry carries its own instead. No flat `primary_knowledge_source` scalar is emitted: current translator-ingests practice carries retrieval provenance only in `sources`, and the Biolink `RetrievalSource` class is where `resource_id` / `upstream_resource_ids` / `source_record_urls` are defined. (Each entry also mirrors `resource_id` into `id` because the generated Biolink classes still require it; that mirror disappears once biolink-model [#1706](https://github.com/biolink/biolink-model/issues/1706) lands.) The override cannot set a per-section primary source; manual infores CURIEs belong in `upstream_resource_ids`. Older flat `resource_id` / `primary_knowledge_source` output has been removed so generated KGX matches the Biolink edge contract.
 
 ### Annotations
 
@@ -463,19 +463,19 @@ Optional edge attributes (statistical metadata, notes, etc.).
 | `split_by` | String | No | Separator splitting each cell of a `method: column` encoding into a real JSON array. See [`split_by`](#split_by). |
 | (inherits Encoding) | | | All Encoding fields available (method, encoding, regex, etc.) |
 
-Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals` — whose consumers iterate the value — must emit a real JSON array rather than a scalar. [`split_by`](#split_by) is the multivalued encoding: point it at a column whose cells join multiple values, set it to the separator the cells actually use, and each cell's delimited text splits into a per-row array. A single-value column needs no `split_by` — the scalar is wrapped into a one-element array.
+Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals`, whose consumers iterate the value, must emit a real JSON array rather than a scalar. [`split_by`](#split_by) is the multivalued encoding: point it at a column whose cells join multiple values, set it to the separator the cells actually use, and each cell's delimited text splits into a per-row array. A single-value column needs no `split_by`; the scalar is wrapped into a one-element array.
 
 **Example:**
 ```yaml
 annotations:
   - {annotation: p_value, method: column, encoding: C}                 # Read from column C
   - {annotation: adjusted_p_value, method: column, encoding: D}        # A real Association slot -> emitted on the edge
-  - {annotation: study_size, method: value, encoding: 450}            # Study metadata -> carried on the inlined supporting Study (see below)
+  - {annotation: study_size, method: value, encoding: 450}            # Study metadata -> inlined supporting Study (see below)
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
   - {annotation: has_evidence, method: column, encoding: E, split_by: ","}       # cells like "EFO:0001,EFO:0002" -> a per-row JSON array
   - {annotation: approval_ids, method: column, encoding: F}            # Curated pass-through -> emitted verbatim as a scalar (e.g. "011111|022222")
 
-  # Descriptive name of your choice — folded into `supporting_text` on output.
+  # Descriptive name of your choice: folded into `supporting_text` on output.
   - annotation: log2fc_relative_to_vehicle_control
     method: value
     encoding: "Values are log2 fold-change relative to vehicle control; n=3 biological replicates per arm"
@@ -485,10 +485,11 @@ annotations:
 
 Annotation names fall into three groups at build time:
 
-- **Allowed edge fields** — names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `supporting_text`, `publications`, `effect_size`, `effect_type`, `statistical_significance_qualifier`, `approval_ids`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim. `effect_size` / `effect_type` became real Association slots in biolink-model 4.4.4 (PR #1774) and emit as real JSON numbers/enum tokens. `approval_ids` (FDA application numbers, following the DAKP translator-ingest precedent) is deliberately a **scalar pass-through**: a pipe-joined cell such as `011111|022222` is emitted verbatim as its own top-level edge field — no `split_by`, not a JSON array.
-- **Study metadata** — `study_size`, `study_cohort`, `study_context`, `study_date_range`, `study_method_description`, `study_method_types`: the current Biolink `Study` node properties ([biolink-model PR #1770](https://github.com/biolink/biolink-model/pull/1770)). These describe the study itself, not an association, so their values are carried on the edge's **inlined supporting Study** (`has_supporting_studies` → `Study`, the COHD/ICEES pattern) rather than emitted as edge fields. The deprecated `supporting_study_*` spellings and `sample_size` are accepted as aliases and renamed onto the canonical `study_*` names by the coercion phase — they never appear in the final JSON. Declaring any of them is legal and loses nothing, but Tablassert emits a `BiolinkRelocationWarning` naming where the value went.
-- **Unsatisfiable slots** — names the Biolink LinkML schema declares but attaches to **no** Pydantic class (derived from the *installed* `biolink-model`; today this is a tail of qualifier slots like `aspect_qualifier`). A record carrying one could never validate, so their values are also routed onto the inlined supporting study (preserved in the `StudyResult.description`), and a slot leaves the set automatically once a release attaches it.
-- **Tablassert pipeline fields** — `upstream_resource_ids`, `source_record_urls`.
+- **Allowed edge fields:** names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `supporting_text`, `publications`, `effect_size`, `effect_type`, `statistical_significance_qualifier`, `approval_ids`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim. `effect_size` and `effect_type` became real Association slots in biolink-model 4.4.4 (PR #1774) and emit as real JSON numbers and enum tokens. `approval_ids` (FDA application numbers, following the DAKP translator-ingest precedent) is deliberately a **scalar pass-through**: a pipe-joined cell such as `011111|022222` is emitted verbatim as its own top-level edge field, with no `split_by` and not as a JSON array.
+- **Study metadata:** `study_size`, `study_cohort`, `study_context`, `study_date_range`, `study_method_description`, and `study_method_types` are current Biolink `Study` node properties ([biolink-model PR #1770](https://github.com/biolink/biolink-model/pull/1770)). They describe the study itself, not an association, so their values are carried on the edge's **inlined supporting Study** (`has_supporting_studies` to `Study`, the COHD/ICEES pattern) rather than emitted as edge fields. Deprecated `supporting_study_*` spellings and `sample_size` are accepted as aliases and renamed onto canonical `study_*` names by coercion. They never appear in final JSON. Declaring any of them is legal and emits a `BiolinkRelocationWarning` naming where the value went.
+- **Unsatisfiable slots:** names the Biolink LinkML schema declares but attaches to **no** Pydantic class, derived from the installed `biolink-model`. A record carrying one could never validate, so its value is preserved in the inlined supporting study's `StudyResult.description`. A slot leaves the set automatically once a release attaches it.
+
+- **Tablassert pipeline fields**: `upstream_resource_ids`, `source_record_urls`.
 
 Any other annotation name is treated as **supporting context**. At the end of `compile_graph`, tablassert sweeps the edge columns: for each non-allow-listed name it emits `"name: value"` entries into the edge's `supporting_text` (a `list[str]`), then drops the original column. Behavior worth knowing:
 
@@ -499,9 +500,9 @@ Any other annotation name is treated as **supporting context**. At the end of `c
 
 This means nothing in your source data is silently dropped: context that doesn't map to a structured Biolink slot travels along inside `supporting_text` instead.
 
-In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation — tablassert emits it internally so each edge always carries its source-row provenance, and the inlined supporting study consumes it: the `StudyResult` that anchors the study's row is identified by the scoped CURIE `row:<N>`. The row and sheet columns are never folded into `supporting_text`.
+In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation. Tablassert emits it internally so each edge always carries its source-row provenance, and the inlined supporting study consumes it: the `StudyResult` that anchors the study's row is identified by the scoped CURIE `row:<N>`. The row and sheet columns are never folded into `supporting_text`.
 
-The supporting study's identity is disjoint by construction: `Study.id` is the section's publication CURIE (`PMID:123`, `PMCID:PMC11708054`); `Study.name` is a human label — the worksheet name for spreadsheet sources, the source filename otherwise — never a composition of the two. A section declaring **no `publications`** falls back to the config stem (the YAML filename without its extension) as the id, and the struct is then emitted **only when it carries something to preserve** — study metadata, routed unsatisfiable values, or class-pruned values. Biolink defines `has supporting studies` as "studies that produced information used as evidence", so a contentless unpublished section emits no `has_supporting_studies` at all; a section with a real publication always keeps the wrapper:
+The supporting study's identity is disjoint by construction: `Study.id` is the section's publication CURIE (`PMID:123`, `PMCID:PMC11708054`); `Study.name` is a human label, the worksheet name for spreadsheet sources and the source filename otherwise. It is never a composition of the two. A section declaring **no `publications`** falls back to the config stem (the YAML filename without its extension) as the id, and the struct is then emitted **only when it carries something to preserve**, such as study metadata, routed unsatisfiable values, or class-pruned values. Biolink defines `has supporting studies` as "studies that produced information used as evidence", so a contentless unpublished section emits no `has_supporting_studies` at all; a section with a real publication always keeps the wrapper:
 
 ```json
 "has_supporting_studies": {
@@ -514,27 +515,26 @@ The supporting study's identity is disjoint by construction: `Study.id` is the s
 }
 ```
 
-`StudyResult` carries no name and no row description — the `row:<N>` id *is* the provenance — and its `description` is reserved for values with no structured home (routed unsatisfiable values and class-pruned qualifiers).
+`StudyResult` carries no name and no row description. The `row:<N>` id is the provenance, and its `description` is reserved for values with no structured home, such as routed unsatisfiable values and class-pruned qualifiers.
 
 #### Automatic column coercion
 
-Before the allow-list sweep runs, tablassert renames statistical columns to their canonical Biolink names so source headers do not have to match exactly. Recognition is delimiter-anchored (spaces, `_`, `-`, `.` are interchangeable) and the **best fuzzy match per target wins, with an existing canonical column always preferred** over a higher-scoring spaced alias. When multiple study-size synonyms are present, only the canonical/winning column is retained; losing synonyms are dropped rather than folded as independent context, because they describe the same Study property and otherwise leak duplicate provenance.
+Before the allow-list sweep runs, tablassert renames statistical columns to their canonical Biolink names so source headers do not have to match exactly. Recognition is delimiter-anchored (spaces, `_`, `-`, `.` are interchangeable) and the **best fuzzy match per target wins, with an existing canonical column always preferred** over a higher-scoring spaced alias.
 
 | Recognized as | Canonical name | Typical source spellings |
 |---|---|---|
 | P value (raw) | `p_value` | `p value`, `p-value`, `pvalue`, `P`, `gwas p`, `raw_p`, `pvalue1` |
 | Adjusted P value | `adjusted_p_value` | `padj`, `p.adj`, `adj.P.Val`, `FDR`, `Bonferroni`, `Holm`, `q value` |
 | Study size | `study_size` | `n`, `sample_size`, `study size`, `cohort_size`, `participants_n`, `enrollment`, the deprecated `supporting_study_size` |
-| Study metadata | `study_cohort` / `study_context` / `study_date_range` / `study_method_description` / `study_method_types` | the deprecated `supporting_study_cohort`, `supporting_study_context`, `supporting_study_date_range`, `supporting_study_method_description`, `supporting_study_method_types` |
 | Effect size | `effect_size` | `effect size`, `odds ratio`, `hazard ratio`, `beta`, `log2FC`, `correlation`, `rho` (and the legacy `relationship_strength`) |
 | Effect type | `effect_type` | `effect type`, `effect metric`, `statistic type`, `metric` |
 
 - **`effect_type` values are also coerced.** Each cell is matched case/separator-insensitively against an alias table (e.g. `"OR"` → `odds_ratio`, `"Cohen's d"` → `cohens_d`, `"Spearman"` → `spearmans_rho`), then by `rapidfuzz` fallback against the 25 permissible `EffectTypes` values; anything matching nothing is dropped to `null` rather than carried through (the Biolink range is the enum).
-- **`statistical_significance_qualifier` is auto-derived** from the p-value column into five bands — `very_strongly_significant` (p ≤ 0.001), `strongly_significant` (≤ 0.01), `significant` (≤ 0.05), `suggestive` (≤ 0.10), `not_significant` (> 0.10). The values are the bare `StatisticalSignificanceQualifierEnum` tokens — biolink-model 4.4.4 attaches the slot to `Association` with the enum as its range, so the band rides the edge as a real field with no `biolink:` prefix. The same rigorous selection picks the source column: a raw `p_value` column is preferred, `adjusted_p_value` is the fallback, and the qualifier is omitted entirely when no p-value column is present.
-- **`effect_size` and `effect_type` travel as a pair.** A section declaring one without the other does not fail validation: the unpaired annotation is **dropped** from the section with an `UnpairedEffectAnnotationWarning` naming what was dropped and from where, and the section's edges are kept — neither half carries evidence alone (a bare effect size is uninterpretable — 0.85 of *what*, an odds ratio or a Spearman rho? — and Biolink PR #1774 only populates `effect_type` alongside a numeric `effect_size`, so the build nulls an unpaired type anyway). Declare both together to retain the full evidence. Alias spellings count: `odds ratio` and the legacy `relationship_strength` coerce to `effect_size`, so both still need a sibling `effect_type`. Use `method: value` when every row shares one statistic and `method: column` when the table provides it; in a `template` + `sections` config the two lists are concatenated, so a constant `effect_type` declared once on the template pairs with each section's own `effect_size` column.
+- **`statistical_significance_qualifier` is auto-derived** from the p-value column into five bands: `very_strongly_significant` (p ≤ 0.001), `strongly_significant` (≤ 0.01), `significant` (≤ 0.05), `suggestive` (≤ 0.10), and `not_significant` (> 0.10). The values are bare `StatisticalSignificanceQualifierEnum` tokens. Biolink-model 4.4.4 attaches the slot to `Association` with the enum as its range, so the band rides the edge as a real field with no `biolink:` prefix. The same rigorous selection picks the source column: a raw `p_value` column is preferred, `adjusted_p_value` is the fallback, and the qualifier is omitted entirely when no p-value column is present.
+- **`effect_size` and `effect_type` travel as a pair.** A section declaring one without the other does not fail validation: the unpaired annotation is **dropped** from the section with an `UnpairedEffectAnnotationWarning` naming what was dropped and from where, and the section's edges are kept; neither half carries evidence alone. A bare effect size is uninterpretable (0.85 of *what*, an odds ratio or a Spearman rho?), and Biolink PR #1774 only populates `effect_type` alongside a numeric `effect_size`, so the build nulls an unpaired type anyway. Declare both together to retain the full evidence. Alias spellings count: `odds ratio` and the legacy `relationship_strength` coerce to `effect_size`, so both still need a sibling `effect_type`. Use `method: value` when every row shares one statistic and `method: column` when the table provides it; in a `template` + `sections` config the two lists are concatenated, so a constant `effect_type` declared once on the template pairs with each section's own `effect_size` column.
 - **Biolink class rules are enforced.** `effect_type` is nulled on every row where `effect_size` is null (and nulled entirely when no `effect_size` column exists); `statistical_significance_qualifier` is only set when `p_value`/`adjusted_p_value` is populated, and null p-values yield a null qualifier.
 
-This is why declaring an annotation like `{annotation: p value, method: column, encoding: E}` still produces a top-level `p_value` edge field — the header is normalized to the Biolink name before folding is considered.
+This is why declaring an annotation like `{annotation: p value, method: column, encoding: E}` still produces a top-level `p_value` edge field: the header is normalized to the Biolink name before folding is considered.
 
 ## Next Steps
 
