@@ -960,6 +960,8 @@ def test_is_neglog10_column_matches_negation_spellings(name: str) -> None:
         "adjusted p value",
         "negatively correlated",
         "regulation",
+        "negative log protein",  # [pq] must be a complete token, not a word prefix
+        "negative log qwerty",
     ],
 )
 def test_is_neglog10_column_rejects_unmarked_or_unrelated(name: str) -> None:
@@ -988,6 +990,31 @@ def test_coerce_pvalue_columns_prefers_raw_over_neglog10_alias() -> None:
     out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
     assert out["p_value"][0] == pytest.approx(0.03)
     assert out["negative log10 p value"][0] == pytest.approx(8.0)
+
+
+def test_coerce_pvalue_columns_raw_beats_neglog10_despite_short_name() -> None:
+    """A short raw name ("P", fuzz-score 0 against "p value") must still beat a
+    long -log10 alias (score ~48) — fuzzy ranking never sees the alias."""
+    lf: pl.LazyFrame = pl.DataFrame({"P": [0.03], "negative log10 p value": [8.0]}).lazy()
+    out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out["p_value"][0] == pytest.approx(0.03)
+    assert out["negative log10 p value"][0] == pytest.approx(8.0)
+
+
+def test_coerce_pvalue_columns_raw_fdr_beats_neglog10_q_alias() -> None:
+    """ "FDR" also loses the raw/alias contest against "negative log10 q value"."""
+    lf: pl.LazyFrame = pl.DataFrame({"FDR": [0.02], "negative log10 q value": [3.0]}).lazy()
+    out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out["adjusted_p_value"][0] == pytest.approx(0.02)
+    assert out["negative log10 q value"][0] == pytest.approx(3.0)
+
+
+def test_sig_raw_beats_neglog10_despite_short_name() -> None:
+    """sig applies the same raw-beats-alias rule: a bare "P" column wins over a
+    -log10 alias, so the band comes from the raw 0.03 (significant)."""
+    lf: pl.LazyFrame = pl.DataFrame({"P": [0.03], "negative log10 p value": [8.0]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["statistical_significance_qualifier"]) == ["significant"]
 
 
 def test_coerce_pvalue_columns_unlogs_neglog10_q_value_into_adjusted() -> None:
