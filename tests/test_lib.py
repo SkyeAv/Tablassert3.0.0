@@ -38,6 +38,7 @@ from tablassert.lib import (
     idx,
     idxname,
     infores,
+    is_neglog10_column,
     numeric_columns,
     parse_edge_name,
     publications,
@@ -933,6 +934,78 @@ def test_sig_very_strongly_significant_band() -> None:
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [1e-8, 0.001, 0.002]}).lazy()
     result: pl.DataFrame = lib.sig(lf).collect()
     assert list(result["statistical_significance_qualifier"]) == ["very_strongly_significant", "very_strongly_significant", "strongly_significant"]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "negative log p value",  # mokg-v12 HOYER1 spelling
+        "negative log10 p value",
+        "-log10(p)",
+        "neg log10 q value",
+        "Negated Log P Value",
+        "-LOG10 P VALUE",
+    ],
+)
+def test_is_neglog10_column_matches_negation_spellings(name: str) -> None:
+    assert is_neglog10_column(name) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "p value",
+        "log p value",  # no negation marker: sign convention ambiguous
+        "log10 p value",
+        "adjusted p value",
+        "negatively correlated",
+        "regulation",
+    ],
+)
+def test_is_neglog10_column_rejects_unmarked_or_unrelated(name: str) -> None:
+    assert is_neglog10_column(name) is False
+
+
+def test_coerce_pvalue_columns_unlogs_negative_log_p_value() -> None:
+    """-log10(p)=8 means p=1e-8: the slot receives the recovered p-value, nulls stay null."""
+    lf: pl.LazyFrame = pl.DataFrame({"negative log p value": ["8.0", "0.0522071", None]}).lazy()
+    out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out["p_value"][0] == pytest.approx(1e-8)
+    assert out["p_value"][1] == pytest.approx(10**-0.0522071)
+    assert out["p_value"][2] is None
+
+
+def test_coerce_pvalue_columns_unlog_underflows_to_zero() -> None:
+    """Observed -log10 scores reach ~864; 10**-864 underflows float64 to 0.0."""
+    lf: pl.LazyFrame = pl.DataFrame({"negative log10 p value": [864.066614351]}).lazy()
+    out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out["p_value"][0] == 0.0
+
+
+def test_coerce_pvalue_columns_prefers_raw_over_neglog10_alias() -> None:
+    """A raw p-value column beats a -log10 alias; the alias is left untouched."""
+    lf: pl.LazyFrame = pl.DataFrame({"p value": [0.03], "negative log10 p value": [8.0]}).lazy()
+    out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out["p_value"][0] == pytest.approx(0.03)
+    assert out["negative log10 p value"][0] == pytest.approx(8.0)
+
+
+def test_coerce_pvalue_columns_unlogs_neglog10_q_value_into_adjusted() -> None:
+    lf: pl.LazyFrame = pl.DataFrame({"negative log10 q value": [3.0]}).lazy()
+    out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out["adjusted_p_value"][0] == pytest.approx(1e-3)
+
+
+def test_sig_unlogs_neglog10_source() -> None:
+    """Banding un-logs a -log10 score column: 8 -> very strongly significant,
+    0 (p=1) -> not significant — the bands no longer invert."""
+    lf: pl.LazyFrame = pl.DataFrame({"negative log p value": [8.0, 0.0, 2.0]}).lazy()
+    result: pl.DataFrame = lib.sig(lf).collect()
+    assert list(result["statistical_significance_qualifier"]) == [
+        "very_strongly_significant",
+        "not_significant",
+        "strongly_significant",  # 10**-2 == 0.01 boundary, inclusive
+    ]
 
 
 def test_sig_significant_band_boundary() -> None:

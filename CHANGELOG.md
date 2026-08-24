@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **Negative-log p-value columns are un-logged instead of shipped verbatim.** `pvalue_target` already routed spellings like `negative log p value` / `-log10(p)` onto `p_value` / `adjusted_p_value`, but the score rode through untouched: a −log10(p)=8 enrichment column (the `mokg-v12` HOYER1 fixture ships exactly this shape) emitted `p_value` 8.0 — wildly out of range — and `sig` banded it `not_significant`, the exact inverse of the truth. The coercion now recognizes an explicit negation marker (`negative` / `negated` / `neg` / `-`) before a `log`/`log10` p-or-q token (`is_neglog10_column`) and converts the score (`p = 10**-x`) when it lands on the numeric slot, in both `coerce_pvalue_columns` and `sig`. Float64 underflow floors extreme scores at `0.0` (indistinguishable from `p ~ 0`, and the band is identical); nulls stay null. A plain `log10` spelling without a negation marker is deliberately left verbatim — the sign convention is ambiguous there — and when a raw p-value column coexists with a −log10 alias the raw column still wins and the alias is left untouched.
+
 ## 13.0.0 - 2026-08-24
 
 ### Breaking Changes
