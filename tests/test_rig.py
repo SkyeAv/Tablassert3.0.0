@@ -22,7 +22,7 @@ from tablassert.rig import audit_rig, build_rig_document, compose_ui_explanation
 
 
 def _source_entry(primary: str, url: str, upstream: list[str] | None = None) -> list[dict[str, Any]]:
-    entry: dict[str, Any] = {"id": primary, "resource_id": primary, "resource_role": "primary_knowledge_source", "source_record_urls": [url]}
+    entry: dict[str, Any] = {"resource_id": primary, "resource_role": "primary_knowledge_source", "source_record_urls": [url]}
     if upstream:
         entry["upstream_resource_ids"] = upstream
     return [entry]
@@ -85,14 +85,13 @@ def test_rig_edge_type_info_separates_roles_properties_qualifiers_and_files(tmp_
                 "MONDO:1",
                 sources=[
                     {
-                        "id": "infores:test-kg",
                         "resource_id": "infores:test-kg",
                         "resource_role": "primary_knowledge_source",
                         "upstream_resource_ids": ["infores:pubmed-central"],
                         "source_record_urls": ["https://pmc.ncbi.nlm.nih.gov/bin/table1.xlsx"],
                     },
-                    {"id": "infores:pubmed-central", "resource_id": "infores:pubmed-central", "resource_role": "supporting_data_source"},
-                    {"id": "infores:aggregator", "resource_id": "infores:aggregator", "resource_role": "aggregator_knowledge_source"},
+                    {"resource_id": "infores:pubmed-central", "resource_role": "supporting_data_source"},
+                    {"resource_id": "infores:aggregator", "resource_role": "aggregator_knowledge_source"},
                 ],
                 p_value=0.01,
                 publications=["PMID:1"],

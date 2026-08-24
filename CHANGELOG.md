@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Breaking Changes
+- **Retrieval-source entries now use `resource_id` as their sole identifier.** Generated edges no longer duplicate each nested `sources` entry's provenance identifier into `sources[].id`; readers should use `sources[].resource_id`. Tablassert's validator supplies the inherited `id` only to its in-memory compatibility copy while the pinned Biolink model still requires it.
+
 ## 13.0.0 - 2026-08-24
 
 ### Breaking Changes

@@ -577,10 +577,7 @@ def test_tcode_collect_nests_upstream_resource_ids_in_sources(fixtures_path: Pat
     primary: dict[str, Any] = next(s for s in sources if s["resource_role"] == "primary_knowledge_source")
     assert primary["upstream_resource_ids"] == ["infores:pubmed-central"]
     assert {s["resource_id"] for s in sources if s["resource_role"] == "supporting_data_source"} == {"infores:pubmed-central"}
-    # `id` mirrors `resource_id`: RetrievalSource inherits a required `id` from
-    # `entity` in the generated Biolink classes, so it stays until biolink-model
-    # #1706/#1731 land.
-    assert all(s["id"] == s["resource_id"] for s in sources)
+    assert all("id" not in s for s in sources)
 
 
 def test_normalize_category_list_with_biolink_prefix() -> None:
@@ -740,7 +737,7 @@ def test_tcode_collect_nests_source_record_urls_in_sources(fixtures_path: Path) 
     assert "source_record_urls" not in result.columns
     primary: dict[str, Any] = next(s for s in result["sources"].to_list()[0] if s["resource_role"] == "primary_knowledge_source")
     assert primary["source_record_urls"] == ["https://example.com/test.tsv"]
-    assert primary["id"] == primary["resource_id"]
+    assert "id" not in primary
 
 
 def test_tcode_collect_upstream_source_record_urls_rehome_urls(fixtures_path: Path) -> None:
@@ -811,7 +808,8 @@ def test_tcode_collect_explicit_sources_override_replaces_derivation(fixtures_pa
     sources: list[dict[str, Any]] = result["sources"].to_list()[0]
     assert [s["resource_id"] for s in sources] == ["infores:multiomics-drugapprovals", "infores:faers", "infores:dailymed"]
     assert [s["resource_role"] for s in sources] == ["aggregator_knowledge_source", "primary_knowledge_source", "supporting_data_source"]
-    assert all(s["id"] == s["resource_id"] for s in sources)
+    # `resource_id` is the sole identifier on each entry (no `id` mirror, #115).
+    assert all("id" not in s for s in sources)
     # The `{edge_id}` placeholder stays unresolved at this stage: the edge id is a
     # content hash assigned by the final dedup stage, after subgraphs are written.
     assert sources[0]["source_record_urls"] == ["https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge_id}"]
@@ -1280,13 +1278,12 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path, rig_factor
     monkeypatch.chdir(tmp_path)
     sub: Path = tmp_path / "sub.parquet"
     primary: dict[str, Any] = {
-        "id": "infores:smoke",
         "resource_id": "infores:smoke",
         "resource_role": "primary_knowledge_source",
         "upstream_resource_ids": ["infores:pubmed-central"],
         "source_record_urls": ["https://pmc.ncbi.nlm.nih.gov/bin/table1.xlsx"],
     }
-    supporting: dict[str, Any] = {"id": "infores:pubmed-central", "resource_id": "infores:pubmed-central", "resource_role": "supporting_data_source"}
+    supporting: dict[str, Any] = {"resource_id": "infores:pubmed-central", "resource_role": "supporting_data_source"}
     pl.DataFrame(
         {
             "subject": ["A", "B"],
@@ -1401,7 +1398,6 @@ def test_compile_graph_opens_ndjson_outputs_as_utf8(monkeypatch: Any, tmp_path: 
             "sources": [
                 [
                     {
-                        "id": "infores:utf8-kg",
                         "resource_id": "infores:utf8-kg",
                         "resource_role": "primary_knowledge_source",
                         "source_record_urls": ["https://example.org/utf8.tsv"],
@@ -1446,7 +1442,6 @@ def test_compile_graph_progress_callbacks_fire_per_subgraph_and_phase(monkeypatc
                 "sources": [
                     [
                         {
-                            "id": "infores:cb-kg",
                             "resource_id": "infores:cb-kg",
                             "resource_role": "primary_knowledge_source",
                             "source_record_urls": ["https://example.org/cb.tsv"],
@@ -1507,7 +1502,6 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
             "sources": [
                 [
                     {
-                        "id": "infores:qual-kg",
                         "resource_id": "infores:qual-kg",
                         "resource_role": "primary_knowledge_source",
                         "source_record_urls": ["https://example.org/qual.tsv"],
@@ -2616,7 +2610,6 @@ def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatc
             "sources": [
                 [
                     {
-                        "id": "infores:fold-kg",
                         "resource_id": "infores:fold-kg",
                         "resource_role": "primary_knowledge_source",
                         "source_record_urls": ["https://example.org/fold.tsv"],
@@ -2667,7 +2660,6 @@ def test_compile_graph_passes_approval_ids_through_verbatim(monkeypatch: Any, tm
             "sources": [
                 [
                     {
-                        "id": "infores:approval-kg",
                         "resource_id": "infores:approval-kg",
                         "resource_role": "primary_knowledge_source",
                         "source_record_urls": ["https://example.org/approval.tsv"],
@@ -3025,9 +3017,8 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
     primary_source: dict[str, Any] = next(x for x in edge_rows[0]["sources"] if x["resource_role"] == "primary_knowledge_source")
     assert primary_source["resource_id"] == "infores:pipeline-kg"
     assert primary_source["upstream_resource_ids"] == ["infores:pubmed-central"]
-    # `id` mirrors `resource_id` (required by the generated Biolink classes), and
-    # no flat scalar duplicates the primary source.
-    assert primary_source["id"] == primary_source["resource_id"]
+    # Source provenance uses `resource_id` without a duplicate Biolink `id`.
+    assert "id" not in primary_source
     assert "primary_knowledge_source" not in edge_rows[0]
     assert {row["id"] for row in node_rows} == {"HGNC:1100", "HGNC:11998"}
     assert rig["name"] == "PIPELINE_KG v0.1.0 Resource Ingest Guide"
