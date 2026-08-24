@@ -22,6 +22,7 @@ TablassertErrorCodes = Literal[
     "encoding-bad-remove-entry",
     "graph-bad-infores",
     "override-bad-publication",
+    "override-bad-sources",
     "override-bad-upstream-infores",
     "override-bad-upstream-urls",
     "provenance-bad-pmc-id",

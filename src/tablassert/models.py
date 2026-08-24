@@ -466,16 +466,99 @@ def validate_infores_curie(value: str, code: TablassertErrorCodes) -> str:
     return value
 
 
+EDGE_ID_PLACEHOLDER: str = "{edge_id}"
+"""Placeholder for the final edge id inside ``override.sources`` record URLs.
+
+The edge ``id`` is a deterministic content hash computed during the final dedup
+stage -- after subgraphs are written -- so a per-edge URL cannot embed it during
+the table build. The literal placeholder is emitted as-is and resolved against
+the deduplicated ``*.edges.ndjson`` in a post-dedup sweep.
+"""
+
+RESOURCE_ROLES: tuple[str, ...] = ("primary_knowledge_source", "aggregator_knowledge_source", "supporting_data_source")
+"""Valid Biolink ``ResourceRoleEnum`` values for retrieval ``sources`` entries.
+
+Kept as literals instead of importing ``ResourceRoleEnum`` from the generated
+``biolink_model`` Pydantic classes so config validation stays cheap; any other
+value fails KGX validation downstream.
+"""
+
+
+class SourceOverride(TablaBase):
+    """One explicit retrieval-``sources`` entry template for manual provenance.
+
+    Each entry becomes one Biolink ``RetrievalSource`` struct on the edge's
+    ``sources`` list, replacing the derived primary/upstream emission entirely.
+    """
+
+    resource_id: str = Field(description="Infores CURIE of this retrieval source entry.", examples=["infores:my-source"])
+    resource_role: str = Field(
+        description="Biolink ResourceRoleEnum value for this entry.",
+        examples=["primary_knowledge_source", "aggregator_knowledge_source", "supporting_data_source"],
+    )
+    upstream_resource_ids: list[str] | None = Field(
+        None, description="Upstream infores CURIEs carried by this entry.", examples=[["infores:my-upstream"]]
+    )
+    source_record_urls: list[str] | None = Field(
+        None,
+        description=f"Source record URLs carried by this entry; `{EDGE_ID_PLACEHOLDER}` is replaced with the final edge id after dedup.",
+        examples=[["https://example.org/edge?id={edge_id}"]],
+    )
+
+    @field_validator("resource_id", mode="after")
+    @classmethod
+    def infores_resource_id(cls, value: str) -> str:
+        return validate_infores_curie(value, "override-bad-sources")
+
+    @field_validator("resource_role", mode="after")
+    @classmethod
+    def biolink_resource_role(cls, value: str) -> str:
+        if value not in RESOURCE_ROLES:
+            raise TablassertValidationError(f"`resource_role` must be one of {list(RESOURCE_ROLES)}, got {value!r}.", code="override-bad-sources")
+        return value
+
+    @field_validator("upstream_resource_ids", mode="after")
+    @classmethod
+    def infores_upstream_resource_ids(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        for value in values:
+            validate_infores_curie(value, "override-bad-sources")
+        return values
+
+    @field_validator("source_record_urls", mode="after")
+    @classmethod
+    def url_or_edge_id_template(cls, values: list[str] | None) -> list[str] | None:
+        # Typed as plain str (not HttpUrl) so the `{edge_id}` placeholder survives
+        # validation; after removing placeholder occurrences the rest must still be
+        # an absolute http(s) URL.
+        if values is None:
+            return None
+        for value in values:
+            stripped: str = value.replace(EDGE_ID_PLACEHOLDER, "")
+            if not stripped.startswith(("https://", "http://")):
+                raise TablassertValidationError(
+                    f"`source_record_urls` entries must be http(s) URLs (optionally containing `{EDGE_ID_PLACEHOLDER}`), got {value!r}.",
+                    code="override-bad-sources",
+                )
+        return values
+
+
 class ManualProvenance(TablaBase):
     """Manually-specified provenance for non-PMID/PMC source graphs.
 
     When present under :class:`Provenance`, these values replace the legacy
     repo/publication-derived provenance while keeping the same KL/AT defaults.
     The primary ``sources`` entry (``resource_role: primary_knowledge_source``)
-    always derives from the graph-level ``rig.source_info.infores_id``; manual
-    infores CURIEs belong in ``upstream_resource_ids``.
+    derives from the graph-level ``rig.source_info.infores_id`` unless an
+    explicit ``sources`` template is given; manual infores CURIEs otherwise
+    belong in ``upstream_resource_ids``.
     """
 
+    sources: list[SourceOverride] | None = Field(
+        None,
+        description="Explicit retrieval-`sources` entry templates replacing the derived primary/upstream emission entirely; mutually exclusive with `upstream_resource_ids` and `upstream_source_record_urls`, which it subsumes.",
+    )
     upstream_resource_ids: list[str] = Field(
         default_factory=list,
         description="Manual upstream source infores CURIEs emitted instead of the repo-derived source map; the sanctioned place for manual infores.",
@@ -514,6 +597,26 @@ class ManualProvenance(TablaBase):
                     f"Manual provenance publications must start with `PMCID:`, got {value!r}.", code="override-bad-publication"
                 )
         return values
+
+    @model_validator(mode="after")
+    def sources_template_is_coherent(self: Self) -> Self:
+        if self.sources is None:
+            return self
+        if self.upstream_resource_ids or self.upstream_source_record_urls is not None:
+            raise TablassertValidationError(
+                "`sources` is mutually exclusive with `upstream_resource_ids` and `upstream_source_record_urls`; the explicit template subsumes both.",
+                code="override-bad-sources",
+            )
+        if not self.sources:
+            raise TablassertValidationError("`sources` must contain at least one entry when set.", code="override-bad-sources")
+        resource_ids: list[str] = [entry.resource_id for entry in self.sources]
+        if len(set(resource_ids)) != len(resource_ids):
+            raise TablassertValidationError("`sources` entries must have unique `resource_id` values.", code="override-bad-sources")
+        if not any(entry.resource_role in ("primary_knowledge_source", "aggregator_knowledge_source") for entry in self.sources):
+            raise TablassertValidationError(
+                "`sources` must include at least one `primary_knowledge_source` or `aggregator_knowledge_source` entry.", code="override-bad-sources"
+            )
+        return self
 
     @model_validator(mode="after")
     def upstream_urls_match_resource_ids(self: Self) -> Self:
