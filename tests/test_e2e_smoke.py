@@ -197,12 +197,13 @@ def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypa
     Declares annotations with non-canonical source spellings (``p value``, ``sample size``,
     ``odds ratio``, ``effect type``) and asserts the emitted KGX edge carries the coerced
     canonical fields flat on the edge (``p_value`` in controlled scientific-notation
-    string form, ``effect_size`` in controlled decimal notation, ``effect_type`` with the
-    alias mapped to the ``EffectTypes`` enum)
-    and routes the auto-derived ``statistical_significance_qualifier`` plus
-    ``supporting_study_size`` into the inlined Study. Proves the whole coercion pipeline
-    (``coerce_pvalue_columns`` / ``coerce_study_size_columns`` / ``coerce_effect_size_columns``
-    / ``coerce_effect_type_columns`` / ``sig``) wires through ``build_pipeline`` end-to-end.
+    string form, ``effect_size`` as a real float since biolink-model 4.4.4, ``effect_type``
+    with the alias mapped to the ``EffectTypes`` enum, ``statistical_significance_qualifier``
+    as a bare enum token) and routes the coerced ``study_size`` onto the inlined Study
+    (biolink-model#1770 Study node properties). Proves the whole coercion pipeline
+    (``coerce_pvalue_columns`` / ``coerce_study_size_columns`` / ``coerce_study_metadata_columns``
+    / ``coerce_effect_size_columns`` / ``coerce_effect_type_columns`` / ``sig``) wires
+    through ``build_pipeline`` end-to-end.
     """
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".tablassert" / "store").mkdir(parents=True)
@@ -254,22 +255,32 @@ def test_build_pipeline_coerces_statistical_annotations(tmp_path: Path, monkeypa
 
     # Raw annotation names normalized to canonical Biolink fields flat on the edge.
     # p_value keeps the controlled {:.4e} scientific-notation string contract (Biolink's
-    # float typing is satisfied by lax coercion), while effect_size keeps {:.4g} notation.
+    # float typing is satisfied by lax coercion); effect_size is a real JSON number now
+    # that biolink-model 4.4.4 types the slot float (PR #1774).
     assert isinstance(edge["p_value"], str)
-    assert isinstance(edge["effect_size"], str)
+    assert isinstance(edge["effect_size"], float)
     assert edge["p_value"] == "1.0000e-02"
-    assert edge["effect_size"] == "0.85"
+    assert edge["effect_size"] == 0.85
     assert edge["effect_type"] == "spearmans_rho"  # "Spearman" alias mapped to the EffectTypes enum
     assert "sample size" not in edge
     assert "odds ratio" not in edge
     assert "effect type" not in edge
 
-    # supporting_study_size + the auto-derived statistical_significance_qualifier are
-    # UNSATISFIABLE edge fields, so they ride the inlined Study rather than the edge.
-    assert "supporting_study_size" not in edge
-    assert "statistical_significance_qualifier" not in edge
-    assert "supporting_study_size=450" in edge_text
-    assert "statistical_significance_qualifier=biolink:strongly_significant" in edge_text
+    # biolink-model 4.4.4 attaches ``statistical_significance_qualifier`` to every
+    # association class: the derived band rides the edge as a bare enum token.
+    assert edge["statistical_significance_qualifier"] == "strongly_significant"
+
+    # The ``sample size`` alias is coerced to ``study_size`` and lands as a real int
+    # property on the inlined Study (biolink-model#1770) -- never on the edge, never in
+    # supporting_text. The StudyResult only anchors the source row.
+    assert "study_size" not in edge
+    assert "supporting_study_size" not in edge_text
+    assert "sample_size" not in edge_text
+    study: dict[str, Any] = edge["has_supporting_studies"]["PMCID:PMC0000000"]
+    assert study["id"] == "PMCID:PMC0000000"
+    assert study["name"] == "data.tsv"
+    assert study["study_size"] == 450
+    assert study["has_study_results"] == [{"id": "row:1"}]
 
 
 def _build_context_redb(root: Path) -> Path:

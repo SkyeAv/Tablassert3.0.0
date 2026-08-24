@@ -470,7 +470,7 @@ Multivalued Biolink slots such as `has_evidence` or `FDA_regulatory_approvals`, 
 annotations:
   - {annotation: p_value, method: column, encoding: C}                 # Read from column C
   - {annotation: adjusted_p_value, method: column, encoding: D}        # A real Association slot -> emitted on the edge
-  - {annotation: supporting_study_size, method: value, encoding: 450}  # Attached to no class -> inlined supporting study (see below)
+  - {annotation: study_size, method: value, encoding: 450}            # Study metadata -> inlined supporting Study (see below)
   - {annotation: multiple_testing_correction_method, method: value, encoding: "Benjamini Hochberg"}
   - {annotation: has_evidence, method: column, encoding: E, split_by: ","}       # cells like "EFO:0001,EFO:0002" -> a per-row JSON array
   - {annotation: approval_ids, method: column, encoding: F}            # Curated pass-through -> emitted verbatim as a scalar (e.g. "011111|022222")
@@ -485,8 +485,10 @@ annotations:
 
 Annotation names fall into three groups at build time:
 
-- **Allowed edge fields**: names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `primary_knowledge_source`, `supporting_text`, `publications`, `effect_size`, `effect_type`, `approval_ids`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim. `approval_ids` (FDA application numbers, following the DAKP translator-ingest precedent) is deliberately a **scalar pass-through**: a pipe-joined cell such as `011111|022222` is emitted verbatim as its own top-level edge field (no `split_by`, not a JSON array).
-- **Unsatisfiable slots**: names the Biolink LinkML schema declares but attaches to **no** Pydantic class: `supporting_study_size`, `sample_size`, `relationship_strength`, `statistical_significance_qualifier`, and the other `supporting_study_*` slots. A record carrying one could never validate, so their values are routed onto the edge's **inlined supporting study** (`has_supporting_studies` → `Study` → `StudyResult`, the COHD/ICEES pattern) rather than emitted as edge fields. Declaring one is legal and loses nothing, but Tablassert emits a `BiolinkRelocationWarning` naming where the value went. This set is derived from the *installed* `biolink-model`, so a slot leaves it automatically once a release attaches it.
+- **Allowed edge fields:** names on the edge allow-list: [Biolink Association](https://biolink.github.io/biolink-model/) slots, qualifier slots, and curated KGX/Tablassert edge fields (e.g. `p_value`, `adjusted_p_value`, `knowledge_level`, `supporting_text`, `publications`, `effect_size`, `effect_type`, `statistical_significance_qualifier`, `approval_ids`, qualifier slots like `severity_qualifier` / `disease_context_qualifier`) are written to edges verbatim. `effect_size` and `effect_type` became real Association slots in biolink-model 4.4.4 (PR #1774) and emit as real JSON numbers and enum tokens. `approval_ids` (FDA application numbers, following the DAKP translator-ingest precedent) is deliberately a **scalar pass-through**: a pipe-joined cell such as `011111|022222` is emitted verbatim as its own top-level edge field, with no `split_by` and not as a JSON array.
+- **Study metadata:** `study_size`, `study_cohort`, `study_context`, `study_date_range`, `study_method_description`, and `study_method_types` are current Biolink `Study` node properties ([biolink-model PR #1770](https://github.com/biolink/biolink-model/pull/1770)). They describe the study itself, not an association, so their values are carried on the edge's **inlined supporting Study** (`has_supporting_studies` to `Study`, the COHD/ICEES pattern) rather than emitted as edge fields. Deprecated `supporting_study_*` spellings and `sample_size` are accepted as aliases and renamed onto canonical `study_*` names by coercion. They never appear in final JSON. Declaring any of them is legal and emits a `BiolinkRelocationWarning` naming where the value went.
+- **Unsatisfiable slots:** names the Biolink LinkML schema declares but attaches to **no** Pydantic class, derived from the installed `biolink-model`. A record carrying one could never validate, so its value is preserved in the inlined supporting study's `StudyResult.description`. A slot leaves the set automatically once a release attaches it.
+
 - **Tablassert pipeline fields**: `upstream_resource_ids`, `source_record_urls`.
 
 Any other annotation name is treated as **supporting context**. At the end of `compile_graph`, tablassert sweeps the edge columns: for each non-allow-listed name it emits `"name: value"` entries into the edge's `supporting_text` (a `list[str]`), then drops the original column. Behavior worth knowing:
@@ -498,9 +500,22 @@ Any other annotation name is treated as **supporting context**. At the end of `c
 
 This means nothing in your source data is silently dropped: context that doesn't map to a structured Biolink slot travels along inside `supporting_text` instead.
 
-In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation; tablassert emits it internally so each edge always carries its source-row provenance. Together with the sheet name it identifies the edge's **inlined supporting study** (`has_supporting_studies`), where it is carried alongside any relocated unsatisfiable slots; neither is folded into `supporting_text`.
+In addition to user-declared annotations, every edge automatically carries `extracted_from_row_number`, a 1-based index into the original source table (matching Excel-style row numbering). It is not declared as an annotation. Tablassert emits it internally so each edge always carries its source-row provenance, and the inlined supporting study consumes it: the `StudyResult` that anchors the study's row is identified by the scoped CURIE `row:<N>`. The row and sheet columns are never folded into `supporting_text`.
 
-The supporting study is only emitted when it carries something. Biolink defines `has supporting studies` as "studies that produced information used as evidence", so a section that declares **no `publications`** and has **no** relocated slots or class-pruned values emits no `has_supporting_studies` at all: its `study_id` would fall back to the config filename, making every edge assert a `Study` named `my_table.yaml` whose only result is a row index. A section with a real publication always keeps the struct (`PMID:123#Table_S7 row 12` is genuine provenance), as does any section with values to preserve. The row and sheet columns are consumed either way.
+The supporting study's identity is disjoint by construction: `Study.id` is the section's publication CURIE (`PMID:123`, `PMCID:PMC11708054`); `Study.name` is a human label, the worksheet name for spreadsheet sources and the source filename otherwise. It is never a composition of the two. A section declaring **no `publications`** falls back to the config stem (the YAML filename without its extension) as the id, and the struct is then emitted **only when it carries something to preserve**, such as study metadata, routed unsatisfiable values, or class-pruned values. Biolink defines `has supporting studies` as "studies that produced information used as evidence", so a contentless unpublished section emits no `has_supporting_studies` at all; a section with a real publication always keeps the wrapper:
+
+```json
+"has_supporting_studies": {
+  "PMCID:PMC11708054": {
+    "id": "PMCID:PMC11708054",
+    "name": "all correlations",
+    "study_size": 9,
+    "has_study_results": [{"id": "row:42"}]
+  }
+}
+```
+
+`StudyResult` carries no name and no row description. The `row:<N>` id is the provenance, and its `description` is reserved for values with no structured home, such as routed unsatisfiable values and class-pruned qualifiers.
 
 #### Automatic column coercion
 
@@ -510,12 +525,12 @@ Before the allow-list sweep runs, tablassert renames statistical columns to thei
 |---|---|---|
 | P value (raw) | `p_value` | `p value`, `p-value`, `pvalue`, `P`, `gwas p`, `raw_p`, `pvalue1` |
 | Adjusted P value | `adjusted_p_value` | `padj`, `p.adj`, `adj.P.Val`, `FDR`, `Bonferroni`, `Holm`, `q value` |
-| Study size | `supporting_study_size` | `n`, `sample_size`, `study size`, `cohort_size`, `participants_n`, `enrollment` |
+| Study size | `study_size` | `n`, `sample_size`, `study size`, `cohort_size`, `participants_n`, `enrollment`, the deprecated `supporting_study_size` |
 | Effect size | `effect_size` | `effect size`, `odds ratio`, `hazard ratio`, `beta`, `log2FC`, `correlation`, `rho` (and the legacy `relationship_strength`) |
 | Effect type | `effect_type` | `effect type`, `effect metric`, `statistic type`, `metric` |
 
 - **`effect_type` values are also coerced.** Each cell is matched case/separator-insensitively against an alias table (e.g. `"OR"` → `odds_ratio`, `"Cohen's d"` → `cohens_d`, `"Spearman"` → `spearmans_rho`), then by `rapidfuzz` fallback against the 25 permissible `EffectTypes` values; anything matching nothing is dropped to `null` rather than carried through (the Biolink range is the enum).
-- **`statistical_significance_qualifier` is auto-derived** from the p-value column into five bands: `biolink:very_strongly_significant` (p ≤ 0.001), `biolink:strongly_significant` (≤ 0.01), `biolink:significant` (≤ 0.05), `biolink:suggestive` (≤ 0.10), `biolink:not_significant` (> 0.10). The same rigorous selection picks the source column: a raw `p_value` column is preferred, `adjusted_p_value` is the fallback, and the qualifier is omitted entirely when no p-value column is present.
+- **`statistical_significance_qualifier` is auto-derived** from the p-value column into five bands: `very_strongly_significant` (p ≤ 0.001), `strongly_significant` (≤ 0.01), `significant` (≤ 0.05), `suggestive` (≤ 0.10), and `not_significant` (> 0.10). The values are bare `StatisticalSignificanceQualifierEnum` tokens. Biolink-model 4.4.4 attaches the slot to `Association` with the enum as its range, so the band rides the edge as a real field with no `biolink:` prefix. The same rigorous selection picks the source column: a raw `p_value` column is preferred, `adjusted_p_value` is the fallback, and the qualifier is omitted entirely when no p-value column is present.
 - **`effect_size` and `effect_type` travel as a pair.** A section declaring one without the other does not fail validation: the unpaired annotation is **dropped** from the section with an `UnpairedEffectAnnotationWarning` naming what was dropped and from where, and the section's edges are kept; neither half carries evidence alone. A bare effect size is uninterpretable (0.85 of *what*, an odds ratio or a Spearman rho?), and Biolink PR #1774 only populates `effect_type` alongside a numeric `effect_size`, so the build nulls an unpaired type anyway. Declare both together to retain the full evidence. Alias spellings count: `odds ratio` and the legacy `relationship_strength` coerce to `effect_size`, so both still need a sibling `effect_type`. Use `method: value` when every row shares one statistic and `method: column` when the table provides it; in a `template` + `sections` config the two lists are concatenated, so a constant `effect_type` declared once on the template pairs with each section's own `effect_size` column.
 - **Biolink class rules are enforced.** `effect_type` is nulled on every row where `effect_size` is null (and nulled entirely when no `effect_size` column exists); `statistical_significance_qualifier` is only set when `p_value`/`adjusted_p_value` is populated, and null p-values yield a null qualifier.
 

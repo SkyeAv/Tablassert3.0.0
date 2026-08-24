@@ -1258,10 +1258,11 @@ def _biolink_report(nodes: Path, edges: Path) -> dict[str, object]:
     Wraps ``biolink.validate_kgx`` (the same check ``tablassert validate-kgx`` runs) into the
     flat, JSON-safe keys ``build_and_audit`` returns, plus the ``_notes`` list the caller
     folds into its own. ``biolink_valid_pct`` excludes the known-pending fields Tablassert
-    emits on purpose (``effect_size`` / ``effect_type`` pending biolink-model#1774,
-    ``approval_ids`` as a translator-ingest pass-through, and the KGX denormalized carryovers)
-    so the scored number reflects the agent's decisions rather than
-    a deliberate gap; ``biolink_valid_pct_strict`` keeps that gap visible.
+    emits on purpose (``approval_ids`` as a translator-ingest pass-through and the KGX
+    denormalized carryovers -- the set is derived, and emptied itself of ``effect_size`` /
+    ``effect_type`` when biolink-model 4.4.4 shipped them as real Association slots) so the
+    scored number reflects the agent's decisions rather than a deliberate gap;
+    ``biolink_valid_pct_strict`` keeps that gap visible.
 
     Never raises: an unreadable or unparseable artifact degrades to ``None`` metrics and a
     note, exactly like the coverage measurement above it.
@@ -2286,23 +2287,31 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
 
 {{PREDICATE_CHEATSHEET}}
 
-- ANNOTATIONS must name a slot a Biolink association can actually hold. `supporting_study_size`,
-  `sample_size` and the other `supporting_study_*` names exist in the schema but belong to NO
-  class, so their values are rerouted into an inlined StudyResult description rather than
-  emitted on the edge. `q_value`, `fold_change`, `z_score`, `beta` and
-  similar are not association slots at all and are folded into `supporting_text`. Prefer
-  `p_value`, `adjusted_p_value`, `effect_size`, `effect_type`, `has_evidence`. For FDA
-  application numbers, `approval_ids` is a deliberate translator-ingest pass-through: keep
-  the pipe-joined value as a scalar and do not add `split_by`.
+- ANNOTATIONS must name a slot a Biolink association can actually hold, or a Study metadata
+  property. Study-level metadata rides the edge's inlined supporting Study, never the edge
+  itself: `sample_size` / `supporting_study_size` and other study-size-like headers coerce
+  to `study_size`, and `supporting_study_cohort` / `supporting_study_context` /
+  `supporting_study_date_range` / `supporting_study_method_description` /
+  `supporting_study_method_types` coerce to the matching `study_*` Study properties
+  (biolink-model 4.4.4 replaced the deprecated `supporting_study_*` association slots with
+  Study node properties). Statistical aliases coerce onto real edge slots: `beta` /
+  `odds ratio` / correlation coefficients -> `effect_size` (declare the matching
+  `effect_type`), `q value` / `padj` -> `adjusted_p_value`. Names nothing claims
+  (`fold_change` alone, `z_score`, `lfsr`, `standard_error`, free-form notes) are folded
+  into `supporting_text`. Prefer `p_value`, `adjusted_p_value`, `effect_size`,
+  `effect_type`, `has_evidence`. For FDA application numbers, `approval_ids` is a deliberate
+  translator-ingest pass-through: keep the pipe-joined value as a scalar and do not add
+  `split_by`.
 - MULTIVALUED slots (`has_evidence` and friends) take a real JSON array, never a joined string:
   `split_by` is the ONLY multivalued encoding — there is no literal-list method. INSPECT the
   column's cells first (read_table shows them); the separator they ACTUALLY use — `|`, `,`, or
   `;` — is the one you declare: `{method: column, encoding: <letter>, split_by: "<separator>"}`.
   A SINGLE-value cell gets NO `split_by`: its scalar wraps into a one-element array, the correct
   shape. Cells that DO join multiple values but OMIT `split_by` ship as one unusable joined blob.
-- `effect_size` / `effect_type` are deliberate Tablassert extras pending biolink-model#1774;
-  `approval_ids` is a deliberate translator-ingest pass-through extra. All three are EXEMPT from
-  the validity score: a `biolink_valid_pct` below 1.0 is never caused by these intentional fields.
+- `approval_ids` is a deliberate translator-ingest pass-through extra, EXEMPT from the
+  validity score: a `biolink_valid_pct` below 1.0 is never caused by it. (`effect_size` /
+  `effect_type` were exempt only until biolink-model 4.4.4 shipped them as real Association
+  slots; they now validate like any other slot.)
 - QUALIFIERS: enum-ranged qualifiers take a literal TOKEN, never a CURIE
   (`object_direction_qualifier: increased`, not a UMLS id), and `species_context_qualifier` is
   disabled — never author it as a qualifier or annotation.
@@ -2320,9 +2329,9 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
   know is wrong.
 - STATISTICS: capture p-value columns (`p_value` / `adjusted_p_value`). When every row shares one
   statistic, emit the PAIR: `{annotation: effect_size, method: column, encoding: <letter>}` +
-  `{annotation: effect_type, method: value, encoding: <statistic>}` — effect_type is generally a
-  method: value encoding and its value is NOT validated or enforced; the PAIRING is (an unpaired
-  half is DROPPED with a warning, edge kept), so always emit both halves together.
+  `{annotation: effect_type, method: value, encoding: <statistic>}` — use a valid Biolink
+  effect-type token; invalid values become null. An unpaired half is dropped with a warning while
+  the edge is kept, so always emit both halves together.
 - ONE SECTION PER MAPPABLE SHEET/WORKSHEET: every mappable sheet earns its own section; skipping
   one silently under-extracts the article's graph.
 

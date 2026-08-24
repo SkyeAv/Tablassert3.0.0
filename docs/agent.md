@@ -215,24 +215,29 @@ cannot drift from the model the build validates against:
 - any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
 ```
 
-!!! note "`effect_size` / `effect_type` / `approval_ids` are exempt"
-    Tablassert emits `effect_size` / `effect_type` deliberately, pending
-    [biolink-model#1774](https://github.com/biolink/biolink-model/pull/1774), and emits
-    `approval_ids` as a translator-ingest pass-through. The installed model declares none of
-    these on `Association`, so a strict check rejects edges carrying them. `biolink_valid_pct`
-    exempts them (and the other curated KGX carryovers) so the agent is scored on **its own**
-    decisions.
-    The exempt set is *derived* (`TABLASERT_EDGE_EXTRAS - <fields any association declares>`), so it
-    empties itself when the model catches up, with no code change.
+!!! note "`approval_ids` is exempt"
+    Tablassert emits `approval_ids` as a translator-ingest pass-through; the installed model
+    declares no such slot on `Association`, so a strict check rejects edges carrying it.
+    `biolink_valid_pct` exempts it (and the other curated KGX carryovers) so the agent is
+    scored on **its own** decisions.
+    The exempt set is *derived* from `TABLASERT_EDGE_EXTRAS` minus the fields any association
+    declares, so it empties itself when the model catches up. That is exactly what happened to
+    `effect_size` and `effect_type`: they were exempt pending
+    [biolink-model#1774](https://github.com/biolink/biolink-model/pull/1774), and dropped out
+    of the set when biolink-model 4.4.4 shipped them as real `Association` slots.
 
 Two related silent behaviours the agent's prompt now names, since neither raises:
 
-- An annotation like `supporting_study_size` or `sample_size` is declared in the LinkML schema but
-  attached to **no** Pydantic class, so its value is routed onto the inlined `StudyResult` rather than
-  emitted on the edge. Names that are not association slots at all (`q_value`, `fold_change`, …) are
-  folded into `supporting_text`. Authoring either now emits a `BiolinkRelocationWarning` naming where
-  the value actually went, a warning, not an error: nothing is lost, and every existing config
-  keeps building.
+- An annotation like `supporting_study_size` or `sample_size` names study-level metadata.
+  biolink-model 4.4.4 ([PR #1770](https://github.com/biolink/biolink-model/pull/1770))
+  deprecated the old `supporting_study_*` association slots and replaced them with `Study`
+  node properties, so the value is carried on the edge's inlined supporting `Study` (as
+  `study_size`, `study_cohort`, and related fields) rather than emitted on the edge.
+  `relationship_strength` is not one of these. It is a legacy alias coerced to the real edge
+  slot `effect_size`. Names that are not association slots at all (`fold_change` alone,
+  `z_score`, and similar names) are folded into `supporting_text`. Authoring any relocated
+  name emits a `BiolinkRelocationWarning` naming where the value actually went, a warning,
+  not an error: nothing is lost, and every existing config keeps building.
 - Enum-ranged qualifiers take a literal token (`object_direction_qualifier: increased`), never a
   CURIE, and are deliberately **not** entity-resolved. `map_coverage` skips them for the same reason
   the build does, so they no longer depress a config's coverage score for working correctly.

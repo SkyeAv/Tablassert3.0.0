@@ -70,7 +70,7 @@ template:
     - annotation: p_value
       method: column
       encoding: C
-    - annotation: supporting_study_size
+    - annotation: study_size
       method: column
       encoding: D
 ```
@@ -84,7 +84,7 @@ template:
 - **statement**: Creates edges where genes (subject) are `associated_with` diseases (object)
 - **subject/object**: Uses `column` method to read from columns A (gene symbol) and B (disease name)
 - **prioritize**: Tells entity resolution to prefer Gene/Disease categories
-- **annotations**: Adds p-value (column C) and sample size (column D) as edge attributes
+- **annotations**: Adds p-value (column C) as an edge attribute and study size (column D) as metadata on the inlined supporting study
 
 ## Step 3: Create Graph Configuration
 
@@ -172,10 +172,12 @@ Example output:
 head -n 2 tutorial-output/TUTORIAL_KG_1.0.0.edges.ndjson
 ```
 
-Example output (p-values are emitted as controlled scientific-notation strings; the study size rides the inlined supporting study because no association class in biolink-model 4.4.3 declares that slot):
+Example output (p-values are emitted as controlled scientific-notation strings and the derived
+significance band as a bare enum token; the study size is `Study.study_size` metadata on the
+inlined supporting study, anchored to the source row by the `row:<N>` StudyResult):
 ```json
-{"id":"2cfea591-0f8f-33af-a7df-03da531d3359","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","publications":["PMID:12345678"]}
-{"id":"7b1c9d02-5e8a-4f3b-9c1d-2a6e8f0b4d7c","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p_value":"1.0000e-04","publications":["PMID:12345678"]}
+{"id":"2cfea591-0f8f-33af-a7df-03da531d3359","subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","statistical_significance_qualifier":"strongly_significant","has_supporting_studies":{"PMID:12345678":{"id":"PMID:12345678","name":"tutorial-data.csv","study_size":450,"has_study_results":[{"id":"row:2"}]}},"publications":["PMID:12345678"]}
+{"id":"7b1c9d02-5e8a-4f3b-9c1d-2a6e8f0b4d7c","subject":"HGNC:1100","predicate":"biolink:associated_with","object":"MONDO:0005041","p_value":"1.0000e-04","statistical_significance_qualifier":"very_strongly_significant","has_supporting_studies":{"PMID:12345678":{"id":"PMID:12345678","name":"tutorial-data.csv","study_size":1200,"has_study_results":[{"id":"row:3"}]}},"publications":["PMID:12345678"]}
 ```
 
 **RIG file:**

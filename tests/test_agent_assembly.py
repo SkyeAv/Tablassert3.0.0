@@ -94,8 +94,8 @@ def test_instructions_carry_us006_derivation_guidance() -> None:
 
     Covers (a) header-row detection -> row_slice + exact sheet name, (b) explode_by for delimited
     multi-entity cells, (c) prioritize breadth, (d) p_value capture + the effect_size/effect_type
-    PAIR (value encoding NOT claimed validated/enforced; unpaired halves dropped with a warning per
-    US-001), and (e) one section per mappable sheet.
+    PAIR (invalid values become null; unpaired halves dropped with a warning per US-001), and
+    (e) one section per mappable sheet.
     """
     # (a) header-row detection -> row_slice [start, auto] + exact sheet name
     assert "HEADERS + row_slice" in INSTRUCTIONS
@@ -111,8 +111,8 @@ def test_instructions_carry_us006_derivation_guidance() -> None:
     assert "STATISTICS: capture p-value columns" in INSTRUCTIONS
     assert "adjusted_p_value" in INSTRUCTIONS
     assert "method: value, encoding: <statistic>" in INSTRUCTIONS
-    assert "NOT validated or enforced" in INSTRUCTIONS  # effect_type value encoding is a convention, not a gate
-    assert "DROPPED with a warning" in INSTRUCTIONS  # US-001 drop-with-warning pairing semantics
+    assert "invalid values become null" in INSTRUCTIONS
+    assert "dropped with a warning" in INSTRUCTIONS  # US-001 drop-with-warning pairing semantics
     # (e) one section per mappable sheet reinforced
     assert "ONE SECTION PER MAPPABLE SHEET" in INSTRUCTIONS.upper()
     # No stale pre-US-001 pairing claims survive anywhere in the prompt.

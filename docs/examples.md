@@ -249,7 +249,7 @@ template:
     - annotation: p_value
       method: column
       encoding: C
-    - annotation: supporting_study_size
+    - annotation: study_size
       method: column
       encoding: D
 ```

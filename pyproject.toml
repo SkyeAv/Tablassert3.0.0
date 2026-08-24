@@ -44,7 +44,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "biolink-model>=4.4.3",
+    "biolink-model>=4.4.4",
     "loguru>=0.7.3",
     "polars>=1.39.0",
     "rapidfuzz>=3.14.3",
@@ -98,6 +98,9 @@ optimize = [
 [dependency-groups]
 test = [
     "maturin>=1.10,<2.0",
+    # Direct test import (excel fixtures); was only transitive via linkml 1.10,
+    # which biolink-model 4.4.4's linkml 1.11 bump no longer pulls.
+    "openpyxl>=3.1",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",

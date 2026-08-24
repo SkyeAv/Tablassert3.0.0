@@ -41,7 +41,7 @@ template:
   provenance: { repo: PMID, publication: "12345678" }
   annotations:
     - { annotation: p_value, method: column, encoding: C }
-    - { annotation: supporting_study_size, method: column, encoding: D }
+    - { annotation: study_size, method: column, encoding: D }
 ```
 
 Wrap it in a graph config (`graph.yaml`) pointing at your fullmap entity-resolution database
@@ -85,7 +85,7 @@ Output is one JSON object per line: nodes with Biolink categories, edges with an
 ```
 
 ```json
-{"subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","supporting_study_size":"450"}
+{"subject":"HGNC:11998","predicate":"biolink:associated_with","object":"MONDO:0008903","p_value":"1.0000e-03","has_supporting_studies":{"PMID:12345678":{"id":"PMID:12345678","name":"gene-disease.csv","study_size":450,"has_study_results":[{"id":"row:2"}]}}}
 ```
 
 See the [Tutorial](https://skyeav.github.io/Tablassert/tutorial/) for the full walkthrough.

@@ -13,6 +13,7 @@ from tablassert.biolink import (
     BIOLINK_VERSION,
     DISABLED_EDGE_FIELDS,
     ENUM_RANGED_QUALIFIERS,
+    STUDY_METADATA_FIELDS,
     UNSATISFIABLE_EDGE_FIELDS,
     AgentTypes,
     Categories,
@@ -616,7 +617,17 @@ class Annotation(Encoding):
         # is a false positive.
         target: str = coerced_target(name)
         shown: str = _shown(name, target)
-        if target in UNSATISFIABLE_EDGE_FIELDS:
+        if target in STUDY_METADATA_FIELDS:
+            warnings.warn(
+                f"{shown} is study-level metadata, so its value is carried on the inlined supporting study as "
+                f"`Study.{target}` rather than emitted on the edge itself (biolink-model {BIOLINK_VERSION} "
+                "replaced the deprecated `supporting_study_*` association slots with Study node properties). "
+                "Use a slot a Biolink association declares (e.g. `p_value`, `adjusted_p_value`) if you need "
+                "it on the edge itself.",
+                BiolinkRelocationWarning,
+                stacklevel=2,
+            )
+        elif target in UNSATISFIABLE_EDGE_FIELDS:
             warnings.warn(
                 f"{shown} is declared in biolink-model {BIOLINK_VERSION} but attached to no association class, "
                 "so it cannot be emitted on an edge; its value is routed onto the inlined supporting study "

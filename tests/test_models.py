@@ -872,8 +872,8 @@ def test_no_deprecation_warnings_for_current_fixtures(fixtures_path: Path, recwa
     proving the deprecation scaffold never regresses today's corpus. Scoped to UserWarning so
     unrelated DeprecationWarnings (multiprocessing/polars) cannot interfere with the assertion,
     and excluding BiolinkRelocationWarning, which is not a deprecation: the tutorial's
-    `supporting_study_size` is the SUPPORTED way to record a study size (it lands on the inlined
-    StudyResult), and its relocation notice is asserted by its own test below.
+    `study_size` is the supported way to record a study size (it lands on the inlined
+    Study), and its relocation notice is asserted by its own test below.
     """
     # Single-section fixture validates directly.
     Section.model_validate(from_yaml(fixtures_path / "minimal_section.yaml"))
@@ -895,18 +895,21 @@ def test_no_deprecation_warnings_for_current_fixtures(fixtures_path: Path, recwa
 
 def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
     """An annotation whose value is relocated says so; one that reaches the edge stays silent."""
-    # Attached to no Biolink class -> routed onto the inlined StudyResult.
-    with pytest.warns(BiolinkRelocationWarning, match="attached to no association class"):
+    # Deprecated supporting-study spelling -> study-level metadata on the inlined Study.
+    with pytest.warns(BiolinkRelocationWarning, match="study-level metadata"):
         Annotation.model_validate({"annotation": "supporting_study_size", "method": "column", "encoding": "D"})
-    # An alias the clean-phase coercions rename to an unsatisfiable slot names the coerced target.
-    with pytest.warns(BiolinkRelocationWarning, match="coerced to `supporting_study_size`"):
+    # An alias the clean-phase coercions rename to a Study metadata slot names the coerced target.
+    with pytest.warns(BiolinkRelocationWarning, match="coerced to `study_size`"):
         Annotation.model_validate({"annotation": "sample size", "method": "column", "encoding": "F"})
+    # The canonical Study metadata spelling relocates too -- it never rides the edge.
+    with pytest.warns(BiolinkRelocationWarning, match="Study.study_cohort"):
+        Annotation.model_validate({"annotation": "study_cohort", "method": "value", "encoding": "FINNGEN"})
     # Not an association slot at all, and no statistical coercion claims it -> folded into supporting_text.
     with pytest.warns(BiolinkRelocationWarning, match="folded into `supporting_text`"):
         Annotation.model_validate({"annotation": "overlap", "method": "column", "encoding": "E"})
-    # Real association slots, the deliberate pending extras (``effect_size`` / ``effect_type``
-    # awaiting biolink-model#1774, ``approval_ids`` as the translator-ingest pipe-joined
-    # scalar pass-through), and aliases the coercions rename to a canonical slot (the
+    # Real association slots (``effect_size`` / ``effect_type`` are model fields since
+    # biolink-model 4.4.4, ``approval_ids`` is the translator-ingest pipe-joined scalar
+    # pass-through) and aliases the coercions rename to a canonical edge slot (the
     # pipeline emits those on the edge) are silent.
     with warnings.catch_warnings():
         warnings.simplefilter("error", BiolinkRelocationWarning)

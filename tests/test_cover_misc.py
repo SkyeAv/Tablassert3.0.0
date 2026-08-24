@@ -45,7 +45,7 @@ def test_study_size_suffix_pattern_is_shadowed_by_count() -> None:
     name: str = "samples_n"
     assert STUDY_SIZE_SUFFIX_PATTERN.search(name) is not None
     assert STUDY_SIZE_COUNT_PATTERN.search(name) is not None
-    assert study_size_target(name) == "supporting_study_size"
+    assert study_size_target(name) == "study_size"
 
 
 def test_fastmerge_returns_b_on_scalar_collision() -> None:

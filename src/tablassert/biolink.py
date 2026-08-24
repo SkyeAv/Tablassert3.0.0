@@ -26,9 +26,8 @@ Source mapping
 - ``ALLOWED_EDGE_FIELDS``: the Biolink ``Association`` model fields (walked over
   the MRO) unioned with the qualifier slot names and a curated set of KGX /
   Tablassert edge columns that are not Biolink Association fields.
-- ``EffectTypes``: the 25 permissible ``effect_type`` values from Biolink PR
-  #1774 (merged), defined locally because the pinned ``biolink-model`` release
-  predates the PR; switch to the model's enum once it ships.
+- ``EffectTypes``: the permissible ``effect_type`` values, derived from the
+  installed ``biolink-model``'s ``EffectTypeEnum`` (shipped by PR #1774).
 
 The enums are built dynamically at runtime from the model. For static type
 checking, ``TYPE_CHECKING`` stub classes (declaring only the members referenced
@@ -64,6 +63,7 @@ __all__ = [
     "EFFECT_TYPE_VALUES",
     "ENUM_RANGED_QUALIFIERS",
     "KNOWN_PENDING_EDGE_FIELDS",
+    "STUDY_METADATA_FIELDS",
     "UNSATISFIABLE_EDGE_FIELDS",
     "AgentTypes",
     "Categories",
@@ -271,37 +271,10 @@ def _biolink_enum_values(enum_cls: type[Enum]) -> list[str]:
     return sorted(str(member.value) for member in enum_cls)
 
 
-# Permissible ``effect_type`` values, verbatim from the ``EffectTypeEnum`` permitted
-# values of Biolink PR #1774 (merged, but not in the pinned biolink-model 4.4.3
-# release; close_mappings intentionally ignored). Kept as a plain tuple so
-# ``coerce`` can consume it without touching the enum.
-EFFECT_TYPE_VALUES: tuple[str, ...] = (
-    "regression_coefficient",
-    "log2_fold_change",
-    "wald_ratio",
-    "inverse_variance_weighted",
-    "mr_egger",
-    "weighted_median",
-    "standardized_mean_difference",
-    "cohens_d",
-    "hedges_g",
-    "glasss_delta",
-    "strictly_standardized_mean_difference",
-    "correlation_coefficient",
-    "pearsons_r",
-    "spearmans_rho",
-    "kendalls_tau",
-    "polychoric_correlation",
-    "matthews_correlation_coefficient",
-    "goodman_kruskal_gamma",
-    "r2_linkage_disequilibrium",
-    "odds_ratio",
-    "relative_risk",
-    "hazard_ratio",
-    "eta_squared",
-    "omega_squared",
-    "root_mean_square_standardized_effect",
-)
+# Permissible ``effect_type`` values, derived from the installed ``biolink-model``'s
+# ``EffectTypeEnum`` (the slot and its enum shipped with Biolink PR #1774). Kept as a
+# plain tuple so ``coerce`` can consume it without touching the enum.
+EFFECT_TYPE_VALUES: tuple[str, ...] = tuple(_biolink_enum_values(_bm.EffectTypeEnum))
 
 
 def _annotation_choices(annotation: Any) -> frozenset[str] | None:
@@ -417,10 +390,9 @@ def resolve_association_class(category: str, predicate: str) -> type[Any]:
 # Deliberately NOT listed here, because none of them can be serialized onto an edge:
 #   - ``source_record_urls`` / ``upstream_resource_ids`` -- ``domain: retrieval source``,
 #     so they belong inside a ``sources`` entry, not on the association.
-#   - ``supporting_study_*``, ``statistical_significance_qualifier``,
-#     ``relationship_strength`` -- declared in the LinkML YAML but attached to zero
-#     Pydantic classes (see ``UNSATISFIABLE_EDGE_FIELDS``); they are routed onto the
-#     inlined ``Study`` / ``StudyResult`` instead.
+#   - ``supporting_study_*`` -- deprecated by Biolink PR #1770 and attached to no class
+#     (see ``UNSATISFIABLE_EDGE_FIELDS``); coercion renames them onto the current
+#     ``study_*`` slots (``STUDY_METADATA_FIELDS``), which hang off the inlined ``Study``.
 #   - ``taxon`` -- a node property; no species-context edge is synthesized from it.
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
@@ -430,11 +402,6 @@ TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
         # verbatim instead of folding it into ``supporting_text``.
         "approval_ids",
         "broad_synonym",
-        # PR #1774 edge attributes; absent from biolink-model 4.4.3 Association.model_fields,
-        # so the union keeps them out of fold_unknown_to_supporting_text and they reach the
-        # final edges. Harmless once a future biolink-model ships them as real fields.
-        "effect_size",
-        "effect_type",
         "equivalent_identifiers",
         "evidence_direction",
         "evidence_type",
@@ -496,19 +463,17 @@ else:
     Qualifiers = _build_str_enum("Qualifiers", _qualifier_values())
     KnowledgeLevels = _build_str_enum("KnowledgeLevels", _biolink_enum_values(cast("type[Enum]", _bm.KnowledgeLevelEnum)))
     AgentTypes = _build_str_enum("AgentTypes", _biolink_enum_values(cast("type[Enum]", _bm.AgentTypeEnum)))
-    # Defined locally until biolink-model ships PR #1774, then switch to
-    # _biolink_enum_values(_bm.EffectTypeEnum).
+    # Derived from the installed model's ``EffectTypeEnum`` via ``EFFECT_TYPE_VALUES``.
     EffectTypes = _build_str_enum("EffectTypes", list(EFFECT_TYPE_VALUES))
 
 
 _schema_definition: Any = _schema().schema
 BIOLINK_VERSION: str = str(_schema_definition.version) if _schema_definition is not None else "unknown"
-"""Version of the Biolink Model these values were derived from (e.g. ``"4.4.3"``)."""
+"""Version of the Biolink Model these values were derived from (e.g. ``"4.4.4"``)."""
 
 UNSATISFIABLE_EDGE_FIELDS: frozenset[str] = frozenset(q.value for q in Qualifiers if q.value not in _field_owners()) | frozenset(
     field
     for field in (
-        "relationship_strength",
         "sample_size",
         "statistical_significance_qualifier",
         "supporting_study_cohort",
@@ -525,7 +490,27 @@ UNSATISFIABLE_EDGE_FIELDS: frozenset[str] = frozenset(q.value for q in Qualifier
 ``Qualifiers`` is derived from the LinkML *slot* hierarchy, which is strictly broader
 than the set of slots actually attached to a class. Emitting one of these produces a
 record that can never validate, so configs referencing them are rejected up front and
-their values are routed onto the inlined ``StudyResult`` instead.
+their values are routed onto the inlined ``Study`` instead. The set is derived from the
+installed model: ``statistical_significance_qualifier`` left it when biolink-model 4.4.4
+attached the slot to ``Association``, and the deprecated ``supporting_study_*`` names
+leave it the day a release attaches them. ``relationship_strength`` is deliberately
+absent: it is a legacy Tablassert alias that coercion renames to the real edge slot
+``effect_size`` -- it never needs a study detour.
+"""
+
+
+STUDY_METADATA_FIELDS: frozenset[str] = frozenset(field for field in _bm.Study.model_fields if field.startswith("study_"))
+"""The current Biolink ``Study`` node properties holding study-level metadata.
+
+Derived from the installed model: ``study_size``, ``study_cohort``, ``study_context``,
+``study_date_range``, ``study_method_description``, ``study_method_types``. Biolink PR
+#1770 deprecated the old ``supporting_study_*`` association slots in favor of exactly
+these properties (each carries ``deprecated_element_has_exact_replacement``), because a
+multivalued ``has supporting studies`` edge cannot say which study a flat value belongs
+to -- the metadata hangs off the ``Study`` itself. Tablassert therefore renames the
+legacy annotation names onto these slots (``coerce.coerce_study_metadata_columns``) and
+emits them on the inlined ``Study``, never on the edge and never as a ``StudyResult``
+description dump.
 """
 
 
@@ -589,10 +574,11 @@ against the resolved class is done by ``lib.prune_to_class()``.
 KNOWN_PENDING_EDGE_FIELDS: frozenset[str] = TABLASERT_EDGE_EXTRAS - frozenset(_association_model_fields())
 """Curated edge extras the installed Biolink Model does not (yet) declare on any association.
 
-Tablassert emits these deliberately -- ``effect_size`` / ``effect_type`` pending
-``biolink/biolink-model#1774``, ``approval_ids`` as a translator-ingest pass-through, plus the
-KGX denormalized carryovers (``synonym``, ``xref``, ``relation``, ...) -- so a Biolink class
-rejects them as ``extra_forbidden`` even though the build is behaving as designed.
+Tablassert emits these deliberately -- ``approval_ids`` as a translator-ingest pass-through,
+plus the KGX denormalized carryovers (``synonym``, ``xref``, ``relation``, ...) -- so a Biolink
+class rejects them as ``extra_forbidden`` even though the build is behaving as designed. The
+statistical ``effect_size`` / ``effect_type`` pair is no longer pending since
+biolink-model 4.4.4 shipped PR #1774.
 :func:`is_pending_problem` uses this set
 to separate "Tablassert is ahead of the pinned model" from "this record is genuinely
 malformed", so a validity *score* is not dominated by a known, intentional gap.
@@ -693,25 +679,27 @@ def _scalar_types(annotation: Any) -> set[type]:
 
 @cache
 def numeric_slot_kind(field: str) -> str | None:
-    """Return ``"int"`` / ``"float"`` when a Biolink association slot has a numeric range.
+    """Return ``"int"`` / ``"float"`` when a Biolink slot has a numeric range.
 
     Tablassert stringifies its numeric annotation columns for notation control (p-value
     columns are ALWAYS scientific-notation strings, which Pydantic's lax validation
     coerces back for the ``float``-typed ``p_value`` / ``adjusted_p_value`` slots), but
-    a non-p-value column that the installed model types ``int`` (``supporting_study_size``
-    once ``biolink/biolink-model#1770`` lands) or ``float`` must be emitted as a real
-    JSON number. Derived from the installed model so the answer tracks whatever version
-    is pinned.
+    a non-p-value column that the installed model types ``int`` (``study_size`` on the
+    inlined ``Study`` since ``biolink/biolink-model#1770``) or ``float`` (``effect_size``
+    since #1774) must be emitted as a real JSON number. Consults every class declaring
+    the field -- association slots AND the inlined ``Study`` metadata properties -- and
+    is derived from the installed model, so the answer tracks whatever version is pinned.
 
     Args:
-        field: Edge column name.
+        field: Column/slot name.
 
     Returns:
         ``"int"``, ``"float"``, or ``None`` when the slot is not numeric (or unknown).
     """
     kinds: set[type] = set()
-    for cls in _association_classes():
-        info: Any = cls.model_fields.get(field)
+    for owner in _field_owners().get(field, frozenset()):
+        cls: Any = getattr(_bm, owner, None)
+        info: Any = getattr(cls, "model_fields", {}).get(field) if inspect.isclass(cls) else None
         if info is not None:
             kinds |= _scalar_types(info.annotation)
     if float in kinds:
@@ -743,8 +731,8 @@ def validate_kgx(nodes_path: Path, edges_path: Path, limit: int = 20) -> dict[st
     Two pass rates are reported. ``valid`` is strict and drives ``ok`` (the CLI's
     non-zero exit). ``valid_excluding_pending`` additionally counts records whose *every*
     failure is a :func:`is_pending_problem` -- the score to optimize against, so a
-    deliberate gap like ``effect_size`` (pending ``biolink-model#1774``) is not mistaken
-    for a malformed record. The two converge as the model catches up.
+    deliberate gap like the curated ``approval_ids`` pass-through is not mistaken for a
+    malformed record. The two converge as future model releases absorb curated extras.
 
     Args:
         nodes_path: Path to ``<name>_<version>.nodes.ndjson``.

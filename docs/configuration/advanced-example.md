@@ -53,7 +53,7 @@ template:
   # Statistical metadata as edge annotations (method: value = constant,
   # method: column = per-row)
   annotations:
-    - {annotation: supporting_study_size, method: value, encoding: 9}
+    - {annotation: study_size, method: value, encoding: 9}      # Study metadata -> inlined supporting Study
     - {annotation: p_value, method: column, encoding: C}
     - {annotation: multiple_testing_correction_method, method: value, encoding: Benjamini Hochberg}
     - {annotation: effect_size, method: column, encoding: B}   # Spearman rho value
@@ -99,12 +99,14 @@ whole table or `method: column` to pull per-row notes from the source (see
 {"id":"CHEBI:41774","name":"13C-tamoxifen","category":["biolink:ChemicalEntity"]}
 ```
 
-**Edges:** Allow-listed annotation columns (`supporting_study_size`, `p_value`, `effect_size`,
-`effect_type`) stay as
-top-level edge fields (numeric annotations as controlled-notation strings). Any non-Biolink-slot name
-(here `assertion_method`, `multiple_testing_correction_method`, `miscellaneous_notes`) folds into the
-edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically), alongside the built-in
-`extracted_from_row_number`:
+**Edges:** Allow-listed annotation columns (`p_value`, `effect_size`, `effect_type`) stay as
+top-level edge fields (`p_value` in controlled scientific-notation string form, `effect_size` as a real
+JSON number since biolink-model 4.4.4). Study metadata (`study_size`, here declared as a constant)
+lands on the edge's inlined supporting `Study`; the `Study.id` is the publication CURIE, `Study.name`
+the worksheet, and the single `StudyResult` anchors the source row as its `row:<N>` id. Any
+non-Biolink-slot name such as `assertion_method`, `multiple_testing_correction_method`, and
+`miscellaneous_notes` folds into the edge's `supporting_text` list as `"name: value"` entries
+(sorted alphabetically):
 
 ```json
 {
@@ -112,13 +114,19 @@ edge's `supporting_text` list as `"name: value"` entries (sorted alphabetically)
   "subject": "NCBITaxon:47715",
   "predicate": "biolink:correlated_with",
   "object": "CHEBI:41774",
-  "supporting_study_size": "9",
+  "has_supporting_studies": {
+    "PMCID:PMC11708054": {
+      "id": "PMCID:PMC11708054",
+      "name": "all correlations",
+      "study_size": 9,
+      "has_study_results": [{"id": "row:3"}]
+    }
+  },
   "p_value": "1.0000e-03",
-  "effect_size": "0.85",
+  "effect_size": 0.85,
   "effect_type": "spearmans_rho",
   "supporting_text": [
     "assertion_method: Spearman correlation",
-    "extracted_from_row_number: 3",
     "miscellaneous_notes: Correlation analysis between microbial composition and 13C-tamoxifen abundance after FDR correction",
     "multiple_testing_correction_method: Benjamini Hochberg"
   ]
