@@ -1,0 +1,170 @@
+name: DRUG_APPROVALS_KP
+version: "1.0.0"
+fullmap: ".fullmap"
+rig:
+  supporting_data_source_info:
+    - infores_id: "infores:dailymed"
+      name: DailyMed
+      description: >-
+        DailyMed provides trustworthy information about marketed drugs in the
+        United States, based on FDA Structured Product Labeling (SPL)
+        documents. DAKP uses DailyMed to identify FDA-approved drug-indication
+        and drug-contraindication relationships.
+      terms_of_use_info:
+        terms_of_use_url: "https://dailymed.nlm.nih.gov/dailymed/"
+        terms_of_use_description: "DailyMed data are freely available and in the public domain."
+      relevant_files:
+        - file_name: "DailyMed Structured Product Labeling"
+          location: "https://dailymed.nlm.nih.gov/dailymed/spl-resources-all-drug-labels.cfm"
+          description: >-
+            Structured product labeling (SPL) documents for FDA-approved drugs
+    - infores_id: "infores:faers"
+      name: "FDA Adverse Event Reporting System (FAERS)"
+      description: >-
+        FAERS contains adverse event reports, medication error reports, and
+        product quality complaints submitted to the FDA. DAKP uses FAERS to
+        derive drug-disease usage relationships and case counts, including
+        on-label and off-label use.
+      terms_of_use_info:
+        terms_of_use_url: "https://www.fda.gov/drugs/questions-and-answers-fdas-adverse-event-reporting-system-faers/fda-adverse-event-reporting-system-faers-quarterly-data-extract-files"
+        terms_of_use_description: >-
+          FAERS data files are in the public domain and freely available for
+          download.
+      relevant_files:
+        - file_name: "FAERS Quarterly Data Files"
+          location: "https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html"
+          description: "Quarterly data files containing adverse event reports"
+  source_info:
+    infores_id: "infores:multiomics-drugapprovals"
+    name: "Drug Approvals Knowledge Provider (DAKP)"
+    description: >-
+      Drug Approvals Knowledge Provider: FDA-approved treatment
+      relationships, FAERS-observed applied-to-treat uses, and
+      contraindications text-mined from DailyMed, modeled from DailyMed,
+      Drugs@FDA, and FAERS. Every edge carries the evidence identifiers
+      backing it; approved-treats edges also carry clinical approval status
+      and FDA application numbers, FAERS-observed use edges add case counts,
+      and contraindication edges carry application numbers where available
+      plus the evidence prose backing them.
+    citations:
+      - "Generating Biomedical Knowledge Graphs from Knowledge Bases, Registries, and Multiomic Data (preprint): https://pmc.ncbi.nlm.nih.gov/articles/PMC11601480/"
+    terms_of_use_info:
+      terms_of_use_url: "https://www.nlm.nih.gov/terms.html"
+      terms_of_use_description: >-
+        DAKP is derived from DailyMed (NLM), Drugs@FDA, and FAERS (FDA) — US
+        government public-domain data; the NLM and FDA terms of use apply.
+    data_access_locations:
+      - "DailyMed SPL releases - https://dailymed.nlm.nih.gov/dailymed/spl-resources-all-drug-labels.cfm"
+      - "FAERS quarterly ASCII extracts - https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html"
+      - "Drugs@FDA data files - https://www.fda.gov/media/89850/download"
+    data_provision_mechanisms:
+      - file_download
+    data_formats:
+      - kgx
+    data_versioning_and_releases: >-
+      DAKP versions follow the Python package version (pyproject.toml,
+      currently 1.0.0); every build embeds it in the graph config via
+      graph_config(version=...). Re-ingests track the upstream cadence:
+      FAERS quarterly ASCII extracts and DailyMed SPL releases. DailyMed and
+      Drugs@FDA re-downloads are freshness-gated to a 7-day cache window;
+      FAERS downloads are content-addressed and cache-first, with no age
+      gate.
+    source_status: maintained_regular_updates
+  ingest_info:
+    ingest_categories:
+      - translator_knowledge_creator
+    utility: >-
+      Provides FDA-approved drug-disease treatment relationships,
+      FAERS-observed applied-to-treat uses, and SPL-mined contraindications
+      for Translator querying.
+    scope: >-
+      Approved-treats edges (DailyMed SPL indications joined to Drugs@FDA
+      applications and FAERS cases), FAERS observed-use edges, and
+      contraindication edges text-mined from DailyMed SPL sections; all
+      other content of the upstream feeds is out of scope.
+    relevant_files:
+      - file_name: "DailyMed full-release SPL zips"
+        location: "https://dailymed.nlm.nih.gov/dailymed/spl-resources-all-drug-labels.cfm"
+        description: >-
+          Structured Product Labeling XML releases;
+          indications/contraindications sections and approval numbers.
+      - file_name: "FAERS quarterly ASCII zips"
+        location: "https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html"
+        description: >-
+          FDA Adverse Event Reporting System quarterly extracts; drug/indication
+          case pairs.
+    included_content:
+      - file_name: "DailyMed SPL sections"
+        included_records: >-
+          indications_and_usage (LOINC 34067-9), contraindications (LOINC
+          34070-3), boxed warnings (LOINC 34066-1), and warnings/precautions
+          (LOINC 43685-7, legacy 34071-1/42232-9) sections; FDA application
+          numbers are carried as provenance where available
+        fields_used: >-
+          indications_and_usage, contraindications, boxed-warning, and
+          warnings/precautions section text, SPL set identifiers, FDA
+          application numbers
+      - file_name: "FAERS quarterly ASCII zips"
+        included_records: "drug/indication case pairs; case counts"
+    filtered_content:
+      - file_name: "DailyMed SPL indication sections"
+        filtered_records: >-
+          indication sections on SPL sets whose NDA lacks a DailyMed SPL
+          approval
+        rationale: >-
+          approved-treats assertions require an FDA approval backing the
+          indication; observed-use and text-mined contraindication assertions
+          are deliberately not approval-gated
+      - file_name: "DailyMed SPL sections"
+        filtered_records: >-
+          all SPL sections other than indications_and_usage (LOINC 34067-9),
+          contraindications (LOINC 34070-3), boxed warnings (LOINC 34066-1), and
+          warnings/precautions (LOINC 43685-7, legacy 34071-1/42232-9)
+        rationale: >-
+          the remaining sections carry no treatment or contraindication evidence
+    future_considerations:
+      - category: edge_content
+        consideration: >-
+          A drug-drug chemical-entity interaction assertion for medication
+          context (currently the disease_context_qualifier is intentionally
+          disease-only; medications belong in a future interaction assertion)
+        relevant_files: "DailyMed SPL contraindication sections"
+      - category: edge_property_content
+        consideration: >-
+          clinical_approval_status is a first-class Biolink
+          ClinicalApprovalStatusEnum field, so values outside the enum cannot be
+          preserved: the legacy FAERS observed_use status is coerced to
+          not_provided (degraded mode). Revisit if Biolink adds a dedicated
+          observation status.
+  target_info:
+    future_considerations:
+      - category: qualifiers
+        consideration: >-
+          disease_context_qualifier is intentionally disease-only and
+          sparse-nullable; revisit when a chemical-entity interaction assertion
+          exists
+      - category: edge_properties
+        consideration: >-
+          approval_ids stays a curated top-level edge field (Tablassert >= 12
+          carve-out); monitor whether Biolink gains a standard slot for FDA
+          application numbers
+    additional_notes:
+      - "Node and edge type summaries are generated by Tablassert from the observed build, not authored in this configuration."
+  provenance_info:
+    contributions:
+      - "Gwenlyn Glusman - code author, domain expertise, data modeling"
+      - "Matthew Brush - data modeling"
+      - "Sierra Moxon - code, data modeling"
+      - "Skye Lane Goetz - code author, pipeline engineering, Tablassert integration"
+      - "DAKP pipeline (https://github.com/glusman-team/dakp): source acquisition, assertion modeling"
+      - "Tablassert: KGX and RIG generation"
+    artifacts:
+      - "DAKP pipeline repository: https://github.com/glusman-team/dakp"
+      - "Upstream DINGO-reviewed DAKP RIG: https://github.com/NCATSTranslator/translator-ingests/blob/main/src/translator_ingest/ingests/dakp/dakp_rig.yaml"
+      - "RIG review issue: https://github.com/NCATSTranslator/translator-ingests/issues/416"
+  artifact_base_url: "https://github.com/glusman-team/dakp"
+  artifact_base_path: data
+tables:
+  - tables/approved_treats.yaml
+  - tables/faers_applied_to_treat.yaml
+  - tables/contraindications.yaml

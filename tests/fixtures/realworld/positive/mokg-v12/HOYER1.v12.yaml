@@ -1,0 +1,61 @@
+template:
+  provenance:
+    repo: PMC
+    publication: PMC9377087
+sections:
+- source:
+    kind: excel
+    local: payload.placeholder
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC9377087.1/12883_2022_2828_MOESM4_ESM.xls
+    sheet: Sheet 1
+    row_slice:
+    - 3
+    - auto
+  statement:
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+      - Pathway
+      - MolecularActivity
+      - BiologicalProcess
+      taxon: 9606
+    predicate: associated_with
+    object:
+      method: value
+      encoding: MONDO:0015626
+      prioritize:
+      - Disease
+    qualifiers:
+    - qualifier: disease_context_qualifier
+      method: value
+      encoding: MONDO:0015626
+  annotations:
+  - annotation: negative log p value
+    method: column
+    encoding: B
+  - annotation: enrichment ratio
+    method: column
+    encoding: C
+  - annotation: z-score
+    method: column
+    encoding: D
+  - annotation: sample size
+    method: value
+    encoding: 9
+  - annotation: assertion method
+    method: value
+    encoding: Ingenuity Pathway Analysis
+  - annotation: multiple testing correction method
+    method: value
+    encoding: none
+  - annotation: miscellaneous notes
+    method: value
+    encoding: 'Ingenuity Pathway Analysis canonical pathways enrichment from PBMC
+      proteomic comparison of 4 CMT-affected vs 5 healthy family members with the
+      AARS1 Arg326Trp mutation. Column B is -log10(p-value) from Fisher''s exact test.
+      Column C is the enrichment ratio. Column D is the IPA activation z-score (positive
+      = activated, negative = inhibited, blank = no prediction).
+
+      '

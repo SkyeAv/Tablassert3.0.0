@@ -1,0 +1,56 @@
+template:
+  provenance:
+    repo: PMC
+    publication: PMC4119355
+sections:
+- source:
+    kind: excel
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC4119355.1/emmm0006-0918-SD18.xlsx
+    local: payload.placeholder
+    sheet: Ordered Score for p values
+    row_slice:
+    - 3
+    - auto
+  statement:
+    subject:
+      method: value
+      encoding: Duchenne muscular dystrophy
+      prioritize:
+      - Disease
+    predicate: correlated_with
+    object:
+      method: column
+      encoding: C
+      prioritize:
+      - Protein
+      - Gene
+      taxon: 9606
+      regex:
+      - pattern: ^\s+|\s+$
+        replacement: ''
+      remove:
+      - -Ab#?\\d+$
+      - '#.*'
+  annotations:
+  - annotation: sample_size
+    method: value
+    encoding: 78
+  - annotation: multiple_testing_correction_method
+    method: value
+    encoding: none
+  - annotation: assertion_method
+    method: value
+    encoding: "nonparametric Wilcoxon rank-sum and Kruskal\u2013Wallis tests"
+  - annotation: notes
+    method: value
+    encoding: antibody bead array platform with 384 antibodies
+  - annotation: p_value
+    method: column
+    encoding: I
+  - annotation: effect_size
+    method: column
+    encoding: D
+  - annotation: miscellaneous notes
+    method: value
+    encoding: antibody bead array platform with 384 antibodies

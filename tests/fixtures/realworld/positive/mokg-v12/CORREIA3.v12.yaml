@@ -1,0 +1,302 @@
+template:
+  provenance:
+    repo: PMC
+    publication: PMC11530135
+sections:
+- source:
+    kind: excel
+    local: payload.placeholder
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC11530135.1/jciinsight-9-178645-s132.xlsx
+    row_slice:
+    - 1
+    - auto
+    sheet: Fig. 3A
+  statement:
+    predicate: correlated_with
+    subject:
+      method: column
+      encoding: B
+      prefix: 'UniProtKB:'
+      prioritize:
+      - Protein
+      - Gene
+      taxon: 9606
+    object:
+      method: value
+      encoding: mitochondrial disease
+      prioritize:
+      - Disease
+  annotations:
+  - annotation: sample size
+    method: value
+    encoding: 84
+  - annotation: multiple testing correction method
+    method: value
+    encoding: Benjamini-Hochberg method
+  - annotation: miscellaneous notes
+    method: value
+    encoding: Quantitative proteomics of patient fibroblasts reveal biomarkers and
+      diagnostic signatures of mitochondrial disease. correia3 may have overlaps with
+      correia1 and correia2 as the authors may have reported the same data in supplemental
+      tables and in supplemental data for the main article figures.
+  - annotation: p value
+    method: column
+    encoding: D
+  - annotation: effect_size
+    method: column
+    encoding: C
+  - annotation: assertion method
+    method: value
+    encoding: linear model for differential expression (DE analysis using the limma
+      package in R)
+- source:
+    kind: excel
+    local: payload.placeholder
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC11530135.1/jciinsight-9-178645-s132.xlsx
+    row_slice:
+    - 1
+    - auto
+    sheet: Fig. 3B
+  statement:
+    predicate: correlated_with
+    subject:
+      method: column
+      encoding: A
+      prefix: 'UniProtKB:'
+      prioritize:
+      - Protein
+      - Gene
+      taxon: 9606
+    object:
+      method: value
+      encoding: mitochondrial oxidative phosphorylation disorder
+      prioritize:
+      - Disease
+  annotations:
+  - annotation: sample size
+    method: value
+    encoding: 84
+  - annotation: multiple testing correction method
+    method: value
+    encoding: Benjamini-Hochberg method
+  - annotation: miscellaneous notes
+    method: value
+    encoding: Quantitative proteomics of patient fibroblasts reveal biomarkers and
+      diagnostic signatures of mitochondrial disease. correia3 may have overlaps with
+      correia1 and correia2 as the authors may have reported the same data in supplemental
+      tables and in supplemental data for the main article figures.
+  - annotation: p value
+    method: column
+    encoding: D
+  - annotation: effect_size
+    method: column
+    encoding: C
+  - annotation: assertion method
+    method: value
+    encoding: linear model for differential expression (DE analysis using the limma
+      package in R)
+- source:
+    kind: excel
+    local: payload.placeholder
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC11530135.1/jciinsight-9-178645-s132.xlsx
+    row_slice:
+    - 1
+    - auto
+    sheet: Fig. 3F
+  statement:
+    predicate: correlated_with
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+      - Protein
+      - Gene
+      taxon: 9606
+      prefix: 'UniProtKB:'
+    object:
+      method: value
+      encoding: mitochondrial oxidative phosphorylation disorder
+      prioritize:
+      - Disease
+  annotations:
+  - annotation: sample size
+    method: value
+    encoding: 84
+  - annotation: multiple testing correction method
+    method: value
+    encoding: Benjamini-Hochberg method
+  - annotation: miscellaneous notes
+    method: value
+    encoding: Quantitative proteomics of patient fibroblasts reveal biomarkers and
+      diagnostic signatures of mitochondrial disease. correia3 may have overlaps with
+      correia1 and correia2 as the authors may have reported the same data in supplemental
+      tables and in supplemental data for the main article figures.
+  - annotation: p value
+    method: column
+    encoding: D
+  - annotation: effect_size
+    method: column
+    encoding: C
+  - annotation: assertion method
+    method: value
+    encoding: linear model for differential expression (DE analysis using the limma
+      package in R)
+- source:
+    kind: excel
+    local: payload.placeholder
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC11530135.1/jciinsight-9-178645-s132.xlsx
+    row_slice:
+    - 1
+    - auto
+    sheet: Fig. 4A
+  statement:
+    predicate: correlated_with
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+      - Pathway
+      - MolecularActivity
+      - BiologicalProcess
+      taxon: 9606
+      regex:
+      - pattern: ^WP
+        replacement: WIKIPATHWAYS:WP
+      - pattern: ^R-HSA-
+        replacement: REACT:R-HSA-
+    object:
+      method: value
+      encoding: mitochondrial disease
+      prioritize:
+      - Disease
+  annotations:
+  - annotation: sample size
+    method: value
+    encoding: 84
+  - annotation: multiple testing correction method
+    method: value
+    encoding: Benjamini-Hochberg method
+  - annotation: miscellaneous notes
+    method: value
+    encoding: Quantitative proteomics of patient fibroblasts reveal biomarkers and
+      diagnostic signatures of mitochondrial disease. correia3 may have overlaps with
+      correia1 and correia2 as the authors may have reported the same data in supplemental
+      tables and in supplemental data for the main article figures.
+  - annotation: p value
+    method: column
+    encoding: E
+  - annotation: effect_size
+    method: column
+    encoding: D
+  - annotation: assertion method
+    method: value
+    encoding: Gene set enrichment analysis (GSEA), using consensus pathway annotation
+      catalogues
+- source:
+    kind: excel
+    local: payload.placeholder
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC11530135.1/jciinsight-9-178645-s132.xlsx
+    row_slice:
+    - 1
+    - auto
+    sheet: Fig. 4B
+  statement:
+    predicate: correlated_with
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+      - Pathway
+      - BiologicalProcess
+      - MolecularActivity
+      taxon: 9606
+      regex:
+      - pattern: ^WP
+        replacement: WIKIPATHWAYS:WP
+      - pattern: ^R-HSA-
+        replacement: REACT:R-HSA-
+    object:
+      method: value
+      encoding: mitochondrial oxidative phosphorylation disorder
+      prioritize:
+      - Disease
+  annotations:
+  - annotation: sample size
+    method: value
+    encoding: 84
+  - annotation: multiple testing correction method
+    method: value
+    encoding: Benjamini-Hochberg method
+  - annotation: miscellaneous notes
+    method: value
+    encoding: Quantitative proteomics of patient fibroblasts reveal biomarkers and
+      diagnostic signatures of mitochondrial disease. correia3 may have overlaps with
+      correia1 and correia2 as the authors may have reported the same data in supplemental
+      tables and in supplemental data for the main article figures.
+  - annotation: p value
+    method: column
+    encoding: E
+  - annotation: effect_size
+    method: column
+    encoding: D
+  - annotation: assertion method
+    method: value
+    encoding: Gene set enrichment analysis (GSEA), using consensus pathway annotation
+      catalogues
+- source:
+    kind: excel
+    local: payload.placeholder
+    url:
+    - https://pmc-oa-opendata.s3.amazonaws.com/PMC11530135.1/jciinsight-9-178645-s132.xlsx
+    row_slice:
+    - 1
+    - auto
+    sheet: Fig. 4D
+  statement:
+    predicate: correlated_with
+    subject:
+      method: column
+      encoding: A
+      prioritize:
+      - Pathway
+      - BiologicalProcess
+      - MolecularActivity
+      taxon: 9606
+      regex:
+      - pattern: ^WP
+        replacement: WIKIPATHWAYS:WP
+      - pattern: ^R-HSA-
+        replacement: REACT:R-HSA-
+    object:
+      method: value
+      encoding: mitochondrial oxidative phosphorylation disorder
+      prioritize:
+      - Disease
+  annotations:
+  - annotation: sample size
+    method: value
+    encoding: 84
+  - annotation: multiple testing correction method
+    method: value
+    encoding: Benjamini-Hochberg method
+  - annotation: miscellaneous notes
+    method: value
+    encoding: Quantitative proteomics of patient fibroblasts reveal biomarkers and
+      diagnostic signatures of mitochondrial disease. correia3 may have overlaps with
+      correia1 and correia2 as the authors may have reported the same data in supplemental
+      tables and in supplemental data for the main article figures.
+  - annotation: p value
+    method: column
+    encoding: E
+  - annotation: effect_size
+    method: column
+    encoding: D
+  - annotation: assertion method
+    method: value
+    encoding: Gene set enrichment analysis (GSEA), using consensus pathway annotation
+      catalogues

@@ -1,0 +1,36 @@
+template:
+  syntax: TC3
+  status: alpha
+  source:
+    kind: excel
+    local: payload.placeholder
+    url: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9439210/bin/pone.0273612.s002.xlsx
+    sheet: Biological Therapy
+    row_slice:
+      - 1
+      - auto
+  statement:
+    subject:
+      method: column
+      encoding: D
+      prioritize:
+        - ChemicalEntity
+      taxon: 9606
+    predicate: treats
+    object:
+      method: column
+      encoding: A
+      prioritize:
+        - Disease
+      regex:
+        - pattern: "^CD$"
+          replacement: "MONDO:0005011"
+        - pattern: "^UC$"
+          replacement: "MONDO:0005101"
+  provenance:
+    repo: PMC
+    publication: PMC9439210
+    contributors:
+      - kind: tool
+        name: tablassist
+        date: 06 MAY 2026
