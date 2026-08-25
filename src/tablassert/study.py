@@ -16,6 +16,7 @@ _MESSAGES: dict[str, str] = {
     "whitespace-values": "values with leading/trailing whitespace",
     "empty-or-null-values": "null or empty values",
     "duplicate-node-ids": "duplicate node ids",
+    "duplicate-edge-ids": "duplicate edge ids",
     "unnamed-nodes": "nodes with no name or an empty name",
     "unidentified-nodes": "nodes with no id or an empty id",
     "incomplete-edges": "edges missing subject, predicate, or object",
@@ -46,6 +47,9 @@ class _FileScan:
     """Accumulated facts from one streamed pass over an NDJSON file."""
 
     ids: set[str]
+    #: Edge ``id`` values already seen. Kept apart from ``ids``, which on an edge
+    #: scan holds the subject/object CURIEs the declared/isolated cross-check needs.
+    edge_ids: set[str]
     duplicate_ids: Counter[str]
     whitespace: Counter[str]
     empty_null: Counter[str]
@@ -94,7 +98,7 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
         A :class:`_FileScan`; ``missing`` is set (and nothing else) when the
         file does not exist, so a typo'd path can never read as a clean pass.
     """
-    scan: _FileScan = _FileScan(set(), Counter(), Counter(), Counter(), Counter(), Counter(), Counter(), 0, not path.is_file(), path)
+    scan: _FileScan = _FileScan(set(), set(), Counter(), Counter(), Counter(), Counter(), Counter(), Counter(), 0, not path.is_file(), path)
     if scan.missing:
         return scan
     with path.open(encoding="utf-8") as handle:
@@ -127,6 +131,15 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
                 if _is_empty_or_null(value):
                     scan.empty_null[key] += 1
             if edge:
+                # The deduper keys edges on their derived id, so a duplicate here means
+                # something bypassed it (a hand-built file, or two files concatenated).
+                # KGX requires edge ids to be unique, so assert it independently rather
+                # than trusting the writer -- the symmetric check to duplicate-node-ids.
+                edge_id: object = record.get("id")
+                if isinstance(edge_id, str):
+                    if edge_id in scan.edge_ids:
+                        scan.duplicate_ids[edge_id] += 1
+                    scan.edge_ids.add(edge_id)
                 for role in ("subject", "object"):
                     ident: object = record.get(role)
                     if isinstance(ident, str):
@@ -176,7 +189,8 @@ def _scan_ndjson(path: Path, *, edge: bool) -> _FileScan:
 def study_kgx(nodes_path: Path, edges_path: Path, *, example_limit: int = 10) -> list[StudyViolation]:
     """Assert over the final KGX NDJSON files, in the spirit of studyKGtsvs.pl.
 
-    Streams both files once each and checks: duplicate node ids, nodes with no
+    Streams both files once each and checks: duplicate node ids, duplicate edge
+    ids, nodes with no
     name or an empty name, nodes with no id or an empty id, edges missing any
     of ``subject``/``predicate``/``object``, nodes referenced by edges but
     never declared (``undeclared``), declared nodes participating in no edge
@@ -212,6 +226,9 @@ def study_kgx(nodes_path: Path, edges_path: Path, *, example_limit: int = 10) ->
     if nodes.duplicate_ids:
         examples = [ident for ident, _ in nodes.duplicate_ids.most_common(example_limit)]
         violations.append(StudyViolation("duplicate-node-ids", "nodes", len(nodes.duplicate_ids), examples))
+    if edges.duplicate_ids:
+        examples = [ident for ident, _ in edges.duplicate_ids.most_common(example_limit)]
+        violations.append(StudyViolation("duplicate-edge-ids", "edges", len(edges.duplicate_ids), examples))
     if nodes.unnamed:
         examples = [ident for ident, _ in nodes.unnamed.most_common(example_limit)]
         violations.append(StudyViolation("unnamed-nodes", "nodes", sum(nodes.unnamed.values()), examples))

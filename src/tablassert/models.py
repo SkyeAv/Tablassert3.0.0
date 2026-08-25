@@ -1122,6 +1122,54 @@ class Graph(TablaBase):
     tables: list[Path] = Field(..., description="Paths to table YAML files included in this graph.", examples=[["tables/tutorial-table.yaml"]])
     fullmap: Path = Field(..., description="Base fullmap directory or fullmap redb file for entity resolution.", examples=[".fullmap"])
     rig: RIGConfig = Field(..., description="Resource Ingest Guide metadata emitted as <name>_<version>.RIG.yaml.")
+    uuid_fields: list[str] | None = Field(
+        default=None,
+        description="Edge fields that constitute edge identity; only these feed the derived edge `id`, so an attribute-only change leaves it alone. Unset hashes the whole record.",
+        examples=[["subject", "predicate", "object", "publications", "has_supporting_studies"]],
+    )
+    uuid_domain: str | None = Field(
+        default=None,
+        description="Explicit UUID namespace. Defaults to `rig.source_info.infores_id` when `uuid_fields` is set, `TABLASSERT` otherwise. Set it only when graphs must deliberately share an id space.",
+        examples=["infores:multiomicskg"],
+    )
+
+    @model_validator(mode="after")
+    def validate_uuid_fields(self: Self) -> Self:
+        """Reject a `uuid_fields` list that cannot identify an edge.
+
+        Every entry must be a real emittable edge field, or the id would silently derive
+        from nothing and every edge in the graph would collide. `id` itself is rejected
+        because it is the value being derived. Casing follows `Annotation.clean_annotation`
+        so `Subject` and `subject` both work and mixed-case Biolink slots survive.
+        """
+        if self.uuid_fields is None:
+            return self
+        if not self.uuid_fields:
+            raise TablassertValidationError(
+                "`uuid_fields` was given as an empty list. Omit the key entirely to hash the whole record, or name the fields that identify an edge.",
+                code="uuid-bad-fields",
+            )
+        canonical: list[str] = []
+        for field in self.uuid_fields:
+            lowered: str = field.strip().lower()
+            canonical.append(next((allowed for allowed in ALLOWED_EDGE_FIELDS if allowed.lower() == lowered), lowered))
+        if len(set(canonical)) != len(canonical):
+            duplicated: str = ", ".join(sorted({f for f in canonical if canonical.count(f) > 1}))
+            raise TablassertValidationError(f"`uuid_fields` repeats: {duplicated}. Each field may appear once.", code="uuid-bad-fields")
+        if "id" in canonical:
+            raise TablassertValidationError("`uuid_fields` may not contain `id`: the edge id is what these fields derive.", code="uuid-bad-fields")
+        unknown: list[str] = sorted(f for f in canonical if f not in ALLOWED_EDGE_FIELDS)
+        if unknown:
+            raise TablassertValidationError(
+                f"`uuid_fields` names fields that are never emitted on an edge: {', '.join(unknown)}. "
+                "An edge id derived from an absent field would be identical for every edge sharing the "
+                "remaining fields. Unknown columns fold into `supporting_text`; name that instead if you "
+                "meant to include them.",
+                code="uuid-bad-fields",
+            )
+        # Persist the canonicalized spellings so the Rust deduper matches record keys exactly.
+        object.__setattr__(self, "uuid_fields", canonical)
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -1148,3 +1196,17 @@ class Graph(TablaBase):
     def infores_id(self) -> str:
         """Graph-level primary knowledge source infores (from ``rig.source_info.infores_id``)."""
         return self.rig.source_info.infores_id
+
+    @property
+    def uuid_namespace(self) -> str:
+        """UUID domain for this graph's edge ids.
+
+        Hashing only ``uuid_fields`` removes the accidental cross-graph uniqueness that
+        full-record hashing provided: two graphs asserting the same triple from the same
+        publication would derive the same id. Namespacing on the graph's own infores makes
+        that structurally impossible. With no ``uuid_fields`` the domain stays the historic
+        ``TABLASSERT`` constant, so default-configured graphs keep deriving as before.
+        """
+        if self.uuid_domain is not None:
+            return self.uuid_domain
+        return self.infores_id if self.uuid_fields else "TABLASSERT"

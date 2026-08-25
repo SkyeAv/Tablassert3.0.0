@@ -1553,15 +1553,22 @@ def upstream_resource_ids(repo: Repositories) -> list[str]:
     return [InformationResources.PUBMED.value]
 
 
-def dedup_stream(p_in: Path, is_edges: bool) -> None:
+def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fields: list[str] | None = None) -> None:
     """Remove null values from and deduplicate an NDJSON stream.
 
     Args:
         p_in: Path to the input ``.ndjson.tmp`` file.
         is_edges: When True, also add UUIDs to edges via the Rust deduper.
+        domain: UUID namespace for derived edge ids (``Graph.uuid_namespace``).
+            Ignored for nodes, whose ids are CURIEs rather than derived hashes.
+        uuid_fields: Optional edge fields that constitute edge identity
+            (``Graph.uuid_fields``). ``None`` hashes the whole record.
 
     Notes:
-        Also adds UUIDs to edges.
+        Also adds UUIDs to edges. Edges deduplicate on their derived id, so the
+        output can never carry the same id twice: an exact repeat is collapsed,
+        while two genuinely different edges deriving one id abort the build with
+        ``uuid-fields-not-a-key`` rather than shipping a duplicate.
 
     Returns:
         ``None``; writes the deduplicated stream alongside ``p_in`` with no
@@ -1572,7 +1579,7 @@ def dedup_stream(p_in: Path, is_edges: bool) -> None:
     if p_out.is_file():
         p_out.unlink()
 
-    rs.dedup_ndjson(p_in, p_out, is_edges, "TABLASSERT")
+    rs.dedup_ndjson(p_in, p_out, is_edges, domain, uuid_fields)
 
     p_in.unlink()
 
@@ -1719,6 +1726,8 @@ def _write_ndjson(
     rig: RIGConfig,
     section_sources: list[dict[str, object]] | None,
     on_phase: Callable[[str], None] | None = None,
+    domain: str = "TABLASSERT",
+    uuid_fields: list[str] | None = None,
 ) -> None:
     """Write, dedup, and RIG the KGX NDJSON outputs.
 
@@ -1745,6 +1754,8 @@ def _write_ndjson(
         on_phase: Optional callback fired with ``"write-nodes"``,
             ``"write-edges"``, ``"dedup"`` and ``"rig"`` at each phase
             boundary, used to drive progress UX.
+        domain: UUID namespace for derived edge ids (``Graph.uuid_namespace``).
+        uuid_fields: Optional edge identity fields (``Graph.uuid_fields``).
     """
     # Phase: write-nodes. Collection point: appending to output files.
     if on_phase is not None:
@@ -1765,7 +1776,7 @@ def _write_ndjson(
     # Phase: dedup.
     if on_phase is not None:
         on_phase("dedup")
-    dedup_stream(edges_tmp, is_edges=True)
+    dedup_stream(edges_tmp, is_edges=True, domain=domain, uuid_fields=uuid_fields)
     # The deduper hashes the record WITH the literal `{edge_id}` placeholder still
     # in place, so edge ids stay deterministic regardless of this resolution pass.
     _resolve_edge_id_placeholders(edges_tmp.with_suffix(""))
@@ -1786,6 +1797,8 @@ def compile_graph(
     section_sources: list[dict[str, object]] | None = None,
     on_phase: Callable[[str], None] | None = None,
     on_subgraph: Callable[[], None] | None = None,
+    uuid_fields: list[str] | None = None,
+    uuid_domain: str | None = None,
 ) -> None:
     """Aggregate subgraph parquets for NDJSON KGX export using a lazy scan.
 
@@ -1804,6 +1817,13 @@ def compile_graph(
             ``write-edges`` / ``dedup`` / ``rig``), used to drive progress UX.
         on_subgraph: Optional callback fired once per processed subgraph,
             used to tick the progress bar.
+        uuid_fields: Optional edge fields that constitute edge identity
+            (``Graph.uuid_fields``). ``None`` hashes the whole edge record, so any
+            change to any field re-mints the id.
+        uuid_domain: Optional explicit UUID namespace. Defaults to the graph's
+            infores when ``uuid_fields`` is set -- narrowing the hash inputs
+            removes the accidental cross-graph uniqueness that full-record hashing
+            provided -- and to ``TABLASSERT`` otherwise.
 
     Returns:
         ``None``; writes ``<name>_<version>.nodes.ndjson``,
@@ -1813,6 +1833,8 @@ def compile_graph(
     Raises:
         TablassertError: With code ``rig-validation-failed`` when the
             generated RIG fails its built-in audit (nothing is then written).
+        RuntimeError: Tagged ``uuid-fields-not-a-key`` when two genuinely
+            different edges derive one id under the declared ``uuid_fields``.
     """
     rig_cfg: RIGConfig = rig if isinstance(rig, RIGConfig) else RIGConfig.model_validate(rig)
     out_dir: Path = Path(rig_cfg.artifact_base_path)
@@ -1827,10 +1849,12 @@ def compile_graph(
     if n.exists():
         n.unlink()
 
+    domain: str = uuid_domain or (rig_cfg.source_info.infores_id if uuid_fields else "TABLASSERT")
+
     subnodes: list[pl.LazyFrame]
     subedges: list[pl.LazyFrame]
     subnodes, subedges = _collect_subframes(subgraphs, on_phase, on_subgraph, rig_cfg.source_info.infores_id)
-    _write_ndjson(subnodes, subedges, n, e, name, version, rig_cfg, section_sources, on_phase)
+    _write_ndjson(subnodes, subedges, n, e, name, version, rig_cfg, section_sources, on_phase, domain, uuid_fields)
 
 
 def resolve_many(

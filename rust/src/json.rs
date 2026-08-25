@@ -65,8 +65,38 @@ pub fn strip_nulls(value: &Value) -> Value {
     }
 }
 
-pub fn stable_json_bytes(value: &Value) -> serde_json::Result<Vec<u8>> {
+/// Serialize in the record's own key order.  This is the EMITTED form -- what actually
+/// gets written to the NDJSON -- so it must not reorder anything.  It is deliberately not
+/// a canonical form: use `canonical_json_bytes` when comparing two records for equality.
+pub fn emitted_json_bytes(value: &Value) -> serde_json::Result<Vec<u8>> {
     serde_json::to_vec(value)
+}
+
+/// Serialize with every object's keys sorted, recursively.
+///
+/// `serde_json` is built with `preserve_order`, so plain `to_vec` leaks insertion order:
+/// two logically identical records that arrived with different key order produce
+/// different bytes.  The edge deduper compares records for equality, so it needs a form
+/// where "same content" means "same bytes"; array order is preserved because it is
+/// semantic.
+pub fn canonical_json_bytes(value: &Value) -> serde_json::Result<Vec<u8>> {
+    serde_json::to_vec(&canonical_value(value))
+}
+
+fn canonical_value(value: &Value) -> Value {
+    match value {
+        Value::Object(entries) => {
+            let mut keys: Vec<&String> = entries.keys().collect();
+            keys.sort_unstable();
+            let mut sorted: Map<String, Value> = Map::with_capacity(entries.len());
+            for key in keys {
+                sorted.insert(key.clone(), canonical_value(&entries[key]));
+            }
+            Value::Object(sorted)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonical_value).collect()),
+        _ => value.clone(),
+    }
 }
 
 #[cfg(test)]
