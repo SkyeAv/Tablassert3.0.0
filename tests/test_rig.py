@@ -18,7 +18,7 @@ import yaml
 from tablassert import lib
 from tablassert.errors import TablassertError
 from tablassert.models import DEFAULT_RIG_UI_EXPLANATION, RIGConfig
-from tablassert.rig import audit_rig, build_rig_document, compose_ui_explanation, rig_edge_type_info, rig_node_type_info
+from tablassert.rig import audit_rig, build_rig_document, compile_rig, compose_ui_explanation, rig_edge_type_info, rig_node_type_info
 
 
 def _source_entry(primary: str, url: str, upstream: list[str] | None = None) -> list[dict[str, Any]]:
@@ -75,8 +75,8 @@ def test_rig_node_type_info_reports_emitted_prefixes_and_factual_fallback() -> N
     }
 
 
-def test_rig_edge_type_info_separates_roles_properties_qualifiers_and_files(tmp_path: Path) -> None:
-    """Edge summaries carry role-separated sources, observed properties, qualifier shapes, upstream file names."""
+def test_rig_edge_type_info_separates_roles_properties_and_qualifiers(tmp_path: Path) -> None:
+    """Edge summaries carry role-separated sources, observed properties, and qualifier shapes."""
     edges: Path = _write_edges(
         tmp_path,
         [
@@ -123,8 +123,9 @@ def test_rig_edge_type_info_separates_roles_properties_qualifiers_and_files(tmp_
     assert entry["aggregator_knowledge_sources"] == ["infores:aggregator"]
     assert entry["edge_properties"] == ["biolink:p_value", "biolink:publications"]
     assert entry["ui_explanation"] == "UI TEXT"
-    # Source files come from the upstream source_record_urls, never the output NDJSON names.
-    assert entry["source_files"] == ["table.tsv", "table1.xlsx"]
+    # Source files are an authored config fact (rig.source_files), never scraped
+    # from edge source_record_urls.
+    assert "source_files" not in entry
     # Literal-valued qualifiers enumerate observed values under their biolink property.
     assert entry["qualifiers"] == [{"property": "biolink:object_aspect_qualifier", "value_enumeration": ["decreased", "increased"]}]
 
@@ -316,7 +317,7 @@ def test_compile_graph_multi_source_keeps_configured_relevant_files(tmp_path: Pa
         }
     ).write_parquet(sub)
 
-    rig_dict: dict[str, Any] = rig_factory(tmp_path, infores_id="infores:multi-kg")
+    rig_dict: dict[str, Any] = rig_factory(tmp_path, infores_id="infores:multi-kg", source_files=["table1.xlsx"])
     rig_dict["ingest_info"]["relevant_files"] = [
         {"file_name": "table1.xlsx", "location": "https://pmc.ncbi.nlm.nih.gov/bin/table1.xlsx", "description": "Upstream PMC table."}
     ]
@@ -327,9 +328,39 @@ def test_compile_graph_multi_source_keeps_configured_relevant_files(tmp_path: Pa
     names: list[str] = [entry["file_name"] for entry in document["ingest_info"]["relevant_files"]]
     assert names == ["multi_1.nodes.ndjson", "multi_1.edges.ndjson", "table1.xlsx"]
     edge_type: dict[str, Any] = document["target_info"]["edge_type_info"][0]
+    # source_files come from the configured rig.source_files, never scraped from
+    # the edge's source_record_urls.
     assert edge_type["source_files"] == ["table1.xlsx"]
     # The default explanation is always present even without a configured prefix.
     assert edge_type["ui_explanation"] == DEFAULT_RIG_UI_EXPLANATION
+
+
+def test_compile_rig_applies_configured_source_files_to_every_edge_type(tmp_path: Path, rig_factory: Any) -> None:
+    """rig.source_files is listed verbatim (sorted) on every edge type entry."""
+    nodes_path: Path = tmp_path / "kg_1.nodes.ndjson"
+    nodes_path.write_text('{"id":"HGNC:1","category":["biolink:Gene"]}\n{"id":"MONDO:1","category":["biolink:Disease"]}\n')
+    edges_path: Path = _write_edges(tmp_path, [_edge("HGNC:1", "MONDO:1")]).rename(tmp_path / "kg_1.edges.ndjson")
+
+    rig = RIGConfig.model_validate(rig_factory(tmp_path, source_files=["b.tsv", "a.tsv"]))
+    compile_rig("kg", "1", rig, None, nodes_path, edges_path)
+
+    document: dict[str, Any] = yaml.safe_load((tmp_path / "kg_1.RIG.yaml").read_text())
+    for entry in document["target_info"]["edge_type_info"]:
+        assert entry["source_files"] == ["a.tsv", "b.tsv"]
+
+
+def test_compile_rig_writes_indented_block_sequences(tmp_path: Path, rig_factory: Any) -> None:
+    """Generated RIG YAML indents block sequences under their parent key."""
+    nodes_path: Path = tmp_path / "kg_1.nodes.ndjson"
+    nodes_path.write_text('{"id":"HGNC:1","category":["biolink:Gene"]}\n{"id":"MONDO:1","category":["biolink:Disease"]}\n')
+    edges_path: Path = _write_edges(tmp_path, [_edge("HGNC:1", "MONDO:1")]).rename(tmp_path / "kg_1.edges.ndjson")
+
+    rig = RIGConfig.model_validate(rig_factory(tmp_path))
+    compile_rig("kg", "1", rig, None, nodes_path, edges_path)
+
+    text: str = (tmp_path / "kg_1.RIG.yaml").read_text()
+    assert "relevant_files:\n    - file_name:" in text
+    assert "\n- file_name:" not in text  # PyYAML's default indentless style
 
 
 def test_compile_graph_rejects_stale_configured_relevant_files(tmp_path: Path, rig_factory: Any) -> None:

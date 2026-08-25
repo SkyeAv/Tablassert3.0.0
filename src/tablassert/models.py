@@ -1067,6 +1067,13 @@ class RIGConfig(TablaBase):
             "after it, so the generated text is this value followed by the default provenance explanation."
         ),
     )
+    source_files: list[str] | None = Field(
+        None,
+        description=(
+            "Upstream source file names/URLs listed as `source_files` on every generated `edge_type_info` entry. "
+            "Authoritative config value; never scraped from edge `source_record_urls`."
+        ),
+    )
     provenance_info: RIGProvenanceInfo = Field(..., description="Who contributed to the ingest and how.")
     artifact_base_url: str = Field(
         ...,

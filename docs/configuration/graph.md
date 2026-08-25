@@ -38,6 +38,7 @@ The `rig:` section carries every human-authored RIG fact. Its shape mirrors the 
 | `rig.ingest_info` | Object | Yes | Rationale and scope of the ingest (see below) |
 | `rig.target_info` | Object | No | Target-level `future_considerations` and `additional_notes` (edge/node type summaries are always generated) |
 | `rig.ui_explanation` | String | No | Per-edge-type UI explanation **prefix**; the built-in Tablassert explanation is always appended after it |
+| `rig.source_files` | List[String] | No | Upstream source file names/URLs listed verbatim as `source_files` on every generated `edge_type_info` entry; never scraped from edge `source_record_urls` |
 | `rig.provenance_info` | Object | Yes | Contributor statements and provenance artifacts |
 | `rig.supporting_data_source_info` | List[Object] | No | Upstream data sources for data-derived graphs (each needs `infores_id`, `terms_of_use_info`, and `relevant_files`) |
 | `rig.artifact_base_url` | String | Yes | Public URL prefix for the generated KGX artifacts; each `.nodes.ndjson`/`.edges.ndjson` name is appended to build RIG `relevant_files` locations |
@@ -85,7 +86,7 @@ The generator **prepends** two `relevant_files` entries and two `included_conten
 
 Everything under `target_info.edge_type_info` and `target_info.node_type_info` is computed from the **final emitted KGX files** after deduplication:
 
-- **Edge types** (one per observed predicate): subject/object categories resolved from the emitted nodes, list-valued `knowledge_level`/`agent_type`, role-separated `primary_knowledge_sources` / `supporting_data_sources` / `aggregator_knowledge_sources` from each edge's `sources` retrieval provenance, observed `edge_properties`, qualifier shapes (enumerated literal values or identifier prefixes for CURIE-valued qualifiers), and `source_files` taken from the upstream `source_record_urls` (never the output filenames).
+- **Edge types** (one per observed predicate): subject/object categories resolved from the emitted nodes, list-valued `knowledge_level`/`agent_type`, role-separated `primary_knowledge_sources` / `supporting_data_sources` / `aggregator_knowledge_sources` from each edge's `sources` retrieval provenance, observed `edge_properties`, qualifier shapes (enumerated literal values or identifier prefixes for CURIE-valued qualifiers), and `source_files` from the configured `rig.source_files` (never scraped from edge `source_record_urls`).
 - **Node types**: observed categories and the identifier prefixes actually emitted (`source_identifier_types`); categories with prefix-less identifiers get a factual free-text entry.
 - **UI explanation**: `rig.ui_explanation` (when set) followed by the built-in Tablassert explanation; the default text is always present.
 
