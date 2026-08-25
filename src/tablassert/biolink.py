@@ -396,6 +396,12 @@ def resolve_association_class(category: str, predicate: str) -> type[Any]:
 #   - ``taxon`` -- a node property; no species-context edge is synthesized from it.
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
+        # FDA application numbers as a translator-ingest pass-through: no Biolink class
+        # declares a slot for them, so this curated extra carries the column to the final
+        # edge verbatim instead of folding it into ``supporting_text``. The mixed-case
+        # spelling is deliberate and preserved end-to-end (the ``Annotation`` validator
+        # canonicalizes any casing onto it).
+        "FDA_approval_ids",
         "broad_synonym",
         "equivalent_identifiers",
         "evidence_direction",

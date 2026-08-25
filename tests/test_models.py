@@ -785,6 +785,18 @@ def test_annotation_valid() -> None:
     assert a.encoding == "E"
 
 
+def test_annotation_preserves_curated_extra_casing() -> None:
+    """``FDA_approval_ids`` keeps its mixed case; any declared casing canonicalizes onto it.
+
+    Model slots are lowercased (``P_Value`` -> ``p_value``), but curated extras whose
+    allow-listed spelling carries uppercase must reach the final edge verbatim, so the
+    validator maps any casing onto the canonical extra spelling instead of lowercasing.
+    """
+    for declared in ("FDA_approval_ids", "fda_approval_ids", "FDA_APPROVAL_IDS", " FDA_approval_ids "):
+        ann: Annotation = Annotation(annotation=declared, method="column", encoding="E")  # pyright: ignore
+        assert ann.annotation == "FDA_approval_ids"  # pyright: ignore
+
+
 def test_section_rejects_extra_fields() -> None:
     """section rejects extra fields."""
     with pytest.raises(ValidationError):
@@ -1011,12 +1023,12 @@ def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
     with pytest.warns(BiolinkRelocationWarning, match="folded into `supporting_text`"):
         Annotation.model_validate({"annotation": "overlap", "method": "column", "encoding": "E"})
     # Real association slots (``effect_size`` / ``effect_type`` are model fields since
-    # biolink-model 4.4.4; ``approval_ids`` lost its curated pass-through status and now
-    # warns like any unknown name) and aliases the coercions rename to a canonical edge
-    # slot (the pipeline emits those on the edge) are silent.
+    # biolink-model 4.4.4; ``FDA_approval_ids`` is the curated pass-through extra) and
+    # aliases the coercions rename to a canonical edge slot (the pipeline emits those on
+    # the edge) are silent.
     with warnings.catch_warnings():
         warnings.simplefilter("error", BiolinkRelocationWarning)
-        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "adjusted p value", "odds ratio", "q_value"):
+        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "FDA_approval_ids", "adjusted p value", "odds ratio", "q_value"):
             Annotation.model_validate({"annotation": name, "method": "column", "encoding": "C"})
 
 

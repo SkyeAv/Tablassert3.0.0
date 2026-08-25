@@ -333,6 +333,19 @@ def test_allowed_edge_fields_excludes_approval_ids() -> None:
     assert "approval_ids" not in ALLOWED_EDGE_FIELDS
 
 
+def test_allowed_edge_fields_includes_fda_approval_ids() -> None:
+    """``FDA_approval_ids`` is an allowed edge column (translator-ingest pass-through).
+
+    No Biolink class declares a slot for FDA application numbers, so the curated extra
+    carries the column to the final edge verbatim -- mixed case preserved, never folded
+    into ``supporting_text`` -- and rides ``KNOWN_PENDING_EDGE_FIELDS`` until the model
+    declares a real slot.
+    """
+    assert "FDA_approval_ids" in TABLASERT_EDGE_EXTRAS
+    assert "FDA_approval_ids" in ALLOWED_EDGE_FIELDS
+    assert "FDA_approval_ids" in KNOWN_PENDING_EDGE_FIELDS
+
+
 def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
     """Slots declared only by ``Association`` *subclasses* are still allowed columns.
 
@@ -425,6 +438,9 @@ def test_is_pending_problem_only_exempts_extra_forbidden_pending_fields() -> Non
     assert not is_pending_problem("approval_ids: extra_forbidden")
     # Same field, a REAL failure -> not exempt either way.
     assert not is_pending_problem("approval_ids: missing")
+    # ``FDA_approval_ids`` IS the current curated pass-through extra -> extra_forbidden exempt.
+    assert is_pending_problem("FDA_approval_ids: extra_forbidden")
+    assert not is_pending_problem("FDA_approval_ids: missing")
     # ``effect_size`` is a real Association slot since biolink-model 4.4.4 -> never exempt.
     assert not is_pending_problem("effect_size: extra_forbidden")
     # A genuinely malformed value on a real slot -> never exempt.

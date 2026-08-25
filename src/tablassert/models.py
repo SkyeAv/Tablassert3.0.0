@@ -14,6 +14,7 @@ from tablassert.biolink import (
     DISABLED_EDGE_FIELDS,
     ENUM_RANGED_QUALIFIERS,
     STUDY_METADATA_FIELDS,
+    TABLASERT_EDGE_EXTRAS,
     UNSATISFIABLE_EDGE_FIELDS,
     AgentTypes,
     Categories,
@@ -674,7 +675,12 @@ class Annotation(Encoding):
     @field_validator("annotation", mode="after")
     @classmethod
     def clean_annotation(cls, annotation: str) -> str:
-        return annotation.lower().strip()
+        cleaned: str = annotation.strip()
+        lowered: str = cleaned.lower()
+        # Curated extras may carry uppercase (``FDA_approval_ids``): any casing the author
+        # declares canonicalizes onto the allow-listed spelling verbatim, so the emitted
+        # edge field preserves its case exactly instead of being lowercased like model slots.
+        return next((extra for extra in TABLASERT_EDGE_EXTRAS if extra.lower() == lowered), lowered)
 
     @model_validator(mode="after")
     def reject_disabled_annotations(self: Self) -> Self:

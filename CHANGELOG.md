@@ -7,6 +7,9 @@ All notable changes to this project are documented in this file.
 ### Breaking Changes
 - **The `approval_ids` biolink override is removed; the column is no longer a curated edge field.** `TABLASERT_EDGE_EXTRAS` no longer carries `approval_ids`, so the FDA-application-number pass-through no longer bypasses Biolink validation: `ALLOWED_EDGE_FIELDS` and `KNOWN_PENDING_EDGE_FIELDS` derive without it, an `approval_ids` annotation now emits a relocation warning and folds into `supporting_text` like any unknown edge field, per-record class pruning drops it, and strict KGX validation counts edges carrying it as real `extra_forbidden` failures (the pending exemption no longer forgives them). The DAKP real-world fixtures drop their `approval_ids` annotations accordingly.
 
+### Added
+- **A case-preserving `FDA_approval_ids` pass-through annotation.** The curated edge extra returns under its translator-ingest spelling: `FDA_approval_ids` is allowed on edges, rides the derived pending-exemption set until Biolink declares a real slot for FDA application numbers, and is the one annotation whose mixed-case spelling is preserved end-to-end -- the `Annotation` validator maps any declared casing (`fda_approval_ids`, `FDA_APPROVAL_IDS`, ...) onto the canonical `FDA_approval_ids` form instead of lowercasing it, so the emitted edge field keeps its exact case. Model-slot annotations are unchanged (`P_Value` still canonicalizes to `p_value`).
+
 ## 14.0.0 - 2026-08-24
 
 ### Breaking Changes

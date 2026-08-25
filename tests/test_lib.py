@@ -2538,12 +2538,16 @@ def test_fold_unknown_noop_when_all_allowed() -> None:
             "p_value": [0.01],
             "disease_context_qualifier": ["MONDO:0005148"],
             "publications": [["PMID:1"]],
+            # curated translator-ingest pass-through: mixed case preserved verbatim, never
+            # folded into supporting_text.
+            "FDA_approval_ids": ["011111|022222"],
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
     # nothing folded, no supporting_text column created
     assert "supporting_text" not in out.columns
-    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "disease_context_qualifier", "publications"}
+    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "disease_context_qualifier", "publications", "FDA_approval_ids"}
+    assert out["FDA_approval_ids"].to_list() == ["011111|022222"]
 
 
 def test_fold_unknown_single_column() -> None:
