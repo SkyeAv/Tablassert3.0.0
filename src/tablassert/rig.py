@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from tablassert.biolink import AgentTypes, KnowledgeLevels
@@ -252,8 +252,7 @@ def rig_edge_type_info(
 
     One entry per observed predicate, aggregating the subject/object categories
     resolved from the emitted node file, KL/AT values, qualifier shapes, edge
-    properties, role-separated knowledge sources, and the upstream source files
-    recorded on each edge's retrieval provenance. Grouping by predicate matches
+    properties, and role-separated knowledge sources. Grouping by predicate matches
     the upstream RIG convention that one edge type may list several subject or
     object categories without implying a full cross-product.
 
@@ -291,7 +290,6 @@ def rig_edge_type_info(
                     "aggregator": set(),
                     "properties": set(),
                     "qualifiers": {},
-                    "files": set(),
                 },
             )
             group["subjects"].update(categories.get(str(edge.get("subject") or ""), []))
@@ -320,9 +318,6 @@ def rig_edge_type_info(
                         group["supporting"].add(resource)
                     elif role == "aggregator_knowledge_source":
                         group["aggregator"].add(resource)
-                for url in clean_values(as_list(source_entry.get("source_record_urls"))):
-                    source_file: str = PurePosixPath(url).name
-                    group["files"].add(source_file or url)
 
     info: list[dict[str, object]] = []
     for predicate in sorted(groups):
@@ -344,8 +339,6 @@ def rig_edge_type_info(
         if group["properties"]:
             entry["edge_properties"] = sorted(group["properties"])
         entry["ui_explanation"] = ui_explanation
-        if group["files"]:
-            entry["source_files"] = sorted(group["files"])
         info.append(entry)
     return info, sorted(fields), count, predicates
 
@@ -670,6 +663,11 @@ def compile_rig(name: str, version: str, rig: RIGConfig, section_sources: list[d
     node_fields: list[str] = sorted({key for node in node_rows for key, value in node.items() if value is not None})
     ui_explanation: str = compose_ui_explanation(rig.ui_explanation)
     edge_type_info, edge_fields, edge_count, observed_predicates = rig_edge_type_info(edges_path, categories, ui_explanation)
+    # `source_files` is an authored config fact (rig.source_files), never scraped
+    # from edge `source_record_urls`; when configured it applies to every edge type.
+    if rig.source_files:
+        for entry in edge_type_info:
+            entry["source_files"] = sorted(set(rig.source_files))
     observed_node_categories: set[str] = {str(category) for entry in node_type_info for category in as_list(entry.get("node_category"))}
 
     document: dict[str, object] = build_rig_document(

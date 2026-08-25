@@ -58,15 +58,28 @@ def from_yaml(p: Path) -> object:
         return yaml.load(f, Loader=CSafeLoader)
 
 
+class _IndentedSafeDumper(yaml.SafeDumper):
+    """SafeDumper that indents block sequences under their parent mapping key."""
+
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> Any:
+        return super().increase_indent(flow, False)
+
+
 def to_yaml(p: Path, data: object) -> None:
     """Write dict-like data to YAML preserving declared key order.
+
+    Block sequences are indented under their parent mapping key (PyYAML's
+    default indentless style makes nested RIG entries hard to scan), and the
+    line width is relaxed so long prose fields are not chopped mid-sentence.
 
     Args:
         p: Destination path.
         data: Object to serialize.
     """
     with p.open("w") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
+        # `yaml.dump` with an explicit SafeDumper subclass: `safe_dump` accepts no
+        # Dumper argument, and the subclass still refuses unsafe object construction.
+        yaml.dump(data, f, Dumper=_IndentedSafeDumper, sort_keys=False, default_flow_style=False, allow_unicode=True, width=120)
 
 
 def to_sections(instructions: dict[str, Any], table: Path) -> list[list[dict[str, Any]]]:

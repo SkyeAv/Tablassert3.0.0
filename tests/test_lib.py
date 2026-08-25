@@ -1422,7 +1422,13 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path, rig_factor
             "p_value": ["1.0000e-08", "5.0000e-02"],
         }
     ).write_parquet(sub)
-    rig = rig_factory(tmp_path, infores_id="infores:smoke", source_info={"description": "Smoke graph"}, ui_explanation="Custom UI explanation.")
+    rig = rig_factory(
+        tmp_path,
+        infores_id="infores:smoke",
+        source_info={"description": "Smoke graph"},
+        ui_explanation="Custom UI explanation.",
+        source_files=["table1.xlsx"],
+    )
     lib.compile_graph([sub], "smoke", "1.0.0", rig)
     edges: list[str] = (tmp_path / "smoke_1.0.0.edges.ndjson").read_text().strip().splitlines()
     nodes: list[str] = (tmp_path / "smoke_1.0.0.nodes.ndjson").read_text().strip().splitlines()
@@ -1454,7 +1460,7 @@ def test_compile_graph_emits_ndjson(monkeypatch: Any, tmp_path: Path, rig_factor
     assert all(entry["included_records"] for entry in included)
 
     # Edge summaries come from the FINAL graph: role-separated sources, list KL/AT,
-    # observed properties, upstream source files (not the output NDJSON names).
+    # observed properties; source files come from the configured rig.source_files.
     edge_type: dict[str, Any] = rig_doc["target_info"]["edge_type_info"][0]  # pyright: ignore
     assert edge_type["subject_categories"] == ["biolink:gene"]
     assert edge_type["predicates"] == ["biolink:related_to"]
@@ -3165,7 +3171,9 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
             "version": "0.1.0",
             "tables": [str(table_path)],
             "fullmap": str(tmp_path / "fullmap.redb"),
-            "rig": rig_factory(tmp_path, infores_id="infores:pipeline-kg", source_info={"description": "Pipeline smoke graph."}),
+            "rig": rig_factory(
+                tmp_path, infores_id="infores:pipeline-kg", source_info={"description": "Pipeline smoke graph."}, source_files=["pipeline_table.tsv"]
+            ),
         },
     )
     progress: DummyProgress = DummyProgress()
@@ -3203,7 +3211,7 @@ def test_build_pipeline_e2e_smoke_with_monkeypatched_fullmap(monkeypatch: Any, t
     # Role separation: the graph infores is the primary source; PMC is supporting data.
     assert edge_type["primary_knowledge_sources"] == ["infores:pipeline-kg"]
     assert edge_type["supporting_data_sources"] == ["infores:pubmed-central"]
-    # Source files name the upstream table URL, not the generated NDJSON outputs.
+    # Source files come from the configured rig.source_files, not scraped from edges.
     assert edge_type["source_files"] == ["pipeline_table.tsv"]
 
     # The gate: every emitted record must construct as its own Biolink class. Without
