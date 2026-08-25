@@ -1776,6 +1776,32 @@ def test_prune_to_class_keeps_override_only_slots() -> None:
     assert all(any("FDA_regulatory_approvals=" in s for s in v) for v in control[PRUNED_COLUMN].to_list())
 
 
+def test_prune_to_class_keeps_class_field_override_grants() -> None:
+    """A slot granted to a class by CLASS_FIELD_OVERRIDES survives prune_to_class.
+
+    ``disease_context_qualifier`` is declared only on the
+    ``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation`` lineage, but the policy
+    grant keeps it on ``EntityToDiseaseAssociation`` /
+    ``EntityToPhenotypicFeatureAssociation`` rows so a pinned edge can carry it
+    alongside ``FDA_regulatory_approvals``. Classes without the grant still prune it.
+    """
+    from tablassert.lib import PRUNED_COLUMN, prune_to_class
+
+    lf: pl.LazyFrame = pl.LazyFrame(
+        {
+            "category": [
+                ["biolink:EntityToDiseaseAssociation"],
+                ["biolink:GeneToDiseaseAssociation"],
+                ["biolink:EntityToPhenotypicFeatureAssociation"],
+            ],
+            "disease_context_qualifier": ["MONDO:0005148", "MONDO:0005148", "MONDO:0005015"],
+        }
+    )
+    out: pl.DataFrame = prune_to_class(lf).collect()
+    assert out["disease_context_qualifier"].to_list() == ["MONDO:0005148", None, "MONDO:0005015"]
+    assert out[PRUNED_COLUMN].to_list() == [[], ["disease_context_qualifier=MONDO:0005148"], []]
+
+
 def test_parse_edge_name_standard() -> None:
     """parse_edge_name parses standard name."""
     assert parse_edge_name("GeneToDiseaseAssociation") == ("Gene", ["Disease"])

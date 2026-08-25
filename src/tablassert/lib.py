@@ -15,6 +15,7 @@ from tablassert import rs
 from tablassert._lazy import LazyModule
 from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
+    CLASS_FIELD_OVERRIDES,
     DISABLED_EDGE_FIELDS,
     ENUM_RANGED_QUALIFIERS,
     STUDY_METADATA_FIELDS,
@@ -284,7 +285,9 @@ def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
     accepts it is a separate question, and getting it wrong is the single largest
     source of ``extra_forbidden`` failures for qualifier fields on a class that has
     no such slot. Tablassert-disabled fields are removed before this class-specific
-    masking so they cannot be rescued into study metadata.
+    masking so they cannot be rescued into study metadata. Slots granted to a class by
+    :data:`biolink.CLASS_FIELD_OVERRIDES` survive the mask -- the grant is a deliberate
+    step ahead of the pinned model, not a pruning target.
 
     Categories vary per row within a section, so this masks per row rather than
     dropping columns: values are nulled where the row's class rejects them, and the
@@ -321,7 +324,12 @@ def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
         text: pl.Expr = (
             pl.col(col).list.eval(pl.element().cast(pl.String)).list.join(", ") if isinstance(schema[col], pl.List) else pl.col(col).cast(pl.String)
         )
-        accepts: dict[str, bool] = {cat: col in class_fields(association_class(cat)) for cat in categories}
+        declares: dict[str, bool] = {cat: col in class_fields(association_class(cat)) for cat in categories}
+        # CLASS_FIELD_OVERRIDES grants a slot to a class that does not declare it
+        # (deliberately ahead of the pinned model); granted rows keep the value.
+        accepts: dict[str, bool] = {
+            cat: declares[cat] or col in CLASS_FIELD_OVERRIDES.get(cat.removeprefix("biolink:"), frozenset()) for cat in categories
+        }
         # A closed-vocabulary slot additionally constrains the *value*. A qualifier
         # encoded from a column carries whatever the sheet holds, so the token can only
         # be checked here -- config-time validation sees no data.
@@ -345,7 +353,7 @@ def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
         # them is what produced a spuriously mixed per-row wrap that died in
         # strict_cast at collect. Rows whose class rejects the slot are already null and
         # stay null. A hypothetically mixed slot keeps its scalar rather than crashing.
-        declaring: list[str] = [cat for cat in categories if accepts[cat]]
+        declaring: list[str] = [cat for cat in categories if declares[cat]]
         listed: dict[str, bool] = {cat: is_multivalued(association_class(cat), col) for cat in declaring}
         if listed and all(listed.values()) and not isinstance(schema[col], pl.List):
             # concat_list maps null -> [null]; the when preserves real nulls instead.
