@@ -415,6 +415,18 @@ STUDY_SIZE_SINGLETON_PATTERN: re.Pattern[str] = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# The Biolink ``Association`` slot ``number_of_cases`` counts cases carrying the
+# phenotype/disease, not the study population. It would otherwise match
+# PREFIX ("number of cases") and be destroyed by the rename to ``study_size``,
+# so the exact slot (separator-tolerant, like the patterns above) is exempt.
+STUDY_SIZE_EXEMPT_PATTERN: re.Pattern[str] = re.compile(
+    rf"""
+    ^
+    number {_SEP} of {_SEP} cases
+    $
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 
 def study_size_target(name: str) -> str | None:
@@ -430,6 +442,8 @@ def study_size_target(name: str) -> str | None:
         ``"study_size"`` when the name matches any of the study-size patterns,
         else ``None``.
     """
+    if STUDY_SIZE_EXEMPT_PATTERN.search(name):
+        return None
     if STUDY_SIZE_EXACT_PATTERN.search(name):
         return "study_size"
     if STUDY_SIZE_COUNT_PATTERN.search(name):
