@@ -1579,6 +1579,12 @@
 <td>Per-edge-type UI explanation <strong>prefix</strong>; the built-in Tablassert explanation is always appended after it</td>
 </tr>
 <tr>
+<td><code>rig.source_files</code></td>
+<td>List[String]</td>
+<td>No</td>
+<td>Upstream source file names/URLs listed verbatim as <code>source_files</code> on every generated <code>edge_type_info</code> entry; never scraped from edge <code>source_record_urls</code></td>
+</tr>
+<tr>
 <td><code>rig.provenance_info</code></td>
 <td>Object</td>
 <td>Yes</td>
@@ -1773,7 +1779,7 @@
 <h3 id="what-the-generator-derives">What the generator derives<a class="headerlink" href="#what-the-generator-derives" title="Permanent link">&para;</a></h3>
 <p>Everything under <code>target_info.edge_type_info</code> and <code>target_info.node_type_info</code> is computed from the <strong>final emitted KGX files</strong> after deduplication:</p>
 <ul>
-<li><strong>Edge types</strong> (one per observed predicate): subject/object categories resolved from the emitted nodes, list-valued <code>knowledge_level</code>/<code>agent_type</code>, role-separated <code>primary_knowledge_sources</code> / <code>supporting_data_sources</code> / <code>aggregator_knowledge_sources</code> from each edge's <code>sources</code> retrieval provenance, observed <code>edge_properties</code>, qualifier shapes (enumerated literal values or identifier prefixes for CURIE-valued qualifiers), and <code>source_files</code> taken from the upstream <code>source_record_urls</code> (never the output filenames).</li>
+<li><strong>Edge types</strong> (one per observed predicate): subject/object categories resolved from the emitted nodes, list-valued <code>knowledge_level</code>/<code>agent_type</code>, role-separated <code>primary_knowledge_sources</code> / <code>supporting_data_sources</code> / <code>aggregator_knowledge_sources</code> from each edge's <code>sources</code> retrieval provenance, observed <code>edge_properties</code>, qualifier shapes (enumerated literal values or identifier prefixes for CURIE-valued qualifiers), and <code>source_files</code> from the configured <code>rig.source_files</code> (never scraped from edge <code>source_record_urls</code>).</li>
 <li><strong>Node types</strong>: observed categories and the identifier prefixes actually emitted (<code>source_identifier_types</code>); categories with prefix-less identifiers get a factual free-text entry.</li>
 <li><strong>UI explanation</strong>: <code>rig.ui_explanation</code> (when set) followed by the built-in Tablassert explanation; the default text is always present.</li>
 </ul>
