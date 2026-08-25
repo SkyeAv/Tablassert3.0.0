@@ -1105,11 +1105,61 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#use-case-kgx-edge-ids" class="md-nav__link">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-ids" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Use Case: KGX Edge IDs
+        Edge IDs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Edge IDs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-fields-feed-the-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which fields feed the id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#canonicalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Canonicalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uniqueness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uniqueness
       
     </span>
   </a>
@@ -1328,11 +1378,61 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#use-case-kgx-edge-ids" class="md-nav__link">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-ids" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Use Case: KGX Edge IDs
+        Edge IDs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Edge IDs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-fields-feed-the-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which fields feed the id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#canonicalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Canonicalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uniqueness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uniqueness
       
     </span>
   </a>
@@ -1415,34 +1515,57 @@
 <p><strong><code>domain: str</code></strong></p>
 <p>Domain string used to create the namespace UUID. The default domain used internally for KGX edge IDs is <code>"TABLASSERT"</code>.</p>
 <p><strong><code>values: list[str]</code></strong></p>
-<p>The values to incorporate into the UUID. Empty/None entries are filtered out, the rest are joined with tabs (<code>"\t"</code>) and hashed within the domain namespace.</p>
+<p>The values to incorporate into the UUID. Empty entries are dropped; each surviving value is length-prefixed as <code>&lt;byte-length&gt;:&lt;value&gt;</code> and concatenated, then hashed within the domain namespace.</p>
 <h3 id="return-value">Return Value<a class="headerlink" href="#return-value" title="Permanent link">&para;</a></h3>
 <p>Returns a string representation of a UUID v3: <code>"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"</code>.</p>
 <h3 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
 <p><strong>Step 1:</strong> Create the domain namespace from the nil UUID:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">domain_uuid</span> <span class="o">=</span> <span class="n">uuid3</span><span class="p">(</span><span class="n">UUID</span><span class="p">(</span><span class="s2">&quot;00000000-0000-0000-0000-000000000000&quot;</span><span class="p">),</span> <span class="n">domain</span><span class="p">)</span>
 </code></pre></div>
-<p><strong>Step 2:</strong> Join the (filtered) values with tabs and hash within the namespace:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid3</span><span class="p">(</span><span class="n">domain_uuid</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">values</span><span class="p">)))</span>
+<p><strong>Step 2:</strong> Length-prefix each value and hash the concatenation within that namespace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">joined</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">values</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid3</span><span class="p">(</span><span class="n">domain_uuid</span><span class="p">,</span> <span class="n">joined</span><span class="p">))</span>
 </code></pre></div>
+<p>The length prefix is what makes the encoding <strong>injective</strong>. A plain separator join is ambiguous
+whenever a value contains the separator: <code>["a", "x\tb", "y"]</code> and <code>["a", "x", "b", "y"]</code> both join
+to <code>"a\tx\tb\ty"</code>, so two different inputs would derive the same UUID.</p>
 <h3 id="deterministic-behavior">Deterministic Behavior<a class="headerlink" href="#deterministic-behavior" title="Permanent link">&para;</a></h3>
 <p>Same inputs always produce the same UUID; different inputs (or different domains) produce different UUIDs.</p>
-<h3 id="use-case-kgx-edge-ids">Use Case: KGX Edge IDs<a class="headerlink" href="#use-case-kgx-edge-ids" title="Permanent link">&para;</a></h3>
-<p>Tablassert uses this function to generate reproducible edge identifiers from the edge's subject, predicate, object, qualifiers, and publication:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.rs</span><span class="w"> </span><span class="kn">import</span> <span class="n">namespace_uuid</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">edge_id</span> <span class="o">=</span> <span class="n">namespace_uuid</span><span class="p">(</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  <span class="s2">&quot;TABLASSERT&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  <span class="p">[</span><span class="s2">&quot;HGNC:11998&quot;</span><span class="p">,</span> <span class="s2">&quot;biolink:associated_with&quot;</span><span class="p">,</span> <span class="s2">&quot;MONDO:0005148&quot;</span><span class="p">,</span> <span class="s2">&quot;PMC11708054&quot;</span><span class="p">],</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="p">)</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># e.g. &quot;2cfea591-0f8f-33af-a7df-03da531d3359&quot;</span>
+<h2 id="edge-ids">Edge IDs<a class="headerlink" href="#edge-ids" title="Permanent link">&para;</a></h2>
+<p>Edge ids are <strong>not</strong> built by calling <code>namespace_uuid()</code> from Python. They are assigned inside the
+Rust deduper (<code>dedup_ndjson</code>) as each edge is written, from the record itself.</p>
+<h3 id="which-fields-feed-the-id">Which fields feed the id<a class="headerlink" href="#which-fields-feed-the-id" title="Permanent link">&para;</a></h3>
+<p>By default, <strong>every field</strong> of the emitted edge. That makes the id maximally sensitive: a corrected
+<code>p_value</code>, a new <code>supporting_text</code> entry, a reordered source row, or a Biolink release that renames
+a slot all mint a brand-new id, and downstream consumers see a new edge rather than an updated one.</p>
+<p>A graph config can instead declare which fields constitute edge <em>identity</em>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># graph.yaml</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">uuid_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">subject</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">predicate</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">object</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">publications</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">has_supporting_studies</span><span class="p p-Indicator">]</span>
 </code></pre></div>
-<p><strong>Benefits:</strong>
-- <strong>Reproducible:</strong> the same edge always gets the same ID across runs
-- <strong>Collision-resistant:</strong> MD5 hashing makes collisions extremely unlikely
-- <strong>Traceable:</strong> the ID incorporates the edge components (subject, predicate, object, provenance)</p>
+<p>Only those fields then feed the hash, so attribute-only changes leave the id alone. See
+<a href="../../configuration/graph/#stable-edge-ids">Graph Configuration</a> for how to choose a field set.</p>
+<h3 id="canonicalization">Canonicalization<a class="headerlink" href="#canonicalization" title="Permanent link">&para;</a></h3>
+<p>Before hashing, the record is normalized so that only <em>meaning</em> reaches the digest:</p>
+<ul>
+<li>object keys are sorted, recursively, so insertion order never changes the id;</li>
+<li>array order is preserved, because it is semantic;</li>
+<li>each key and its value are fed as <strong>separate</strong> parts, so the key/value boundary cannot shift to
+  create a collision (<code>{"a": "b=c"}</code> and <code>{"a=b": "c"}</code> stay distinct);</li>
+<li><code>null</code> and empty values drop out, key included; <code>false</code> is hashed as <code>"false"</code>, because
+  <code>negated: false</code> is a meaningful Biolink value.</li>
+</ul>
+<h3 id="namespace">Namespace<a class="headerlink" href="#namespace" title="Permanent link">&para;</a></h3>
+<p>The domain defaults to <code>"TABLASSERT"</code>. When <code>uuid_fields</code> is declared it becomes the graph's
+<code>rig.source_info.infores_id</code>, so two graphs asserting the same triple can never mint the same id —
+the uniqueness that full-record hashing provided by accident becomes structural. <code>uuid_domain</code>
+overrides it for graphs that must deliberately share an id space.</p>
+<h3 id="uniqueness">Uniqueness<a class="headerlink" href="#uniqueness" title="Permanent link">&para;</a></h3>
+<p>Edges deduplicate on their derived id, so an output file can never carry the same id twice. An
+exact repeat collapses; two genuinely different edges deriving one id abort the build with
+<code>uuid-fields-not-a-key</code>, naming the fields that would disambiguate them.</p>
 <h3 id="kgx-compliance">KGX Compliance<a class="headerlink" href="#kgx-compliance" title="Permanent link">&para;</a></h3>
-<p>NCATS Translator KGX requires edge IDs to be globally unique and, where possible, deterministic. <code>namespace_uuid()</code> satisfies both: UUID v3 with domain namespacing yields unique, reproducible identifiers.</p>
+<p>NCATS Translator KGX requires edge IDs to be globally unique and, where possible, deterministic.
+UUID v3 with domain namespacing satisfies both.</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><a href="../fullmap/">Entity Resolution</a></strong> - Core entity mapping</li>

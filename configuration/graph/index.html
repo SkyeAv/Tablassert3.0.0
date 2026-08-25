@@ -824,6 +824,89 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#optional-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stable-edge-ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable edge ids
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stable edge ids">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choosing-a-field-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a field set
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-buys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it buys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-field-set-must-be-a-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The field set must be a key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespacing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespacing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-rig-section" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1324,6 +1407,89 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#optional-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stable-edge-ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable edge ids
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stable edge ids">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choosing-a-field-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a field set
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-buys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it buys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-field-set-must-be-a-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The field set must be a key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespacing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespacing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-rig-section" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1536,6 +1702,109 @@
 </tbody>
 </table>
 <p>The legacy top-level RIG fields (<code>description</code>, <code>contributions</code>, <code>ui_explanation</code>, <code>infores</code>) are <strong>rejected</strong> with a migration pointer; they now live under <code>rig:</code>.</p>
+<h3 id="optional-fields">Optional Fields<a class="headerlink" href="#optional-fields" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uuid_fields</code></td>
+<td>List[str]</td>
+<td>Edge fields that constitute edge identity. Only these feed the derived edge <code>id</code> (see <a href="#stable-edge-ids">Stable edge ids</a>)</td>
+</tr>
+<tr>
+<td><code>uuid_domain</code></td>
+<td>String</td>
+<td>Explicit UUID namespace. Defaults to <code>rig.source_info.infores_id</code> when <code>uuid_fields</code> is set, <code>TABLASSERT</code> otherwise</td>
+</tr>
+</tbody>
+</table>
+<h2 id="stable-edge-ids">Stable edge ids<a class="headerlink" href="#stable-edge-ids" title="Permanent link">&para;</a></h2>
+<p>Every edge gets a deterministic <code>id</code>: a UUID v3 derived from the edge itself. By default it is
+derived from the <strong>whole record</strong>, which makes it maximally brittle — a corrected <code>p_value</code>, a new
+<code>supporting_text</code> entry, a reordered source row, or a Biolink release that renames a slot all mint a
+brand-new id. Downstream Translator consumers then see a new edge where they should see the same
+edge with updated attributes.</p>
+<p><code>uuid_fields</code> fixes that by naming the fields that actually identify an edge:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">uuid_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">subject</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">predicate</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">object</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">publications</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">has_supporting_studies</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Everything else is then free to change without moving the id.</p>
+<h3 id="choosing-a-field-set">Choosing a field set<a class="headerlink" href="#choosing-a-field-set" title="Permanent link">&para;</a></h3>
+<p>Start from what identifies an assertion, and what each entry buys you:</p>
+<ul>
+<li><strong><code>subject</code> / <code>predicate</code> / <code>object</code></strong> — the assertion itself.</li>
+<li><strong><code>publications</code></strong> — the evidence it rests on.</li>
+<li><strong><code>has_supporting_studies</code></strong> — carries <code>has_study_results[].id</code> (<code>row:&lt;N&gt;</code>), the <strong>row
+  discriminator</strong>. Include it whenever one table contributes several rows that share a subject,
+  predicate, and object. It also carries the <code>study_*</code> metadata, but those come from per-section
+  config and are far more stable than <code>p_value</code> or <code>effect_size</code>.</li>
+</ul>
+<p>Add qualifiers (<code>object_direction_qualifier</code>, <code>anatomical_context_qualifier</code>, …) when they
+<em>distinguish</em> assertions rather than merely describe them.</p>
+<p>Leave out anything that is an observation <em>about</em> the edge rather than the edge's identity:
+<code>p_value</code>, <code>effect_size</code>, <code>effect_type</code>, <code>original_subject</code> / <code>original_object</code>, <code>supporting_text</code>,
+<code>sources</code>, <code>category</code>, <code>knowledge_level</code>, <code>agent_type</code>.</p>
+<p><strong>Then build, and let the failure tell you what is missing.</strong> That list is a starting point, not an
+answer — whether it is a key depends on your data, and the only way to find out is to run it. On a
+real 1.27M-edge graph the set above left 2,476 collisions (0.2% of edges): pairs whose subject,
+predicate, object, publication and row were identical, differing only in the NLP level recorded in
+<code>supporting_text</code> because two raw strings had resolved onto the same CURIE. Adding
+<code>supporting_text</code> made it a key.</p>
+<p>Expect to iterate once or twice. Each failure names the id, the fields that differ, and one
+offending edge, so each round is mechanical.</p>
+<h3 id="what-it-buys">What it buys<a class="headerlink" href="#what-it-buys" title="Permanent link">&para;</a></h3>
+<p>On that same 1.27M-edge graph, re-analysing the statistics (new <code>p_value</code> and <code>effect_size</code> on
+every row) and rebuilding:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>edge ids that changed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>no <code>uuid_fields</code> (whole-record hash)</td>
+<td>930,081 of 1,265,355 — <strong>73%</strong></td>
+</tr>
+<tr>
+<td><code>uuid_fields</code> declared</td>
+<td>0 of 1,265,355 — <strong>none</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-field-set-must-be-a-key">The field set must be a key<a class="headerlink" href="#the-field-set-must-be-a-key" title="Permanent link">&para;</a></h3>
+<p>Narrowing what feeds the hash means two different edges can derive the same id. Tablassert refuses
+to ship duplicate edge ids, so that is a build failure, not a silent collapse:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uuid-fields-not-a-key: declared uuid_fields are not a key for this graph.
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  id 83ade536-9b07-34ec-a2f9-abf0fb5b6a2f is claimed by 2 different edges.
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  they differ in: effect_size, p_value
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  declared uuid_fields: subject, predicate, object
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  offending edge: subject=A predicate=r object=B
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>Add a discriminating field to `uuid_fields` (...).
+</code></pre></div>
+<p>The fix is whatever the message names: add the qualifier that separates them,
+<code>has_supporting_studies</code> for the source row, or the statistic that genuinely differs. Two rows with
+an identical subject, predicate, and object that differ only in <code>p_value</code> are exactly this case —
+and were previously producing two ids for what config claimed was one assertion.</p>
+<p>An exact duplicate is <em>not</em> a violation: identical edges collapse, as they always have.</p>
+<h3 id="namespacing">Namespacing<a class="headerlink" href="#namespacing" title="Permanent link">&para;</a></h3>
+<p>Because a narrow field set no longer distinguishes graphs by accident, declaring <code>uuid_fields</code>
+moves the UUID namespace onto the graph's own <code>rig.source_info.infores_id</code>. Two graphs asserting
+the same triple from the same publication then still derive different ids, structurally.</p>
+<p>Set <code>uuid_domain</code> only when graphs must deliberately <strong>share</strong> an id space — a KG compiled in
+shards, or one renamed across versions that has to keep its published ids:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">uuid_domain</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:multiomicskg</span>
+</code></pre></div>
+<h3 id="migration">Migration<a class="headerlink" href="#migration" title="Permanent link">&para;</a></h3>
+<p>Adding <code>uuid_fields</code> to an existing graph <strong>changes every edge id in it, once</strong>. That is the cost of
+switching identity models; ids are stable from then on. Plan it as a deliberate version bump and
+tell your consumers.</p>
 <h3 id="the-rig-section">The <code>rig:</code> section<a class="headerlink" href="#the-rig-section" title="Permanent link">&para;</a></h3>
 <p>The <code>rig:</code> section carries every human-authored RIG fact. Its shape mirrors the released <a href="https://github.com/biolink/resource-ingest-guide-schema">RIG schema</a>, so the generated <code>.RIG.yaml</code> is always schema-shaped. The generator derives only mechanical facts from the build (generated artifact file entries, observed edge/node type summaries) and <strong>validates the complete document before writing anything</strong>, so a build never leaves behind an invalid or incomplete RIG.</p>
 <table>
@@ -1793,70 +2062,70 @@
 </ul>
 <p>This is what makes every emitted RIG PR-worthy by construction: placeholders and silent gaps fail the build instead of shipping.</p>
 <h2 id="minimal-example">Minimal Example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MY_GRAPH</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0.0</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">tables</span><span class="p">:</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-table.yaml</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/fullmap</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">rig</span><span class="p">:</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">source_info</span><span class="p">:</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">infores_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:my-graph</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">terms_of_use_info</span><span class="p">:</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">terms_of_use_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/terms</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">data_access_locations</span><span class="p">:</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">My source downloads - https://example.org/downloads</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">source_status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">maintained_regular_updates</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">ingest_info</span><span class="p">:</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">utility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Why this content matters for Translator queries.</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">What this graph includes and excludes.</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">  </span><span class="nt">provenance_info</span><span class="p">:</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nt">contributions</span><span class="p">:</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Author</span><span class="nv"> </span><span class="s">Name</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">code</span><span class="nv"> </span><span class="s">author,</span><span class="nv"> </span><span class="s">data</span><span class="nv"> </span><span class="s">modeling&quot;</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">  </span><span class="nt">artifact_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/my-graph</span>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./published/my-graph</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MY_GRAPH</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0.0</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-table.yaml</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/fullmap</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nt">rig</span><span class="p">:</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">source_info</span><span class="p">:</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">infores_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:my-graph</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="nt">terms_of_use_info</span><span class="p">:</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">      </span><span class="nt">terms_of_use_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/terms</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="nt">data_access_locations</span><span class="p">:</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">My source downloads - https://example.org/downloads</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">    </span><span class="nt">source_status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">maintained_regular_updates</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">  </span><span class="nt">ingest_info</span><span class="p">:</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">    </span><span class="nt">utility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Why this content matters for Translator queries.</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">    </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">What this graph includes and excludes.</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span><span class="nt">provenance_info</span><span class="p">:</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">    </span><span class="nt">contributions</span><span class="p">:</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Author</span><span class="nv"> </span><span class="s">Name</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">code</span><span class="nv"> </span><span class="s">author,</span><span class="nv"> </span><span class="s">data</span><span class="nv"> </span><span class="s">modeling&quot;</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">  </span><span class="nt">artifact_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/my-graph</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./published/my-graph</span>
 </code></pre></div>
 <h2 id="multi-table-example">Multi-Table Example<a class="headerlink" href="#multi-table-example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MULTIOMICS_KG</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UNSTABLE</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">tables</span><span class="p">:</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/gene-disease-associations.yaml</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/drug-targets.yaml</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/protein-interactions.yaml</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/databases/fullmap</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nt">rig</span><span class="p">:</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="nt">source_info</span><span class="p">:</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">infores_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:multiomics-kg</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multiomics supplementary tables</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multi-omics associations mined from curated supplementary tables.</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="nt">citations</span><span class="p">:</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://doi.org/10.3389/fsysb.2025.1544432</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span><span class="nt">terms_of_use_info</span><span class="p">:</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">      </span><span class="nt">terms_of_use_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://pmc.ncbi.nlm.nih.gov/about/copyright/</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">      </span><span class="nt">terms_of_use_description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PubMed Central open-access subset; individual article licenses apply.</span>
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">    </span><span class="nt">data_access_locations</span><span class="p">:</span>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PubMed Central - https://pmc.ncbi.nlm.nih.gov/</span>
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="w">    </span><span class="nt">data_provision_mechanisms</span><span class="p">:</span>
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">file_download</span>
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="w">    </span><span class="nt">data_formats</span><span class="p">:</span>
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kgx</span>
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="w">    </span><span class="nt">source_status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">maintained_as_needed_updates</span>
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="w">  </span><span class="nt">ingest_info</span><span class="p">:</span>
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="w">    </span><span class="nt">ingest_categories</span><span class="p">:</span>
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">translator_knowledge_creator</span>
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">    </span><span class="nt">utility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Statistical associations supporting hypothesis generation for gene-disease and drug-target queries.</span>
-<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="w">    </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Gene-disease, drug-target, and protein-interaction assertions from the three configured tables.</span>
-<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="w">    </span><span class="nt">relevant_files</span><span class="p">:</span>
-<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">file_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gene-disease.tsv</span>
-<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a><span class="w">        </span><span class="nt">location</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/gene-disease.tsv</span>
-<a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="w">        </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Gene-disease association table.</span>
-<a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a><span class="w">  </span><span class="nt">ui_explanation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Microbiome-host associations derived from multi-omics supplementary tables.</span>
-<a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a><span class="w">  </span><span class="nt">provenance_info</span><span class="p">:</span>
-<a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a><span class="w">    </span><span class="nt">contributions</span><span class="p">:</span>
-<a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Author</span><span class="nv"> </span><span class="s">Name</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">code</span><span class="nv"> </span><span class="s">author,</span><span class="nv"> </span><span class="s">data</span><span class="nv"> </span><span class="s">modeling&quot;</span>
-<a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a><span class="w">    </span><span class="nt">artifacts</span><span class="p">:</span>
-<a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Ingest</span><span class="nv"> </span><span class="s">ticket:</span><span class="nv"> </span><span class="s">https://github.com/NCATSTranslator/Data-Ingest-Coordination-Working-Group/issues/1&quot;</span>
-<a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a><span class="w">  </span><span class="nt">artifact_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/multiomics-kg</span>
-<a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/published/multiomics-kg</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MULTIOMICS_KG</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UNSTABLE</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/gene-disease-associations.yaml</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/drug-targets.yaml</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/configs/protein-interactions.yaml</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="nt">fullmap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/databases/fullmap</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="nt">rig</span><span class="p">:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="nt">source_info</span><span class="p">:</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="nt">infores_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">infores:multiomics-kg</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multiomics supplementary tables</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Multi-omics associations mined from curated supplementary tables.</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="nt">citations</span><span class="p">:</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://doi.org/10.3389/fsysb.2025.1544432</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="nt">terms_of_use_info</span><span class="p">:</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">      </span><span class="nt">terms_of_use_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://pmc.ncbi.nlm.nih.gov/about/copyright/</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">      </span><span class="nt">terms_of_use_description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PubMed Central open-access subset; individual article licenses apply.</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">    </span><span class="nt">data_access_locations</span><span class="p">:</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PubMed Central - https://pmc.ncbi.nlm.nih.gov/</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">    </span><span class="nt">data_provision_mechanisms</span><span class="p">:</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">file_download</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">    </span><span class="nt">data_formats</span><span class="p">:</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kgx</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">    </span><span class="nt">source_status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">maintained_as_needed_updates</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">  </span><span class="nt">ingest_info</span><span class="p">:</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">    </span><span class="nt">ingest_categories</span><span class="p">:</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">translator_knowledge_creator</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">    </span><span class="nt">utility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Statistical associations supporting hypothesis generation for gene-disease and drug-target queries.</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">    </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Gene-disease, drug-target, and protein-interaction assertions from the three configured tables.</span>
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">    </span><span class="nt">relevant_files</span><span class="p">:</span>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">file_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gene-disease.tsv</span>
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">        </span><span class="nt">location</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://pmc.ncbi.nlm.nih.gov/articles/instance/example/bin/gene-disease.tsv</span>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">        </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Gene-disease association table.</span>
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="w">  </span><span class="nt">ui_explanation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Microbiome-host associations derived from multi-omics supplementary tables.</span>
+<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="w">  </span><span class="nt">provenance_info</span><span class="p">:</span>
+<a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="w">    </span><span class="nt">contributions</span><span class="p">:</span>
+<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Author</span><span class="nv"> </span><span class="s">Name</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">code</span><span class="nv"> </span><span class="s">author,</span><span class="nv"> </span><span class="s">data</span><span class="nv"> </span><span class="s">modeling&quot;</span>
+<a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a><span class="w">    </span><span class="nt">artifacts</span><span class="p">:</span>
+<a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;Ingest</span><span class="nv"> </span><span class="s">ticket:</span><span class="nv"> </span><span class="s">https://github.com/NCATSTranslator/Data-Ingest-Coordination-Working-Group/issues/1&quot;</span>
+<a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a><span class="w">  </span><span class="nt">artifact_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/multiomics-kg</span>
+<a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/published/multiomics-kg</span>
 </code></pre></div>
 <h2 id="processing-flow">Processing Flow<a class="headerlink" href="#processing-flow" title="Permanent link">&para;</a></h2>
 <p>When you run <code>tablassert build-kg graph.yaml</code>:</p>
@@ -1873,11 +2142,11 @@
 </ol>
 <h2 id="output-files">Output Files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <p>Given this configuration:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">EXAMPLE_KG</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.0.0</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">rig</span><span class="p">:</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./published/example-kg</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="c1"># ...</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">EXAMPLE_KG</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.0.0</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">rig</span><span class="p">:</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">artifact_base_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./published/example-kg</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="c1"># ...</span>
 </code></pre></div>
 <p>Produces (inside <code>./published/example-kg/</code>):</p>
 <ul>
