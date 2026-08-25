@@ -250,7 +250,17 @@ def build_graph_pipeline(
     start(f"{g.name} · v{g.version}")
     # on_phase drives the phase tag (scan → normalize → write-nodes → write-edges → dedup → rig);
     # on_subgraph ticks the bar once per subgraph, so the total is len(subgraphs).
-    compile_graph(subgraphs, g.name, g.version, g.rig, section_sources if audit_sources else None, on_phase=sub_step, on_subgraph=advance)
+    compile_graph(
+        subgraphs,
+        g.name,
+        g.version,
+        g.rig,
+        section_sources if audit_sources else None,
+        on_phase=sub_step,
+        on_subgraph=advance,
+        uuid_fields=g.uuid_fields,
+        uuid_domain=g.uuid_namespace,
+    )
 
     # Stage 7/7 (only with --qc): assert over the final NDJSON files.
     if qc:

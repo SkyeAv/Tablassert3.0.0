@@ -1137,3 +1137,84 @@ def test_deprecated_hook_is_noop_for_non_dict_input(recwarn: pytest.WarningsReco
     with pytest.raises(ValidationError):
         Section.model_validate(["not", "a", "mapping"])
     assert [w for w in recwarn if issubclass(w.category, UserWarning)] == []
+
+
+def test_graph_uuid_fields_default_to_the_historic_namespace(rig_factory: Any) -> None:
+    """an unset `uuid_fields` keeps the whole-record hash under the TABLASSERT domain."""
+    graph: Graph = Graph(name="TEST", version="1.0.0", tables=[Path("./table.yaml")], fullmap=Path("./fullmap"), rig=rig_factory())
+    assert graph.uuid_fields is None
+    assert graph.uuid_domain is None
+    # Byte-compatible with pre-16.0.0 output: default-configured graphs derive as before.
+    assert graph.uuid_namespace == "TABLASSERT"
+
+
+def test_graph_uuid_fields_namespace_on_the_graph_infores(rig_factory: Any) -> None:
+    """declaring `uuid_fields` moves the domain onto the graph's own infores.
+
+    Hashing a subset removes the accidental cross-graph uniqueness full-record hashing
+    provided -- two graphs asserting one triple would otherwise mint one id.
+    """
+    graph: Graph = Graph(
+        name="TEST",
+        version="1.0.0",
+        tables=[Path("./table.yaml")],
+        fullmap=Path("./fullmap"),
+        rig=rig_factory(),
+        uuid_fields=["subject", "predicate", "object"],
+    )
+    assert graph.uuid_namespace == "infores:test-kg"
+
+
+def test_graph_uuid_domain_overrides_the_derived_namespace(rig_factory: Any) -> None:
+    """an explicit `uuid_domain` wins, so sharded graphs can share one id space."""
+    base: dict[str, Any] = {"name": "TEST", "version": "1.0.0", "tables": [Path("./table.yaml")], "fullmap": Path("./fullmap"), "rig": rig_factory()}
+    with_fields: Graph = Graph.model_validate({**base, "uuid_fields": ["subject"], "uuid_domain": "infores:shared"})
+    assert with_fields.uuid_namespace == "infores:shared"
+    # Meaningful on its own: renamespace a full-record hash without narrowing it.
+    without_fields: Graph = Graph.model_validate({**base, "uuid_domain": "infores:shared"})
+    assert without_fields.uuid_namespace == "infores:shared"
+
+
+def test_graph_uuid_fields_canonicalize_casing(rig_factory: Any) -> None:
+    """any casing canonicalizes onto the allow-listed spelling, as annotations do."""
+    graph: Graph = Graph.model_validate(
+        {
+            "name": "TEST",
+            "version": "1.0.0",
+            "tables": [Path("./table.yaml")],
+            "fullmap": Path("./fullmap"),
+            "rig": rig_factory(),
+            "uuid_fields": ["Subject", "PREDICATE", " object "],
+        }
+    )
+    # The Rust deduper matches record keys exactly, so the stored spellings must be canonical.
+    assert graph.uuid_fields == ["subject", "predicate", "object"]
+
+
+@pytest.mark.parametrize(
+    ("uuid_fields", "reason"),
+    [
+        ([], "empty"),
+        (["subject", "subject"], "repeats"),
+        (["subject", "id"], "may not contain `id`"),
+        (["subject", "not_a_real_field"], "never emitted"),
+    ],
+)
+def test_graph_rejects_uuid_fields_that_cannot_identify_an_edge(rig_factory: Any, uuid_fields: list[str], reason: str) -> None:
+    """a `uuid_fields` list that cannot be a key is rejected at config time.
+
+    Each of these would derive an id from nothing, from `id` itself, or from a field no
+    edge carries -- collapsing every edge in the graph onto one identifier.
+    """
+    data: dict[str, Any] = {
+        "name": "TEST",
+        "version": "1.0.0",
+        "tables": [Path("./table.yaml")],
+        "fullmap": Path("./fullmap"),
+        "rig": rig_factory(),
+        "uuid_fields": uuid_fields,
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        Graph.model_validate(data)
+    assert "uuid-bad-fields" in str(exc_info.value)
+    assert reason in str(exc_info.value)

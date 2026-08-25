@@ -42,6 +42,8 @@ TablassertErrorCodes = Literal[
     "rig-terms-empty",
     "rig-legacy-keys",
     "rig-validation-failed",
+    "uuid-bad-fields",
+    "uuid-fields-not-a-key",
 ]
 
 

@@ -54,7 +54,7 @@ Domain string used to create the namespace UUID. The default domain used interna
 
 **`values: list[str]`**
 
-The values to incorporate into the UUID. Empty/None entries are filtered out, the rest are joined with tabs (`"\t"`) and hashed within the domain namespace.
+The values to incorporate into the UUID. Empty entries are dropped; each surviving value is length-prefixed as `<byte-length>:<value>` and concatenated, then hashed within the domain namespace.
 
 ### Return Value
 
@@ -68,38 +68,70 @@ Returns a string representation of a UUID v3: `"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx
 domain_uuid = uuid3(UUID("00000000-0000-0000-0000-000000000000"), domain)
 ```
 
-**Step 2:** Join the (filtered) values with tabs and hash within the namespace:
+**Step 2:** Length-prefix each value and hash the concatenation within that namespace:
 
 ```python
-return str(uuid3(domain_uuid, "\t".join(values)))
+joined = "".join(f"{len(v.encode())}:{v}" for v in values)
+return str(uuid3(domain_uuid, joined))
 ```
+
+The length prefix is what makes the encoding **injective**. A plain separator join is ambiguous
+whenever a value contains the separator: `["a", "x\tb", "y"]` and `["a", "x", "b", "y"]` both join
+to `"a\tx\tb\ty"`, so two different inputs would derive the same UUID.
 
 ### Deterministic Behavior
 
 Same inputs always produce the same UUID; different inputs (or different domains) produce different UUIDs.
 
-### Use Case: KGX Edge IDs
+## Edge IDs
 
-Tablassert uses this function to generate reproducible edge identifiers from the edge's subject, predicate, object, qualifiers, and publication:
+Edge ids are **not** built by calling `namespace_uuid()` from Python. They are assigned inside the
+Rust deduper (`dedup_ndjson`) as each edge is written, from the record itself.
 
-```python
-from tablassert.rs import namespace_uuid
+### Which fields feed the id
 
-edge_id = namespace_uuid(
-  "TABLASSERT",
-  ["HGNC:11998", "biolink:associated_with", "MONDO:0005148", "PMC11708054"],
-)
-# e.g. "2cfea591-0f8f-33af-a7df-03da531d3359"
+By default, **every field** of the emitted edge. That makes the id maximally sensitive: a corrected
+`p_value`, a new `supporting_text` entry, a reordered source row, or a Biolink release that renames
+a slot all mint a brand-new id, and downstream consumers see a new edge rather than an updated one.
+
+A graph config can instead declare which fields constitute edge *identity*:
+
+```yaml
+# graph.yaml
+uuid_fields: [subject, predicate, object, publications, has_supporting_studies]
 ```
 
-**Benefits:**
-- **Reproducible:** the same edge always gets the same ID across runs
-- **Collision-resistant:** MD5 hashing makes collisions extremely unlikely
-- **Traceable:** the ID incorporates the edge components (subject, predicate, object, provenance)
+Only those fields then feed the hash, so attribute-only changes leave the id alone. See
+[Graph Configuration](../configuration/graph.md#stable-edge-ids) for how to choose a field set.
+
+### Canonicalization
+
+Before hashing, the record is normalized so that only *meaning* reaches the digest:
+
+- object keys are sorted, recursively, so insertion order never changes the id;
+- array order is preserved, because it is semantic;
+- each key and its value are fed as **separate** parts, so the key/value boundary cannot shift to
+  create a collision (`{"a": "b=c"}` and `{"a=b": "c"}` stay distinct);
+- `null` and empty values drop out, key included; `false` is hashed as `"false"`, because
+  `negated: false` is a meaningful Biolink value.
+
+### Namespace
+
+The domain defaults to `"TABLASSERT"`. When `uuid_fields` is declared it becomes the graph's
+`rig.source_info.infores_id`, so two graphs asserting the same triple can never mint the same id —
+the uniqueness that full-record hashing provided by accident becomes structural. `uuid_domain`
+overrides it for graphs that must deliberately share an id space.
+
+### Uniqueness
+
+Edges deduplicate on their derived id, so an output file can never carry the same id twice. An
+exact repeat collapses; two genuinely different edges deriving one id abort the build with
+`uuid-fields-not-a-key`, naming the fields that would disambiguate them.
 
 ### KGX Compliance
 
-NCATS Translator KGX requires edge IDs to be globally unique and, where possible, deterministic. `namespace_uuid()` satisfies both: UUID v3 with domain namespacing yields unique, reproducible identifiers.
+NCATS Translator KGX requires edge IDs to be globally unique and, where possible, deterministic.
+UUID v3 with domain namespacing satisfies both.
 
 ## Next Steps
 

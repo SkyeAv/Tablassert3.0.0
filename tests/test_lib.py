@@ -3528,3 +3528,59 @@ def test_inline_supporting_study_metadata_without_row_has_no_result_fallback() -
     out: pl.DataFrame = inline_supporting_study(lf, "table", "data.tsv", False).collect()
     study: dict[str, Any] = out["has_supporting_studies"].to_list()[0]["table"]
     assert study == {"id": "table", "name": "data.tsv", "study_size": 9}
+
+
+def test_dedup_stream_edges_declared_uuid_fields_survive_attribute_edits(tmp_path: Path) -> None:
+    """declared `uuid_fields` hold the edge id still when only an attribute changes.
+
+    This is the point of the feature: a corrected p_value must leave the id alone so
+    downstream sees one edge updated, not one retired and one created.
+    """
+    import json
+
+    fields: list[str] = ["subject", "object", "predicate"]
+
+    def build(name: str, body: str) -> str:
+        p_in: Path = tmp_path / f"{name}.ndjson.tmp"
+        p_in.write_text(body)
+        lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=fields)
+        line: str = (tmp_path / f"{name}.ndjson").read_text().strip()
+        return json.loads(line)["id"]
+
+    before: str = build("before", '{"subject":"A","object":"B","predicate":"r","p_value":"0.01"}\n')
+    after: str = build("after", '{"subject":"A","object":"B","predicate":"r","p_value":"0.99","effect_size":1.5}\n')
+    assert before == after
+    # ...and the whole-record default still drifts, so the opt-in is what changed things.
+    drifted: str = build("drifted", '{"subject":"A","object":"B","predicate":"r","p_value":"0.99","effect_size":1.5}\n')
+    p_in: Path = tmp_path / "plain.ndjson.tmp"
+    p_in.write_text('{"subject":"A","object":"B","predicate":"r","p_value":"0.01"}\n')
+    lib.dedup_stream(p_in, is_edges=True)
+    plain: str = json.loads((tmp_path / "plain.ndjson").read_text().strip())["id"]
+    assert plain != drifted
+
+
+def test_dedup_stream_edges_reject_uuid_fields_that_are_not_a_key(tmp_path: Path) -> None:
+    """two different edges deriving one id abort the build instead of shipping a duplicate."""
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text('{"subject":"A","object":"B","predicate":"r","p_value":"0.01"}\n{"subject":"A","object":"B","predicate":"r","p_value":"0.99"}\n')
+
+    with pytest.raises(RuntimeError) as exc_info:
+        lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"])
+
+    message: str = str(exc_info.value)
+    assert "uuid-fields-not-a-key" in message
+    # The diagnostic must name the field that would disambiguate, or it is unactionable.
+    assert "p_value" in message
+
+
+def test_dedup_stream_edges_domain_separates_graphs(tmp_path: Path) -> None:
+    """the same triple in two graphs derives two ids, so a narrow key set stays safe."""
+    import json
+
+    def build(name: str, domain: str) -> str:
+        p_in: Path = tmp_path / f"{name}.ndjson.tmp"
+        p_in.write_text('{"subject":"A","object":"B","predicate":"r"}\n')
+        lib.dedup_stream(p_in, is_edges=True, domain=domain, uuid_fields=["subject", "object", "predicate"])
+        return json.loads((tmp_path / f"{name}.ndjson").read_text().strip())["id"]
+
+    assert build("left", "infores:left-kg") != build("right", "infores:right-kg")
