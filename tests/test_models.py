@@ -478,6 +478,77 @@ def test_statement_accepts_single_empty_and_null_qualifiers() -> None:
     assert null.qualifiers is None
 
 
+def test_statement_accepts_category_override() -> None:
+    """A per-object-category override of valid Categories -> EdgeCategories pairs validates."""
+    stmt: Statement = Statement(  # pyright: ignore
+        subject={"method": "value", "encoding": "A"},
+        object={"method": "value", "encoding": "B"},
+        predicate="associated_with",
+        category_override={"Disease": "EntityToDiseaseAssociation", "PhenotypicFeature": "EntityToPhenotypicFeatureAssociation"},
+    )
+    assert stmt.category_override == {"Disease": "EntityToDiseaseAssociation", "PhenotypicFeature": "EntityToPhenotypicFeatureAssociation"}
+
+
+def test_statement_rejects_unknown_override_value() -> None:
+    """Override values must be EdgeCategories members; arbitrary names fail at config time."""
+    with pytest.raises(ValidationError):
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"}, object={"method": "value", "encoding": "B"}, category_override={"Disease": "NotAClass"}
+        )
+
+
+def test_statement_rejects_non_association_override_value() -> None:
+    """A node category is not an association class, even though it is a valid enum elsewhere."""
+    with pytest.raises(ValidationError):
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"}, object={"method": "value", "encoding": "B"}, category_override={"Disease": "Disease"}
+        )
+
+
+def test_statement_rejects_unknown_override_key() -> None:
+    """Override keys must be Categories members (the resolved object category)."""
+    with pytest.raises(ValidationError):
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"},
+            object={"method": "value", "encoding": "B"},
+            category_override={"NotACategory": "EntityToDiseaseAssociation"},
+        )
+
+
+def test_statement_warns_when_predicate_demotes_an_override() -> None:
+    """Pinning a class whose predicate slot rejects the section predicate warns, not fails.
+
+    ``GeneToDiseaseAssociation`` restricts ``predicate`` to
+    ``contributes_to|associated_with|affects``, so ``gene_associated_with_condition``
+    walks the emitted category up the hierarchy -- dropping the subclass-only slots the
+    author pinned the class for. The build still reconciles silently; the warning is
+    what makes the demotion discoverable.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"},
+            object={"method": "value", "encoding": "B"},
+            predicate="gene_associated_with_condition",
+            category_override={"Disease": "GeneToDiseaseAssociation"},
+        )
+    messages: list[str] = [str(w.message) for w in caught if issubclass(w.category, BiolinkRelocationWarning)]
+    assert any("GeneToDiseaseAssociation" in m and "gene_associated_with_condition" in m for m in messages)
+
+
+def test_statement_no_warning_when_override_accepts_predicate() -> None:
+    """A pinned class that accepts the section predicate validates silently."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        Statement(  # pyright: ignore
+            subject={"method": "value", "encoding": "A"},
+            object={"method": "value", "encoding": "B"},
+            predicate="associated_with",
+            category_override={"Disease": "EntityToDiseaseAssociation"},
+        )
+    assert not [w for w in caught if issubclass(w.category, BiolinkRelocationWarning)]
+
+
 def test_node_encoding_with_prioritize_avoid() -> None:
     """NodeEncoding with prioritize and avoid."""
     node: NodeEncoding = NodeEncoding(  # pyright: ignore

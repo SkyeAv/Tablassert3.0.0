@@ -222,7 +222,7 @@ def predicate_options(subject_category: str, object_category: str) -> frozenset[
     return legal_predicates(derived_edge_category(subject_category, object_category))
 
 
-def edge_category(lf: pl.LazyFrame, predicate: str | None = None) -> pl.LazyFrame:
+def edge_category(lf: pl.LazyFrame, predicate: str | None = None, category_override: dict[str, str] | None = None) -> pl.LazyFrame:
     """Add the derived ``category`` column using native polars replace operations.
 
     The ``(subject role, object role)`` lookup alone routinely produces a category
@@ -233,10 +233,18 @@ def edge_category(lf: pl.LazyFrame, predicate: str | None = None) -> pl.LazyFram
     by :func:`biolink.resolve_association_class`, which walks up the association
     hierarchy only as far as the predicate requires.
 
+    ``category_override`` pins the association class per *object* category (the
+    config's ``statement.category_override``): a row whose raw object category --
+    before the role rollup that merges e.g. ``Disease`` and ``PhenotypicFeature``
+    into one pair key -- appears in the map carries the pinned class instead of the
+    pair-derived one. Pinned classes pass through the same predicate reconciliation.
+
     Args:
         lf: Source LazyFrame with ``subject category`` and ``object category``
             columns (biolink-prefixed).
         predicate: Section predicate CURIE used to reconcile the derived category.
+        category_override: ``{object category (bare name): biolink: CURIE}`` map
+            applied per row in place of the pair lookup.
 
     Returns:
         LazyFrame with a new list-typed ``category`` column containing the
@@ -252,12 +260,20 @@ def edge_category(lf: pl.LazyFrame, predicate: str | None = None) -> pl.LazyFram
         # small raw-category -> resolved-category remap resolved once at plan time.
         edge_lookup = {k: f"biolink:{resolve_association_class(v, predicate).__name__}" for k, v in edge_lookup.items()}
         default = f"biolink:{resolve_association_class(default, predicate).__name__}"
+        if category_override:
+            category_override = {k: f"biolink:{resolve_association_class(v, predicate).__name__}" for k, v in category_override.items()}
     names: list[str] = lf.collect_schema().names()
     subject_col: str = "subject_category" if "subject_category" in names else "subject category"
     object_col: str = "object_category" if "object_category" in names else "object category"
     sr: pl.Expr = pl.col(subject_col).str.replace("biolink:", "").replace(cat_role).fill_null("")
     or_: pl.Expr = pl.col(object_col).str.replace("biolink:", "").replace(cat_role).fill_null("")
-    return lf.with_columns(pl.concat_list(pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=default)).alias("category"))
+    derived: pl.Expr = pl.concat_str([sr, pl.lit("|"), or_]).replace_strict(edge_lookup, default=default)
+    if category_override:
+        # Key on the RAW object category: the role rollup above collapses exactly the
+        # distinction (Disease vs PhenotypicFeature) the override exists to preserve.
+        hit: pl.Expr = pl.col(object_col).str.replace("biolink:", "").replace_strict(category_override, default=None, return_dtype=pl.String)
+        derived = pl.when(hit.is_not_null()).then(hit).otherwise(derived)
+    return lf.with_columns(pl.concat_list(derived).alias("category"))
 
 
 def prune_to_class(lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -1297,9 +1313,13 @@ class Tcode(Section):
         study_name: str | None = sheet if sheet is not None else Path(self.source.local).name
         if study_name == study_id:
             study_name = None
+        # `use_enum_values` stores the override's enum keys/values as plain strings.
+        category_override: dict[str, str] | None = (
+            {obj: f"biolink:{pinned}" for obj, pinned in self.statement.category_override.items()} if self.statement.category_override else None
+        )
         return [
             (value, ("predicate", "biolink:" + self.statement.predicate)),
-            (edge_category, ("biolink:" + self.statement.predicate,)),
+            (edge_category, ("biolink:" + self.statement.predicate, category_override)),
             (value, ("knowledge_level", knowledge_level)),
             (value, ("agent_type", agent_type)),
             # Retrieval provenance lives only in the nested `sources` list (Biolink

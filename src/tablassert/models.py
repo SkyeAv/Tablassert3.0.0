@@ -17,9 +17,11 @@ from tablassert.biolink import (
     UNSATISFIABLE_EDGE_FIELDS,
     AgentTypes,
     Categories,
+    EdgeCategories,
     KnowledgeLevels,
     Predicates,
     Qualifiers,
+    resolve_association_class,
 )
 from tablassert.coerce import coerced_target
 from tablassert.enums import (
@@ -435,6 +437,14 @@ class Statement(TablaBase):
     object: NodeEncoding = Field(..., description="Object node encoding and mapping configuration.")
     predicate: Predicates = Field(Predicates.RELATED_TO, description="Predicate connecting subject and object nodes.")
     qualifiers: list[Qualifier] | None = Field(None, description="Optional qualifier nodes attached to the statement.")
+    category_override: dict[Categories, EdgeCategories] | None = Field(
+        None,
+        description=(
+            "Optional per-object-category association-class override: maps a resolved object category (bare name, e.g. `Disease`) "
+            "to the association category its rows carry (e.g. `EntityToDiseaseAssociation`), used in place of the derived "
+            "(subject, object) pair lookup. Rows whose object category is absent from the map derive as before."
+        ),
+    )
 
     @model_validator(mode="after")
     def reject_duplicate_qualifiers(self: Self) -> Self:
@@ -456,6 +466,30 @@ class Statement(TablaBase):
                     code="qualifier-duplicated",
                 )
             seen.add(key)
+        return self
+
+    @model_validator(mode="after")
+    def warn_when_an_override_is_demoted_by_the_predicate(self: Self) -> Self:
+        """Warn when a pinned association class cannot carry the section predicate.
+
+        A ``category_override`` value still passes through
+        :func:`biolink.resolve_association_class` at build time: when the pinned class
+        restricts its ``predicate`` slot and the section predicate is not in it, the
+        emitted category silently walks up to an ancestor -- taking every subclass-only
+        slot the author pinned the class *for* with it. The value is never lost (the
+        reconciliation keeps the edge valid), so this is a warning, not an error.
+        """
+        for obj_category, pinned in (self.category_override or {}).items():
+            # `use_enum_values` stores both sides as plain strings.
+            resolved: str = resolve_association_class(f"biolink:{pinned}", f"biolink:{self.predicate}").__name__
+            if resolved != pinned:
+                warnings.warn(
+                    f"category_override pins `{pinned}` for `{obj_category}` objects, but that class does not accept "
+                    f"predicate `{self.predicate}`, so those rows are emitted as `{resolved}` instead -- any slots only "
+                    f"`{pinned}` declares are pruned off the edge.",
+                    BiolinkRelocationWarning,
+                    stacklevel=2,
+                )
         return self
 
 
