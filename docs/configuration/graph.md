@@ -27,6 +27,107 @@ QC auditing and verbose logging are controlled at build time via the `build-kg -
 
 The legacy top-level RIG fields (`description`, `contributions`, `ui_explanation`, `infores`) are **rejected** with a migration pointer; they now live under `rig:`.
 
+### Optional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uuid_fields` | List[str] | Edge fields that constitute edge identity. Only these feed the derived edge `id` (see [Stable edge ids](#stable-edge-ids)) |
+| `uuid_domain` | String | Explicit UUID namespace. Defaults to `rig.source_info.infores_id` when `uuid_fields` is set, `TABLASSERT` otherwise |
+
+## Stable edge ids
+
+Every edge gets a deterministic `id`: a UUID v3 derived from the edge itself. By default it is
+derived from the **whole record**, which makes it maximally brittle — a corrected `p_value`, a new
+`supporting_text` entry, a reordered source row, or a Biolink release that renames a slot all mint a
+brand-new id. Downstream Translator consumers then see a new edge where they should see the same
+edge with updated attributes.
+
+`uuid_fields` fixes that by naming the fields that actually identify an edge:
+
+```yaml
+uuid_fields: [subject, predicate, object, publications, has_supporting_studies]
+```
+
+Everything else is then free to change without moving the id.
+
+### Choosing a field set
+
+Start from what identifies an assertion, and what each entry buys you:
+
+- **`subject` / `predicate` / `object`** — the assertion itself.
+- **`publications`** — the evidence it rests on.
+- **`has_supporting_studies`** — carries `has_study_results[].id` (`row:<N>`), the **row
+  discriminator**. Include it whenever one table contributes several rows that share a subject,
+  predicate, and object. It also carries the `study_*` metadata, but those come from per-section
+  config and are far more stable than `p_value` or `effect_size`.
+
+Add qualifiers (`object_direction_qualifier`, `anatomical_context_qualifier`, …) when they
+*distinguish* assertions rather than merely describe them.
+
+Leave out anything that is an observation *about* the edge rather than the edge's identity:
+`p_value`, `effect_size`, `effect_type`, `original_subject` / `original_object`, `supporting_text`,
+`sources`, `category`, `knowledge_level`, `agent_type`.
+
+**Then build, and let the failure tell you what is missing.** That list is a starting point, not an
+answer — whether it is a key depends on your data, and the only way to find out is to run it. On a
+real 1.27M-edge graph the set above left 2,476 collisions (0.2% of edges): pairs whose subject,
+predicate, object, publication and row were identical, differing only in the NLP level recorded in
+`supporting_text` because two raw strings had resolved onto the same CURIE. Adding
+`supporting_text` made it a key.
+
+Expect to iterate once or twice. Each failure names the id, the fields that differ, and one
+offending edge, so each round is mechanical.
+
+### What it buys
+
+On that same 1.27M-edge graph, re-analysing the statistics (new `p_value` and `effect_size` on
+every row) and rebuilding:
+
+| | edge ids that changed |
+|---|---|
+| no `uuid_fields` (whole-record hash) | 930,081 of 1,265,355 — **73%** |
+| `uuid_fields` declared | 0 of 1,265,355 — **none** |
+
+### The field set must be a key
+
+Narrowing what feeds the hash means two different edges can derive the same id. Tablassert refuses
+to ship duplicate edge ids, so that is a build failure, not a silent collapse:
+
+```
+uuid-fields-not-a-key: declared uuid_fields are not a key for this graph.
+  id 83ade536-9b07-34ec-a2f9-abf0fb5b6a2f is claimed by 2 different edges.
+  they differ in: effect_size, p_value
+  declared uuid_fields: subject, predicate, object
+  offending edge: subject=A predicate=r object=B
+Add a discriminating field to `uuid_fields` (...).
+```
+
+The fix is whatever the message names: add the qualifier that separates them,
+`has_supporting_studies` for the source row, or the statistic that genuinely differs. Two rows with
+an identical subject, predicate, and object that differ only in `p_value` are exactly this case —
+and were previously producing two ids for what config claimed was one assertion.
+
+An exact duplicate is *not* a violation: identical edges collapse, as they always have.
+
+### Namespacing
+
+Because a narrow field set no longer distinguishes graphs by accident, declaring `uuid_fields`
+moves the UUID namespace onto the graph's own `rig.source_info.infores_id`. Two graphs asserting
+the same triple from the same publication then still derive different ids, structurally.
+
+Set `uuid_domain` only when graphs must deliberately **share** an id space — a KG compiled in
+shards, or one renamed across versions that has to keep its published ids:
+
+```yaml
+uuid_domain: infores:multiomicskg
+```
+
+### Migration
+
+Adding `uuid_fields` to an existing graph **changes every edge id in it, once**. That is the cost of
+switching identity models; ids are stable from then on. Plan it as a deliberate version bump and
+tell your consumers.
+
 ### The `rig:` section
 
 The `rig:` section carries every human-authored RIG fact. Its shape mirrors the released [RIG schema](https://github.com/biolink/resource-ingest-guide-schema), so the generated `.RIG.yaml` is always schema-shaped. The generator derives only mechanical facts from the build (generated artifact file entries, observed edge/node type summaries) and **validates the complete document before writing anything**, so a build never leaves behind an invalid or incomplete RIG.
