@@ -397,3 +397,36 @@ def test_study_final_ndjson_passes_clean(monkeypatch: Any, tmp_path: Path) -> No
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(study, "study_kgx", lambda *args: [])
     cli.study_final_ndjson("g", "1", tmp_path)
+
+
+def test_duplicate_edge_ids(tmp_path: Path) -> None:
+    """an edge id appearing on more than one line fails the duplicate assertion.
+
+    The deduper keys edges on their derived id, so this can only fire when something
+    bypassed it -- a hand-built file, or two builds concatenated. KGX requires edge ids
+    to be unique, so the study asserts it independently of the writer.
+    """
+    nodes, _ = _clean(tmp_path)
+    edges: Path = _write_ndjson(
+        tmp_path / "e.ndjson",
+        _records(
+            {"id": "dup-id", "subject": "HGNC:5", "object": "HGNC:6", "predicate": "biolink:related_to"},
+            {"id": "dup-id", "subject": "HGNC:5", "object": "HGNC:6", "predicate": "biolink:affects"},
+        ),
+    )
+    checks: dict[str, study.StudyViolation] = _checks(study.study_kgx(nodes, edges))
+    assert checks["duplicate-edge-ids"].count == 1
+    assert checks["duplicate-edge-ids"].examples == ["dup-id"]
+
+
+def test_distinct_edge_ids_pass(tmp_path: Path) -> None:
+    """distinct edge ids raise no duplicate violation."""
+    nodes, _ = _clean(tmp_path)
+    edges: Path = _write_ndjson(
+        tmp_path / "e.ndjson",
+        _records(
+            {"id": "a", "subject": "HGNC:5", "object": "HGNC:6", "predicate": "biolink:related_to"},
+            {"id": "b", "subject": "HGNC:6", "object": "HGNC:5", "predicate": "biolink:related_to"},
+        ),
+    )
+    assert "duplicate-edge-ids" not in _checks(study.study_kgx(nodes, edges))
