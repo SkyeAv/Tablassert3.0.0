@@ -1299,11 +1299,11 @@ def _biolink_report(nodes: Path, edges: Path) -> dict[str, object]:
     Wraps ``biolink.validate_kgx`` (the same check ``tablassert validate-kgx`` runs) into the
     flat, JSON-safe keys ``build_and_audit`` returns, plus the ``_notes`` list the caller
     folds into its own. ``biolink_valid_pct`` excludes the known-pending fields Tablassert
-    emits on purpose (``approval_ids`` as a translator-ingest pass-through and the KGX
-    denormalized carryovers -- the set is derived, and emptied itself of ``effect_size`` /
-    ``effect_type`` when biolink-model 4.4.4 shipped them as real Association slots) so the
-    scored number reflects the agent's decisions rather than a deliberate gap;
-    ``biolink_valid_pct_strict`` keeps that gap visible.
+    emits on purpose (the KGX denormalized carryovers -- the set is derived, and emptied
+    itself of ``approval_ids`` when the curated pass-through override was removed and of
+    ``effect_size`` / ``effect_type`` when biolink-model 4.4.4 shipped them as real
+    Association slots) so the scored number reflects the agent's decisions rather than a
+    deliberate gap; ``biolink_valid_pct_strict`` keeps that gap visible.
 
     Never raises: an unreadable or unparseable artifact degrades to ``None`` metrics and a
     note, exactly like the coverage measurement above it.
@@ -2349,19 +2349,13 @@ qualifier and evidence slot the specific class declared. build_and_audit reports
   `effect_type`), `q value` / `padj` -> `adjusted_p_value`. Names nothing claims
   (`fold_change` alone, `z_score`, `lfsr`, `standard_error`, free-form notes) are folded
   into `supporting_text`. Prefer `p_value`, `adjusted_p_value`, `effect_size`,
-  `effect_type`, `has_evidence`. For FDA application numbers, `approval_ids` is a deliberate
-  translator-ingest pass-through: keep the pipe-joined value as a scalar and do not add
-  `split_by`.
+  `effect_type`, `has_evidence`.
 - MULTIVALUED slots (`has_evidence` and friends) take a real JSON array, never a joined string:
   `split_by` is the ONLY multivalued encoding — there is no literal-list method. INSPECT the
   column's cells first (read_table shows them); the separator they ACTUALLY use — `|`, `,`, or
   `;` — is the one you declare: `{method: column, encoding: <letter>, split_by: "<separator>"}`.
   A SINGLE-value cell gets NO `split_by`: its scalar wraps into a one-element array, the correct
   shape. Cells that DO join multiple values but OMIT `split_by` ship as one unusable joined blob.
-- `approval_ids` is a deliberate translator-ingest pass-through extra, EXEMPT from the
-  validity score: a `biolink_valid_pct` below 1.0 is never caused by it. (`effect_size` /
-  `effect_type` were exempt only until biolink-model 4.4.4 shipped them as real Association
-  slots; they now validate like any other slot.)
 - QUALIFIERS: enum-ranged qualifiers take a literal TOKEN, never a CURIE
   (`object_direction_qualifier: increased`, not a UMLS id), and `species_context_qualifier` is
   disabled — never author it as a qualifier or annotation.

@@ -218,19 +218,6 @@ cannot drift from the model the build validates against:
 - any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
 ```
 
-!!! note "`approval_ids` is exempt"
-    Tablassert emits `approval_ids` as a translator-ingest pass-through; the installed model
-    declares no such slot on `Association`, so a strict check rejects edges carrying it.
-    `biolink_valid_pct` exempts it (and the other curated KGX carryovers) so the agent is
-    scored on **its own** decisions.
-    The exempt set is *derived* from `TABLASERT_EDGE_EXTRAS` minus the fields any association
-    declares, so it empties itself when the model catches up. That is exactly what happened to
-    `effect_size` and `effect_type`: they were exempt pending
-    [biolink-model#1774](https://github.com/biolink/biolink-model/pull/1774), and dropped out
-    of the set when biolink-model 4.4.4 shipped them as real `Association` slots.
-
-Two related silent behaviours the agent's prompt now names, since neither raises:
-
 - An annotation like `supporting_study_size` or `sample_size` names study-level metadata.
   biolink-model 4.4.4 ([PR #1770](https://github.com/biolink/biolink-model/pull/1770))
   deprecated the old `supporting_study_*` association slots and replaced them with `Study`

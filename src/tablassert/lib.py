@@ -1177,7 +1177,7 @@ class Tcode(Section):
             [
                 op
                 for x in self.annotations
-                for op in [*self.encoding(x, x.annotation.lower()), *([(split_list, (x.annotation.lower(), x.split_by))] if x.split_by else [])]
+                for op in [*self.encoding(x, x.annotation), *([(split_list, (x.annotation, x.split_by))] if x.split_by else [])]
             ]
             if self.annotations
             else None,

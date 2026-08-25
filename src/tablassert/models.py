@@ -674,7 +674,13 @@ class Annotation(Encoding):
     @field_validator("annotation", mode="after")
     @classmethod
     def clean_annotation(cls, annotation: str) -> str:
-        return annotation.lower().strip()
+        cleaned: str = annotation.strip()
+        lowered: str = cleaned.lower()
+        # Allow-listed slots may carry uppercase (Biolink's ``FDA_regulatory_approvals``):
+        # any casing the author declares canonicalizes onto the allow-listed spelling
+        # verbatim, so the emitted edge field preserves its case exactly instead of being
+        # lowercased into an unknown name.
+        return next((field for field in ALLOWED_EDGE_FIELDS if field.lower() == lowered), lowered)
 
     @model_validator(mode="after")
     def reject_disabled_annotations(self: Self) -> Self:

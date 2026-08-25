@@ -351,10 +351,6 @@ template:
     - annotation: evidence_count
       method: column
       encoding: J
-    - annotation: approval_ids
-      method: column
-      encoding: P
-      split_by: "|"
     - annotation: has_evidence
       method: column
       encoding: Q

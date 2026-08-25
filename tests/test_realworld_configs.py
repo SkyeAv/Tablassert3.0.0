@@ -137,7 +137,6 @@ def test_dakp_approved_treats_semantics() -> None:
     """DAKP approved-treats keeps its ``split_by`` annotations and provenance override."""
     tcode: Tcode = _validated_tcode(POSITIVE / "dakp" / "approved_treats.yaml")
     split_by: dict[str, Any] = {str(a.annotation): a.split_by for a in tcode.annotations or []}
-    assert split_by["approval_ids"] == "|"
     assert split_by["has_evidence"] == "|"
 
     override: Any = tcode.provenance.override

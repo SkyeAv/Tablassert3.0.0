@@ -229,12 +229,12 @@ Exits non-zero when any record fails, so it can gate a release in CI. A missing 
 reported as `file not found` and also exits non-zero: a file that was never read must never count as
 a pass.
 
-Some edges carry fields the installed model declares on no association: the translator-ingest
-`approval_ids` pass-through, and the KGX denormalized carryovers (`synonym`, `xref`, `relation`,
-`provided_by`, ...). Tablassert emits them on purpose, so they are counted separately as *pending*
-rather than treated as defects. The set is derived from the installed package, so a field leaves it
-the moment a `biolink-model` release declares it, as `effect_size` / `effect_type` did when 4.4.4
-shipped [#1774](https://github.com/biolink/biolink-model/pull/1774):
+Some edges carry fields the installed model declares on no association: the KGX denormalized
+carryovers (`synonym`, `xref`, `relation`, `provided_by`, ...). Tablassert emits them on purpose,
+so they are counted separately as *pending* rather than treated as defects. The set is derived
+from the installed package, so a field leaves it the moment a `biolink-model` release declares
+it, as `effect_size` / `effect_type` did when 4.4.4 shipped
+[#1774](https://github.com/biolink/biolink-model/pull/1774):
 
 ```text
 edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
