@@ -59,6 +59,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ALLOWED_EDGE_FIELDS",
     "BIOLINK_VERSION",
+    "CLASS_FIELD_OVERRIDES",
     "DISABLED_EDGE_FIELDS",
     "EFFECT_TYPE_VALUES",
     "ENUM_RANGED_QUALIFIERS",
@@ -519,6 +520,32 @@ release from making ``species_context_qualifier`` silently emittable again.
 """
 
 
+CLASS_FIELD_OVERRIDES: dict[str, frozenset[str]] = {
+    "EntityToDiseaseAssociation": frozenset({"disease_context_qualifier"}),
+    "EntityToPhenotypicFeatureAssociation": frozenset({"disease_context_qualifier"}),
+}
+"""Per-class grants of edge fields the resolved association class does not declare.
+
+Keys are bare association class names (``association_class(cat).__name__``), values
+the slots ``lib.prune_to_class`` keeps on rows resolved to that class even though the
+installed model attaches them elsewhere.
+
+The motivating case is a DAKP contraindication edge: ``FDA_regulatory_approvals`` is
+declared only on the ``EntityToDisease`` / ``EntityToPhenotypicFeature`` classes the
+edge is pinned to, while ``disease_context_qualifier`` is declared only on the
+``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation`` lineage -- so one edge can
+natively carry one slot or the other, never both. Tablassert deliberately emits the
+qualifier on the pinned classes ahead of the pinned model (pending an upstream Biolink
+widening), exactly as :data:`KNOWN_PENDING_EDGE_FIELDS` emits KGX carryovers ahead of
+it. ``_validation_record`` strips granted fields before record validation so the
+deliberate gap is not reported as ``extra_forbidden``.
+
+A tripwire test asserts every granted field is still absent from its class: the moment
+a biolink-model release attaches the slot, the suite fails and the stale grant is
+removed.
+"""
+
+
 ENUM_RANGED_QUALIFIERS: dict[str, frozenset[str]] = {
     qualifier.value: choices
     for qualifier in Qualifiers
@@ -647,20 +674,33 @@ def _retrieval_source_id_required() -> bool:
 
 
 def _validation_record(record: dict[str, Any], *, edge: bool) -> dict[str, Any]:
-    """Add only in-memory compatibility aliases needed by the installed Biolink model.
+    """Apply only in-memory compatibility shims needed by the installed Biolink model.
 
-    ``RetrievalSource`` in the currently pinned model still requires the inherited
-    ``Entity.id`` even though ``resource_id`` is the canonical provenance identifier
-    emitted by Tablassert. The alias is used solely for Pydantic validation; it never
-    changes the decoded KGX record or the files written by the pipeline.
+    Two shims, both used solely for Pydantic validation -- neither changes the decoded
+    KGX record or the files written by the pipeline:
+
+    * ``RetrievalSource`` in the currently pinned model still requires the inherited
+      ``Entity.id`` even though ``resource_id`` is the canonical provenance identifier
+      emitted by Tablassert, so ``id`` is aliased in.
+    * Fields granted by :data:`CLASS_FIELD_OVERRIDES` are stripped when the record's
+      own class does not declare them: the grant is a deliberate, class-scoped step
+      ahead of the pinned model, not a malformed record, so its ``extra_forbidden``
+      is never reported.
     """
     if not edge:
         return record
+    out: dict[str, Any] = record
+    categories: Any = record.get("category") or []
+    category: str = categories[0] if isinstance(categories, list) and categories else str(categories or "")
+    granted: frozenset[str] = CLASS_FIELD_OVERRIDES.get(category.removeprefix("biolink:"), frozenset())
+    undeclared: frozenset[str] = granted - class_fields(association_class(category)) if granted else frozenset()
+    if undeclared:
+        out = {key: value for key, value in out.items() if key not in undeclared}
     if not _retrieval_source_id_required():
-        return record
-    sources: Any = record.get("sources")
+        return out
+    sources: Any = out.get("sources")
     if not isinstance(sources, list):
-        return record
+        return out
     normalized: list[Any] = []
     changed: bool = False
     for source in sources:
@@ -669,7 +709,7 @@ def _validation_record(record: dict[str, Any], *, edge: bool) -> dict[str, Any]:
             changed = True
         else:
             normalized.append(source)
-    return {**record, "sources": normalized} if changed else record
+    return {**out, "sources": normalized} if changed else out
 
 
 def validate_record(record: dict[str, Any], *, edge: bool) -> list[str]:

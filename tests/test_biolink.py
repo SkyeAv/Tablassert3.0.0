@@ -22,6 +22,7 @@ import pytest
 from tablassert.biolink import (
     ALLOWED_EDGE_FIELDS,
     BIOLINK_VERSION,
+    CLASS_FIELD_OVERRIDES,
     DISABLED_EDGE_FIELDS,
     EFFECT_TYPE_VALUES,
     KNOWN_PENDING_EDGE_FIELDS,
@@ -34,11 +35,14 @@ from tablassert.biolink import (
     KnowledgeLevels,
     Predicates,
     Qualifiers,
+    association_class,
+    class_fields,
     is_pending_problem,
     legal_predicates,
     numeric_slot_kind,
     resolve_association_class,
     validate_kgx,
+    validate_record,
 )
 
 if TYPE_CHECKING:
@@ -360,6 +364,35 @@ def test_disabled_edge_fields_are_never_emittable() -> None:
     """Tablassert-disabled fields stay excluded even if a future Biolink model attaches them."""
     assert "species_context_qualifier" in DISABLED_EDGE_FIELDS
     assert DISABLED_EDGE_FIELDS.isdisjoint(ALLOWED_EDGE_FIELDS)
+
+
+def test_class_field_overrides_track_the_installed_model() -> None:
+    """Every granted field must still be absent from its class and emittable elsewhere.
+
+    Tripwire: the moment a biolink-model release attaches a granted slot to the class,
+    this fails and the stale grant is removed from ``CLASS_FIELD_OVERRIDES`` (same
+    philosophy as the ``UNSATISFIABLE_EDGE_FIELDS`` derivation guard). A field the
+    family allow-list would strip anyway must never be granted.
+    """
+    for class_name, fields in CLASS_FIELD_OVERRIDES.items():
+        cls: type[Any] = association_class(f"biolink:{class_name}")
+        assert issubclass(cls, bm.Association), class_name
+        for field in fields:
+            assert field not in class_fields(cls), (class_name, field)
+            assert field in ALLOWED_EDGE_FIELDS, (class_name, field)
+
+
+def test_validate_record_tolerates_class_field_override_grants() -> None:
+    """A granted field on its granted class is not reported; on any other class it is.
+
+    The grant is a deliberate, class-scoped step ahead of the pinned model, so its
+    ``extra_forbidden`` must not surface in validation -- while the same slot on an
+    ungranted class stays a real defect.
+    """
+    record: dict[str, Any] = {"category": ["biolink:EntityToDiseaseAssociation"], "disease_context_qualifier": "MONDO:0005148"}
+    assert "disease_context_qualifier: extra_forbidden" not in validate_record(record, edge=True)
+    control: dict[str, Any] = {**record, "category": ["biolink:GeneToDiseaseAssociation"]}
+    assert "disease_context_qualifier: extra_forbidden" in validate_record(control, edge=True)
 
 
 def test_allowed_edge_fields_excludes_unattached_qualifiers() -> None:

@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- **`disease_context_qualifier` is granted to `EntityToDiseaseAssociation` / `EntityToPhenotypicFeatureAssociation` edges as a class-scoped policy override.** Biolink declares the slot only on the `ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation` lineage, while `FDA_regulatory_approvals` lives only on the `EntityToDisease` / `EntityToPhenotypicFeature` classes DAKP pins via `category_override` — so a contraindication edge could natively carry one slot or the other, never both. The new `CLASS_FIELD_OVERRIDES` table in `biolink.py` grants the qualifier to the pinned classes: `prune_to_class` keeps the value on those rows instead of nulling and rescuing it, and record validation strips the granted field from its in-memory copy so the deliberate gap is not reported as `extra_forbidden`. The grant is deliberately ahead of the pinned model (pending an upstream Biolink widening); a tripwire test asserts every granted field stays absent from its class, so a future biolink-model release that attaches the slot fails the suite until the stale grant is removed.
+
 ## 15.0.0 - 2026-08-24
 
 ### Breaking Changes
