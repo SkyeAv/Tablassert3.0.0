@@ -1875,19 +1875,6 @@ cannot drift from the model the build validates against:</p>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>- SequenceVariant ~ Gene -&gt; VariantToGeneAssociation: condition_associated_with_gene, …
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>- any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
 </code></pre></div>
-<div class="admonition note">
-<p class="admonition-title"><code>approval_ids</code> is exempt</p>
-<p>Tablassert emits <code>approval_ids</code> as a translator-ingest pass-through; the installed model
-declares no such slot on <code>Association</code>, so a strict check rejects edges carrying it.
-<code>biolink_valid_pct</code> exempts it (and the other curated KGX carryovers) so the agent is
-scored on <strong>its own</strong> decisions.
-The exempt set is <em>derived</em> from <code>TABLASERT_EDGE_EXTRAS</code> minus the fields any association
-declares, so it empties itself when the model catches up. That is exactly what happened to
-<code>effect_size</code> and <code>effect_type</code>: they were exempt pending
-<a href="https://github.com/biolink/biolink-model/pull/1774">biolink-model#1774</a>, and dropped out
-of the set when biolink-model 4.4.4 shipped them as real <code>Association</code> slots.</p>
-</div>
-<p>Two related silent behaviours the agent's prompt now names, since neither raises:</p>
 <ul>
 <li>An annotation like <code>supporting_study_size</code> or <code>sample_size</code> names study-level metadata.
   biolink-model 4.4.4 (<a href="https://github.com/biolink/biolink-model/pull/1770">PR #1770</a>)
