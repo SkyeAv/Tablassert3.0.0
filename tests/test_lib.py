@@ -2105,6 +2105,22 @@ def test_study_size_target_excludes_expanded_near_misses() -> None:
         assert study_size_target(n) is None, n
 
 
+def test_study_size_target_leaves_number_of_cases_alone() -> None:
+    """study_size_target never touches the Biolink ``number_of_cases`` slot.
+
+    ``number_of_cases`` counts cases carrying the phenotype/disease, not the
+    study population; coercing it to ``study_size`` destroys a legitimate edge
+    field.
+    """
+    names: list[str] = ["number_of_cases", "Number of Cases", "number-of-cases", "numberofcases"]
+    for n in names:
+        assert study_size_target(n) is None, n
+
+    lf: pl.LazyFrame = pl.DataFrame({"number_of_cases": [42, 7]}).lazy()
+    result: pl.DataFrame = coerce_study_size_columns(lf).collect()
+    assert result.columns == ["number_of_cases"]
+
+
 def test_coerce_study_size_columns_renames_n_column() -> None:
     """coerce_study_size_columns renames bare N to study_size."""
     lf: pl.LazyFrame = pl.DataFrame({"n": [120, 450]}).lazy()
