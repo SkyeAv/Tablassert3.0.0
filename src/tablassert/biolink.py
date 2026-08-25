@@ -396,11 +396,6 @@ def resolve_association_class(category: str, predicate: str) -> type[Any]:
 #   - ``taxon`` -- a node property; no species-context edge is synthesized from it.
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
-        # FDA application numbers from translator-ingests (DAKP precedent): the ingest
-        # emits them as a pipe-joined scalar (e.g. ``"011111|022222"``) with no
-        # ``split_by``, so the curated extra carries the scalar to the final edge
-        # verbatim instead of folding it into ``supporting_text``.
-        "approval_ids",
         "broad_synonym",
         "equivalent_identifiers",
         "evidence_direction",
@@ -574,9 +569,9 @@ against the resolved class is done by ``lib.prune_to_class()``.
 KNOWN_PENDING_EDGE_FIELDS: frozenset[str] = TABLASERT_EDGE_EXTRAS - frozenset(_association_model_fields())
 """Curated edge extras the installed Biolink Model does not (yet) declare on any association.
 
-Tablassert emits these deliberately -- ``approval_ids`` as a translator-ingest pass-through,
-plus the KGX denormalized carryovers (``synonym``, ``xref``, ``relation``, ...) -- so a Biolink
-class rejects them as ``extra_forbidden`` even though the build is behaving as designed. The
+Tablassert emits these deliberately -- the KGX denormalized carryovers (``synonym``,
+``xref``, ``relation``, ...) -- so a Biolink class rejects them as ``extra_forbidden`` even
+though the build is behaving as designed. The
 statistical ``effect_size`` / ``effect_type`` pair is no longer pending since
 biolink-model 4.4.4 shipped PR #1774.
 :func:`is_pending_problem` uses this set
@@ -765,7 +760,7 @@ def validate_kgx(nodes_path: Path, edges_path: Path, limit: int = 20) -> dict[st
     Two pass rates are reported. ``valid`` is strict and drives ``ok`` (the CLI's
     non-zero exit). ``valid_excluding_pending`` additionally counts records whose *every*
     failure is a :func:`is_pending_problem` -- the score to optimize against, so a
-    deliberate gap like the curated ``approval_ids`` pass-through is not mistaken for a
+    deliberate gap like the KGX denormalized carryovers is not mistaken for a
     malformed record. The two converge as future model releases absorb curated extras.
 
     Args:

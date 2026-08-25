@@ -1011,12 +1011,12 @@ def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
     with pytest.warns(BiolinkRelocationWarning, match="folded into `supporting_text`"):
         Annotation.model_validate({"annotation": "overlap", "method": "column", "encoding": "E"})
     # Real association slots (``effect_size`` / ``effect_type`` are model fields since
-    # biolink-model 4.4.4, ``approval_ids`` is the translator-ingest pipe-joined scalar
-    # pass-through) and aliases the coercions rename to a canonical edge slot (the
-    # pipeline emits those on the edge) are silent.
+    # biolink-model 4.4.4; ``approval_ids`` lost its curated pass-through status and now
+    # warns like any unknown name) and aliases the coercions rename to a canonical edge
+    # slot (the pipeline emits those on the edge) are silent.
     with warnings.catch_warnings():
         warnings.simplefilter("error", BiolinkRelocationWarning)
-        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "approval_ids", "adjusted p value", "odds ratio", "q_value"):
+        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "adjusted p value", "odds ratio", "q_value"):
             Annotation.model_validate({"annotation": name, "method": "column", "encoding": "C"})
 
 

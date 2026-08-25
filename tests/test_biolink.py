@@ -322,16 +322,15 @@ def test_allowed_edge_fields_includes_effect_annotations() -> None:
     assert "effect_type" in ALLOWED_EDGE_FIELDS
 
 
-def test_allowed_edge_fields_includes_approval_ids() -> None:
-    """``approval_ids`` is an allowed edge column (translator-ingest precedent).
+def test_allowed_edge_fields_excludes_approval_ids() -> None:
+    """``approval_ids`` is no longer an override-allowed edge column.
 
-    The DAKP translator-ingest emits FDA application numbers as a pipe-joined scalar
-    (``"011111|022222"``, no ``split_by``). Folding the column into ``supporting_text``
-    would bury structured approval provenance in prose, so the curated extra keeps it a
-    top-level edge field, preserved verbatim as a scalar string -- never a JSON array.
+    The curated pass-through carve-out was removed: Biolink declares no such slot, so the
+    column is folded into ``supporting_text`` like any other unknown edge field instead of
+    being exempted from model validation.
     """
-    assert "approval_ids" in TABLASERT_EDGE_EXTRAS
-    assert "approval_ids" in ALLOWED_EDGE_FIELDS
+    assert "approval_ids" not in TABLASERT_EDGE_EXTRAS
+    assert "approval_ids" not in ALLOWED_EDGE_FIELDS
 
 
 def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
@@ -413,17 +412,18 @@ def test_known_pending_fields_are_derived_not_hardcoded() -> None:
         if inspect.isclass(cls) and inspect.isclass(bm.Association) and issubclass(cls, bm.Association):
             owned |= set(getattr(cls, "model_fields", {}))
     assert frozenset(TABLASERT_EDGE_EXTRAS) - owned == KNOWN_PENDING_EDGE_FIELDS
-    # Today's state, asserted so the pending exemption is visibly scoped: approval_ids is
-    # still a curated extra, while the effect pair left the set when the model caught up.
-    assert "approval_ids" in KNOWN_PENDING_EDGE_FIELDS
+    # Today's state, asserted so the pending exemption is visibly scoped: approval_ids
+    # left the set when its curated pass-through override was removed, while the effect
+    # pair left it when the model caught up.
+    assert "approval_ids" not in KNOWN_PENDING_EDGE_FIELDS
     assert {"effect_size", "effect_type"} & KNOWN_PENDING_EDGE_FIELDS == set()
     assert KNOWN_PENDING_EDGE_FIELDS <= ALLOWED_EDGE_FIELDS
 
 
 def test_is_pending_problem_only_exempts_extra_forbidden_pending_fields() -> None:
     """The exemption is narrow: a deliberate extra Biolink has not declared, and nothing else."""
-    assert is_pending_problem("approval_ids: extra_forbidden")
-    # Same field, a REAL failure -> not exempt.
+    assert not is_pending_problem("approval_ids: extra_forbidden")
+    # Same field, a REAL failure -> not exempt either way.
     assert not is_pending_problem("approval_ids: missing")
     # ``effect_size`` is a real Association slot since biolink-model 4.4.4 -> never exempt.
     assert not is_pending_problem("effect_size: extra_forbidden")
@@ -490,7 +490,8 @@ def test_validate_kgx_separates_pending_extras_from_real_failures(tmp_path: Path
         "agent_type": "data_analysis_pipeline",
     }
     edges.write_text(
-        # Otherwise valid; approval_ids is a deliberate curated extra the model does not declare.
+        # approval_ids is no longer a curated extra (its override was removed), so this
+        # edge fails strictly AND is not forgiven by the pending exemption either.
         json.dumps({**base, "id": "e1", "approval_ids": "011111|022222"})
         + "\n"
         # A real defect: p_value is typed float, so a non-numeric string can never validate.
@@ -508,7 +509,7 @@ def test_validate_kgx_separates_pending_extras_from_real_failures(tmp_path: Path
     report: dict[str, Any] = validate_kgx(nodes, edges)
     assert report["edges"]["total"] == 4
     assert report["edges"]["valid"] == 2  # strict: the scientific-notation and effect-pair edges pass
-    assert report["edges"]["valid_excluding_pending"] == 3  # the approval_ids edge is forgiven
+    assert report["edges"]["valid_excluding_pending"] == 2  # the approval_ids edge is a real failure now
     assert report["ok"] is False
     assert report["ok_excluding_pending"] is False  # the real defect still fails
     assert "approval_ids: extra_forbidden" in report["edges"]["problems"]

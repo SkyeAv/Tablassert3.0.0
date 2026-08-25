@@ -2538,15 +2538,12 @@ def test_fold_unknown_noop_when_all_allowed() -> None:
             "p_value": [0.01],
             "disease_context_qualifier": ["MONDO:0005148"],
             "publications": [["PMID:1"]],
-            # translator-ingest (DAKP) precedent: a pipe-joined scalar that must reach the
-            # edge verbatim, not be folded into supporting_text.
-            "approval_ids": ["011111|022222"],
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
     # nothing folded, no supporting_text column created
     assert "supporting_text" not in out.columns
-    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "disease_context_qualifier", "publications", "approval_ids"}
+    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "disease_context_qualifier", "publications"}
 
 
 def test_fold_unknown_single_column() -> None:
@@ -2733,49 +2730,6 @@ def test_compile_graph_folds_unknown_annotations_into_supporting_text(monkeypatc
     # real biolist fields survive as top level fields
     assert '"p_value":0.01' in edges or '"p_value": 0.01' in edges
     assert "PMID:1" in edges
-
-
-def test_compile_graph_passes_approval_ids_through_verbatim(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
-    """``approval_ids`` reaches the final edges as its own top-level scalar field.
-
-    WHY: the DAKP translator-ingest emits FDA application numbers as a pipe-joined scalar
-    (``"011111|022222"``, no ``split_by``). Folding the column into ``supporting_text``
-    would bury structured approval provenance in prose, so the curated edge extra must
-    carry the value verbatim into the NDJSON -- still a scalar string, never a JSON array.
-    """
-    monkeypatch.chdir(tmp_path)
-    sub: Path = tmp_path / "sub.parquet"
-    pl.DataFrame(
-        {
-            "subject": ["A"],
-            "subject_category": ["gene"],
-            "subject_pre_resolution": ["A"],
-            "object": ["X"],
-            "object_category": ["disease"],
-            "object_pre_resolution": ["X"],
-            "predicate": ["biolink:related_to"],
-            "knowledge_level": ["knowledge_assertion"],
-            "agent_type": ["manual_agent"],
-            "primary_knowledge_source": ["infores:approval-kg"],
-            "sources": [
-                [
-                    {
-                        "resource_id": "infores:approval-kg",
-                        "resource_role": "primary_knowledge_source",
-                        "source_record_urls": ["https://example.org/approval.tsv"],
-                    }
-                ]
-            ],
-            "approval_ids": ["011111|022222"],
-            "publications": [["PMID:1"]],
-        }
-    ).write_parquet(sub)
-    lib.compile_graph([sub], "approval", "1.0.0", rig_factory(tmp_path, infores_id="infores:approval-kg"))
-    record: dict[str, Any] = json.loads((tmp_path / "approval_1.0.0.edges.ndjson").read_text().strip())
-    # Own top-level field, pipe-joined scalar preserved verbatim (NOT a one-element list).
-    assert record["approval_ids"] == "011111|022222"
-    # And never folded into supporting_text as an "approval_ids: <value>" string.
-    assert not any(entry.startswith("approval_ids") for entry in record.get("supporting_text", []))
 
 
 def test_compile_subgraph_e2e_value_encoded_nodes(monkeypatch: Any, tmp_path: Path) -> None:
@@ -3287,22 +3241,6 @@ def test_prune_to_class_mixed_class_qualifier_does_not_crash_and_rescues() -> No
     out: pl.DataFrame = prune_to_class(lf).collect()
     assert out["anatomical_context_qualifier"].to_list() == [None, ["UBERON:0001556"]]
     assert out[PRUNED_COLUMN].to_list() == [["anatomical_context_qualifier=UBERON:0001555"], []]
-
-
-def test_prune_to_class_preserves_classless_approval_ids() -> None:
-    """A curated edge extra with no association-class owner survives per-row class pruning.
-
-    WHY: ``approval_ids`` is allow-listed so the finalizer can emit DAKP's pipe-joined scalar,
-    but no Biolink association class declares it. The class-pruning pass must therefore leave it
-    untouched for the later allow-list/final-output stages rather than nulling or rescuing it.
-    """
-    from tablassert.lib import prune_to_class
-
-    lf: pl.LazyFrame = pl.DataFrame(
-        {"category": [["biolink:Association"], ["biolink:GeneToDiseaseAssociation"]], "approval_ids": ["011111|022222", "033333"]}
-    ).lazy()
-    out: pl.DataFrame = prune_to_class(lf).collect()
-    assert out["approval_ids"].to_list() == ["011111|022222", "033333"]
 
 
 def test_inline_supporting_study_skips_a_study_with_no_identity_and_nothing_to_carry() -> None:
