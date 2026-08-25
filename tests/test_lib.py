@@ -453,6 +453,20 @@ def test_tcode_collect_edge_ops_follow_resolve_batch(fixtures_path: Path) -> Non
     assert batch_idx < edge_category_idx
 
 
+def test_tcode_collect_passes_category_override_to_edge_category(fixtures_path: Path) -> None:
+    """A statement-level category_override reaches the edge_category op as a biolink: CURIE map."""
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    data["statement"]["category_override"] = {"Disease": "EntityToDiseaseAssociation"}
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": Path("/tmp/sectionhash_override.parquet")}
+    )
+
+    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
+    op: tuple[Any, tuple[Any]] = next(op for op in collected if op[0].__name__ == "edge_category")
+
+    assert op[1] == ("biolink:related_to", {"Disease": "biolink:EntityToDiseaseAssociation"})
+
+
 def test_tcode_collect_passes_local_path_to_csv_reader(fixtures_path: Path) -> None:
     """tcode collect passes the local source path through to the csv reader."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
@@ -1702,6 +1716,64 @@ def test_edge_category_variant_to_disease() -> None:
     lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:SequenceVariant"], "object category": ["biolink:Disease"]})
     result: pl.DataFrame = edge_category(lf).collect()
     assert result["category"].to_list()[0] == ["biolink:VariantToDiseaseAssociation"]
+
+
+def test_edge_category_override_resolves_per_object_category() -> None:
+    """category_override pins the association class per row from the raw object category.
+
+    Disease and PhenotypicFeature roll up to one (subject, object) pair key, so the
+    pair lookup alone can never split them; the override keys on the raw category
+    before that rollup. Rows whose object category is absent from the map fall back
+    to the pair lookup.
+    """
+    lf: pl.LazyFrame = pl.LazyFrame(
+        {"subject category": ["biolink:ChemicalEntity"] * 3, "object category": ["biolink:Disease", "biolink:PhenotypicFeature", "biolink:Gene"]}
+    )
+    override: dict[str, str] = {"Disease": "biolink:EntityToDiseaseAssociation", "PhenotypicFeature": "biolink:EntityToPhenotypicFeatureAssociation"}
+    result: pl.DataFrame = edge_category(lf, "biolink:associated_with", override).collect()
+    assert result["category"].to_list() == [
+        ["biolink:EntityToDiseaseAssociation"],
+        ["biolink:EntityToPhenotypicFeatureAssociation"],
+        ["biolink:Association"],
+    ]
+
+
+def test_edge_category_override_still_reconciled_against_predicate() -> None:
+    """A pinned class that rejects the predicate walks up its hierarchy like any other."""
+    lf: pl.LazyFrame = pl.LazyFrame({"subject category": ["biolink:Gene"], "object category": ["biolink:Disease"]})
+    override: dict[str, str] = {"Disease": "biolink:GeneToDiseaseAssociation"}
+    result: pl.DataFrame = edge_category(lf, "biolink:gene_associated_with_condition", override).collect()
+    assert result["category"].to_list()[0] == ["biolink:Association"]
+
+
+def test_prune_to_class_keeps_override_only_slots() -> None:
+    """Acceptance: FDA_regulatory_approvals / number_of_cases survive prune_to_class on pinned rows.
+
+    Both slots are declared on ``EntityToDiseaseAssociation`` /
+    ``EntityToPhenotypicFeatureAssociation`` but not on the pair-derived
+    ``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation``, so without the override
+    they are nulled and rescued into the pruned column.
+    """
+    from tablassert.lib import PRUNED_COLUMN, prune_to_class
+
+    lf: pl.LazyFrame = pl.LazyFrame(
+        {
+            "subject category": ["biolink:ChemicalEntity"] * 2,
+            "object category": ["biolink:Disease", "biolink:PhenotypicFeature"],
+            "FDA_regulatory_approvals": ["011111|022222", "033333"],
+            "number_of_cases": [42, 7],
+        }
+    )
+    override: dict[str, str] = {"Disease": "biolink:EntityToDiseaseAssociation", "PhenotypicFeature": "biolink:EntityToPhenotypicFeatureAssociation"}
+    out: pl.DataFrame = prune_to_class(edge_category(lf, "biolink:associated_with", override)).collect()
+    assert out["FDA_regulatory_approvals"].to_list() == [["011111|022222"], ["033333"]]
+    assert out["number_of_cases"].to_list() == [42, 7]
+    assert PRUNED_COLUMN not in out.columns or all(v == [] for v in out[PRUNED_COLUMN].to_list())
+
+    control: pl.DataFrame = prune_to_class(edge_category(lf, "biolink:associated_with")).collect()
+    assert control["FDA_regulatory_approvals"].to_list() == [None, None]
+    assert control["number_of_cases"].to_list() == [None, None]
+    assert all(any("FDA_regulatory_approvals=" in s for s in v) for v in control[PRUNED_COLUMN].to_list())
 
 
 def test_parse_edge_name_standard() -> None:
