@@ -785,16 +785,17 @@ def test_annotation_valid() -> None:
     assert a.encoding == "E"
 
 
-def test_annotation_preserves_curated_extra_casing() -> None:
-    """``FDA_approval_ids`` keeps its mixed case; any declared casing canonicalizes onto it.
+def test_annotation_case_is_canonicalized_onto_allow_listed_spellings() -> None:
+    """Mixed-case allow-listed slots keep their case; any declared casing canonicalizes.
 
-    Model slots are lowercased (``P_Value`` -> ``p_value``), but curated extras whose
-    allow-listed spelling carries uppercase must reach the final edge verbatim, so the
-    validator maps any casing onto the canonical extra spelling instead of lowercasing.
+    Model slots are lowercased (``P_Value`` -> ``p_value``), but allow-listed spellings
+    that carry uppercase -- Biolink's ``FDA_regulatory_approvals`` -- must reach the final
+    edge verbatim, so the validator maps any casing onto the canonical spelling instead of
+    lowercasing into an unknown name.
     """
-    for declared in ("FDA_approval_ids", "fda_approval_ids", "FDA_APPROVAL_IDS", " FDA_approval_ids "):
+    for declared in ("FDA_regulatory_approvals", "fda_regulatory_approvals", "FDA_REGULATORY_APPROVALS", " FDA_regulatory_approvals "):
         ann: Annotation = Annotation(annotation=declared, method="column", encoding="E")  # pyright: ignore
-        assert ann.annotation == "FDA_approval_ids"  # pyright: ignore
+        assert ann.annotation == "FDA_regulatory_approvals"  # pyright: ignore
 
 
 def test_section_rejects_extra_fields() -> None:
@@ -1023,12 +1024,21 @@ def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
     with pytest.warns(BiolinkRelocationWarning, match="folded into `supporting_text`"):
         Annotation.model_validate({"annotation": "overlap", "method": "column", "encoding": "E"})
     # Real association slots (``effect_size`` / ``effect_type`` are model fields since
-    # biolink-model 4.4.4; ``FDA_approval_ids`` is the curated pass-through extra) and
-    # aliases the coercions rename to a canonical edge slot (the pipeline emits those on
-    # the edge) are silent.
+    # biolink-model 4.4.4; ``FDA_regulatory_approvals`` is the mixed-case subclass slot)
+    # and aliases the coercions rename to a canonical edge slot (the pipeline emits those
+    # on the edge) are silent.
     with warnings.catch_warnings():
         warnings.simplefilter("error", BiolinkRelocationWarning)
-        for name in ("p_value", "adjusted_p_value", "effect_size", "effect_type", "FDA_approval_ids", "adjusted p value", "odds ratio", "q_value"):
+        for name in (
+            "p_value",
+            "adjusted_p_value",
+            "effect_size",
+            "effect_type",
+            "FDA_regulatory_approvals",
+            "adjusted p value",
+            "odds ratio",
+            "q_value",
+        ):
             Annotation.model_validate({"annotation": name, "method": "column", "encoding": "C"})
 
 
