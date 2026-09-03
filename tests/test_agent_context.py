@@ -158,60 +158,6 @@ def test_pmc_article_context_txt_excerpt(tmp_path: Path) -> None:
     assert "x" * 11 not in out  # only max_chars of body retained
 
 
-def _minimal_pdf(text: str) -> bytes:
-    """Build a tiny valid single-page PDF whose content stream renders ``text`` (extractable by pdfminer)."""
-    content: bytes = f"BT /F1 24 Tf 72 720 Td ({text}) Tj ET".encode()
-    objs: list[bytes] = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-        b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream",
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    ]
-    out: bytes = b"%PDF-1.4\n"
-    offsets: list[int] = []
-    for i, obj in enumerate(objs, start=1):
-        offsets.append(len(out))
-        out += f"{i} 0 obj\n".encode() + obj + b"\nendobj\n"
-    xref_pos: int = len(out)
-    out += b"xref\n0 " + str(len(objs) + 1).encode() + b"\n"
-    out += b"0000000000 65535 f \n"
-    for off in offsets:
-        out += f"{off:010d} 00000 n \n".encode()
-    out += b"trailer\n<< /Size " + str(len(objs) + 1).encode() + b" /Root 1 0 R >>\nstartxref\n" + str(xref_pos).encode() + b"\n%%EOF"
-    return out
-
-
-def test_pmc_article_context_pdf_renders_excerpt(tmp_path: Path) -> None:
-    """W4: a .pdf main text is extracted (pdfminer.six) into a data-fenced excerpt (skip if engine absent)."""
-    pytest.importorskip("pdfminer")
-    pdf_path: Path = tmp_path / "PMC1.1.pdf"
-    pdf_path.write_bytes(_minimal_pdf("tamoxifen gut microbiota"))
-    out: str = pmc_article_context(pdf_path)
-    assert DATA_GUARDRAIL in out
-    assert DATA_FENCE_BEGIN in out
-    assert DATA_FENCE_END in out
-    assert "tamoxifen" in out  # the extracted text rides inside the fence
-
-
-def test_pmc_article_context_pdf_missing_engine_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """W4: when pdfminer.six is unavailable, a .pdf raises a clear ValueError naming the install path."""
-    import builtins
-
-    real_import = builtins.__import__
-
-    def fake_import(name: str, *args: object, **kwargs: object) -> object:
-        if name.startswith("pdfminer"):
-            raise ImportError("No module named 'pdfminer'")
-        return real_import(name, *args, **kwargs)  # pyright: ignore[reportArgumentType]
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-    pdf_path: Path = tmp_path / "PMC1.1.pdf"
-    pdf_path.write_bytes(b"%PDF-1.4 garbage")
-    with pytest.raises(ValueError, match=r"pdfminer\.six"):
-        pmc_article_context(pdf_path)
-
-
 def test_pmc_article_context_missing(tmp_path: Path) -> None:
     """A missing path -> FileNotFoundError."""
     with pytest.raises(FileNotFoundError, match="Article file not found"):

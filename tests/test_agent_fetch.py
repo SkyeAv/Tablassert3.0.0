@@ -5,7 +5,7 @@ exercised directly, and ``fetch_pmc_article`` runs against the two mocked I/O se
 (``_http_get_text`` / ``_http_get_bytes``) routed by URL. The fetch flow is a fail-fast
 ladder: list version prefixes -> pick the LATEST -> check OA metadata -> enumerate the
 version's objects -> confirm a table exists -> download ONLY the useful files (main text
-``.xml/.nxml/.pdf``, ``.json`` metadata, and data tables; never images/``.docx``/``.txt``).
+``.xml/.nxml``, ``.json`` metadata, and data tables; never images/``.docx``/``.txt``/``.pdf``).
 """
 
 from __future__ import annotations
@@ -47,7 +47,8 @@ METADATA_NON_OA: str = '{"is_pmc_openaccess": false}'
 
 # The full object inventory of PMC11708054.1/ (mirrors the live bucket): main text
 # (.json/.pdf/.txt/.xml), two data tables (.xlsx), one binary .docx and one .jpg figure.
-# The .txt stays in the listing to prove a redundant main-text .txt is now SKIPPED.
+# The .txt and .pdf stay in the listing (the bucket ships them) to prove both redundant
+# main-text copies are now SKIPPED.
 OBJECT_KEYS: list[str] = [
     "PMC11708054.1/PMC11708054.1.json",
     "PMC11708054.1/PMC11708054.1.pdf",
@@ -58,8 +59,8 @@ OBJECT_KEYS: list[str] = [
     "PMC11708054.1/mbio.01679-24-s0003.xlsx",
     "PMC11708054.1/mbio.01679-24.f001.jpg",
 ]
-# Only the useful files are downloaded (main text + metadata + tables; NOT .txt/.docx/.jpg).
-USEFUL_NAMES: list[str] = ["PMC11708054.1.json", "PMC11708054.1.pdf", "PMC11708054.1.xml", "mbio.01679-24-s0002.xlsx", "mbio.01679-24-s0003.xlsx"]
+# Only the useful files are downloaded (main text + metadata + tables; NOT .txt/.pdf/.docx/.jpg).
+USEFUL_NAMES: list[str] = ["PMC11708054.1.json", "PMC11708054.1.xml", "mbio.01679-24-s0002.xlsx", "mbio.01679-24-s0003.xlsx"]
 
 
 def _object_listing(keys: list[str]) -> str:
@@ -228,7 +229,7 @@ def test_object_keys_from_listing_bad(listing: str) -> None:
         ("PMC1.1.xml", True),
         ("PMC1.1.nxml", True),
         ("PMC1.1.txt", False),  # redundant main-text copy; never downloaded
-        ("PMC1.1.pdf", True),  # kept as MAIN TEXT (not a table)
+        ("PMC1.1.pdf", False),  # binary main-text copy; every version ships JATS .xml
         ("PMC1.1.json", True),
         ("s.xlsx", True),
         ("s.csv", True),
@@ -262,7 +263,7 @@ def test_candidate_tables_none_raises(tmp_path: Path) -> None:
 
 
 def test_fetch_pmc_article_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """OA article -> only the useful files land on disk under ``outdir/<key>`` (no .docx/.jpg)."""
+    """OA article -> only the useful files land on disk under ``outdir/<key>`` (no .txt/.pdf/.docx/.jpg)."""
     _, downloaded = _patch_http(monkeypatch)
     outdir: Path = tmp_path / "out"
     result: list[Path] = fetch_pmc_article("PMC11708054", outdir)
@@ -272,10 +273,10 @@ def test_fetch_pmc_article_happy_path(tmp_path: Path, monkeypatch: pytest.Monkey
     for path in result:
         assert path.is_file()
         assert path.parent.name == "PMC11708054.1"
-    # binary media and the redundant .txt main-text copy were never downloaded
-    assert not any(url.endswith((".jpg", ".docx", ".txt")) for url in downloaded)
+    # binary media and the redundant .txt/.pdf main-text copies were never downloaded
+    assert not any(url.endswith((".jpg", ".docx", ".txt", ".pdf")) for url in downloaded)
     # the useful files were
-    assert sum(1 for url in downloaded if url.endswith((".xml", ".pdf", ".json", ".xlsx"))) == len(USEFUL_NAMES)
+    assert sum(1 for url in downloaded if url.endswith((".xml", ".json", ".xlsx"))) == len(USEFUL_NAMES)
 
 
 def test_fetch_pmc_tables_wrapper_returns_only_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
