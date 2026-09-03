@@ -1712,6 +1712,13 @@ YAML configuration file.</p>
 <td>Fast output-shape preview: ≤5 random rows/section, cached to <code>.head.parquet</code>, never clobbers a full build</td>
 </tr>
 <tr>
+<td><code>--no-original</code>, <code>-no</code></td>
+<td>Flag</td>
+<td>No</td>
+<td><code>False</code></td>
+<td>Omit the verbatim source-cell copies (<code>original_subject</code>, <code>original_object</code>, and any other <code>original_*</code> fields) from the final edge NDJSON</td>
+</tr>
+<tr>
 <td><code>--threads</code>, <code>-t</code></td>
 <td>int</td>
 <td>No</td>
