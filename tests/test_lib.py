@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from functools import reduce
 from itertools import chain
 from pathlib import Path
 from typing import Any, Self, cast
@@ -13,7 +15,14 @@ import tablassert.cli as cli
 import tablassert.lib as lib
 from tablassert import rs
 from tablassert.biolink import ALLOWED_EDGE_FIELDS, EFFECT_TYPE_VALUES, UNSATISFIABLE_EDGE_FIELDS, Categories, validate_kgx
-from tablassert.coerce import _EFFECT_TYPE_ALIASES, _map_effect_type_value, coerce_study_metadata_columns, study_metadata_target
+from tablassert.coerce import (
+    _EFFECT_TYPE_ALIASES,
+    _RULES,
+    _map_effect_type_series,
+    _map_effect_type_value,
+    coerce_study_metadata_columns,
+    study_metadata_target,
+)
 from tablassert.enums import Repositories
 from tablassert.fullmap import ResolveSpec
 from tablassert.ingests import from_yaml
@@ -1033,6 +1042,8 @@ def test_sig_picks_closest_non_exact_match() -> None:
     result: pl.DataFrame = lib.sig(lf).collect()
     # "log_p_value" -> raw p_value bucket; "adjusted_p_value_corrected" -> adjusted bucket.
     # The raw bucket is preferred, so 0.01 -> strongly_significant (not 0.5 -> not_significant).
+    # Before the underscore-anchoring fix "adjusted_p_value_corrected" landed in the RAW bucket
+    # too, and this passed only because the shorter name won the fuzzy tiebreak.
     assert list(result["statistical_significance_qualifier"]) == ["strongly_significant"]
 
 
@@ -1115,11 +1126,16 @@ def test_coerce_pvalue_columns_unlog_underflows_to_zero() -> None:
 
 
 def test_coerce_pvalue_columns_prefers_raw_over_neglog10_alias() -> None:
-    """A raw p-value column beats a -log10 alias; the alias is left untouched."""
+    """A raw p-value column beats a -log10 alias, and the alias is dropped.
+
+    The alias is the same statistic re-expressed, so leaving it would fold
+    ``"negative log10 p value: 8.0"`` into supporting_text beside ``p_value`` 0.03 --
+    two numbers for one measurement that read as a contradiction.
+    """
     lf: pl.LazyFrame = pl.DataFrame({"p value": [0.03], "negative log10 p value": [8.0]}).lazy()
     out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out.columns == ["p_value"]
     assert out["p_value"][0] == pytest.approx(0.03)
-    assert out["negative log10 p value"][0] == pytest.approx(8.0)
 
 
 def test_coerce_pvalue_columns_raw_beats_neglog10_despite_short_name() -> None:
@@ -1127,16 +1143,16 @@ def test_coerce_pvalue_columns_raw_beats_neglog10_despite_short_name() -> None:
     long -log10 alias (score ~48) — fuzzy ranking never sees the alias."""
     lf: pl.LazyFrame = pl.DataFrame({"P": [0.03], "negative log10 p value": [8.0]}).lazy()
     out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out.columns == ["p_value"]
     assert out["p_value"][0] == pytest.approx(0.03)
-    assert out["negative log10 p value"][0] == pytest.approx(8.0)
 
 
 def test_coerce_pvalue_columns_raw_fdr_beats_neglog10_q_alias() -> None:
     """ "FDR" also loses the raw/alias contest against "negative log10 q value"."""
     lf: pl.LazyFrame = pl.DataFrame({"FDR": [0.02], "negative log10 q value": [3.0]}).lazy()
     out: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert out.columns == ["adjusted_p_value"]
     assert out["adjusted_p_value"][0] == pytest.approx(0.02)
-    assert out["negative log10 q value"][0] == pytest.approx(3.0)
 
 
 def test_sig_raw_beats_neglog10_despite_short_name() -> None:
@@ -1978,6 +1994,39 @@ def test_pvalue_target_detects_broader_adjustment_synonyms() -> None:
         assert pvalue_target(n) == "adjusted_p_value", n
 
 
+def test_pvalue_target_detects_underscore_glued_adjusted_spellings() -> None:
+    """Underscore-glued adjustment words still mark a P value adjusted.
+
+    Regression: the pattern anchored on ``\\b``, but ``_`` is a word character, so ``\\b`` never
+    fired between ``adjusted`` and ``_p_value``. Every underscore-glued spelling classified as a
+    RAW ``p_value`` -- a column literally named ``adjusted_p_value`` was renamed to ``p_value``
+    and ``sig`` banded an FDR-adjusted number as a raw one. ``p_adjust`` / ``p_adjustment`` are
+    the same DESeq2-family spelling as ``padj`` and were missing from the vocabulary outright.
+    """
+    names: list[str] = [
+        "adjusted_p_value",
+        "adj_p_value",
+        "corrected_p_value",
+        "p_adjusted",
+        "p_adjust",
+        "p_adjustment",
+        "adjusted_p_value_analysis1",
+        "adjusted_p_value_corrected",
+    ]
+    for n in names:
+        assert pvalue_target(n) == "adjusted_p_value", n
+
+
+def test_pvalue_target_underscore_anchoring_keeps_non_pvalue_columns_out() -> None:
+    """The looser anchors must not drag non-P-value columns in.
+
+    ``adjusted``/``corrected`` are generic words that also modify hazard and odds ratios, so they
+    only count alongside a P/Q value token -- underscore-glued or not.
+    """
+    for n in ("adjusted_hazard_ratio", "corrected_expression", "adjustment_notes", "batch_corrected_counts"):
+        assert pvalue_target(n) is None, n
+
+
 def test_pvalue_target_bare_corrected_is_not_treated_as_adjusted() -> None:
     """pvalue_target does not treat bare corrected as adjusted without a P/Q value token."""
     assert pvalue_target("corrected age") is None
@@ -2110,11 +2159,11 @@ def test_coerce_pvalue_columns_renames_both_p_value_and_adjusted() -> None:
 
 
 def test_coerce_pvalue_columns_picks_best_fuzzy_match_among_multiple_candidates() -> None:
-    """coerce_pvalue_columns picks the best fuzzy match among multiple candidates."""
+    """coerce_pvalue_columns picks the best fuzzy match and drops the losing alias."""
     lf: pl.LazyFrame = pl.DataFrame({"log p value": [0.9], "p value": [0.01]}).lazy()
     result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
+    assert result.columns == ["p_value"]
     assert result["p_value"].to_list() == [0.01]
-    assert result["log p value"].to_list() == [0.9]
 
 
 def test_coerce_pvalue_columns_noop_without_pvalue_columns() -> None:
@@ -2133,12 +2182,11 @@ def test_coerce_pvalue_columns_noop_when_already_canonical() -> None:
 
 
 def test_coerce_pvalue_columns_keeps_existing_canonical_over_alias() -> None:
-    """An existing canonical column wins over a higher-scoring spaced alias (no duplicate rename)."""
+    """An existing canonical column wins over a spaced alias, which is then dropped."""
     lf: pl.LazyFrame = pl.DataFrame({"p_value": [0.01], "p value": [0.02]}).lazy()
     result: pl.DataFrame = coerce_pvalue_columns(lf).collect()
-    assert result.columns == ["p_value", "p value"]
+    assert result.columns == ["p_value"]
     assert result["p_value"].to_list() == [0.01]
-    assert result["p value"].to_list() == [0.02]
 
 
 def test_study_size_target_matches_common_spellings() -> None:
@@ -2323,6 +2371,95 @@ def test_coerced_target_matches_the_clean_phase_rename() -> None:
         assert coerced_target(name) == target, name
 
 
+def test_coercion_rules_do_not_claim_each_others_targets() -> None:
+    """Drift guard: no rule claims a canonical target that belongs to another rule.
+
+    ``coerce_columns`` plans every rule against the ORIGINAL schema in one pass instead of
+    re-reading the schema after each rename. That is only equivalent to running the five
+    coercions in sequence because the classifiers are disjoint on the canonical targets --
+    if a later rule could claim a name an earlier rule renamed into existence, the fused
+    pass and the sequential chain would diverge. This pins that property.
+    """
+    owners: dict[str, Callable[[str], str | None]] = {
+        "p_value": pvalue_target,
+        "adjusted_p_value": pvalue_target,
+        "study_size": study_size_target,
+        "study_cohort": study_metadata_target,
+        "study_context": study_metadata_target,
+        "study_date_range": study_metadata_target,
+        "study_method_description": study_metadata_target,
+        "study_method_types": study_metadata_target,
+        "effect_size": effect_size_target,
+        "effect_type": effect_type_target,
+    }
+    for target, owner in owners.items():
+        for rule in _RULES:
+            claimed: str | None = rule.classify(target)
+            if rule.classify is owner:
+                continue
+            assert claimed is None, f"{rule.classify.__name__} claims {target!r} as {claimed!r}"
+
+
+def test_coerce_columns_equals_the_five_coercions_in_sequence() -> None:
+    """The fused clean-phase op is exactly the five per-slot coercions applied in order.
+
+    Every recognized alias family is present at once, including the cross-rule dependency
+    (``effect type``'s Biolink class rule reads the ``effect_size`` that the effect-size
+    rule renamed into existence).
+    """
+    frame: pl.LazyFrame = pl.DataFrame(
+        {
+            "subject": ["A"],
+            "p value": [0.01],
+            "negative log10 q value": [3.0],
+            "sample size": [1200],
+            "n": [9],
+            "supporting_study_cohort": ["FINNGEN"],
+            "supporting study context": ["EU ancestry"],
+            "effect size": [0.85],
+            "odds ratio": [0.4],
+            "effect type": ["Spearman"],
+            "notes": ["free text"],
+        }
+    ).lazy()
+    sequential: pl.DataFrame = reduce(
+        lambda lf, op: op(lf),
+        (coerce_pvalue_columns, coerce_study_size_columns, coerce_study_metadata_columns, coerce_effect_size_columns, coerce_effect_type_columns),
+        frame,
+    ).collect()
+    assert lib.coerce_columns(frame).collect().equals(sequential)
+    # And the fused result is the canonical shape, with every losing alias gone.
+    assert sorted(sequential.columns) == [
+        "adjusted_p_value",
+        "effect_size",
+        "effect_type",
+        "notes",
+        "p_value",
+        "study_cohort",
+        "study_context",
+        "study_size",
+        "subject",
+    ]
+
+
+def test_map_effect_type_series_handles_degenerate_and_high_cardinality_columns() -> None:
+    """The distinct-value mapper survives empty vocabularies and scales past the old cache.
+
+    ``replace_strict`` is handed an EMPTY mapping when nothing resolves, which must still
+    produce an all-null column rather than raise; and resolution is bounded by distinct
+    values, so a column with far more distinct values than the old 4096-entry cache held
+    is mapped in one pass.
+    """
+    assert _map_effect_type_series(pl.Series("x", [None, None], dtype=pl.String)).to_list() == [None, None]
+    assert _map_effect_type_series(pl.Series("x", ["", "   "])).to_list() == [None, None]
+    assert _map_effect_type_series(pl.Series("x", [], dtype=pl.String)).to_list() == []
+
+    noise: list[str] = [f"unmatchable-metric-{i}" for i in range(5000)]
+    mapped: list[str | None] = _map_effect_type_series(pl.Series("x", [*noise, "Cohen's d", "OR"])).to_list()
+    assert mapped[-2:] == ["cohens_d", "odds_ratio"]
+    assert set(mapped[:-2]) == {None}
+
+
 def test_study_metadata_target_maps_deprecated_slots_to_study_properties() -> None:
     """study_metadata_target maps each deprecated supporting-study slot to its Study property."""
     expected: dict[str, str] = {
@@ -2473,12 +2610,17 @@ def test_coerce_effect_size_columns_renames_effect_size_like_column() -> None:
 
 
 def test_coerce_effect_size_columns_picks_best_candidate() -> None:
-    """coerce_effect_size_columns picks the best candidate and leaves others untouched."""
+    """coerce_effect_size_columns picks the best candidate and drops the losers.
+
+    ``beta`` and ``effect size estimate`` may well be DIFFERENT statistics rather than
+    synonyms, and dropping them loses those numbers. That is the accepted cost of a
+    uniform alias policy: a column that must survive needs a name the effect-size
+    classifier does not claim.
+    """
     lf: pl.LazyFrame = pl.DataFrame({"effect size estimate": [0.1], "effect size": [0.85], "beta": [0.3]}).lazy()
     result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
+    assert result.columns == ["effect_size"]
     assert result["effect_size"].to_list() == [0.85]
-    assert result["effect size estimate"].to_list() == [0.1]
-    assert result["beta"].to_list() == [0.3]
 
 
 def test_coerce_effect_size_columns_noop_without_candidates() -> None:
@@ -2489,20 +2631,19 @@ def test_coerce_effect_size_columns_noop_without_candidates() -> None:
 
 
 def test_coerce_effect_size_columns_noop_when_already_canonical() -> None:
-    """coerce_effect_size_columns is a noop when already canonically named."""
+    """An already-canonical effect_size wins, and its aliases are consumed."""
     lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.85], "beta": [0.3]}).lazy()
     result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
-    assert result.columns == ["effect_size", "beta"]
+    assert result.columns == ["effect_size"]
     assert result["effect_size"].to_list() == [0.85]
 
 
 def test_coerce_effect_size_columns_keeps_existing_canonical_over_alias() -> None:
-    """An existing canonical column wins over a higher-scoring spaced alias (no duplicate rename)."""
+    """An existing canonical column wins over a spaced alias, which is then dropped."""
     lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.85], "effect size": [0.99]}).lazy()
     result: pl.DataFrame = coerce_effect_size_columns(lf).collect()
-    assert result.columns == ["effect_size", "effect size"]
+    assert result.columns == ["effect_size"]
     assert result["effect_size"].to_list() == [0.85]
-    assert result["effect size"].to_list() == [0.99]
 
 
 def test_coerce_effect_type_columns_renames_and_maps_alias_values() -> None:
@@ -2570,11 +2711,11 @@ def test_coerce_effect_type_columns_nulls_entirely_without_effect_size() -> None
 
 
 def test_coerce_effect_type_columns_picks_best_candidate() -> None:
-    """coerce_effect_type_columns picks the best candidate column and leaves others untouched."""
+    """coerce_effect_type_columns picks the best candidate column and drops the losers."""
     lf: pl.LazyFrame = pl.DataFrame({"effect_size": [0.85, 0.2], "effect size type": ["Spearman", "OR"], "effect type": ["pearson r", "beta"]}).lazy()
     result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result.columns == ["effect_size", "effect_type"]
     assert result["effect_type"].to_list() == ["pearsons_r", "regression_coefficient"]
-    assert result["effect size type"].to_list() == ["Spearman", "OR"]
 
 
 def test_coerce_effect_type_columns_keeps_existing_canonical_over_alias() -> None:
@@ -2583,8 +2724,8 @@ def test_coerce_effect_type_columns_keeps_existing_canonical_over_alias() -> Non
         {"effect_size": [0.85, 0.2], "effect_type": ["odds_ratio", "cohens_d"], "effect type": ["pearson r", "beta"]}
     ).lazy()
     result: pl.DataFrame = coerce_effect_type_columns(lf).collect()
+    assert result.columns == ["effect_size", "effect_type"]
     assert result["effect_type"].to_list() == ["odds_ratio", "cohens_d"]
-    assert result["effect type"].to_list() == ["pearson r", "beta"]
 
 
 def test_coerce_effect_type_columns_noop_without_candidates() -> None:
@@ -2605,15 +2746,21 @@ def test_coerced_effect_size_alias_survives_unknown_folding() -> None:
     assert out["supporting_text"].to_list() == [["miscellaneous_notes: note"]]
 
 
-def test_unpicked_relationship_strength_folds_into_supporting_text() -> None:
-    """When a better effect-size candidate wins the fuzzy pick, the superseded old name folds."""
+def test_unpicked_relationship_strength_is_dropped_not_folded() -> None:
+    """A superseded effect-size alias is dropped outright, never folded into supporting_text.
+
+    Before the alias policy was unified, the loser survived coercion and the unknown-folding
+    sweep turned it into ``"relationship_strength: 0.42"`` -- a second number for the slot
+    ``effect_size`` had already claimed. Dropping it at coercion time is what stops the edge
+    carrying one measurement twice.
+    """
     lf: pl.LazyFrame = pl.DataFrame(
         {"subject": ["A"], "object": ["B"], "predicate": ["related_to"], "effect size": ["0.85"], "relationship_strength": ["0.42"]}
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(coerce_effect_size_columns(lf)).collect()
     assert out["effect_size"].to_list() == ["0.85"]
     assert "relationship_strength" not in out.columns
-    assert out["supporting_text"].to_list() == [["relationship_strength: 0.42"]]
+    assert "supporting_text" not in out.columns
 
 
 def test_coerced_effect_type_survives_unknown_folding() -> None:
@@ -2644,7 +2791,7 @@ def test_tcode_collect_coerces_pvalue_before_clean_numeric(fixtures_path: Path) 
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_pvalue_columns")
+    coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
     assert coerce_idx < clean_idx
@@ -2660,14 +2807,16 @@ def test_tcode_collect_coerces_study_size_before_clean_numeric(fixtures_path: Pa
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_size_columns")
+    coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
     assert coerce_idx < clean_idx
 
 
 # tcode coerces effect size and effect type columns after annotations and before clean_numeric
-# so downstream numeric_columns/format_numeric see already canonical effect_size names
+# so downstream numeric_columns/format_numeric see already canonical effect_size names.
+# The five coercions are ONE op now (`coerce_columns`); their relative order is an internal
+# property of `coerce._RULES`, asserted directly rather than through the op list.
 def test_tcode_collect_coerces_effect_columns_before_clean_numeric(fixtures_path: Path) -> None:
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = Path("/tmp/sectionhash.parquet")
@@ -2676,13 +2825,18 @@ def test_tcode_collect_coerces_effect_columns_before_clean_numeric(fixtures_path
     )
 
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    study_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_size_columns")
-    metadata_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_study_metadata_columns")
-    size_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_size_columns")
-    type_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_effect_type_columns")
+    coerce_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "coerce_columns")
     clean_idx: int = next(i for i, op in enumerate(collected) if op[0].__name__ == "clean_numeric")
 
-    assert study_idx < metadata_idx < size_idx < type_idx < clean_idx
+    assert coerce_idx < clean_idx
+    # The within-op precedence the fused op applies, and the precedence `coerced_target` reports.
+    assert [rule.classify.__name__ for rule in _RULES] == [
+        "pvalue_target",
+        "study_size_target",
+        "study_metadata_target",
+        "effect_size_target",
+        "effect_type_target",
+    ]
 
 
 def test_coerced_study_size_alias_reaches_the_inlined_study_not_supporting_text() -> None:

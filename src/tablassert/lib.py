@@ -30,6 +30,7 @@ from tablassert.biolink import (
     resolve_node_category,
 )
 from tablassert.coerce import (
+    coerce_columns,
     coerce_effect_size_columns,
     coerce_effect_type_columns,
     coerce_pvalue_columns,
@@ -72,9 +73,11 @@ logger = cat("PIPELINE")
 __all__ = [
     "as_list",
     "clean_values",
+    "coerce_columns",
     "coerce_effect_size_columns",
     "coerce_effect_type_columns",
     "coerce_pvalue_columns",
+    "coerce_study_metadata_columns",
     "coerce_study_size_columns",
     "coerced_target",
     "compile_rig",
@@ -1228,11 +1231,9 @@ class Tcode(Section):
             ]
             if self.annotations
             else None,
-            (coerce_pvalue_columns, ()),
-            (coerce_study_size_columns, ()),
-            (coerce_study_metadata_columns, ()),
-            (coerce_effect_size_columns, ()),
-            (coerce_effect_type_columns, ()),
+            # One op, not five: the coercions share the "clean" phase label and one plan,
+            # so `compile_subgraph` emits the same single phase transition either way.
+            (coerce_columns, ()),
             (clean_numeric, ()),
             # Drop insignificant rows before they ever reach the expensive fullmap resolution below.
             (sig, ()),
@@ -1404,11 +1405,7 @@ PHASE_OF: dict[Callable, str] = {
     pick: "filter",
     reindex: "filter",
     head: "filter",
-    coerce_pvalue_columns: "clean",
-    coerce_study_size_columns: "clean",
-    coerce_study_metadata_columns: "clean",
-    coerce_effect_size_columns: "clean",
-    coerce_effect_type_columns: "clean",
+    coerce_columns: "clean",
     clean_numeric: "clean",
     level_one: "resolve",
     level_two: "resolve",
