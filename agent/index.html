@@ -1636,11 +1636,6 @@ the <code>[optimize]</code> extra (<code>dspy</code>): <code>pip install "tablas
 <td>(any)</td>
 <td>optional fallback / rate-limiting model backend</td>
 </tr>
-<tr>
-<td><code>pdfminer.six</code></td>
-<td>(any)</td>
-<td>extract a <code>.pdf</code> main text into data-fenced context (<code>pmc_article_context</code>)</td>
-</tr>
 </tbody>
 </table>
 <p>The <code>[optimize]</code> extra (only needed for <code>agent --optimize</code>) pins:</p>
@@ -1699,8 +1694,9 @@ failing fast (cheap checks before any large download and before any model call):
    present (a file with extension <code>.xlsx .xls .csv .tsv</code>), <strong>before</strong> any large download (none ⇒
    <code>FileNotFoundError</code>).</li>
 <li>Downloads only the <strong>useful</strong> files to <code>outdir/&lt;prefix&gt;/&lt;file&gt;</code> and returns their paths: the main text
-   (<code>.xml</code>/<code>.nxml</code>/<code>.txt</code>/<code>.pdf</code>), the <code>.json</code> metadata, and every data table. Binary media (images,
-   <code>.docx</code>) are skipped. <code>fetch_pmc_tables</code> remains as a thin wrapper returning only the table files.</li>
+   (<code>.xml</code>/<code>.nxml</code>/<code>.txt</code>), the <code>.json</code> metadata, and every data table. Binary media (images,
+   <code>.docx</code>, the article <code>.pdf</code> — every version ships JATS <code>.xml</code>, so the PDF is redundant) are skipped.
+   <code>fetch_pmc_tables</code> remains as a thin wrapper returning only the table files.</li>
 </ol>
 <p>The main text and every candidate table are wired into the agent TWICE, deliberately: the supervisor
 pre-renders the <code>pmc_article_context</code> summary (JATS title/abstract/outline/supplementary manifest) and
@@ -1970,7 +1966,7 @@ another's entries and a same-PMC rerun has deterministic last-writer-wins replac
 <tr>
 <td><code>pmc_article_context</code></td>
 <td>tool</td>
-<td>parse the JATS main text into a <strong>data-fenced</strong> summary (title/abstract/sections/supplementary manifest); <code>.txt</code>/<code>.pdf</code> render a fenced excerpt (PDF via <code>pdfminer.six</code>)</td>
+<td>parse the JATS main text into a <strong>data-fenced</strong> summary (title/abstract/sections/supplementary manifest); <code>.txt</code> renders a fenced excerpt</td>
 </tr>
 <tr>
 <td><code>read_table</code></td>
