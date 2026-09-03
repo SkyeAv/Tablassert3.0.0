@@ -1,4 +1,4 @@
-"""Tests for US-007 ``propose_config_edit`` — deterministic, constrained NodeEncoding editor.
+"""Tests for US-007 ``propose_config_edit`` — deterministic, constrained config editor.
 
 The core ``propose_config_edit`` tests are PURE and run in the base environment (no
 ``[agent]`` extra). The smolagents ``Tool`` test calls ``pytest.importorskip("smolagents")``
@@ -292,3 +292,205 @@ def test_llm_propose_never_raises() -> None:
 
 def _taxonomic_noise_section_yaml() -> str:
     return yaml.safe_dump(_taxonomic_noise_section(), sort_keys=False)
+
+
+# --------------------------------------------------------------------------- #
+# explode_by rule — joined multi-valued cells in unresolved terms
+# --------------------------------------------------------------------------- #
+
+
+def _joined_section() -> dict[str, Any]:
+    """A bare gene~disease section whose subject column joins several genes per cell."""
+    return {
+        "source": {"kind": "text", "local": "./d.tsv", "url": ["https://e.com/d.tsv"], "delimiter": "\t"},
+        "statement": {
+            "subject": {"method": "column", "encoding": "A", "prioritize": [GENE]},
+            "predicate": "affects",
+            "object": {"method": "column", "encoding": "B", "prioritize": ["Disease"]},
+        },
+        "provenance": {"repo": "PMC", "publication": "PMC1"},
+    }
+
+
+def _joined_report(unresolved: list[str]) -> dict[str, Any]:
+    return {
+        "overall": 0.0,
+        "per_column": {
+            "subject": {"coverage": 0.0, "total": len(unresolved), "resolved": 0, "unresolved": unresolved, "method": "column"},
+            "object": {"coverage": 1.0, "total": 1, "resolved": 1, "unresolved": [], "method": "column"},
+        },
+        "unresolved": unresolved,
+    }
+
+
+def test_propose_explode_by_for_joined_terms() -> None:
+    """Unresolved terms joining entities with ';' -> explode_by: \";\" on that node (schema-valid)."""
+    edited, rationale = propose_config_edit(_joined_section(), _joined_report(["brca1;tp53", "pten;kras"]))
+
+    assert validate_section(edited) is True
+    subject = yaml.safe_load(edited)["statement"]["subject"]
+    assert subject["explode_by"] == ";"
+    assert "explode_by" in rationale
+    # A joined cell is NOT taxonomic: the explode rule owns it, no OrganismTaxon misfire.
+    assert "prioritize" not in subject or ORGANISM_TAXON not in subject.get("prioritize", [])
+    assert "avoid" not in subject
+
+
+def test_propose_explode_skips_when_already_declared() -> None:
+    """A node that already has explode_by is left alone (idempotent)."""
+    cfg: dict[str, Any] = _joined_section()
+    cfg["statement"]["subject"]["explode_by"] = "|"
+    edited, _ = propose_config_edit(cfg, _joined_report(["brca1;tp53", "pten;kras"]))
+    assert yaml.safe_load(edited)["statement"]["subject"]["explode_by"] == "|"
+
+
+def test_propose_explode_ignores_lineage_strings() -> None:
+    """Lineage strings carry ';' but are ONE entity: taxonomic knobs fire, explode_by does not."""
+    report = _joined_report(["d__bacteria;p__firmicutes;g__escherichia", "d__bacteria;g__bacillus"])
+    edited, _ = propose_config_edit(_joined_section(), report)
+    subject = yaml.safe_load(edited)["statement"]["subject"]
+    assert "explode_by" not in subject
+    assert ORGANISM_TAXON in subject["prioritize"]
+
+
+def test_propose_explode_comma_needs_three_hits() -> None:
+    """Commas legitimately appear inside disease names: two comma-terms do not fire, three do."""
+    cfg: dict[str, Any] = _joined_section()
+    edited, _ = propose_config_edit(cfg, _joined_report(["smith, john", "doe, jane"]))
+    assert "explode_by" not in yaml.safe_load(edited)["statement"]["subject"]
+
+    edited, _ = propose_config_edit(cfg, _joined_report(["brca1,tp53", "pten,kras", "egfr,myc"]))
+    assert yaml.safe_load(edited)["statement"]["subject"]["explode_by"] == ","
+
+
+def test_propose_candidates_include_explode_only_variant() -> None:
+    """The ranked candidates carry an explode-only narrow variant alongside the full edit.
+
+    The report mixes joined terms with a noise term so the full edit (explode + remove) differs
+    from the explode-only variant; otherwise dedup would collapse them.
+    """
+    candidates = propose_config_candidates(_joined_section(), _joined_report(["brca1;tp53", "pten;kras", "NA control"]))
+    assert candidates
+    full: dict[str, Any] = yaml.safe_load(candidates[0][0])
+    assert full["statement"]["subject"]["explode_by"] == ";"
+    assert full["statement"]["subject"]["remove"]  # the noise knob fired too
+    explode_only = [c for c in candidates if "explode-only" in c[1]]
+    assert explode_only
+    variant: dict[str, Any] = yaml.safe_load(explode_only[0][0])["statement"]["subject"]
+    assert variant["explode_by"] == ";"
+    assert "remove" not in variant
+
+
+# --------------------------------------------------------------------------- #
+# Demoted-predicate fix — driven by the build_and_audit report's predicate_advice
+# --------------------------------------------------------------------------- #
+
+
+def _demotion_audit(predicate: str = "gene_associated_with_condition") -> dict[str, Any]:
+    return {
+        "demoted_edge_pct": 1.0,
+        "predicate_advice": [
+            {
+                "predicate": predicate,
+                "subject_category": "Gene",
+                "object_category": "Disease",
+                "association": "GeneToDiseaseAssociation",
+                "legal_predicates": ["affects", "associated_with", "contributes_to"],
+                "edges": 12,
+            }
+        ],
+    }
+
+
+def _demoted_section() -> dict[str, Any]:
+    cfg: dict[str, Any] = _joined_section()
+    cfg["statement"]["predicate"] = "gene_associated_with_condition"  # forbidden on GeneToDiseaseAssociation
+    return cfg
+
+
+def test_propose_predicate_fix_with_audit() -> None:
+    """A demoted predicate is replaced with a legal one from predicate_advice (schema-valid)."""
+    edited, rationale = propose_config_edit(_demoted_section(), _joined_report([]), audit=_demotion_audit())
+
+    assert validate_section(edited) is True
+    statement = yaml.safe_load(edited)["statement"]
+    assert statement["predicate"] in {"affects", "associated_with", "contributes_to"}
+    assert "demoted" in rationale
+
+
+def test_propose_predicate_fix_requires_audit() -> None:
+    """Without the audit report the predicate is NEVER touched (coverage-only behavior preserved)."""
+    edited, _ = propose_config_edit(_demoted_section(), _joined_report([]))
+    assert yaml.safe_load(edited)["statement"]["predicate"] == "gene_associated_with_condition"
+
+
+def test_propose_predicate_fix_idempotent() -> None:
+    """Once the predicate is legal the advice no longer matches it: a second pass changes nothing."""
+    audit = _demotion_audit()
+    edited, _ = propose_config_edit(_demoted_section(), _joined_report([]), audit=audit)
+    edited2, rationale2 = propose_config_edit(edited, _joined_report([]), audit=audit)
+    assert yaml.safe_load(edited2)["statement"]["predicate"] == yaml.safe_load(edited)["statement"]["predicate"]
+    assert "demoted" not in rationale2
+
+
+def test_propose_predicate_fix_ambiguous_skips() -> None:
+    """Two advice entries naming the same predicate with DISAGREEING legal sets leave it unchanged."""
+
+    def _entry(subject: str, obj: str, legal: list[str]) -> dict[str, Any]:
+        return {
+            "predicate": "gene_associated_with_condition",
+            "subject_category": subject,
+            "object_category": obj,
+            "association": "VariantToGeneAssociation",
+            "legal_predicates": legal,
+            "edges": 3,
+        }
+
+    # The section has no prioritize hints, so the two entries cannot be disambiguated.
+    cfg: dict[str, Any] = _demoted_section()
+    del cfg["statement"]["subject"]["prioritize"]
+    del cfg["statement"]["object"]["prioritize"]
+    audit: dict[str, Any] = {
+        "predicate_advice": [
+            _entry("SequenceVariant", "Gene", ["condition_associated_with_gene", "gene_associated_with_condition", "genetically_associated_with"]),
+            _entry("Gene", "Disease", ["affects", "associated_with", "contributes_to"]),
+        ]
+    }
+    edited, _ = propose_config_edit(cfg, _joined_report([]), audit=audit)
+    assert yaml.safe_load(edited)["statement"]["predicate"] == "gene_associated_with_condition"
+
+
+def test_propose_predicate_fix_disambiguated_by_prioritize() -> None:
+    """Same-predicate advice entries are disambiguated by the section's own prioritize categories."""
+
+    def _entry(subject: str, obj: str, legal: list[str]) -> dict[str, Any]:
+        return {
+            "predicate": "gene_associated_with_condition",
+            "subject_category": subject,
+            "object_category": obj,
+            "association": "X",
+            "legal_predicates": legal,
+            "edges": 3,
+        }
+
+    audit: dict[str, Any] = {
+        "predicate_advice": [
+            _entry("SequenceVariant", "Gene", ["condition_associated_with_gene", "genetically_associated_with"]),
+            _entry("Gene", "Disease", ["affects", "associated_with", "contributes_to"]),
+        ]
+    }
+    edited, _ = propose_config_edit(_demoted_section(), _joined_report([]), audit=audit)
+    # prioritize [Gene] ~ [Disease] selects the second entry's legal set.
+    assert yaml.safe_load(edited)["statement"]["predicate"] in {"affects", "associated_with", "contributes_to"}
+
+
+def test_propose_tool_accepts_audit_report() -> None:
+    """The smolagents tool applies the demoted-predicate fix when audit_report is passed."""
+    pytest.importorskip("smolagents")
+    tool = make_propose_config_edit_tool()
+    original: str = yaml.safe_dump(_demoted_section(), sort_keys=False)
+    payload = json.loads(tool.forward(original, json.dumps(_joined_report([])), json.dumps(_demotion_audit())))
+    assert yaml.safe_load(payload["config_yaml"])["statement"]["predicate"] in {"affects", "associated_with", "contributes_to"}
+    # The audit argument stays OPTIONAL: the two-arg call still works.
+    payload2 = json.loads(tool.forward(original, json.dumps(_joined_report([]))))
+    assert yaml.safe_load(payload2["config_yaml"])["statement"]["predicate"] == "gene_associated_with_condition"

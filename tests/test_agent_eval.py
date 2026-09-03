@@ -279,6 +279,54 @@ def test_gepa_metric_returns_prediction() -> None:
     assert any(token in bad.feedback for token in ("errors", "unresolved", "wrong_calls"))
 
 
+def test_gepa_metric_feedback_carries_advice_signals() -> None:
+    """The GEPA feedback names the ACTIONABLE fix, not just the symptom.
+
+    A demotion without predicate_advice forces the reflection LM to guess the legal predicates; a
+    joined-column signature without multivalued_suspects hides the explode_by fix. Both ride the
+    feedback text so GEPA can teach them.
+    """
+    pytest.importorskip("dspy")
+    pred = gepa_metric(
+        {
+            "config_yaml": VALID_CFG,
+            "report": {
+                "coverage_pct": 0.8,
+                "errors": [],
+                "unresolved": [],
+                "demoted_edge_pct": 0.5,
+                "predicate_advice": [
+                    {
+                        "predicate": "gene_associated_with_condition",
+                        "subject_category": "Gene",
+                        "object_category": "Disease",
+                        "legal_predicates": ["affects", "associated_with", "contributes_to"],
+                        "edges": 4,
+                    }
+                ],
+                "multivalued_suspects": [
+                    {
+                        "section": 0,
+                        "column": "subject",
+                        "separator": ";",
+                        "count": 3,
+                        "examples": ["brca1;tp53"],
+                        "hint": 'add explode_by: ";" to the subject encoding of section 0',
+                    }
+                ],
+            },
+            "f1": {},
+            "metrics": {},
+        }
+    )
+    assert "demoted_edge_pct" in pred.feedback
+    assert "predicate_advice" in pred.feedback
+    assert "gene_associated_with_condition" in pred.feedback
+    assert "affects" in pred.feedback  # the legal fix is named
+    assert "multivalued_suspects" in pred.feedback
+    assert "explode_by" in pred.feedback
+
+
 def test_run_gepa_wiring_offline_via_stub() -> None:
     """run_gepa wires gepa_metric + pareto strategy into GEPA and extracts optimized instructions.
 
@@ -632,6 +680,33 @@ def test_is_improvement_never_trades_biolink_validity_for_coverage() -> None:
     # Unmeasurable validity on either side degrades to the historical coverage-only rule.
     assert _is_improvement(0.5, report(0.5, None), 0.8, report(0.8, 0.1)) is True
     assert _is_improvement(0.5, current, 0.8, report(0.8, None)) is True
+
+
+def test_is_improvement_edge_count_guard() -> None:
+    """The third axis: a candidate that shrinks the graph by >25% is rejected even with a gain.
+
+    The detail-first objective (the biggest solid config wins) must not be traded away silently:
+    an edit that raises coverage by DROPPING half the edges shrank the graph. Head builds are
+    excluded from the comparison (their sampled edge counts are structurally incomparable).
+    """
+    from tablassert.agent import _is_improvement
+
+    def report(coverage: float, biolink: float | None, edges: int, head: bool = False) -> dict[str, object]:
+        return {"coverage_pct": coverage, "biolink_valid_pct": biolink, "edge_count": edges, "head": head}
+
+    current = report(0.5, 0.9, 100)
+    # A coverage win that loses half the edges is NOT an improvement.
+    assert _is_improvement(0.5, current, 0.8, report(0.8, 0.9, 40)) is False
+    # A coverage win with a small edge fluctuation (<= 25% tolerance) still is.
+    assert _is_improvement(0.5, current, 0.8, report(0.8, 0.9, 80)) is True
+    # More edges + a gain: clearly an improvement.
+    assert _is_improvement(0.5, current, 0.8, report(0.8, 0.9, 400)) is True
+    # The guard never rescues an edit that regresses coverage or validity.
+    assert _is_improvement(0.5, current, 0.4, report(0.4, 0.9, 400)) is False
+    # A head build's edge count is never compared against a full build's.
+    assert _is_improvement(0.5, current, 0.8, report(0.8, 0.9, 5, head=True)) is True
+    # A legacy/fake report without edge_count degrades gracefully (the axis is skipped).
+    assert _is_improvement(0.5, current, 0.8, {"coverage_pct": 0.8, "biolink_valid_pct": 0.9}) is True
 
 
 def test_judge_scores_biolink_validity_and_catches_demoted_predicates() -> None:

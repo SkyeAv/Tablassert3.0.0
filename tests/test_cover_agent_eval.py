@@ -185,7 +185,7 @@ def test_reflexion_fullmap_regression_does_not_promote(monkeypatch: pytest.Monke
     LOW coverage report, so ``cov2 > best_score`` is False and the ``else`` keeps ``current = edited``
     without promoting ``best``. Isolates Reflexion's control flow (no real build/network).
     """
-    monkeypatch.setattr("tablassert.agent.propose_config_edit", lambda cfg, cov: (VALID_CFG, "stub edit"))
+    monkeypatch.setattr("tablassert.agent.propose_config_edit", lambda cfg, cov, audit=None: (VALID_CFG, "stub edit"))
     monkeypatch.setattr("tablassert.agent.build_and_audit", lambda *a, **k: {"coverage_pct": 0.0})
 
     best, reflections = reflexion_improve(VALID_CFG, {"coverage_pct": 1.0}, {}, fullmap=Path("dummy.redb"))

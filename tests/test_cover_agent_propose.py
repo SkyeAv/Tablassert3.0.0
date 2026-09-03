@@ -363,7 +363,7 @@ def test_supervisor_coverage_failure_fallback(tmp_path: Path, fullmap_db: Path, 
 
     monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
     monkeypatch.setattr(agent_mod, "map_coverage", boom_coverage)
-    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "proposed edit"))
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep, audit=None: (good_yaml, "proposed edit"))
 
     result = run_supervisor(
         ["PMC1"],
