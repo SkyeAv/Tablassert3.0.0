@@ -1050,6 +1050,29 @@ def drop_zero_effect_size(lf: pl.LazyFrame, col: str = "effect_size") -> pl.Lazy
     return lf.filter(pl.col(col).is_null() | (pl.col(col).cast(pl.Float64) != 0.0))
 
 
+def drop_low_case_count(lf: pl.LazyFrame, col: str = "case_count", threshold: float = 25.0) -> pl.LazyFrame:
+    """Drop release-mode ``applied_to_treat`` edges whose case count is below the threshold.
+
+    Args:
+        lf: Source LazyFrame.
+        col: Case-count column name.
+        threshold: Minimum case count required to keep the edge.
+
+    Returns:
+        LazyFrame with low case-count edges removed.
+
+    Notes:
+        Only filters when the case-count column exists; no-op for sections
+        without a ``case_count`` column. Null case counts are kept (no count
+        was detected for that row). Only wired in for ``applied_to_treat``
+        sections at op-construction time, so it never touches other predicates.
+    """
+    names: list[str] = lf.collect_schema().names()
+    if col not in names:
+        return lf
+    return lf.filter(pl.col(col).is_null() | (pl.col(col).cast(pl.Float64) >= threshold))
+
+
 def idxname(col: Any) -> str:
     """Convert Excel-style column letters (e.g. ``"AA"``) to a polars-style ``column_<n>`` name.
 
@@ -1215,6 +1238,7 @@ class Tcode(Section):
             (sig, ()),
             (drop_not_significant, ()) if self.release else None,
             (drop_zero_effect_size, ()) if self.release else None,
+            (drop_low_case_count, ()) if self.release and self.statement.predicate == "applied_to_treat" else None,
         ]
 
     def _node_ops(self: Self, db: Path) -> list[Any]:
@@ -1401,6 +1425,7 @@ PHASE_OF: dict[Callable, str] = {
     sig: "significance",
     drop_not_significant: "significance",
     drop_zero_effect_size: "significance",
+    drop_low_case_count: "significance",
     format_numeric: "finalize",
     to_store: "write",
 }
