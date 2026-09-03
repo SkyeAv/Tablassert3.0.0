@@ -5,6 +5,7 @@
 [![CI](https://github.com/SkyeAv/Tablassert/actions/workflows/ci.yml/badge.svg)](https://github.com/SkyeAv/Tablassert/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/tablassert.svg)](https://github.com/SkyeAv/Tablassert/blob/main/LICENSE)
 [![Docs](https://img.shields.io/github/deployments/SkyeAv/Tablassert/github-pages?label=docs)](https://skyeav.github.io/Tablassert/)
+[![GitHub stars](https://img.shields.io/github/stars/SkyeAv/Tablassert.svg)](https://github.com/SkyeAv/Tablassert/stargazers)
 
 > Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON,
 > declaratively, with entity resolution built in and optional quality control.
