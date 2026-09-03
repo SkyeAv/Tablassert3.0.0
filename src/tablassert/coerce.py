@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
-from functools import cache, lru_cache
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from functools import cache
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from tablassert._lazy import LazyModule
 
@@ -49,24 +51,19 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
         ``p_value``/``adjusted_p_value`` is populated (Biolink class rule).
     """
     names: list[str] = lf.collect_schema().names()
-    # Same rigorous classification as ``coerce_pvalue_columns``: a column is a significance
-    # source only when ``pvalue_target`` accepts it — NOT by naive substring — so non-p-value
-    # columns that merely contain the reference text stay out of the qualifier.
-    buckets: dict[str, list[str]] = {}
-    for name in names:
-        target: str | None = pvalue_target(name)
-        if target:
-            buckets.setdefault(target, []).append(name)
-    if not buckets:
+    # The significance source is chosen by the very same plan ``coerce_pvalue_columns`` runs --
+    # one implementation, not a mirrored one. A column is a candidate only when ``pvalue_target``
+    # accepts it, NOT by naive substring, so non-p-value columns that merely contain the
+    # reference text stay out of the qualifier.
+    plan: list[_Choice] = _plan(names, (_PVALUE_RULE,))
+    if not plan:
         # Biolink class rule: qualifier may only be set when p_value/adjusted_p_value is populated.
         return lf
     # Prefer the requested target (raw ``p_value`` by default); fall back to whichever p-value
     # bucket is present. Raw p-value is the canonical significance source; adjusted is the fallback.
-    preferred: str = col if col in buckets else next(iter(buckets))
-    candidates: list[str] = buckets[preferred]
-    # Same selection rule as ``coerce_pvalue_columns``: canonical wins, then a
-    # raw candidate beats a -log10 alias, then fuzzy ranking among what is left.
-    chosen: str = _best_candidate(candidates, preferred, preferred)
+    # ``plan`` is in first-seen target order, so ``plan[0]`` is that fallback.
+    choice: _Choice = next((c for c in plan if c.target == col), plan[0])
+    chosen: str = choice.chosen
     expr: pl.Expr = pl.col(chosen).cast(pl.Float64, strict=False)
     # A -log10(p) score column must be un-logged before banding, or the bands
     # invert (a score of 8 means p = 1e-8, not p = 8.0 -> not_significant).
@@ -95,8 +92,10 @@ def sig(lf: pl.LazyFrame, col: str = "p_value", out: str = "statistical_signific
 _SEP: str = r"[\s_.\-]*"
 # "value" spelled val / value, optionally plural (vals / values).
 _VALUE: str = r"val(?:ue)?s?"
-# "adjusted" spelled adj / adjusted.
-_ADJUSTED: str = r"adj(?:usted)?"
+# "adjusted" spelled adj / adjust / adjusted / adjustment. The longer forms matter because
+# "p_adjust" is a real DESeq2-family header: without them it falls through to the RAW
+# p-value bucket and an FDR-adjusted number ships as `p_value`.
+_ADJUSTED: str = r"adj(?:ust(?:ed|ment)?)?"
 # Optional trailing numeric qualifier for multi-phenotype outputs ("pvalue1",
 # "p_value_2", "padj_1"): a separator-or-nothing then digits.
 _NUMQUAL: str = r"(?:[\s_.\-]*\d+)?"
@@ -154,15 +153,19 @@ STANDALONE_ADJUSTED_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 # Generic adjustment words that only imply an adjusted P value when a P/Q value
-# token is also present (see pvalue_target).
+# token is also present (see pvalue_target). Anchored with alphanumeric lookarounds
+# rather than \b for the same reason BARE_P_TOKEN_PATTERN is: "_" is a word char, so
+# \b never fires between "adjusted" and "_p_value" and the underscore-glued spellings
+# ("adjusted_p_value", "adj_p_value", "corrected_p_value") silently read as RAW
+# p-values -- shipping an FDR-adjusted number in the `p_value` slot.
 CONTEXTUAL_ADJUSTED_PATTERN: re.Pattern[str] = re.compile(
     rf"""
-    \b
+    (?<![A-Za-z0-9])
     (?:
-        {_ADJUSTED}    # adj / adjusted
+        {_ADJUSTED}    # adj / adjust / adjusted / adjustment
         | corrected    # corrected
     )
-    \b
+    (?![A-Za-z0-9])
     """,
     re.IGNORECASE | re.VERBOSE,
 )
@@ -264,30 +267,6 @@ def pvalue_target(name: str) -> str | None:
     return "adjusted_p_value" if is_adjusted else "p_value"
 
 
-def _best_candidate(candidates: list[str], target: str, chosen: str) -> str:
-    """Pick the column a numeric p/q-value slot should read from.
-
-    A raw (non-neglog) candidate is always preferred over a -log10 alias of
-    the same statistic: the raw column holds the p/q value itself, while the
-    alias needs un-logging. Fuzzy ranking only runs when no raw candidate
-    exists (or only neglog candidates do), so a short raw name ("P", "FDR")
-    can no longer lose to a long -log10 alias it would then be un-logged over.
-
-    Args:
-        candidates: Column names bucketed onto ``target`` by ``pvalue_target``.
-        target: Canonical slot name (``p_value`` / ``adjusted_p_value``).
-        chosen: The canonical name when it is itself among the candidates
-            (the existing canonical-wins rule), else a sentinel that is not.
-
-    Returns:
-        The winning column name.
-    """
-    from rapidfuzz import fuzz
-
-    pool: list[str] = [c for c in candidates if not is_neglog10_column(c)] or candidates
-    return chosen if chosen in pool else max(pool, key=lambda c: fuzz.ratio(c, target.replace("_", " ")))
-
-
 def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Rename p-value-like columns to Biolink KGX-compliant ``p_value`` / ``adjusted_p_value``.
 
@@ -302,31 +281,7 @@ def coerce_pvalue_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     Returns:
         LazyFrame with the chosen columns renamed (no-op if no candidates).
     """
-    names: list[str] = lf.collect_schema().names()
-    buckets: dict[str, list[str]] = {}
-    for n in names:
-        target: str | None = pvalue_target(n)
-        if target:
-            buckets.setdefault(target, []).append(n)
-
-    renames: dict[str, str] = {}
-    unlog_targets: list[str] = []
-    for target, candidates in buckets.items():
-        # An existing canonical column always wins; a raw candidate beats a
-        # -log10 alias before fuzzy ranking has any say.
-        chosen: str = _best_candidate(candidates, target, target)
-        if chosen != target:
-            renames[chosen] = target
-        # A -log10(p) score must be un-logged when it lands on the numeric slot.
-        if is_neglog10_column(chosen):
-            unlog_targets.append(target)
-
-    if not renames and not unlog_targets:
-        return lf
-    out: pl.LazyFrame = lf.rename(renames) if renames else lf
-    if unlog_targets:
-        out = out.with_columns([_unlog10(pl.col(t).cast(pl.Float64, strict=False)).alias(t) for t in unlog_targets])
-    return out
+    return _apply(lf, (_PVALUE_RULE,))
 
 
 # --- Study-size fragments ----------------------------------------------------
@@ -470,20 +425,7 @@ def coerce_study_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     Returns:
         LazyFrame with the chosen column renamed (no-op if no match).
     """
-    from rapidfuzz import fuzz
-
-    names: list[str] = lf.collect_schema().names()
-    candidates: list[str] = [n for n in names if study_size_target(n)]
-    if not candidates:
-        return lf
-
-    target: str = "study_size"
-    reference: str = target.replace("_", " ")
-    # An existing canonical column always wins; fuzzy ranking only picks among aliases.
-    chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
-    aliases: list[str] = [c for c in candidates if c != chosen]
-    out: pl.LazyFrame = lf if chosen == target else lf.rename({chosen: target})
-    return out.drop(aliases) if aliases else out
+    return _apply(lf, (_STUDY_SIZE_RULE,))
 
 
 # --- Study metadata (Biolink PR #1770 replacements) ---------------------------
@@ -533,25 +475,7 @@ def coerce_study_metadata_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         LazyFrame with every renamable deprecated column renamed or dropped when
         its canonical target is already present.
     """
-    names: list[str] = lf.collect_schema().names()
-    aliases_by_target: dict[str, list[str]] = {}
-    for name in names:
-        target: str | None = study_metadata_target(name)
-        if target is not None and target != name:
-            aliases_by_target.setdefault(target, []).append(name)
-
-    renames: dict[str, str] = {}
-    drops: list[str] = []
-    for target, aliases in aliases_by_target.items():
-        if target in names:
-            drops.extend(aliases)
-            continue
-        chosen: str = aliases[0]
-        renames[chosen] = target
-        drops.extend(aliases[1:])
-
-    out: pl.LazyFrame = lf.rename(renames) if renames else lf
-    return out.drop(drops) if drops else out
+    return _apply(lf, (_STUDY_METADATA_RULE,))
 
 
 # --- Effect-type name fragments ----------------------------------------------
@@ -690,6 +614,265 @@ def effect_size_target(name: str) -> str | None:
     return None
 
 
+# --- Shared coercion engine ---------------------------------------------------
+# Every coercion below is the same three steps -- claim column names by a classifier,
+# pick one winner per canonical target, then rename/drop/rewrite -- so the steps live
+# here once and each coercion is reduced to the data that distinguishes it.
+
+
+def _is_raw_pvalue(name: str) -> bool:
+    """Return True when a p/q-value candidate carries the value itself, not a -log10 score.
+
+    Args:
+        name: Candidate column name.
+
+    Returns:
+        True unless the name reports a ``-log10(p/q)`` score.
+
+    Notes:
+        Used as the p-value rule's ``prefer`` predicate. A raw candidate must always
+        beat a ``-log10`` alias of the same statistic: the raw column holds the p/q
+        value, while the alias still needs un-logging. Narrowing the pool *before*
+        fuzzy ranking is what stops a short raw name (``"P"``, ``"FDR"``) losing to a
+        long ``-log10`` alias it would then be un-logged over.
+    """
+    return not is_neglog10_column(name)
+
+
+@dataclass(frozen=True, slots=True)
+class _Rule:
+    """One column coercion, expressed as data rather than as a hand-written op.
+
+    Attributes:
+        classify: Maps a raw column name to its canonical target, or ``None`` when
+            the rule does not claim the name.
+        drop_aliases: Whether losing candidates are dropped. Dropping keeps synonym
+            columns from leaking into ``supporting_text`` or a ``StudyResult``
+            description as a duplicate of the value that already reached its slot.
+        prefer: Optional narrowing predicate applied before fuzzy ranking; when it
+            excludes every candidate the full pool is used unchanged.
+        fuzzy: When False the first candidate in schema order wins. Set for rules
+            whose aliases are exact synonyms of one slot, where a fuzzy score has
+            nothing to discriminate between them.
+        unlog: Whether a chosen ``-log10`` source must be converted back to its
+            original scale as it lands on the numeric slot.
+    """
+
+    classify: Callable[[str], str | None]
+    drop_aliases: bool
+    prefer: Callable[[str], bool] | None = None
+    fuzzy: bool = True
+    unlog: bool = False
+
+
+class _Choice(NamedTuple):
+    """One resolved coercion: which column wins a canonical slot, and what loses.
+
+    Attributes:
+        target: Canonical slot the winner is renamed to.
+        chosen: Winning source column (equal to ``target`` when already canonical).
+        aliases: Losing candidates, in schema order.
+        rule: Rule that claimed them; carries the alias and un-log policy.
+    """
+
+    target: str
+    chosen: str
+    aliases: tuple[str, ...]
+    rule: _Rule
+
+
+# Losing candidates are dropped by EVERY rule. A loser is another spelling of the value that
+# already reached the canonical slot, and anything left on the frame is folded into
+# ``supporting_text`` by ``lib.fold_unknown_to_supporting_text`` -- so keeping it emits the same
+# number twice, once as a typed Biolink slot and once as free text (``effect_size`` 0.85 beside
+# ``"odds ratio: 0.85"``, or an un-logged ``p_value`` beside ``"negative log10 p value: 8.0"``,
+# which reads as a contradiction rather than a duplicate).
+#
+# The cost is real and deliberate: a table whose headers are genuinely DIFFERENT statistics that
+# all classify onto one slot -- ``beta`` beside ``odds ratio``, or the two-analysis header set
+# ``p_value_analysis1``/``p_value_analysis2`` -- keeps only the winner. Give such columns names
+# the classifiers do not claim if every one of them must survive.
+_PVALUE_RULE: _Rule = _Rule(pvalue_target, drop_aliases=True, prefer=_is_raw_pvalue, unlog=True)
+_STUDY_SIZE_RULE: _Rule = _Rule(study_size_target, drop_aliases=True)
+# The deprecated ``supporting study *`` spellings are exact replacements for one Study property
+# (PR #1770), not independent annotations, so they are ranked by schema order: a fuzzy score has
+# nothing to discriminate between exact synonyms.
+_STUDY_METADATA_RULE: _Rule = _Rule(study_metadata_target, drop_aliases=True, fuzzy=False)
+_EFFECT_SIZE_RULE: _Rule = _Rule(effect_size_target, drop_aliases=True)
+_EFFECT_TYPE_RULE: _Rule = _Rule(effect_type_target, drop_aliases=True)
+
+# Order is precedence: the first rule to claim a name owns it. ``coerced_target`` reads
+# this order and ``coerce_columns`` applies it, so the classification a config-time
+# validator reports and the rename the build performs can no longer drift apart.
+_RULES: tuple[_Rule, ...] = (_PVALUE_RULE, _STUDY_SIZE_RULE, _STUDY_METADATA_RULE, _EFFECT_SIZE_RULE, _EFFECT_TYPE_RULE)
+
+
+def _select(candidates: Sequence[str], target: str, rule: _Rule) -> str:
+    """Pick the column a canonical slot should read from.
+
+    Args:
+        candidates: Column names the rule bucketed onto ``target``.
+        target: Canonical slot name.
+        rule: Rule supplying the ``prefer`` predicate and ``fuzzy`` policy.
+
+    Returns:
+        The winning column name.
+
+    Notes:
+        The canonical-wins half of the selection rule lives in :func:`_plan`, which
+        can see the whole schema; this function only ranks among aliases.
+    """
+    pool: list[str] = [c for c in candidates if rule.prefer(c)] if rule.prefer else list(candidates)
+    # A predicate that excludes everything narrows nothing: fall back to the full pool.
+    pool = pool or list(candidates)
+    if not rule.fuzzy:
+        return pool[0]
+    from rapidfuzz import fuzz
+
+    reference: str = target.replace("_", " ")
+    return max(pool, key=lambda c: fuzz.ratio(c, reference))
+
+
+def _plan(names: Sequence[str], rules: Sequence[_Rule]) -> list[_Choice]:
+    """Resolve which column wins each canonical slot, without touching the frame.
+
+    Args:
+        names: Schema column names, in schema order.
+        rules: Rules to apply, in precedence order.
+
+    Returns:
+        One :class:`_Choice` per claimed target, in rule order and then first-seen
+        target order. Empty when no rule claims anything.
+
+    Notes:
+        **An existing canonical column always wins, whether or not the classifier
+        claims it.** Judging that against the whole schema rather than against the
+        candidate bucket matters for the study-metadata rule, whose classifier
+        rejects the canonical names it renames onto (``study_metadata_target
+        ("study_size")`` is ``None``), so a frame already carrying ``study_size``
+        has the canonical column in the schema but not in the bucket. It also buys
+        a safety property the caller relies on: a rename can never target a column
+        that already exists, so the rename dict can never collide.
+
+        A name claimed by one rule is withheld from later rules, mirroring the
+        first-wins precedence :func:`coerced_target` reports. The classifiers are
+        already disjoint on the canonical targets, so this is a guard rather than a
+        behavior -- and it is what lets the whole plan be computed from the original
+        schema in one pass instead of re-reading the schema after every rename.
+    """
+    present: frozenset[str] = frozenset(names)
+    claimed: set[str] = set()
+    plan: list[_Choice] = []
+    for rule in rules:
+        buckets: dict[str, list[str]] = {}
+        for name in names:
+            if name in claimed:
+                continue
+            target: str | None = rule.classify(name)
+            if target is not None:
+                buckets.setdefault(target, []).append(name)
+        for target, candidates in buckets.items():
+            chosen: str = target if target in present else _select(candidates, target, rule)
+            plan.append(_Choice(target, chosen, tuple(c for c in candidates if c != chosen), rule))
+            claimed.update(candidates)
+    return plan
+
+
+def _value_exprs(plan: Sequence[_Choice], final_names: frozenset[str]) -> list[pl.Expr]:
+    """Build the value-level rewrites that follow the renames.
+
+    Args:
+        plan: Resolved choices from :func:`_plan`.
+        final_names: Column names the frame will carry after renames and drops.
+
+    Returns:
+        Expressions to apply in one ``with_columns``; empty when no choice needs one.
+    """
+    exprs: list[pl.Expr] = []
+    for choice in plan:
+        # A -log10(p) score must be un-logged when it lands on the numeric slot, or the
+        # bands invert (a score of 8 means p = 1e-8, not p = 8.0 -> not_significant).
+        if choice.rule.unlog and is_neglog10_column(choice.chosen):
+            exprs.append(_unlog10(pl.col(choice.target).cast(pl.Float64, strict=False)).alias(choice.target))
+        # Dispatched on the target rather than carried on the rule on purpose: this is a
+        # CROSS-target Biolink class rule -- it reads whether another rule's target
+        # survived -- so it is not a property of the effect-type rule itself, and giving
+        # the registry a hook general enough to express it would buy nothing.
+        if choice.target == "effect_type":
+            exprs.append(_effect_type_expr(has_effect_size="effect_size" in final_names).alias("effect_type"))
+    return exprs
+
+
+def _apply(lf: pl.LazyFrame, rules: Sequence[_Rule]) -> pl.LazyFrame:
+    """Run a set of coercion rules against a frame in a single pass.
+
+    Args:
+        lf: Source LazyFrame.
+        rules: Rules to apply, in precedence order.
+
+    Returns:
+        LazyFrame with every claimed column renamed onto its canonical slot, losing
+        aliases dropped where the rule says so, and the value-level rewrites applied.
+        Returns ``lf`` untouched when nothing is claimed, so column order is preserved
+        on the no-op path.
+
+    Notes:
+        One schema resolution drives the whole pass. The post-rename column set is
+        derived from the plan rather than re-read from the frame, which is what lets
+        the ``effect_type`` class rule see the renamed ``effect_size`` without a second
+        ``collect_schema()``.
+    """
+    names: list[str] = lf.collect_schema().names()
+    plan: list[_Choice] = _plan(names, rules)
+    if not plan:
+        return lf
+    renames: dict[str, str] = {choice.chosen: choice.target for choice in plan if choice.chosen != choice.target}
+    drops: list[str] = [alias for choice in plan for alias in choice.aliases if choice.rule.drop_aliases]
+    dropped: frozenset[str] = frozenset(drops)
+    final: frozenset[str] = frozenset(renames.get(n, n) for n in names if n not in dropped)
+    exprs: list[pl.Expr] = _value_exprs(plan, final)
+    if not renames and not drops and not exprs:
+        return lf
+    out: pl.LazyFrame = lf.rename(renames) if renames else lf
+    if drops:
+        out = out.drop(drops)
+    return out.with_columns(exprs) if exprs else out
+
+
+def coerce_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Apply every column coercion to a frame in one pass.
+
+    The single clean-phase op ``Tcode._source_ops`` wires in. Equivalent to running
+    :func:`coerce_pvalue_columns`, :func:`coerce_study_size_columns`,
+    :func:`coerce_study_metadata_columns`, :func:`coerce_effect_size_columns` and
+    :func:`coerce_effect_type_columns` in that order, which is exactly the precedence
+    :func:`coerced_target` reports.
+
+    Args:
+        lf: Source LazyFrame.
+
+    Returns:
+        LazyFrame with every recognized statistical column renamed onto its canonical
+        Biolink slot, losing aliases dropped, ``-log10`` sources un-logged and
+        ``effect_type`` values coerced (no-op when nothing is claimed).
+
+    Notes:
+        The five coercions are one op rather than five because they share a phase
+        label and a plan: resolving the schema once means the ``effect_type`` class
+        rule can read the renamed ``effect_size`` from the plan instead of re-reading
+        the frame. The per-coercion functions remain the unit of testing and of
+        documentation, and are thin slices of this same code path.
+
+    Warnings:
+        Two Biolink class rules are enforced here. ``effect_type`` is nulled on every
+        row where ``effect_size`` is null, and nulled entirely when no ``effect_size``
+        column is present (PR #1774). A chosen ``-log10(p/q)`` column is un-logged as
+        it lands on ``p_value``/``adjusted_p_value``, because the slot is typed as the
+        probability, not the score.
+    """
+    return _apply(lf, _RULES)
+
+
 def coerced_target(name: str) -> str:
     """Map a column/annotation name to the canonical name the clean phase renames it to.
 
@@ -701,15 +884,18 @@ def coerced_target(name: str) -> str:
         to, or ``name`` unchanged when no coercion claims it.
 
     Notes:
-        Classifier order mirrors the op order in ``Tcode._source_ops``:
-        ``coerce_pvalue_columns`` runs first, so a p/q-value alias is claimed
-        before the study-size, study-metadata and effect classifiers ever see
-        it. Config-time validators judge this target rather than the raw name
-        so they see a name exactly as the build will.
+        Precedence is ``_RULES`` order -- the p-value rule runs first, so a
+        p/q-value alias is claimed before the study-size, study-metadata and
+        effect classifiers ever see it. That is the same tuple ``coerce_columns``
+        applies, so what a config-time validator reports and what the build
+        renames can no longer drift apart. Validators judge this target rather
+        than the raw name, so they see a name exactly as the build will.
     """
-    return (
-        pvalue_target(name) or study_size_target(name) or study_metadata_target(name) or effect_size_target(name) or effect_type_target(name) or name
-    )
+    for rule in _RULES:
+        target: str | None = rule.classify(name)
+        if target is not None:
+            return target
+    return name
 
 
 def coerce_effect_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -728,21 +914,7 @@ def coerce_effect_size_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         The old ``relationship_strength`` name is among the candidates, so
         existing configs are renamed forward to ``effect_size``.
     """
-    # Picks a single best fuzzy match and leaves other candidate columns untouched.
-    from rapidfuzz import fuzz
-
-    names: list[str] = lf.collect_schema().names()
-    candidates: list[str] = [n for n in names if effect_size_target(n)]
-    if not candidates:
-        return lf
-
-    target: str = "effect_size"
-    reference: str = target.replace("_", " ")
-    # An existing canonical column always wins; fuzzy ranking only picks among aliases.
-    chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
-    if chosen == target:
-        return lf
-    return lf.rename({chosen: target})
+    return _apply(lf, (_EFFECT_SIZE_RULE,))
 
 
 # --- Effect-type value coercion ------------------------------------------------
@@ -816,7 +988,80 @@ def _effect_type_vocab() -> tuple[dict[str, str], tuple[str, ...]]:
     return table, EFFECT_TYPE_VALUES
 
 
-@lru_cache(maxsize=4096)
+def _effect_type_mapping(raws: Iterable[Any]) -> dict[Any, str]:
+    """Resolve raw ``effect_type`` values onto canonical ``EffectTypes`` values.
+
+    Args:
+        raws: Raw cell values, usually the DISTINCT values of a column.
+
+    Returns:
+        Mapping from each resolvable raw value to its canonical value. Values
+        that resolve to nothing -- null, blank, or below
+        ``_EFFECT_TYPE_FUZZY_SCORE`` -- are simply absent, so a caller can hand
+        the result to ``replace_strict(..., default=None)`` and get the
+        drop-to-null the Biolink enum range requires.
+
+    Notes:
+        Exact/alias table first (case/separator-insensitive), then one
+        ``rapidfuzz.process.extractOne`` per still-unresolved key against the 25
+        canonical values. ``score_cutoff`` is inclusive, so the threshold is the
+        same ``>=`` comparison this has always used.
+
+        ``process.cdist`` would score every key against every value in one call,
+        but it returns a numpy matrix and numpy is NOT a Tablassert dependency
+        (it only appears in dev environments via the ``[qc]`` extra), so it would
+        raise ``ModuleNotFoundError`` inside the polars UDF. ``extractOne`` is
+        pure C and numpy-free.
+    """
+    from rapidfuzz import fuzz, process
+
+    table, values = _effect_type_vocab()
+    resolved: dict[Any, str] = {}
+    # Distinct normalized keys are resolved once and reused: several raw spellings
+    # ("Cohen's d", "cohens d", "COHENS_D") collapse onto one key, and the fuzzy
+    # fallback is by far the most expensive step here.
+    by_key: dict[str, str | None] = {}
+    for raw in raws:
+        if raw is None:
+            continue
+        key: str = _normalize_effect_type(str(raw).strip())
+        if not key:
+            continue
+        if key not in by_key:
+            hit: str | None = table.get(key)
+            if hit is None:
+                # Fuzzy fallback against the 25 canonical values only.
+                found: tuple[str, float, int] | None = process.extractOne(key, values, scorer=fuzz.ratio, score_cutoff=_EFFECT_TYPE_FUZZY_SCORE)
+                hit = found[0] if found is not None else None
+            by_key[key] = hit
+        canonical: str | None = by_key[key]
+        if canonical is not None:
+            resolved[raw] = canonical
+    return resolved
+
+
+def _map_effect_type_series(values: pl.Series) -> pl.Series:
+    """Map a whole ``effect_type`` column onto canonical values.
+
+    Args:
+        values: Raw column as a string Series.
+
+    Returns:
+        Series of canonical ``EffectTypes`` values, null wherever the raw value
+        matched nothing.
+
+    Notes:
+        Cost is bounded by the number of DISTINCT values, not by row count: the
+        vocabulary is resolved once over ``unique()`` and the column is then
+        rewritten by a single native ``replace_strict``. The previous per-row
+        ``map_elements`` scaled with rows and, past its 4096-entry cache, spent
+        roughly a second per 200k rows re-resolving values it had already seen.
+    """
+    text: pl.Series = values.cast(pl.String)
+    # An empty mapping is fine: every value falls through to `default=None`.
+    return text.replace_strict(_effect_type_mapping(text.unique().to_list()), default=None, return_dtype=pl.String)
+
+
 def _map_effect_type_value(raw: Any) -> str | None:
     """Map one raw ``effect_type`` value to a canonical value, or null when nothing matches.
 
@@ -826,24 +1071,47 @@ def _map_effect_type_value(raw: Any) -> str | None:
     Returns:
         The canonical ``EffectTypes`` value on an exact/alias hit or a fuzzy
         hit scoring at least ``_EFFECT_TYPE_FUZZY_SCORE``; ``None`` otherwise.
+
+    Notes:
+        Single-value convenience over :func:`_effect_type_mapping`, which is the
+        one implementation. Deliberately uncached: the column path resolves each
+        distinct value once already, and a process-global cache keyed on
+        arbitrary source-cell values is state this module should not own.
     """
     if raw is None:
         return None
-    text: str = str(raw).strip()
-    if not text:
-        return None
-    table, values = _effect_type_vocab()
-    key: str = _normalize_effect_type(text)
-    hit: str | None = table.get(key)
-    if hit is not None:
-        return hit
-    # Fuzzy fallback against the 25 canonical values only.
-    from rapidfuzz import fuzz
+    return _effect_type_mapping((raw,)).get(raw)
 
-    best: str = max(values, key=lambda v: fuzz.ratio(key, v))
-    if fuzz.ratio(key, best) >= _EFFECT_TYPE_FUZZY_SCORE:
-        return best
-    return None
+
+def _effect_type_expr(*, has_effect_size: bool) -> pl.Expr:
+    """Build the ``effect_type`` column expression: canonical values, then the class rule.
+
+    Args:
+        has_effect_size: Whether an ``effect_size`` column survives on the frame.
+
+    Returns:
+        One expression producing the final ``effect_type`` column.
+
+    Notes:
+        Values are matched case/separator-insensitively against an exact/alias table
+        first, then by ``rapidfuzz`` fallback against the 25 canonical values. The
+        Biolink range of ``effect_type`` is the enum, so values matching nothing are
+        dropped to null rather than carried through.
+
+    Warnings:
+        Biolink class rule (PR #1774): ``effect_type`` may only be populated when
+        ``effect_size`` is populated. The mapped value is therefore nulled on every
+        row where ``effect_size`` is null, and nulled entirely when no ``effect_size``
+        column is present -- the same shape of class rule ``sig`` documents for the
+        significance qualifier.
+    """
+    if not has_effect_size:
+        return pl.lit(None, dtype=pl.String)
+    # `is_elementwise` stays at its default False on purpose: the whole column must arrive
+    # in one call for the distinct-value resolution to see the full vocabulary at once.
+    mapped: pl.Expr = pl.col("effect_type").cast(pl.String).map_batches(_map_effect_type_series, return_dtype=pl.String)
+    populated: pl.Expr = pl.col("effect_size").cast(pl.Float64, strict=False).is_not_null()
+    return pl.when(populated).then(mapped).otherwise(pl.lit(None, dtype=pl.String))
 
 
 def coerce_effect_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -872,26 +1140,4 @@ def coerce_effect_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         entirely when no ``effect_size`` column is present (the same shape of
         class rule ``sig`` documents for the significance qualifier).
     """
-    # Picks a single best fuzzy match and leaves other candidate columns untouched.
-    from rapidfuzz import fuzz
-
-    names: list[str] = lf.collect_schema().names()
-    candidates: list[str] = [n for n in names if effect_type_target(n)]
-    if not candidates:
-        return lf
-
-    target: str = "effect_type"
-    reference: str = target.replace("_", " ")
-    # An existing canonical column always wins; fuzzy ranking only picks among aliases.
-    chosen: str = target if target in candidates else max(candidates, key=lambda c: fuzz.ratio(c, reference))
-    lf = lf.rename({chosen: target}) if chosen != target else lf
-
-    mapped: pl.Expr = pl.col(target).cast(pl.String).map_elements(_map_effect_type_value, return_dtype=pl.String)
-    lf = lf.with_columns(mapped.alias(target))
-
-    # Biolink class rule: effect_type may only be populated when effect_size is populated.
-    if "effect_size" in lf.collect_schema().names():
-        populated: pl.Expr = pl.col("effect_size").cast(pl.Float64, strict=False).is_not_null()
-        guarded: pl.Expr = pl.when(populated).then(pl.col(target)).otherwise(pl.lit(None, dtype=pl.String))
-        return lf.with_columns(guarded.alias(target))
-    return lf.with_columns(pl.lit(None, dtype=pl.String).alias(target))
+    return _apply(lf, (_EFFECT_TYPE_RULE,))
