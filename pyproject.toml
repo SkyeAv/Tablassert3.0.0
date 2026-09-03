@@ -1,22 +1,23 @@
 [project]
 name = "tablassert"
-version = "16.3.0"
+version = "16.3.1"
 description = "Extract knowledge assertions from tabular data into NCATS Translator-compliant KGX NDJSON — declaratively, with entity resolution and quality control built in."
 authors = [
     { name = "Skye Lane Goetz", email = "sgoetz@isbscience.org" }
 ]
 keywords = [
     "knowledge graph",
-    "bioinformatics",
-    "entity resolution",
-    "ner",
-    "ncats translator",
     "kgx",
+    "ncats translator",
+    "biolink",
+    "bioinformatics",
+    "biomedical data",
+    "entity resolution",
+    "tabular data",
     "yaml configuration",
-    "table mining",
     "declarative pipeline",
-    "data quality control",
-    "tablassert",
+    "quality control",
+    "llm agent",
 ]
 readme = "README.md"
 license = "Apache-2.0"
@@ -31,13 +32,15 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Rust",
-    "Framework :: Pydantic",
+    "Framework :: Pydantic :: 2",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS :: MacOS X",
     "Environment :: Console",
