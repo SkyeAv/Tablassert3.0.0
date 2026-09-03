@@ -119,11 +119,12 @@ def build_pipeline(
     qc: bool = False,
     log: bool = False,
     head: bool = False,
+    no_original: bool = False,
     threads: int | None = None,
 ) -> None:
     """Load a graph YAML and build it through the shared in-process core."""
     graph: Graph = _load_graph(configuration_file)
-    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head, threads=threads)
+    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head, no_original=no_original, threads=threads)
 
 
 def build_graph_pipeline(
@@ -134,6 +135,7 @@ def build_graph_pipeline(
     qc: bool = False,
     log: bool = False,
     head: bool = False,
+    no_original: bool = False,
     threads: int | None = None,
     audit_sources: bool = True,
 ) -> None:
@@ -152,6 +154,8 @@ def build_graph_pipeline(
         qc: When ``True``, run quality-control audits and final study assertions.
         log: When ``True``, enable per-section verbose logging.
         head: When ``True``, build a random sample of up to five rows per section.
+        no_original: When ``True``, omit the verbatim ``original_*`` source-cell
+            copies from the final edge NDJSON.
         threads: Optional worker thread count for the parallel fullmap reads behind
             entity resolution (auto when unset).
     """
@@ -258,6 +262,7 @@ def build_graph_pipeline(
         section_sources if audit_sources else None,
         on_phase=sub_step,
         on_subgraph=advance,
+        no_original=no_original,
         uuid_fields=g.uuid_fields,
         uuid_domain=g.uuid_namespace,
     )
@@ -663,6 +668,7 @@ def build_kg(
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
     head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
+    no_original: Annotated[bool, cyclopts.Parameter(name=["--no-original", "-no"], negative="")] = False,
     threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
@@ -670,7 +676,9 @@ def build_kg(
     The positional config is a Graph YAML that orchestrates one or more table
     configs into a single knowledge-graph build.
 
-    ``--threads`` sets the worker count for the parallel fullmap reads behind entity
+    ``--no-original`` omits the verbatim source-cell copies (``original_subject``,
+    ``original_object``, and any other ``original_*`` fields) from the final edge
+    NDJSON. ``--threads`` sets the worker count for the parallel fullmap reads behind entity
     resolution (auto when unset). ``--qc`` requires the ``[qc]`` extra (``pip install
     "tablassert[qc]"``); it is checked before the build starts, because the audit stage
     runs LAST and a missing extra would otherwise surface only after entity resolution
@@ -687,7 +695,9 @@ def build_kg(
         raise SystemExit(2)
     if qc:
         extras.require("qc", required_by="--qc")
-    run(7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head, threads=threads)
+    run(
+        7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head, no_original=no_original, threads=threads
+    )
 
 
 @APP.command(name="validate")

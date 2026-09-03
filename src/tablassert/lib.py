@@ -1695,7 +1695,11 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _collect_subframes(
-    subgraphs: list[Path], on_phase: Callable[[str], None] | None = None, on_subgraph: Callable[[], None] | None = None, infores_id: str | None = None
+    subgraphs: list[Path],
+    on_phase: Callable[[str], None] | None = None,
+    on_subgraph: Callable[[], None] | None = None,
+    infores_id: str | None = None,
+    no_original: bool = False,
 ) -> tuple[list[pl.LazyFrame], list[pl.LazyFrame]]:
     """Scan and normalize subgraph parquets into node/edge subframes.
 
@@ -1710,6 +1714,8 @@ def _collect_subframes(
         on_subgraph: Optional callback fired once after each subgraph is
             processed, used to tick the progress bar.
         infores_id: Graph-level infores CURIE recorded as node ``provided_by``.
+        no_original: When True, also drop the verbatim ``original_*``
+            source-cell copies from the final edge frames.
 
     Returns:
         Tuple of ``(subnodes, subedges)``: per-section node and edge
@@ -1734,6 +1740,9 @@ def _collect_subframes(
             subnodes.append(partial)
         # Drop internal pre-resolution snapshot columns from final edges.
         lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
+        # --no-original: drop the verbatim source-cell copies from final edges too.
+        if no_original:
+            lf = lf.drop([c for c in lf.collect_schema().names() if c.startswith("original_")])
         lf = fold_unknown_to_supporting_text(lf)
         subedges.append(lf)
         if on_subgraph is not None:
@@ -1822,6 +1831,7 @@ def compile_graph(
     section_sources: list[dict[str, object]] | None = None,
     on_phase: Callable[[str], None] | None = None,
     on_subgraph: Callable[[], None] | None = None,
+    no_original: bool = False,
     uuid_fields: list[str] | None = None,
     uuid_domain: str | None = None,
 ) -> None:
@@ -1842,6 +1852,8 @@ def compile_graph(
             ``write-edges`` / ``dedup`` / ``rig``), used to drive progress UX.
         on_subgraph: Optional callback fired once per processed subgraph,
             used to tick the progress bar.
+        no_original: When ``True``, omit the verbatim ``original_*``
+            source-cell copies from the final edge NDJSON.
         uuid_fields: Optional edge fields that constitute edge identity
             (``Graph.uuid_fields``). ``None`` hashes the whole edge record, so any
             change to any field re-mints the id.
@@ -1878,7 +1890,7 @@ def compile_graph(
 
     subnodes: list[pl.LazyFrame]
     subedges: list[pl.LazyFrame]
-    subnodes, subedges = _collect_subframes(subgraphs, on_phase, on_subgraph, rig_cfg.source_info.infores_id)
+    subnodes, subedges = _collect_subframes(subgraphs, on_phase, on_subgraph, rig_cfg.source_info.infores_id, no_original)
     _write_ndjson(subnodes, subedges, n, e, name, version, rig_cfg, section_sources, on_phase, domain, uuid_fields)
 
 
