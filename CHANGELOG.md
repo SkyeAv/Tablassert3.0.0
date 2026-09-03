@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 16.1.1 - 2026-09-03
+
+### Added
+- **The README now exposes the repository's GitHub star count.** A Shields.io GitHub stars badge links beside the existing project badges, making repository support discoverable without changing package or documentation behavior. ([#125](https://github.com/SkyeAv/Tablassert/pull/125))
+
 ## 16.1.0 - 2026-09-03
 
 ### Added
