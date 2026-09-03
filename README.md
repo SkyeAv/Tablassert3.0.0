@@ -120,11 +120,13 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | `qc` | four-stage QC audit (exact → fuzzy → abbreviation → SapBERT embeddings) | `pip install "tablassert[qc]"` |
 | `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
 | `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |
+| `log` | loguru-backed file/progress logging (rotation, enqueue) | `pip install "tablassert[log]"` |
 
 QC is opt-in at build time (`build-kg --qc`). Reaching a feature whose extra is not installed never
 produces a bare `ModuleNotFoundError`: the failure names the missing package and the exact install
 command, and for `build-kg --qc` and `tablassert agent` it arrives before the run starts rather than
-partway through. See the
+partway through. Logging is the exception: without the `log` extra it degrades to a stdlib fallback
+instead of failing. See the
 [Installation guide](https://skyeav.github.io/Tablassert/installation/) for the full matrix and the
 [CLI Reference](https://skyeav.github.io/Tablassert/cli/) for every flag.
 
@@ -160,7 +162,7 @@ no LazyFrame setup or NLP preprocessing required. See the
 ## Developing
 
 ```bash
-uv sync --group dev --extra qc
+uv sync --group dev --extra qc --extra log
 uv run maturin develop --manifest-path rust/Cargo.toml
 make check
 ```

@@ -3477,7 +3477,6 @@ dependencies = [
     { name = "biolink-model" },
     { name = "cyclopts" },
     { name = "fastexcel" },
-    { name = "loguru" },
     { name = "polars" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -3493,6 +3492,9 @@ agent = [
 ]
 aria2 = [
     { name = "aria2" },
+]
+log = [
+    { name = "loguru" },
 ]
 optimize = [
     { name = "dspy" },
@@ -3549,7 +3551,7 @@ requires-dist = [
     { name = "dspy", marker = "extra == 'optimize'", specifier = ">=3.2.1" },
     { name = "fastexcel", specifier = ">=0.20.2" },
     { name = "litellm", marker = "extra == 'agent'", specifier = ">=1.93.0" },
-    { name = "loguru", specifier = ">=0.7.3" },
+    { name = "loguru", marker = "extra == 'log'", specifier = ">=0.7.3" },
     { name = "pdfminer-six", marker = "extra == 'agent'", specifier = ">=20221105" },
     { name = "polars", specifier = ">=1.39.0" },
     { name = "polars", extras = ["rtcompat"], marker = "extra == 'rt'", specifier = ">=1.40.1" },
@@ -3561,7 +3563,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'qc'", specifier = ">=5.3.0" },
     { name = "smolagents", marker = "extra == 'agent'", specifier = ">=1.26.0" },
 ]
-provides-extras = ["rt", "aria2", "qc", "agent", "optimize"]
+provides-extras = ["rt", "aria2", "qc", "agent", "optimize", "log"]
 
 [package.metadata.requires-dev]
 ci = [

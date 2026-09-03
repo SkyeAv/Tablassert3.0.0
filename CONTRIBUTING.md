@@ -14,12 +14,12 @@ Thank you for helping make Tablassert reliable. Reliability here includes the de
 ```bash
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
-uv sync --group dev --extra qc
+uv sync --group dev --extra qc --extra log
 uv run maturin develop --manifest-path rust/Cargo.toml
 uv run tablassert --help
 ```
 
-`uv sync --group dev --extra qc` installs the development tools plus the optional QC runtime. `maturin develop` builds the PyO3 extension from `rust/` and installs it into the uv-managed environment.
+`uv sync --group dev --extra qc --extra log` installs the development tools plus the optional QC runtime and loguru logging. `maturin develop` builds the PyO3 extension from `rust/` and installs it into the uv-managed environment.
 
 Shortcut:
 
@@ -49,7 +49,7 @@ The `Makefile` is intentionally small and mirrors the underlying commands:
 
 | Target | Runs |
 |---|---|
-| `make setup` | `uv sync --group dev --extra qc` and debug `maturin develop` |
+| `make setup` | `uv sync --group dev --extra qc --extra log` and debug `maturin develop` |
 | `make dev` | Debug editable extension build |
 | `make build` | Release editable extension build |
 | `make test` | Python tests with coverage |

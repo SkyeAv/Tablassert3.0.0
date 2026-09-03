@@ -13,7 +13,7 @@ concurrency:
 env:
   # Both syncing jobs install this EXACT set, so they share one warm uv cache instead of
   # racing to save mutually-useless ones. See the `ci` group in pyproject.toml.
-  SYNC_ARGS: --no-default-groups --group ci --extra qc
+  SYNC_ARGS: --no-default-groups --group ci --extra qc --extra log
 
 jobs:
   python-lint:
