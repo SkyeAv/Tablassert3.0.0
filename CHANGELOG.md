@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## 16.4.0 - 2026-09-03
+
+### Added
+- **The autonomous agent now excludes super-small tables and worksheets by default.** A new
+  `MIN_TABLE_ROWS` threshold and `--min-rows`/`-mr` option require 50 non-empty data rows, excluding
+  the header and all-null rows, before a CSV/TSV table or Excel worksheet reaches the agent. Counts
+  use the production parsers and invalidate on file changes; unreadable inputs remain fail-open for
+  the existing `read_table` fallback, while an article with no qualifying readable candidate is
+  recorded as `SKIPPED` before an LLM is constructed. Set `--min-rows 0` to disable the guard; negative
+  values fail before the agent starts. ([#131](https://github.com/SkyeAv/Tablassert/pull/131))
+- **The README now shows Tablassert's PyPI monthly download count.** A Shields.io downloads badge
+  links directly to the package's PyPI page beside the existing version, Python, CI, and license
+  badges. ([#133](https://github.com/SkyeAv/Tablassert/pull/133))
+
+### Performance
+- **Math transformations now remain lazy native Polars expressions.** `math_op` handles the
+  supported `pow` and `copysign` functions with Polars expressions instead of eagerly collecting a
+  `LazyFrame` and applying per-element Python `math` calls through `map_elements`, preserving the
+  numeric coercion while avoiding the materialization and Python callback overhead. ([#130](https://github.com/SkyeAv/Tablassert/pull/130))
+
 ## 16.3.1 - 2026-09-03
 
 ### Changed
