@@ -67,11 +67,12 @@ failing fast (cheap checks before any large download and before any model call):
 
 The main text and every candidate table are wired into the agent TWICE, deliberately: the supervisor
 pre-renders the `pmc_article_context` summary (JATS title/abstract/outline/supplementary manifest) and
-a head preview of **every** candidate table **and every Excel worksheet** directly into the task text
+a head preview of **every** qualifying candidate table **and every qualifying Excel worksheet** directly into the task text
 (`render_task_context`), so the agent can author a config with **zero inspection tool calls**. The
 `pmc_article_context` / `read_table` tools stay registered as fallbacks for rows beyond a preview (for
 Excel, `read_table` lists **all worksheets** and reads a chosen one via `sheet=` (set `source.sheet`
-in the config).
+in the config). Small tables and worksheets are filtered before this context is rendered; see
+[Small-table guard](#small-table-guard).
 
 !!! failure "The old paths are dead"
     The legacy `s3://pmc-open-access` bucket, the FTP `oa_file_list.csv`, and the per-article `tar.gz`
@@ -132,16 +133,35 @@ tablassert agent PMC11708054 PMC12345678 \
   --map-threshold 0.25 \
   --max-improve-iters 3 \
   --max-steps 20 \
+  --min-rows 50 \
   --state-dir .tablassert/agent
 ```
 
 The required target is `--configuration-file`/`-f`; it supplies the fullmap, graph identity, RIG,
-artifact metadata, and existing table list. Flags: `--max-steps`/`-ms`, `--map-threshold`/`-mt`,
-`--max-improve-iters`/`-mi`, `--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`, plus `--local`/`-l`, `--reflexion`,
+artifact metadata, and existing table list. Flags: `--max-steps`/`-ms`, `--min-rows`/`-mr`,
+`--map-threshold`/`-mt`, `--max-improve-iters`/`-mi`, `--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`, plus `--local`/`-l`, `--reflexion`,
 `--judge-model`, `--judge-threshold`, `--biolink-threshold`, and the `--optimize`/`-o` prompt-optimization flags
 (`--instructions-file`, `--instructions-out`, `--max-metric-calls`, `--dataset`).
 The [CLI reference: `agent`](cli.md#agent) is the authoritative flag table; the list here is a compact
 reminder.
+
+### Small-table guard
+
+The agent's default small-table guard is **50 non-empty data rows** (`--min-rows 50` or `-mr 50`).
+The count follows the same polars parsing used by the pipeline: the header is not counted, quoted
+embedded newlines remain part of one row, and rows blank across every column do not count. It applies
+to both delimited files (`.csv`/`.tsv`) and Excel worksheets (`.xlsx`/`.xls`). Set `--min-rows 0`
+to disable the guard; negative values fail before the agent starts.
+
+The supervisor applies the guard after a payload is downloaded or located locally and **before it
+constructs the LLM agent**. A delimited file below the threshold is removed from the candidate list.
+A workbook remains available when at least one worksheet qualifies, but small worksheets are omitted
+from previews and explicitly listed as excluded; the preview cap is spent only on qualifying sheets.
+Unreadable files are retained fail-open so the existing `read_table` fallback can report the concrete
+parse error instead of silently dropping a file. If every readable table is too small, the supervisor
+records an actionable `SKIPPED` reason (including the observed row counts) without constructing a
+model or running a build. The runtime task then names the qualifying sheets to focus on and instructs
+the agent not to author sections for excluded sheets.
 
 ### What the supervisor does
 
@@ -149,7 +169,9 @@ The **outer supervisor is deterministic Python** (not an LLM); smolagents' #1 pr
 control flow over agentic decisions. For each PMC id it:
 
 1. **Fetches** the latest-version article payload (`fetch_pmc_article`: main text + metadata + all tables;
-   fails fast on not-open-access / no-table) and presents **all** candidate tables to the agent.
+   fails fast on not-open-access / no-table), filters out below-threshold tables and worksheets, and
+   presents only qualifying candidates to the agent. If no readable candidate qualifies, it records
+   `SKIPPED` before constructing the inner model.
 2. Runs the **inner `CodeAgent`** to *derive* an initial table config (the task already contains the
    article summary + head previews of every table/worksheet, so the typical path is just `derive_config`;
    `pmc_article_context` / `read_table` remain fallbacks; every section gated by the Section JSON

@@ -15,7 +15,10 @@ from pathlib import Path
 import pytest
 
 from tablassert.agent import (
+    MIN_TABLE_ROWS,
+    _effective_rows,
     candidate_tables,
+    excel_sheet_heights,
     fetch_pmc_article,
     fetch_pmc_tables,
     is_open_access,
@@ -250,10 +253,119 @@ def test_is_useful_file(filename: str, expected: bool) -> None:
     assert is_useful_file(filename) is expected
 
 
+def test_effective_rows_counts_parsed_rows_not_physical_lines(tmp_path: Path) -> None:
+    """Quoted newlines are one parsed row, and an all-empty row does not satisfy the guard."""
+    table: Path = tmp_path / "quoted.csv"
+    table.write_text('gene,value\nBRCA1,1\n"multi\nline",2\n,\n')
+
+    assert _effective_rows(table) == 2
+
+    tsv: Path = tmp_path / "quoted.tsv"
+    tsv.write_text("gene\tvalue\nBRCA1\t1\nMAPK1\t2\n")
+    assert _effective_rows(tsv) == 2
+
+
+def test_effective_rows_header_only_is_empty(tmp_path: Path) -> None:
+    """A header-only delimited file has zero effective data rows."""
+    table: Path = tmp_path / "header.tsv"
+    table.write_text("gene\tvalue\n")
+
+    assert _effective_rows(table) == 0
+
+
+def test_effective_rows_cache_invalidates_when_file_changes(tmp_path: Path) -> None:
+    """The row-count cache keys file metadata, so rewriting a file never returns its old count."""
+    table: Path = tmp_path / "changing.csv"
+    table.write_text("value\n1\n")
+    assert _effective_rows(table) == 1
+
+    table.write_text("value\n1\n2\n")
+    assert _effective_rows(table) == 2
+
+
+def test_excel_sheet_heights_ignores_blank_rows(tmp_path: Path) -> None:
+    """Worksheet heights use effective rows, not formatted blank trailing rows."""
+    openpyxl = pytest.importorskip("openpyxl")
+    path: Path = tmp_path / "workbook.xlsx"
+    workbook = openpyxl.Workbook()
+    data = workbook.active
+    assert data is not None
+    data.title = "data"
+    data.append(["gene", "value"])
+    for index in range(3):
+        data.append([f"GENE{index}", index])
+    for _ in range(20):
+        data.append([None, None])
+    workbook.create_sheet("header_only").append(["note"])
+    workbook.save(path)
+
+    assert _effective_rows(path, sheet="data") == 3
+    assert excel_sheet_heights(path) == {"data": 3, "header_only": 0}
+
+
 def test_candidate_tables_returns_all_tables(tmp_path: Path) -> None:
-    """Every table-extension path is returned (not just the first), in order."""
+    """Every table-extension path is returned (not just the first), in order.
+
+    Missing files are retained by the guard's fail-open policy so the existing extension-filter
+    contract remains useful before the files have been materialized.
+    """
     files: list[Path] = [tmp_path / "a.xlsx", tmp_path / "b.jpg", tmp_path / "c.csv"]
     assert candidate_tables(files) == [tmp_path / "a.xlsx", tmp_path / "c.csv"]
+
+
+def test_candidate_tables_filters_small_delimited_files(tmp_path: Path) -> None:
+    """Readable delimited files below the threshold are excluded before the agent is built."""
+    small: Path = tmp_path / "small.csv"
+    small.write_text("value\n1\n2\n")
+    enough: Path = tmp_path / "enough.csv"
+    enough.write_text("value\n" + "\n".join(str(i) for i in range(3)) + "\n")
+
+    assert candidate_tables([small, enough], min_rows=3) == [enough]
+
+
+def test_candidate_tables_all_small_has_diagnostics(tmp_path: Path) -> None:
+    """When every readable table is too small, the fail-fast error names the threshold and file count."""
+    small: Path = tmp_path / "small.csv"
+    small.write_text("value\n1\n2\n")
+
+    with pytest.raises(FileNotFoundError, match=r"at least 3 data rows") as exc_info:
+        candidate_tables([small], min_rows=3)
+    assert "small.csv" in str(exc_info.value)
+    assert "2 rows" in str(exc_info.value)
+
+
+def test_candidate_tables_unreadable_file_is_fail_open(tmp_path: Path) -> None:
+    """An unreadable table stays visible so the normal coded read error can reach the agent."""
+    broken: Path = tmp_path / "broken.csv"
+    broken.write_bytes(b"value\n\xff\n")
+
+    assert candidate_tables([broken], min_rows=MIN_TABLE_ROWS) == [broken]
+
+
+def test_candidate_tables_keeps_mixed_workbook_and_drops_all_small_workbook(tmp_path: Path) -> None:
+    """A workbook survives if one sheet qualifies, but an all-small workbook is excluded."""
+    openpyxl = pytest.importorskip("openpyxl")
+
+    def make_workbook(path: Path, sheet_rows: dict[str, int]) -> None:
+        workbook = openpyxl.Workbook()
+        first = workbook.active
+        assert first is not None
+        for sheet_index, (name, rows) in enumerate(sheet_rows.items()):
+            worksheet = first if sheet_index == 0 else workbook.create_sheet()
+            worksheet.title = name
+            worksheet.append(["value"])
+            for row in range(rows):
+                worksheet.append([row])
+        workbook.save(path)
+
+    mixed: Path = tmp_path / "mixed.xlsx"
+    make_workbook(mixed, {"small": 1, "large": 3})
+    assert candidate_tables([mixed], min_rows=3) == [mixed]
+
+    all_small: Path = tmp_path / "all-small.xlsx"
+    make_workbook(all_small, {"one": 1, "two": 2})
+    with pytest.raises(FileNotFoundError, match=r"at least 3 data rows"):
+        candidate_tables([all_small], min_rows=3)
 
 
 def test_candidate_tables_none_raises(tmp_path: Path) -> None:

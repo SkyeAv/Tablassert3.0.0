@@ -207,6 +207,7 @@ def test_supervisor_downloads_to_stable_dir(tmp_path: Path, fullmap_db: Path, mo
         map_threshold=0.8,
         state_dir=state_dir,
         # workdir omitted => None => the unified CLI layout (art_root == state_dir)
+        min_rows=0,
     )
 
     assert recorded == [expected_outdir], "fetch outdir must be the stable pmc_download_dir, not a temp dir"
@@ -265,6 +266,7 @@ def test_supervisor_writes_configs_to_configs_folder(tmp_path: Path, fullmap_db:
         map_threshold=0.8,
         state_dir=state_dir,
         # workdir omitted => None => configs follow state_dir (cfg_root == state_dir)
+        min_rows=0,
     )
 
     records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
@@ -337,6 +339,7 @@ def test_supervisor_builds_to_stable_builds_dir(tmp_path: Path, fullmap_db: Path
         map_threshold=0.8,
         state_dir=state_dir,
         # workdir omitted => None => builds follow state_dir (art_root == state_dir)
+        min_rows=0,
     )
 
     records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
@@ -404,6 +407,7 @@ def test_supervisor_best_config_pipeline_reuse(tmp_path: Path, fullmap_db: Path,
         map_threshold=0.8,
         state_dir=state_dir,
         # workdir omitted => None => the unified CLI layout (art_root == state_dir)
+        min_rows=0,
     )
 
     records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]

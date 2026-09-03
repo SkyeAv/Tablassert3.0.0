@@ -53,7 +53,7 @@ def test_render_task_context_previews_tables_and_article(tmp_path: Path) -> None
     )
     table: Path = _write_table(tmp_path, "gene\tpartner\nbrca1\tmapk1\n")
 
-    out: str = render_task_context([table], xml)
+    out: str = render_task_context([table], xml, min_rows=0)
 
     assert "Gut microbiota study" in out  # article summary shipped
     assert DATA_FENCE_BEGIN in out  # article fence
@@ -78,11 +78,100 @@ def test_render_task_context_previews_every_excel_sheet(tmp_path: Path) -> None:
     wb.create_sheet("metadata").append(["note"])
     wb.save(path)
 
-    out: str = render_task_context([path], None)
+    out: str = render_task_context([path], None, min_rows=0)
 
     assert "correlations" in out  # BOTH sheets previewed
     assert "metadata" in out
     assert "CHEBI:41774" in out
+
+
+def test_render_task_context_skips_small_excel_sheets_and_names_focus(tmp_path: Path) -> None:
+    """Only qualifying sheets are previewed, while the task names skipped sheets and focus sheets."""
+    if importlib.util.find_spec("openpyxl") is None:
+        pytest.skip("openpyxl not installed")
+    import openpyxl
+
+    path: Path = tmp_path / "filtered.xlsx"
+    workbook = openpyxl.Workbook()
+    first = workbook.active
+    assert first is not None
+    first.title = "large"
+    first.append(["gene", "value"])
+    for index in range(3):
+        first.append([f"GENE{index}", index])
+    small = workbook.create_sheet("small")
+    small.append(["gene", "value"])
+    small.append(["tiny", 1])
+    workbook.save(path)
+
+    out: str = render_task_context([path], None, min_rows=3)
+
+    assert "focus on qualifying worksheets" in out
+    assert "'large'=3" in out
+    assert "skipped below 3 rows" in out
+    assert "'small'=1" in out
+    assert "GENE0" in out
+    assert "tiny" not in out
+
+
+def test_render_task_context_skips_small_delimited_file(tmp_path: Path) -> None:
+    """A direct context render does not spend preview space on a small CSV/TSV."""
+    table: Path = _write_table(tmp_path, "value\n1\n2\n")
+
+    out: str = render_task_context([table], None, min_rows=3)
+
+    assert "table data.tsv skipped: 2 rows < 3 minimum" in out
+    assert DATA_FENCE_BEGIN not in out
+
+
+def test_render_task_context_all_small_workbook_is_excluded(tmp_path: Path) -> None:
+    """A direct context render makes an all-small workbook's exclusion explicit."""
+    if importlib.util.find_spec("openpyxl") is None:
+        pytest.skip("openpyxl not installed")
+    import openpyxl
+
+    path: Path = tmp_path / "all-small.xlsx"
+    workbook = openpyxl.Workbook()
+    first = workbook.active
+    assert first is not None
+    first.title = "metadata"
+    first.append(["note"])
+    first.append(["only one row"])
+    workbook.save(path)
+
+    out: str = render_task_context([path], None, min_rows=2)
+
+    assert "NO sheet has >= 2 rows" in out
+    assert "excluded from candidates" in out
+    assert DATA_FENCE_BEGIN not in out
+
+
+def test_render_task_context_sheet_cap_ignores_small_sheets(tmp_path: Path) -> None:
+    """The worksheet preview cap is spent on qualifying sheets, not tiny metadata sheets."""
+    if importlib.util.find_spec("openpyxl") is None:
+        pytest.skip("openpyxl not installed")
+    import openpyxl
+
+    path: Path = tmp_path / "capped.xlsx"
+    workbook = openpyxl.Workbook()
+    first = workbook.active
+    assert first is not None
+    first.title = "tiny"
+    first.append(["value"])
+    first.append(["not-a-candidate"])
+    for name, value in (("first", "FIRST_DATA"), ("second", "SECOND_DATA")):
+        sheet = workbook.create_sheet(name)
+        sheet.append(["value"])
+        for _ in range(2):
+            sheet.append([value])
+    workbook.save(path)
+
+    out: str = render_task_context([path], None, min_rows=2, max_sheets=1)
+
+    assert "FIRST_DATA" in out
+    assert "SECOND_DATA" not in out
+    assert "not-a-candidate" not in out
+    assert "+1 more qualifying worksheets not previewed" in out
 
 
 def test_render_task_context_unreadable_table_is_fail_visible(tmp_path: Path) -> None:
@@ -90,7 +179,7 @@ def test_render_task_context_unreadable_table_is_fail_visible(tmp_path: Path) ->
     garbage: Path = tmp_path / "garbage.xlsx"
     garbage.write_bytes(b"not a real xlsx")
 
-    out: str = render_task_context([garbage], None)
+    out: str = render_task_context([garbage], None, min_rows=0)
 
     assert "could not be previewed" in out
     assert "read_table" in out  # the agent is told exactly which fallback to use
@@ -100,7 +189,7 @@ def test_render_task_context_truncates_at_max_chars(tmp_path: Path) -> None:
     """The joined block is capped so a pathological article cannot flood the context."""
     tables: list[Path] = [_write_table(tmp_path, "a\tb\n" * 50) for _ in range(5)]
 
-    out: str = render_task_context(tables, None, max_chars=500)
+    out: str = render_task_context(tables, None, max_chars=500, min_rows=0)
 
     assert len(out) <= 500 + 200  # cap + one explicit marker line
     assert "task context truncated" in out
