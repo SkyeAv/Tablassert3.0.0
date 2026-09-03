@@ -319,6 +319,7 @@ def test_supervisor_invalid_final_answer_skipped(tmp_path: Path, fullmap_db: Pat
         map_threshold=0.8,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "SKIPPED"
@@ -372,6 +373,7 @@ def test_supervisor_coverage_failure_fallback(tmp_path: Path, fullmap_db: Path, 
         max_improve_iters=3,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     assert calls["mapcov"] >= 1  # the improve loop did invoke map_coverage (and swallowed its failure)
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]

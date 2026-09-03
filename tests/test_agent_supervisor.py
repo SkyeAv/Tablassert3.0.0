@@ -121,6 +121,7 @@ def test_supervisor_happy_path_mapped(tmp_path: Path, fullmap_db: Path, monkeypa
         map_threshold=0.8,
         state_dir=state_dir,
         workdir=tmp_path / "w",
+        min_rows=0,
     )
 
     records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
@@ -156,6 +157,7 @@ def test_supervisor_improve_loop_accepts_better(tmp_path: Path, fullmap_db: Path
         max_improve_iters=3,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
 
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
@@ -181,6 +183,7 @@ def test_supervisor_monotonic_no_regression(tmp_path: Path, fullmap_db: Path, mo
         max_improve_iters=3,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
 
     records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
@@ -203,6 +206,7 @@ def test_supervisor_budget_exhaustion_skipped(tmp_path: Path, fullmap_db: Path, 
         max_improve_iters=0,  # no improve budget
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
 
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
@@ -230,6 +234,7 @@ def test_supervisor_batch_isolation(tmp_path: Path, fullmap_db: Path, monkeypatc
         map_threshold=0.8,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
 
     records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
@@ -252,12 +257,14 @@ def test_supervisor_reruns_terminal_records(tmp_path: Path, fullmap_db: Path, mo
     def factory() -> object:
         return make_fake_model(final_yaml=good_yaml)
 
-    first = run_supervisor(["PMCA"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w")
+    first = run_supervisor(
+        ["PMCA"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w", min_rows=0
+    )
     assert first["records"]["PMCA"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
     first_attempts: int = first["records"]["PMCA"].attempts  # pyright: ignore[reportIndexIssue]
 
     second = run_supervisor(
-        ["PMCA", "PMCB"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w"
+        ["PMCA", "PMCB"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w", min_rows=0
     )
     records: dict[str, ConfigRecord] = second["records"]  # pyright: ignore[reportAssignmentType]
     assert records["PMCA"].status == "MAPPED"
@@ -282,10 +289,79 @@ def test_supervisor_fetch_no_table_skipped(tmp_path: Path, fullmap_db: Path, mon
         map_threshold=0.8,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "SKIPPED"
     assert "No supplementary tables" in rec.notes
+
+
+def test_supervisor_small_tables_fail_fast_before_model_construction(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An all-small payload is skipped before the model factory or inner agent is touched."""
+    import tablassert.agent as agent_mod
+
+    small: Path = _write_table(tmp_path, "small.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", lambda *args, **kwargs: [small])
+    factory_calls: list[bool] = []
+
+    def fail_factory() -> object:
+        factory_calls.append(True)
+        raise AssertionError("the model must not be constructed for an all-small payload")
+
+    result = run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=fail_factory, state_dir=tmp_path / "state", workdir=tmp_path / "w")
+
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "SKIPPED"
+    assert "at least 50 data rows" in rec.notes
+    assert str(small) in rec.notes
+    assert not factory_calls
+
+
+def test_supervisor_min_rows_negative_is_rejected(tmp_path: Path, fullmap_db: Path) -> None:
+    """Library callers get an immediate, explicit error for a negative threshold."""
+    with pytest.raises(ValueError, match="min_rows must be non-negative"):
+        run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=lambda: object(), min_rows=-1)
+
+
+def test_supervisor_task_focuses_only_on_qualifying_tables(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The runtime task lists only qualifying files and tells the agent which threshold applies."""
+    import tablassert.agent as agent_mod
+
+    small: Path = _write_table(tmp_path, "small.tsv", "brca1\tmapk1\n")
+    large: Path = _write_table(tmp_path, "large.tsv", "brca1\tmapk1\n" * 4)
+    good_yaml: str = yaml.safe_dump(_column_cfg(large), sort_keys=False)
+    monkeypatch.setattr(agent_mod, "fetch_pmc_article", lambda *args, **kwargs: [small, large])
+
+    captured: dict[str, str] = {}
+    real_build_agent = agent_mod.build_agent
+
+    def spy_build_agent(*args: object, **kwargs: object) -> object:
+        inner = real_build_agent(*args, **kwargs)
+
+        class _Spy:
+            def run(self, task: str) -> object:
+                captured["task"] = task
+                return inner.run(task)  # pyright: ignore[reportAttributeAccessIssue]
+
+        return _Spy()
+
+    monkeypatch.setattr(agent_mod, "build_agent", spy_build_agent)
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=tmp_path / "state",
+        workdir=tmp_path / "w",
+        min_rows=3,
+    )
+
+    task: str = captured["task"]
+    assert str(large) in task
+    assert str(small) not in task
+    assert "under 3 data rows were excluded programmatically" in task
+    assert "focus only on the qualifying sheets" in task
+    assert result["records"]["PMC1"].status == "MAPPED", result["records"]["PMC1"].notes  # pyright: ignore[reportIndexIssue]
 
 
 def test_supervisor_task_lists_all_tables_and_main_text(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -325,6 +401,7 @@ def test_supervisor_task_lists_all_tables_and_main_text(tmp_path: Path, fullmap_
         map_threshold=0.8,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     task: str = captured["task"]
     assert "pmc_article_context" in task  # main text wired in
@@ -423,6 +500,7 @@ def test_supervisor_breaks_after_rejected_edit(tmp_path: Path, fullmap_db: Path,
         max_improve_iters=5,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     assert calls["build"] == 2  # initial build + ONE rejected improve, then break (not 1 + 5)
     assert result["records"]["PMC1"].status == "SKIPPED"  # 0.5 < 0.8 and never improved
@@ -477,6 +555,7 @@ def test_supervisor_built_unmeasured_is_non_failure(tmp_path: Path, fullmap_db: 
         max_improve_iters=3,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "BUILT_UNMEASURED"  # NOT SKIPPED, NOT MAPPED
@@ -521,10 +600,14 @@ def test_supervisor_reruns_built_unmeasured(tmp_path: Path, fullmap_db: Path, mo
     def factory() -> object:
         return make_fake_model(final_yaml=good_yaml)
 
-    first = run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w")
+    first = run_supervisor(
+        ["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w", min_rows=0
+    )
     assert first["records"]["PMC1"].status == "BUILT_UNMEASURED"  # pyright: ignore[reportIndexIssue]
 
-    second = run_supervisor(["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w")
+    second = run_supervisor(
+        ["PMC1"], fullmap=fullmap_db, build_model_factory=factory, map_threshold=0.8, state_dir=state_dir, workdir=tmp_path / "w", min_rows=0
+    )
     assert second["records"]["PMC1"].status == "BUILT_UNMEASURED"  # pyright: ignore[reportIndexIssue]
     assert calls.count("PMC1") == 2
 
@@ -617,6 +700,7 @@ def test_supervisor_tier2_reflexion_on_stall(tmp_path: Path, fullmap_db: Path, m
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
         reflexion_model_factory=lambda: lambda prompt: fixed_yaml,
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "MAPPED"
@@ -690,6 +774,7 @@ def test_supervisor_improve_rejects_unconfirmed_full_build(
         max_improve_iters=3,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.coverage_history == [0.3]  # the rejected full build is NOT appended -> monotonic
@@ -724,6 +809,7 @@ def test_supervisor_tier2_rejects_unconfirmed_full_build(tmp_path: Path, fullmap
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
         reflexion_model_factory=lambda: lambda prompt: good_yaml,
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.coverage_history == [0.3]  # the rejected tier-2 full build is NOT appended -> monotonic
@@ -748,6 +834,7 @@ def test_supervisor_semantic_gate_blocks_low_score(tmp_path: Path, fullmap_db: P
         workdir=tmp_path / "w",
         judge_model=lambda prompt: _judge_lines(1),  # normalized ~0.33
         judge_threshold=0.9,
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "SKIPPED"
@@ -770,6 +857,7 @@ def test_supervisor_semantic_gate_passes_high_score(tmp_path: Path, fullmap_db: 
         workdir=tmp_path / "w",
         judge_model=lambda prompt: _judge_lines(3),  # normalized 1.0
         judge_threshold=0.5,
+        min_rows=0,
     )
     assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
 
@@ -788,6 +876,7 @@ def test_supervisor_no_judge_coverage_only(tmp_path: Path, fullmap_db: Path, mon
         map_threshold=0.8,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )  # no judge_model
     assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
 
@@ -831,6 +920,7 @@ def test_supervisor_head_intermediate_full_final(tmp_path: Path, fullmap_db: Pat
         max_improve_iters=3,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
     assert head_flags[0] is False  # initial build is full
@@ -886,6 +976,7 @@ def test_supervisor_loop_iterates_while_improving(tmp_path: Path, fullmap_db: Pa
         max_improve_iters=5,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "MAPPED"
@@ -935,6 +1026,7 @@ def test_supervisor_local_payload_no_network(tmp_path: Path, fullmap_db: Path, m
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
         local=payload,  # a bare Path applies to every id
+        min_rows=0,
     )
     assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
     assert str(table) in captured["task"]
@@ -967,6 +1059,7 @@ def test_supervisor_local_payload_per_id_mapping(tmp_path: Path, fullmap_db: Pat
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
         local={"PMCLOCAL": payload},  # only PMCLOCAL is local; PMCFETCH falls back to fetch
+        min_rows=0,
     )
     records: dict[str, ConfigRecord] = result["records"]  # pyright: ignore[reportAssignmentType]
     assert records["PMCLOCAL"].status == "MAPPED"
@@ -992,6 +1085,7 @@ def test_supervisor_local_payload_no_table_skipped(tmp_path: Path, fullmap_db: P
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
         local=payload,
+        min_rows=0,
     )
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "SKIPPED"
@@ -1046,6 +1140,7 @@ def test_supervisor_appends_to_supplied_graph_and_uses_metadata(tmp_path: Path, 
         map_threshold=0.8,
         state_dir=state_dir,
         workdir=tmp_path / "w",
+        min_rows=0,
     )
 
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
@@ -1080,6 +1175,7 @@ def test_supervisor_skipped_does_not_append_or_overwrite_existing_entry(tmp_path
         map_threshold=0.8,
         state_dir=state_dir,
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     rec: ConfigRecord = first["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
     assert rec.status == "MAPPED"
@@ -1099,6 +1195,7 @@ def test_supervisor_skipped_does_not_append_or_overwrite_existing_entry(tmp_path
         map_threshold=0.8,
         state_dir=state_dir,
         workdir=tmp_path / "w",
+        min_rows=0,
     )
     assert second["records"]["PMC1"].status == "SKIPPED"  # pyright: ignore[reportIndexIssue]
     assert target_path.read_bytes() == before_graph
@@ -1124,8 +1221,8 @@ def test_supervisor_target_rerun_replaces_same_pmc_entry(tmp_path: Path, fullmap
         "state_dir": state_dir,
         "workdir": tmp_path / "w",
     }
-    first = run_supervisor(["PMC1"], **kwargs)  # type: ignore[arg-type]
-    second = run_supervisor(["PMC1"], **kwargs)  # type: ignore[arg-type]
+    first = run_supervisor(["PMC1"], min_rows=0, **kwargs)  # type: ignore[arg-type]
+    second = run_supervisor(["PMC1"], min_rows=0, **kwargs)  # type: ignore[arg-type]
     assert first["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
     assert second["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
     assert calls.count("PMC1") == 2

@@ -34,7 +34,7 @@ def test_agent_doc_references_cli_surface() -> None:
     """The documented command + flags match the real CLI (tablassert agent + key flags + env vars)."""
     text: str = DOC.read_text()
     assert "tablassert agent" in text
-    for flag in ("--configuration-file", "--map-threshold", "--max-improve-iters", "--state-dir"):
+    for flag in ("--configuration-file", "--map-threshold", "--max-improve-iters", "--state-dir", "--min-rows"):
         assert flag in text, f"docs missing CLI flag {flag}"
     for env in ("TABLASSERT_AGENT_MODEL_ID", "TABLASSERT_AGENT_API_BASE", "TABLASSERT_AGENT_API_KEY"):
         assert env in text, f"docs missing env var {env}"

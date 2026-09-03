@@ -765,6 +765,7 @@ def agent(
     api_base: Annotated[str | None, cyclopts.Parameter(name=["--api-base", "-ab"])] = None,
     api_key: Annotated[str | None, cyclopts.Parameter(name=["--api-key", "-ak"])] = None,
     max_steps: Annotated[int, cyclopts.Parameter(name=["--max-steps", "-ms"])] = 20,
+    min_rows: Annotated[int, cyclopts.Parameter(name=["--min-rows", "-mr"])] = 50,
     map_threshold: Annotated[float, cyclopts.Parameter(name=["--map-threshold", "-mt"])] = 0.25,
     max_improve_iters: Annotated[int, cyclopts.Parameter(name=["--max-improve-iters", "-mi"])] = 3,
     state_dir: Annotated[Path, cyclopts.Parameter(name=["--state-dir", "-sd"])] = Path(".tablassert") / "agent",
@@ -805,6 +806,8 @@ def agent(
         api_base: API base URL (falls back to ``TABLASSERT_AGENT_API_BASE``).
         api_key: API key (falls back to ``TABLASSERT_AGENT_API_KEY``).
         max_steps: Max inner-agent steps per article.
+        min_rows: Minimum non-empty data rows for a table or worksheet to reach the agent (default 50;
+            0 disables the small-table guard).
         map_threshold: Coverage an article must reach to be MAPPED.
         max_improve_iters: Max deterministic improve iterations per article.
         state_dir: Checkpoint/resume directory.
@@ -838,6 +841,10 @@ def agent(
     """
     from tablassert import agent as agent_mod
     from tablassert.graph_target import prepare_graph
+
+    if min_rows < 0:
+        print("tablassert agent: --min-rows must be a non-negative integer.", file=sys.stderr)
+        raise SystemExit(2)
 
     prepared_graph = prepare_graph(graph_configuration_file)
 
@@ -975,6 +982,7 @@ def agent(
         map_threshold=map_threshold,
         max_improve_iters=max_improve_iters,
         max_steps=max_steps,
+        min_rows=min_rows,
         state_dir=state_dir,
         reflexion_model_factory=reflexion_factory,
         judge_model=judge,

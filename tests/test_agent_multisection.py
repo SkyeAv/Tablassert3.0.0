@@ -315,6 +315,7 @@ def test_supervisor_one_multisection_config_per_paper(tmp_path: Path, redb: Path
         map_threshold=0.8,
         state_dir=tmp_path / "state",
         workdir=tmp_path / "w",
+        min_rows=0,
     )
 
     rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]

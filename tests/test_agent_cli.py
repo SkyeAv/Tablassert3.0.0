@@ -196,6 +196,10 @@ def test_agent_env_fallback_and_forwarding(monkeypatch: pytest.MonkeyPatch, caps
     assert captured["graph_path"] == _graph_path().resolve()
     assert captured["map_threshold"] == 0.7
     assert captured["max_improve_iters"] == 5
+    assert captured["min_rows"] == 50
+
+    agent(["PMC1"], graph_configuration_file=_graph_path(), min_rows=7)
+    assert captured["min_rows"] == 7
 
     # The forwarded factory resolves config from the environment and builds via the patched build_model.
     factory = captured["build_model_factory"]
@@ -225,6 +229,28 @@ def test_agent_cli_flag_parsing() -> None:
     assert alias_bound.kwargs["graph_configuration_file"] == Path("/tmp/graph.yaml")
     with pytest.raises(UnknownOptionError):
         APP.parse_args(["agent", "PMC9", "--fullmap", "/tmp/fm"], exit_on_error=False)
+
+
+def test_agent_min_rows_flag_parses() -> None:
+    """The long and short minimum-row options bind to the integer threshold."""
+    fn, bound, _ = APP.parse_args(["agent", "PMC9", "--configuration-file", "/tmp/graph.yaml", "--min-rows", "7"], exit_on_error=False)
+    assert fn is agent
+    assert bound.kwargs["min_rows"] == 7
+
+    _, alias_bound, _ = APP.parse_args(["agent", "PMC9", "-f", "/tmp/graph.yaml", "-mr", "0"], exit_on_error=False)
+    assert alias_bound.kwargs["min_rows"] == 0
+
+
+def test_agent_negative_min_rows_exits_2(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """A negative threshold fails before extras, models, or supervisor work."""
+    _set_model_env(monkeypatch)
+    monkeypatch.setattr("tablassert.agent.run_supervisor", lambda *args, **kwargs: pytest.fail("supervisor must not run"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        agent(["PMC1"], graph_configuration_file=_graph_path(), min_rows=-3)
+
+    assert exc_info.value.code == 2
+    assert "--min-rows" in capsys.readouterr().err
 
 
 def test_agent_optimize_flag_parses() -> None:

@@ -57,6 +57,7 @@ page lists the flags; see
 | `--api-base`, `-ab` | str | No | `None` | OpenAI-compatible base URL (env `TABLASSERT_AGENT_API_BASE`) |
 | `--api-key`, `-ak` | str | No | `None` | API key secret (env `TABLASSERT_AGENT_API_KEY`) |
 | `--max-steps`, `-ms` | int | No | `20` | Max inner-agent steps per article |
+| `--min-rows`, `-mr` | int | No | `50` | Minimum non-empty data rows for a table/worksheet to reach the agent; `0` disables the small-table guard |
 | `--map-threshold`, `-mt` | float | No | `0.25` | Coverage an article must reach to be MAPPED |
 | `--max-improve-iters`, `-mi` | int | No | `3` | Max deterministic improve iterations per article |
 | `--state-dir`, `-sd` | Path | No | `.tablassert/agent` | Checkpoint/resume workspace directory |
