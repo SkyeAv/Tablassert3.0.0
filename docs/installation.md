@@ -1,7 +1,7 @@
 # Installation
 
-Get a working `tablassert` install, then pick the `rt` / `aria2` / `qc` / `agent` / `optimize` extras that match how you will
-use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, or GEPA prompt optimization).
+Get a working `tablassert` install, then pick the `rt` / `aria2` / `qc` / `agent` / `optimize` / `log` extras that match how you will
+use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, GEPA prompt optimization, or loguru-backed logging).
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
 
 # Install development dependencies and optional QC runtime
-uv sync --group dev --extra qc
+uv sync --group dev --extra qc --extra log
 
 # Build the editable Rust extension into the uv environment
 uv run maturin develop --manifest-path rust/Cargo.toml
@@ -65,6 +65,7 @@ pip install tablassert
 | `qc` | QC runtime (exact → fuzzy → abbreviation → SapBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
 | `agent` | Autonomous PMC → KG agent (`tablassert agent`) | `smolagents`, `litellm` |
 | `optimize` | GEPA prompt optimization (`tablassert agent --optimize`) | `dspy` |
+| `log` | loguru-backed file/progress logging (rotation, enqueue) | `loguru` |
 
 ```bash
 # Install with runtime-compatible Polars
@@ -124,6 +125,10 @@ The `rt` extra is the exception: it installs `polars[rtcompat]`, which imports a
 it cannot be detected by inspection. It is suggested when polars itself fails to import; the usual
 cause is a CPU that lacks the instructions the default polars wheel requires.
 
+The `log` extra is the other exception: it never fails at all. Without loguru, Tablassert logs
+through a stdlib-based fallback to the same `log/tablassert.log` file and warns once at startup;
+install `pip install "tablassert[log]"` for the full loguru setup (rotation, enqueue).
+
 ### Method 3: Install from GitHub main
 
 Use this when you want the latest main-branch build.
@@ -182,7 +187,7 @@ To upgrade to the latest version:
 git pull origin main
 
 # Update dependencies and rebuild the editable extension
-uv sync --group dev --extra qc
+uv sync --group dev --extra qc --extra log
 uv run maturin develop --manifest-path rust/Cargo.toml
 ```
 

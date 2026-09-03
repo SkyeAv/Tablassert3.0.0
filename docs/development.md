@@ -8,7 +8,7 @@ run the test and docs gates locally, and lint/format. The canonical contributor 
 ```bash
 git clone https://github.com/SkyeAv/Tablassert.git
 cd Tablassert
-uv sync --group dev --extra qc
+uv sync --group dev --extra qc --extra log
 uv run maturin develop --manifest-path rust/Cargo.toml
 uv run tablassert --help
 ```

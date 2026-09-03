@@ -35,6 +35,7 @@ EXTRA_PACKAGES: Final[dict[str, dict[str, str]]] = {
     "qc": {"sklearn": "scikit-learn", "sentence_transformers": "sentence-transformers"},
     "agent": {"smolagents": "smolagents", "litellm": "litellm", "pdfminer": "pdfminer.six"},
     "optimize": {"dspy": "dspy"},
+    "log": {"loguru": "loguru"},
 }
 
 # Import name -> owning extra, derived so the two can never drift apart.
@@ -47,6 +48,7 @@ FEATURES: Final[dict[str, str]] = {
     "qc": "the QC audit",
     "agent": "the tablassert agent",
     "optimize": "GEPA prompt optimization (tablassert agent --optimize)",
+    "log": "file and progress logging",
 }
 
 # An unregistered module reaching :func:`require_module` came from the agent's dynamic
@@ -70,7 +72,7 @@ def missing(extra: str) -> tuple[str, ...]:
     one costs nothing: safe to call on every invocation of a command.
 
     Args:
-        extra: A detectable extra (``qc``, ``agent`` or ``optimize``).
+        extra: A detectable extra (``qc``, ``agent``, ``optimize`` or ``log``).
 
     Returns:
         Distribution names that could not be found, in declaration order; empty when
@@ -95,7 +97,7 @@ def require(extra: str, *, required_by: str | None = None) -> None:
     the work instead of after it.
 
     Args:
-        extra: A detectable extra (``qc``, ``agent`` or ``optimize``).
+        extra: A detectable extra (``qc``, ``agent``, ``optimize`` or ``log``).
         required_by: Feature name for the message, phrased to follow "required by".
             Defaults to the extra's entry in :data:`FEATURES`.
 

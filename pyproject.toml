@@ -45,7 +45,6 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "biolink-model>=4.4.4",
-    "loguru>=0.7.3",
     "polars>=1.39.0",
     "rapidfuzz>=3.14.3",
     "pydantic>=2.12.5",
@@ -93,6 +92,9 @@ agent = [
 ]
 optimize = [
     "dspy>=3.2.1",
+]
+log = [
+    "loguru>=0.7.3",
 ]
 
 [dependency-groups]
