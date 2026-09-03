@@ -33,6 +33,7 @@ The legacy top-level RIG fields (`description`, `contributions`, `ui_explanation
 |-------|------|-------------|
 | `uuid_fields` | List[str] | Edge fields that constitute edge identity. Only these feed the derived edge `id` (see [Stable edge ids](#stable-edge-ids)) |
 | `uuid_domain` | String | Explicit UUID namespace. Defaults to `rig.source_info.infores_id` when `uuid_fields` is set, `TABLASSERT` otherwise |
+| `uuid_on_collision` | `error` \| `merge` | What to do when two different edges derive one id. `error` (default) aborts; `merge` folds them into one edge. Requires `uuid_fields` (see [Merging collisions instead](#merging-collisions-instead)) |
 
 ## Stable edge ids
 
@@ -108,6 +109,36 @@ an identical subject, predicate, and object that differ only in `p_value` are ex
 and were previously producing two ids for what config claimed was one assertion.
 
 An exact duplicate is *not* a violation: identical edges collapse, as they always have.
+
+### Merging collisions instead
+
+Sometimes a collision is not a config mistake but the data working as intended: two rows with
+different raw mention spellings resolve to the same CURIE, so they derive one id — and the right
+answer is one edge with the combined evidence, not a failed build. Opt in with:
+
+```yaml
+uuid_fields: [subject, predicate, object]
+uuid_on_collision: merge
+```
+
+Under `merge`, a divergent same-id record is folded into the first record that claimed the id:
+
+- **list fields** (`publications`, `sources`, `source_record_urls`, `supporting_text`, `category`,
+  `upstream_resource_ids`, `has_supporting_studies`, …) are unioned, deduplicated, and **sorted**,
+  so the merged edge is identical regardless of which row arrived first. Object entries such as
+  `sources[]` dedup by content — key order alone never keeps two copies.
+- **scalar fields** keep the first record's value; each conflict is counted and reported in a
+  build-log summary.
+- fields only the later record carries are copied over — first-wins arbitrates *conflicts*, not
+  additions.
+
+`merge` requires `uuid_fields` (under the whole-record hash every field is an identity field, so
+two different records can never share an id — there would be nothing to merge) and is rejected
+without it as `uuid-merge-without-fields`.
+
+The trade-off is memory: merge mode buffers one full record per unique id and writes edges only at
+end-of-stream, where the default path streams and holds 24 bytes per edge. That is why it is
+opt-in. The default `error` behavior is unchanged in every respect.
 
 ### Namespacing
 

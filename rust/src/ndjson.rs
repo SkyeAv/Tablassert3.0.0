@@ -4,6 +4,7 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
+use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -191,19 +192,161 @@ fn not_a_key_error(output: &Path, id: &str, incoming: &Value, fields: Option<&[S
     ))
 }
 
+/// Merge-mode dedup state: derived id -> (hashes of every absorbed record, merged record),
+/// plus the first-seen id order so the buffered output is deterministic.
+///
+/// Unlike the default `EdgeIndex` (24 bytes per edge, streaming writes), this retains one
+/// COMPLETE record per unique id and writes nothing until end-of-stream, because a
+/// divergent record must be folded into the record that already claimed the id. That
+/// memory cost is exactly why merge mode is opt-in (`uuid_on_collision: merge`).
+#[derive(Default)]
+struct MergeIndex {
+    records: FxHashMap<[u8; 16], (Vec<u64>, Value)>,
+    order: Vec<[u8; 16]>,
+    merged: u64,
+    scalar_conflicts: u64,
+}
+
+/// Fold `incoming` into `stored`, field-wise. Returns the number of conflicting scalar
+/// fields (kept first-wins) so the caller can report them.
+///
+/// - list fields: union, deduped by canonical JSON bytes (so two `sources` objects that
+///   differ only in key order collapse), then sorted by canonical bytes so the merged
+///   output is identical regardless of which record arrived first;
+/// - scalar fields: first-wins on conflict, counted;
+/// - fields only on `incoming`: copied over (only a conflict when both sides disagree);
+/// - `id` is never touched: both sides carry the same one by construction.
+fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
+    let Some(incoming_map) = incoming.as_object() else {
+        return Err(runtime_error("expected JSON object"));
+    };
+    let mut conflicts: u64 = 0;
+    let Some(stored_map) = stored.as_object_mut() else {
+        return Err(runtime_error("expected JSON object"));
+    };
+    for (key, incoming_value) in incoming_map {
+        if key == "id" {
+            continue;
+        }
+        match stored_map.get_mut(key) {
+            None => {
+                stored_map.insert(key.clone(), incoming_value.clone());
+            }
+            Some(stored_value) => {
+                if let (Value::Array(stored_items), Value::Array(incoming_items)) =
+                    (&mut *stored_value, incoming_value)
+                {
+                    let mut seen: Vec<Vec<u8>> = Vec::with_capacity(stored_items.len());
+                    for item in stored_items.iter() {
+                        seen.push(canonical_json_bytes(item).map_err(runtime_error)?);
+                    }
+                    for item in incoming_items {
+                        let bytes: Vec<u8> = canonical_json_bytes(item).map_err(runtime_error)?;
+                        if !seen.contains(&bytes) {
+                            seen.push(bytes);
+                            stored_items.push(item.clone());
+                        }
+                    }
+                    let mut keyed: Vec<(Vec<u8>, Value)> = Vec::with_capacity(stored_items.len());
+                    for item in stored_items.drain(..) {
+                        keyed.push((canonical_json_bytes(&item).map_err(runtime_error)?, item));
+                    }
+                    keyed.sort_by(|left, right| left.0.cmp(&right.0));
+                    stored_items.extend(keyed.into_iter().map(|(_, item)| item));
+                } else if stored_value != incoming_value {
+                    conflicts += 1;
+                }
+            }
+        }
+    }
+    Ok(conflicts)
+}
+
+impl MergeIndex {
+    fn absorb(&mut self, id: [u8; 16], value: Value, content: u64) -> PyResult<()> {
+        match self.records.entry(id) {
+            Entry::Vacant(slot) => {
+                slot.insert((vec![content], value));
+                self.order.push(id);
+                Ok(())
+            }
+            Entry::Occupied(mut slot) => {
+                let (hashes, stored_value) = slot.get_mut();
+                // Exact repeat of ANY record already folded into this id -- including a
+                // divergent one -- is suppressed, so the conflict summary never
+                // double-counts a re-seen row.
+                if hashes.contains(&content) {
+                    return Ok(());
+                }
+                self.merged += 1;
+                self.scalar_conflicts += merge_records(stored_value, &value)?;
+                hashes.push(content);
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Merge-mode edge pass: buffer every unique edge, fold divergent same-id records into the
+/// first, then write in first-seen order. Returns (divergent records merged, conflicting
+/// scalar fields) for the summary log. Runs ONLY under `uuid_on_collision: merge`; the
+/// default path stays streaming and never buffers a record.
+fn dedup_edges_merge(
+    reader: BufReader<File>,
+    mut writer: BufWriter<File>,
+    domain: &str,
+    fields: Option<&[String]>,
+) -> PyResult<(u64, u64)> {
+    let mut index: MergeIndex = MergeIndex::default();
+    for line in reader.lines() {
+        let line: String = line.map_err(runtime_error)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: Value = serde_json::from_str(&line).map_err(runtime_error)?;
+        let Some(Finalized { value, content }) = finalize_record(value, true, domain, fields)?
+        else {
+            continue;
+        };
+        index.absorb(edge_id_bytes(&value)?, value, content)?;
+    }
+    for id in &index.order {
+        let (_, value) = &index.records[id];
+        writer
+            .write_all(&emitted_json_bytes(value).map_err(runtime_error)?)
+            .map_err(runtime_error)?;
+        writer.write_all(b"\n").map_err(runtime_error)?;
+    }
+    writer.flush().map_err(runtime_error)?;
+    Ok((index.merged, index.scalar_conflicts))
+}
+
 #[pyfunction]
-#[pyo3(signature = (input, output, is_edges, domain=None, uuid_fields=None))]
+#[pyo3(signature = (input, output, is_edges, domain=None, uuid_fields=None, on_collision=None))]
 pub fn dedup_ndjson(
     input: PathBuf,
     output: PathBuf,
     is_edges: bool,
     domain: Option<String>,
     uuid_fields: Option<Vec<String>>,
-) -> PyResult<()> {
+    on_collision: Option<String>,
+) -> PyResult<(u64, u64)> {
+    let merge: bool = match on_collision.as_deref() {
+        None | Some("error") => false,
+        Some("merge") => true,
+        Some(other) => {
+            return Err(runtime_error(format!(
+                "unknown on_collision {other:?}: expected \"error\" or \"merge\""
+            )));
+        }
+    };
     let domain: String = domain.unwrap_or_else(|| "TABLASSERT".to_string());
     let fields: Option<&[String]> = uuid_fields.as_deref();
     let reader: BufReader<File> = BufReader::new(File::open(input).map_err(runtime_error)?);
     let mut writer: BufWriter<File> = BufWriter::new(File::create(&output).map_err(runtime_error)?);
+    if is_edges && merge {
+        return dedup_edges_merge(reader, writer, &domain, fields);
+    }
     let mut nodes: FxHashMap<u64, Vec<Vec<u8>>> = FxHashMap::default();
     let mut edges: EdgeIndex = EdgeIndex::default();
 
@@ -249,7 +392,8 @@ pub fn dedup_ndjson(
     // Flush explicitly and propagate failure: relying on BufWriter's drop-time
     // flush would swallow a final write error and report success with truncated
     // output.
-    writer.flush().map_err(runtime_error)
+    writer.flush().map_err(runtime_error)?;
+    Ok((0, 0))
 }
 
 #[cfg(test)]
@@ -287,7 +431,7 @@ mod tests {
         let output = dir.path().join("nodes.ndjson");
         fs::write(&input, "{\"id\":\"A\"}\n{\"id\":\"B\"}\n{\"id\":\"A\"}\n").expect("write input");
 
-        dedup_ndjson(input, output.clone(), false, None, None).expect("dedup nodes");
+        dedup_ndjson(input, output.clone(), false, None, None, None).expect("dedup nodes");
 
         let lines: Vec<String> = fs::read_to_string(output)
             .expect("read output")
@@ -311,7 +455,7 @@ mod tests {
         )
         .expect("write input");
 
-        dedup_ndjson(input, output.clone(), false, None, None).expect("dedup nodes");
+        dedup_ndjson(input, output.clone(), false, None, None, None).expect("dedup nodes");
 
         let lines: Vec<String> = fs::read_to_string(output)
             .expect("read output")
@@ -337,6 +481,7 @@ mod tests {
             output.clone(),
             true,
             Some("TABLASSERT".to_string()),
+            None,
             None,
         )
         .expect("dedup edges");
@@ -367,6 +512,7 @@ mod tests {
             true,
             Some("TABLASSERT".to_string()),
             None,
+            None,
         )
         .expect("dedup edges");
 
@@ -392,7 +538,7 @@ mod tests {
         )
         .expect("write input");
 
-        dedup_ndjson(input, output.clone(), false, None, None).expect("dedup nodes");
+        dedup_ndjson(input, output.clone(), false, None, None, None).expect("dedup nodes");
 
         let line = fs::read_to_string(output).expect("read output");
         let value: Value = serde_json::from_str(line.trim()).expect("json");
@@ -407,7 +553,7 @@ mod tests {
         let output = dir.path().join("nodes.ndjson");
         fs::write(&input, "{}\n{\"drop\":\"NA\"}\n").expect("write input");
 
-        dedup_ndjson(input, output.clone(), false, None, None).expect("dedup nodes");
+        dedup_ndjson(input, output.clone(), false, None, None, None).expect("dedup nodes");
 
         assert_eq!(fs::read_to_string(output).expect("read output"), "");
     }
@@ -419,7 +565,7 @@ mod tests {
         let output = dir.path().join("nodes.ndjson");
         fs::write(&input, "\n  \n{\"id\":\"A\"}\n\n{\"id\":\"A\"}\n   \n").expect("write input");
 
-        dedup_ndjson(input, output.clone(), false, None, None).expect("dedup nodes");
+        dedup_ndjson(input, output.clone(), false, None, None, None).expect("dedup nodes");
 
         assert_eq!(
             fs::read_to_string(output).expect("read output"),
@@ -463,14 +609,22 @@ mod tests {
             dir.path(),
             "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.01\"}\n",
         );
-        dedup_ndjson(before_in, before_out.clone(), true, None, fields.clone()).expect("dedup");
+        dedup_ndjson(
+            before_in,
+            before_out.clone(),
+            true,
+            None,
+            fields.clone(),
+            None,
+        )
+        .expect("dedup");
 
         let after_dir = tempdir().expect("tempdir");
         let (after_in, after_out) = write_edges(
             after_dir.path(),
             "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.99\",\"effect_size\":1.5}\n",
         );
-        dedup_ndjson(after_in, after_out.clone(), true, None, fields).expect("dedup");
+        dedup_ndjson(after_in, after_out.clone(), true, None, fields, None).expect("dedup");
 
         assert_eq!(edge_ids(&before_out), edge_ids(&after_out));
     }
@@ -484,14 +638,14 @@ mod tests {
             dir.path(),
             "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.01\"}\n",
         );
-        dedup_ndjson(before_in, before_out.clone(), true, None, None).expect("dedup");
+        dedup_ndjson(before_in, before_out.clone(), true, None, None, None).expect("dedup");
 
         let after_dir = tempdir().expect("tempdir");
         let (after_in, after_out) = write_edges(
             after_dir.path(),
             "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.99\"}\n",
         );
-        dedup_ndjson(after_in, after_out.clone(), true, None, None).expect("dedup");
+        dedup_ndjson(after_in, after_out.clone(), true, None, None, None).expect("dedup");
 
         assert_ne!(edge_ids(&before_out), edge_ids(&after_out));
     }
@@ -514,7 +668,7 @@ mod tests {
             "predicate".to_string(),
             "object".to_string(),
         ]);
-        let error = dedup_ndjson(input, output, true, None, fields).expect_err("not a key");
+        let error = dedup_ndjson(input, output, true, None, fields, None).expect_err("not a key");
         let message = error.to_string();
         assert!(message.contains("uuid-fields-not-a-key"), "{message}");
         assert!(message.contains("p_value"), "{message}");
@@ -534,7 +688,7 @@ mod tests {
             ),
         );
         let fields = Some(vec!["subject".to_string(), "object".to_string()]);
-        dedup_ndjson(input, output.clone(), true, None, fields).expect("dedup edges");
+        dedup_ndjson(input, output.clone(), true, None, fields, None).expect("dedup edges");
         assert_eq!(edge_ids(&output).len(), 1);
     }
 
@@ -551,7 +705,7 @@ mod tests {
                 "{\"object\":\"B\",\"subject\":\"A\"}\n"
             ),
         );
-        dedup_ndjson(input, output.clone(), true, None, None).expect("dedup edges");
+        dedup_ndjson(input, output.clone(), true, None, None, None).expect("dedup edges");
         assert_eq!(edge_ids(&output).len(), 1);
     }
 
@@ -568,6 +722,7 @@ mod tests {
             true,
             Some("infores:left".to_string()),
             None,
+            None,
         )
         .expect("dedup");
 
@@ -579,6 +734,7 @@ mod tests {
             right_out.clone(),
             true,
             Some("infores:right".to_string()),
+            None,
             None,
         )
         .expect("dedup");
@@ -595,5 +751,262 @@ mod tests {
             differing_keys(&left, &right),
             vec!["effect_size", "p_value"]
         );
+    }
+
+    fn merged_edge(output: &std::path::Path) -> Value {
+        let lines: Vec<String> = fs::read_to_string(output)
+            .expect("read output")
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(lines.len(), 1, "expected one merged edge, got {lines:?}");
+        serde_json::from_str(&lines[0]).expect("json")
+    }
+
+    const SPO: &[&str] = &["subject", "predicate", "object"];
+
+    fn spo_fields() -> Option<Vec<String>> {
+        Some(SPO.iter().map(ToString::to_string).collect())
+    }
+
+    #[test]
+    fn merge_mode_folds_divergent_edges_into_one() {
+        // WHY: `uuid_on_collision: merge`. Two rows whose raw mention spellings resolve to
+        // the same CURIE derive one id; merge mode unions their evidence into a single
+        // edge instead of aborting with `uuid-fields-not-a-key`.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.01\",\"publications\":[\"PMID:2\",\"PMID:1\"]}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.99\",\"publications\":[\"PMID:3\",\"PMID:1\"]}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (1, 1));
+        let edge = merged_edge(&output);
+        // List fields union, dedup, and sort; scalar conflicts keep the first value.
+        assert_eq!(
+            edge["publications"],
+            serde_json::json!(["PMID:1", "PMID:2", "PMID:3"])
+        );
+        assert_eq!(edge["p_value"], serde_json::json!("0.01"));
+    }
+
+    #[test]
+    fn merge_mode_suppresses_exact_repeats_without_remerging() {
+        // WHY: an exact repeat is a Duplicate even when it repeats a DIVERGENT record
+        // already folded into the merged edge -- re-merging it would leave the record
+        // unchanged but double-count the scalar conflict in the summary.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.01\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.99\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.99\"}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (1, 1));
+        assert_eq!(merged_edge(&output)["p_value"], serde_json::json!("0.01"));
+    }
+
+    #[test]
+    fn merge_mode_output_is_order_independent() {
+        // WHY: merged output must not depend on which row the source happened to emit
+        // first, or two builds of one graph would diverge. List unions sort by canonical
+        // bytes, so both arrival orders produce byte-identical output.
+        let left_dir = tempdir().expect("tempdir");
+        let (left_in, left_out) = write_edges(
+            left_dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"publications\":[\"PMID:2\"]}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"publications\":[\"PMID:1\",\"PMID:3\"]}\n"
+            ),
+        );
+        dedup_ndjson(
+            left_in,
+            left_out.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        let right_dir = tempdir().expect("tempdir");
+        let (right_in, right_out) = write_edges(
+            right_dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"publications\":[\"PMID:1\",\"PMID:3\"]}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"publications\":[\"PMID:2\"]}\n"
+            ),
+        );
+        dedup_ndjson(
+            right_in,
+            right_out.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!(
+            fs::read_to_string(left_out).expect("read left"),
+            fs::read_to_string(right_out).expect("read right")
+        );
+    }
+
+    #[test]
+    fn merge_mode_writes_edges_in_first_seen_order() {
+        // WHY: buffering must not reorder the graph -- the first record to claim each id
+        // fixes its position in the output.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"publications\":[\"PMID:1\"]}\n",
+                "{\"subject\":\"X\",\"predicate\":\"r\",\"object\":\"Y\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"publications\":[\"PMID:2\"]}\n"
+            ),
+        );
+        dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        let lines: Vec<Value> = fs::read_to_string(output)
+            .expect("read output")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0]["subject"], serde_json::json!("A"));
+        assert_eq!(
+            lines[0]["publications"],
+            serde_json::json!(["PMID:1", "PMID:2"])
+        );
+        assert_eq!(lines[1]["subject"], serde_json::json!("X"));
+    }
+
+    #[test]
+    fn merge_mode_dedups_list_objects_by_canonical_bytes() {
+        // WHY: `sources` entries are objects; two entries that differ only in key order
+        // are the same source and must collapse, and the union must sort so merged output
+        // is deterministic.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"sources\":[{\"resource_id\":\"infores:b\",\"resource_role\":\"primary_knowledge_source\"}]}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"sources\":[{\"resource_role\":\"primary_knowledge_source\",\"resource_id\":\"infores:b\"},{\"resource_id\":\"infores:a\",\"resource_role\":\"aggregator_knowledge_source\"}]}\n"
+            ),
+        );
+        dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        let edge = merged_edge(&output);
+        let sources = edge["sources"].as_array().expect("sources array");
+        assert_eq!(
+            sources.len(),
+            2,
+            "key order alone must not keep both entries"
+        );
+        assert_eq!(sources[0]["resource_id"], serde_json::json!("infores:a"));
+        assert_eq!(sources[1]["resource_id"], serde_json::json!("infores:b"));
+    }
+
+    #[test]
+    fn merge_mode_keeps_fields_only_the_second_record_carries() {
+        // WHY: first-wins arbitrates CONFLICTS; a field absent from the first record is
+        // not a conflict, it is extra evidence, and dropping it would lose data.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"effect_size\":1.5}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (1, 0));
+        assert_eq!(merged_edge(&output)["effect_size"], serde_json::json!(1.5));
+    }
+
+    #[test]
+    fn explicit_error_mode_still_aborts_on_divergent_edges() {
+        // WHY: `uuid_on_collision` defaults to `error`; naming it explicitly must behave
+        // exactly like the default.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.01\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"p_value\":\"0.99\"}\n"
+            ),
+        );
+        let error = dedup_ndjson(
+            input,
+            output,
+            true,
+            None,
+            spo_fields(),
+            Some("error".to_string()),
+        )
+        .expect_err("not a key");
+        assert!(
+            error.to_string().contains("uuid-fields-not-a-key"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn unknown_on_collision_is_rejected() {
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(dir.path(), "{\"subject\":\"A\",\"object\":\"B\"}\n");
+        let error = dedup_ndjson(input, output, true, None, None, Some("bogus".to_string()))
+            .expect_err("unknown mode");
+        assert!(error.to_string().contains("bogus"), "{error}");
     }
 }

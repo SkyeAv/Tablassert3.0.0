@@ -44,6 +44,7 @@ TablassertErrorCodes = Literal[
     "rig-validation-failed",
     "uuid-bad-fields",
     "uuid-fields-not-a-key",
+    "uuid-merge-without-fields",
 ]
 
 

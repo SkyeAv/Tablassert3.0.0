@@ -3685,3 +3685,54 @@ def test_dedup_stream_edges_domain_separates_graphs(tmp_path: Path) -> None:
         return json.loads((tmp_path / f"{name}.ndjson").read_text().strip())["id"]
 
     assert build("left", "infores:left-kg") != build("right", "infores:right-kg")
+
+
+def test_dedup_stream_edges_merge_folds_divergent_records_into_one_edge(tmp_path: Path) -> None:
+    """`on_collision="merge"` unions divergent same-id edges instead of aborting.
+
+    The DAKP case: two rows with different raw mention spellings resolve to the same
+    CURIE, so subject/predicate/object derive one id. Merge folds them into a single
+    edge with unioned evidence rather than failing the build.
+    """
+    import json
+
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text(
+        '{"subject":"UMLS:C4721779","object":"B","predicate":"r","p_value":"0.01","publications":["PMID:2","PMID:1"]}\n'
+        '{"subject":"UMLS:C4721779","object":"B","predicate":"r","p_value":"0.99","publications":["PMID:3","PMID:1"]}\n'
+    )
+    lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="merge")
+
+    lines: list[str] = (tmp_path / "edges.ndjson").read_text().strip().splitlines()
+    assert len(lines) == 1
+    edge: dict[str, Any] = json.loads(lines[0])
+    # List fields union, dedup, and sort; conflicting scalars keep the first value.
+    assert edge["publications"] == ["PMID:1", "PMID:2", "PMID:3"]
+    assert edge["p_value"] == "0.01"
+
+
+def test_dedup_stream_edges_merge_output_is_order_independent(tmp_path: Path) -> None:
+    """merged output must not depend on which source row arrived first."""
+    p_left: Path = tmp_path / "left.ndjson.tmp"
+    p_left.write_text(
+        '{"subject":"A","object":"B","predicate":"r","publications":["PMID:2"]}\n'
+        '{"subject":"A","object":"B","predicate":"r","publications":["PMID:1","PMID:3"]}\n'
+    )
+    lib.dedup_stream(p_left, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="merge")
+
+    p_right: Path = tmp_path / "right.ndjson.tmp"
+    p_right.write_text(
+        '{"subject":"A","object":"B","predicate":"r","publications":["PMID:1","PMID:3"]}\n'
+        '{"subject":"A","object":"B","predicate":"r","publications":["PMID:2"]}\n'
+    )
+    lib.dedup_stream(p_right, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="merge")
+
+    assert (tmp_path / "left.ndjson").read_text() == (tmp_path / "right.ndjson").read_text()
+
+
+def test_dedup_stream_edges_default_mode_still_aborts_on_divergence(tmp_path: Path) -> None:
+    """leaving `on_collision` at its default keeps the uuid-fields-not-a-key abort."""
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text('{"subject":"A","object":"B","predicate":"r","p_value":"0.01"}\n{"subject":"A","object":"B","predicate":"r","p_value":"0.99"}\n')
+    with pytest.raises(RuntimeError, match="uuid-fields-not-a-key"):
+        lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="error")
