@@ -32,7 +32,6 @@ The extra pins:
 | --- | --- | --- |
 | `smolagents` | `==1.26.0` | `CodeAgent` ReAct loop, `OpenAIModel`/`LiteLLMModel`, tools |
 | `litellm` | (any) | optional fallback / rate-limiting model backend |
-| `pdfminer.six` | (any) | extract a `.pdf` main text into data-fenced context (`pmc_article_context`) |
 
 The `[optimize]` extra (only needed for `agent --optimize`) pins:
 
@@ -62,8 +61,9 @@ failing fast (cheap checks before any large download and before any model call):
    present (a file with extension `.xlsx .xls .csv .tsv`), **before** any large download (none ⇒
    `FileNotFoundError`).
 4. Downloads only the **useful** files to `outdir/<prefix>/<file>` and returns their paths: the main text
-   (`.xml`/`.nxml`/`.txt`/`.pdf`), the `.json` metadata, and every data table. Binary media (images,
-   `.docx`) are skipped. `fetch_pmc_tables` remains as a thin wrapper returning only the table files.
+   (`.xml`/`.nxml`/`.txt`), the `.json` metadata, and every data table. Binary media (images,
+   `.docx`, the article `.pdf` — every version ships JATS `.xml`, so the PDF is redundant) are skipped.
+   `fetch_pmc_tables` remains as a thin wrapper returning only the table files.
 
 The main text and every candidate table are wired into the agent TWICE, deliberately: the supervisor
 pre-renders the `pmc_article_context` summary (JATS title/abstract/outline/supplementary manifest) and
@@ -311,7 +311,7 @@ another's entries and a same-PMC rerun has deterministic last-writer-wins replac
 | Tool | Kind | Purpose |
 | --- | --- | --- |
 | `fetch_pmc_article` | function | PMC-AWS download of the useful latest-version payload (main text + metadata + tables), fail-fast |
-| `pmc_article_context` | tool | parse the JATS main text into a **data-fenced** summary (title/abstract/sections/supplementary manifest); `.txt`/`.pdf` render a fenced excerpt (PDF via `pdfminer.six`) |
+| `pmc_article_context` | tool | parse the JATS main text into a **data-fenced** summary (title/abstract/sections/supplementary manifest); `.txt` renders a fenced excerpt |
 | `read_table` | tool | render a table as **data-fenced, spotlighted** text; lists **all worksheets** of an Excel file (`sheet=`) |
 | `derive_config` | tool | author a table config (`template` + one section per table); each section must satisfy `Section.model_json_schema()` |
 | `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage→**Biolink-validity** mega-tool |

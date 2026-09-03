@@ -69,8 +69,8 @@ def test_module_lookup_is_derived_and_unambiguous() -> None:
 def test_missing_reports_distribution_names_not_import_names(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing package is reported as ``scikit-learn``, the name users type into pip.
 
-    Why: the import name and the distribution name differ often enough (sklearn/scikit-learn,
-    pdfminer/pdfminer.six) that echoing the module would send users to a package that does not
+    Why: the import name and the distribution name differ often enough (sklearn/scikit-learn)
+    that echoing the module would send users to a package that does not
     exist on PyPI.
     """
     monkeypatch.setattr(extras, "find_spec", lambda module: None if module == "sklearn" else object())

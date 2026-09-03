@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Removed
+- **`pdfminer.six` is no longer an `[agent]` dependency, and article PDFs are never downloaded.** The `pmc_article_context` `.pdf` branch was unreachable: the supervisor only ever selects `.xml`/`.nxml` main text, and every `pmc-oa-opendata` version ships JATS `.xml` (verified against the live bucket, including the scanned Historical OCR backfile), so a PDF-only main text cannot occur. `_extract_pdf_text` and the `.pdf` excerpt branch are gone; `.pdf` left `MAIN_TEXT_EXTENSIONS`, so fetches no longer download the article PDF (typically the largest file in a version payload).
+
 ## 16.2.0 - 2026-09-03
 
 ### Added

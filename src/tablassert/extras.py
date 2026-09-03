@@ -25,7 +25,7 @@ from tablassert.errors import MissingExtraError, QcRuntimeMissingError, describe
 
 # Extra -> {import name: distribution name}. Both are needed: find_spec probes the import
 # name, while the message must show the DISTRIBUTION name, which differs often enough
-# (sklearn/scikit-learn, pdfminer/pdfminer.six) that printing the module would misdirect.
+# (sklearn/scikit-learn) that printing the module would misdirect.
 #
 # ``rt`` is absent BY DESIGN. It installs polars[rtcompat], which imports as plain
 # ``polars``, so no find_spec probe can tell it apart from the stock wheel; its hint is
@@ -33,7 +33,7 @@ from tablassert.errors import MissingExtraError, QcRuntimeMissingError, describe
 EXTRA_PACKAGES: Final[dict[str, dict[str, str]]] = {
     "aria2": {"aria2c": "aria2"},
     "qc": {"sklearn": "scikit-learn", "sentence_transformers": "sentence-transformers"},
-    "agent": {"smolagents": "smolagents", "litellm": "litellm", "pdfminer": "pdfminer.six"},
+    "agent": {"smolagents": "smolagents", "litellm": "litellm"},
     "optimize": {"dspy": "dspy"},
     "log": {"loguru": "loguru"},
 }
