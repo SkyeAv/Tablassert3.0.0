@@ -768,6 +768,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#small-table-guard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Small-table guard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#what-the-supervisor-does" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1403,6 +1414,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#small-table-guard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Small-table guard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#what-the-supervisor-does" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1700,11 +1722,12 @@ failing fast (cheap checks before any large download and before any model call):
 </ol>
 <p>The main text and every candidate table are wired into the agent TWICE, deliberately: the supervisor
 pre-renders the <code>pmc_article_context</code> summary (JATS title/abstract/outline/supplementary manifest) and
-a head preview of <strong>every</strong> candidate table <strong>and every Excel worksheet</strong> directly into the task text
+a head preview of <strong>every</strong> qualifying candidate table <strong>and every qualifying Excel worksheet</strong> directly into the task text
 (<code>render_task_context</code>), so the agent can author a config with <strong>zero inspection tool calls</strong>. The
 <code>pmc_article_context</code> / <code>read_table</code> tools stay registered as fallbacks for rows beyond a preview (for
 Excel, <code>read_table</code> lists <strong>all worksheets</strong> and reads a chosen one via <code>sheet=</code> (set <code>source.sheet</code>
-in the config).</p>
+in the config). Small tables and worksheets are filtered before this context is rendered; see
+<a href="#small-table-guard">Small-table guard</a>.</p>
 <div class="admonition failure">
 <p class="admonition-title">The old paths are dead</p>
 <p>The legacy <code>s3://pmc-open-access</code> bucket, the FTP <code>oa_file_list.csv</code>, and the per-article <code>tar.gz</code>
@@ -1777,21 +1800,39 @@ non-zero <strong>before</strong> any model call.</p>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--map-threshold<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--max-improve-iters<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--max-steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert/agent
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>--min-rows<span class="w"> </span><span class="m">50</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span>--state-dir<span class="w"> </span>.tablassert/agent
 </code></pre></div>
 <p>The required target is <code>--configuration-file</code>/<code>-f</code>; it supplies the fullmap, graph identity, RIG,
-artifact metadata, and existing table list. Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--map-threshold</code>/<code>-mt</code>,
-<code>--max-improve-iters</code>/<code>-mi</code>, <code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
+artifact metadata, and existing table list. Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--min-rows</code>/<code>-mr</code>,
+<code>--map-threshold</code>/<code>-mt</code>, <code>--max-improve-iters</code>/<code>-mi</code>, <code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
 <code>--judge-model</code>, <code>--judge-threshold</code>, <code>--biolink-threshold</code>, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
 (<code>--instructions-file</code>, <code>--instructions-out</code>, <code>--max-metric-calls</code>, <code>--dataset</code>).
 The <a href="../cli/#agent">CLI reference: <code>agent</code></a> is the authoritative flag table; the list here is a compact
 reminder.</p>
+<h3 id="small-table-guard">Small-table guard<a class="headerlink" href="#small-table-guard" title="Permanent link">&para;</a></h3>
+<p>The agent's default small-table guard is <strong>50 non-empty data rows</strong> (<code>--min-rows 50</code> or <code>-mr 50</code>).
+The count follows the same polars parsing used by the pipeline: the header is not counted, quoted
+embedded newlines remain part of one row, and rows blank across every column do not count. It applies
+to both delimited files (<code>.csv</code>/<code>.tsv</code>) and Excel worksheets (<code>.xlsx</code>/<code>.xls</code>). Set <code>--min-rows 0</code>
+to disable the guard; negative values fail before the agent starts.</p>
+<p>The supervisor applies the guard after a payload is downloaded or located locally and <strong>before it
+constructs the LLM agent</strong>. A delimited file below the threshold is removed from the candidate list.
+A workbook remains available when at least one worksheet qualifies, but small worksheets are omitted
+from previews and explicitly listed as excluded; the preview cap is spent only on qualifying sheets.
+Unreadable files are retained fail-open so the existing <code>read_table</code> fallback can report the concrete
+parse error instead of silently dropping a file. If every readable table is too small, the supervisor
+records an actionable <code>SKIPPED</code> reason (including the observed row counts) without constructing a
+model or running a build. The runtime task then names the qualifying sheets to focus on and instructs
+the agent not to author sections for excluded sheets.</p>
 <h3 id="what-the-supervisor-does">What the supervisor does<a class="headerlink" href="#what-the-supervisor-does" title="Permanent link">&para;</a></h3>
 <p>The <strong>outer supervisor is deterministic Python</strong> (not an LLM); smolagents' #1 practice is deterministic
 control flow over agentic decisions. For each PMC id it:</p>
 <ol>
 <li><strong>Fetches</strong> the latest-version article payload (<code>fetch_pmc_article</code>: main text + metadata + all tables;
-   fails fast on not-open-access / no-table) and presents <strong>all</strong> candidate tables to the agent.</li>
+   fails fast on not-open-access / no-table), filters out below-threshold tables and worksheets, and
+   presents only qualifying candidates to the agent. If no readable candidate qualifies, it records
+   <code>SKIPPED</code> before constructing the inner model.</li>
 <li>Runs the <strong>inner <code>CodeAgent</code></strong> to <em>derive</em> an initial table config (the task already contains the
    article summary + head previews of every table/worksheet, so the typical path is just <code>derive_config</code>;
    <code>pmc_article_context</code> / <code>read_table</code> remain fallbacks; every section gated by the Section JSON
