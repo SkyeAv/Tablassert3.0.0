@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import operator
 import re
 from collections.abc import Callable, Iterable
@@ -44,7 +43,7 @@ from tablassert.coerce import (
     sig,
     study_size_target,
 )
-from tablassert.enums import EncodingMethods, Files, InformationResources, Repositories, Tokens
+from tablassert.enums import EncodingMethods, Files, Functions, InformationResources, Repositories, Tokens
 from tablassert.fullmap import ResolveSpec, fullmap_db_path, resolve, resolve_batch
 from tablassert.log import cat
 from tablassert.models import EDGE_ID_PLACEHOLDER, Encoding, NodeEncoding, Qualifier, RIGConfig, Section
@@ -665,31 +664,32 @@ def column(lf: pl.LazyFrame, col: str, x: str) -> pl.LazyFrame:
     return lf.with_columns(pl.col(x).alias(col))
 
 
-def math_op(lf: pl.LazyFrame, col: str, func: str, args: list[Literal[Tokens.VALUES] | float | int]) -> pl.LazyFrame:
-    """Transform values in a column using a ``math`` module function.
+def math_op(lf: pl.LazyFrame, col: str, func: Functions, args: list[Literal[Tokens.VALUES] | float | int]) -> pl.LazyFrame:
+    """Transform values in a column using a native polars expression.
 
     Args:
         lf: Source LazyFrame.
         col: Column to transform in place.
-        func: Name of a callable on the stdlib ``math`` module.
+        func: One of the allowed ``Functions`` members (``pow``, ``copysign``).
         args: Argument list, where ``"values"`` is replaced by the current
             cell value.
 
     Returns:
-        New LazyFrame (collected eagerly, then re-lazied) with the transformed
-        column.
+        LazyFrame with the transformed column.
 
     Notes:
-        Collection point: required for ``map_elements``. ``strict=False``
-        tolerates residual non-numeric junk in numeric annotation columns.
+        ``strict=False`` tolerates residual non-numeric junk in numeric
+        annotation columns. ``copysign(x, y)`` is expressed as ``|x|`` with
+        the sign of ``y``, matching ``math.copysign`` including ``y == 0``.
     """
-    # Collection point: required for map_elements.
-    # strict=False tolerates residual non-numeric junk in numeric annotation columns.
-    df: pl.DataFrame = lf.collect()
-    expr: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
-    attr: Callable[[Any], Any] = getattr(math, func)
-    df = df.with_columns(expr.map_elements(lambda x: attr(*(x if a == Tokens.VALUES else a for a in args)), return_dtype=pl.Float64).alias(col))
-    return df.lazy()
+    values: pl.Expr = pl.col(col).cast(pl.Float64, strict=False)
+    exprs: list[pl.Expr] = [values if a == Tokens.VALUES else pl.lit(a) for a in args]
+    match Functions(func):
+        case Functions.POW:
+            out: pl.Expr = exprs[0].pow(exprs[1])
+        case Functions.COPYSIGN:
+            out = pl.when(exprs[1] >= 0).then(exprs[0].abs()).otherwise(-exprs[0].abs())
+    return lf.with_columns(out.alias(col))
 
 
 def numeric_columns(names: list[str]) -> list[str]:

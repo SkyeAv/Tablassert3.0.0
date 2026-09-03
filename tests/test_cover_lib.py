@@ -22,22 +22,23 @@ from tablassert.ingests import from_yaml
 from tablassert.lib import Tcode
 
 
-def test_math_op_sqrt_applies_values_token() -> None:
-    """Lines 261-265: ``math_op`` collects, casts (strict=False), and maps a math func.
+def test_math_op_copysign_applies_values_token() -> None:
+    """``math_op`` casts (strict=False) then applies a native polars expression.
 
-    Passing string cells proves the ``cast(pl.Float64, strict=False)`` on line 262
-    coerces before ``math.sqrt`` is applied via the ``Tokens.VALUES`` placeholder.
+    Passing string cells proves the ``cast(pl.Float64, strict=False)`` coerces
+    before ``copysign(values, -1)`` flips the sign via the ``Tokens.VALUES``
+    placeholder.
     """
     lf: pl.LazyFrame = pl.LazyFrame({"x": ["4", "9"]})
-    result: list[float] = lib.math_op(lf, "x", "sqrt", [Tokens.VALUES]).collect()["x"].to_list()
-    assert result == [2.0, 3.0]
+    result: list[float] = lib.math_op(lf, "x", "copysign", [Tokens.VALUES, -1]).collect()["x"].to_list()
+    assert result == [-4.0, -9.0]
 
 
 def test_math_op_pow_substitutes_literal_args() -> None:
-    """Lines 261-265: the generator's ``else a`` branch feeds literal args (the ``2``).
+    """The argument list feeds literal args (the ``2``) alongside the column.
 
     ``pow(x, 2)`` mixes ``Tokens.VALUES`` (replaced by the cell) with a literal,
-    exercising both arms of ``x if a == Tokens.VALUES else a`` on line 264.
+    exercising both arms of the expression builder.
     """
     lf: pl.LazyFrame = pl.LazyFrame({"x": [2.0, 3.0]})
     result: list[float] = lib.math_op(lf, "x", "pow", [Tokens.VALUES, 2]).collect()["x"].to_list()
