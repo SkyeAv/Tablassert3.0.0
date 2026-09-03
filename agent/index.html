@@ -801,6 +801,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#distilling-a-fine-tuning-dataset-distill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distilling a fine-tuning dataset (--distill)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#biolink-validity" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1447,6 +1458,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#distilling-a-fine-tuning-dataset-distill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distilling a fine-tuning dataset (--distill)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#biolink-validity" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1876,6 +1898,24 @@ endpoint; neither is required):</p>
   the threshold turns that measurement into a terminal gate. See
   <a href="#biolink-validity">Biolink validity</a> below.</li>
 </ul>
+<h3 id="distilling-a-fine-tuning-dataset-distill">Distilling a fine-tuning dataset (<code>--distill</code>)<a class="headerlink" href="#distilling-a-fine-tuning-dataset-distill" title="Permanent link">&para;</a></h3>
+<p><code>--distill</code> (short: <code>-d</code>, <code>-dt</code>) records <strong>every LLM call of the run</strong> — the inner agent's
+multi-turn conversations, plus the judge and reflexion calls when those gates are enabled — as one
+ChatML JSON object per line, appended to <code>&lt;state-dir&gt;/distill/records.ndjson</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span><span class="nt">&quot;messages&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;system&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;assistant&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">}],</span><span class="w"> </span><span class="nt">&quot;purpose&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;agent&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;model_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;pmc_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PMC11708054&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;call_index&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;token_usage&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;input_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;output_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">}}</span>
+</code></pre></div>
+<p>The file is <strong>append-only</strong>: every <code>--distill</code> invocation keeps adding to the same dataset, so a
+corpus accumulates over many batches. The <code>messages</code> column is plain ChatML, which Unsloth Studio
+auto-detects on JSONL upload (no column mapping needed); the metadata columns (<code>purpose</code>,
+<code>pmc_id</code>, <code>call_index</code>, <code>timestamp</code>, <code>token_usage</code>) ride along for filtering — e.g. join on
+<code>pmc_id</code> against <code>state.json</code> to keep only <code>MAPPED</code> runs, or keep each run's highest <code>call_index</code>
+for the most complete conversation. Recording is zero-dependency and never breaks a run: a failed
+write is logged, not raised. <code>--distill</code> is not supported with <code>--optimize</code> (the GEPA path
+bypasses the recording seam).</p>
+<p>To convert the NDJSON into an on-disk Hugging Face dataset, use
+<a href="../cli/#distill-export"><code>tablassert distill-export</code></a> (requires the <code>[distill]</code> extra):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>distill-export<span class="w"> </span>--distill-dir<span class="w"> </span>.tablassert/agent/distill<span class="w"> </span>--out<span class="w"> </span>./hf-dataset
+</code></pre></div>
 <h3 id="biolink-validity">Biolink validity<a class="headerlink" href="#biolink-validity" title="Permanent link">&para;</a></h3>
 <p>Coverage answers <em>did the terms resolve?</em> It says nothing about whether the resulting records are
 consumable. The agent therefore validates <strong>its own output</strong>: after each build, <code>build_and_audit</code>
@@ -1926,9 +1966,9 @@ proposer applies it automatically when handed the audit report.</p>
 <p>The prompt now carries a <strong>generated legal-predicate table</strong> for the category pairs the agent meets in
 practice, rendered at import from the installed <code>biolink-model</code> (via <code>lib.predicate_options</code>) so it
 cannot drift from the model the build validates against:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>- Gene ~ Disease -&gt; GeneToDiseaseAssociation: affects, associated_with, contributes_to
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>- SequenceVariant ~ Gene -&gt; VariantToGeneAssociation: condition_associated_with_gene, …
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>- any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>- Gene ~ Disease -&gt; GeneToDiseaseAssociation: affects, associated_with, contributes_to
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>- SequenceVariant ~ Gene -&gt; VariantToGeneAssociation: condition_associated_with_gene, …
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>- any predicate is safe for: Gene~Gene, Gene~Pathway, ChemicalEntity~Disease, …
 </code></pre></div>
 <ul>
 <li>An annotation like <code>supporting_study_size</code> or <code>sample_size</code> names study-level metadata.
@@ -1968,15 +2008,15 @@ all sections, with <code>section_coverages</code> recorded for visibility.</p>
 <code>name</code>, <code>version</code>, complete <code>rig:</code>, and artifact metadata drive every one-table audit. The agent does
 <strong>not</strong> create an aggregate graph under <code>state_dir</code>; <code>state_dir</code> remains only the checkpoint and working
 artifact directory (default <code>.tablassert/agent</code>, override with <code>--state-dir</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>project/graph.yaml                       # caller-owned aggregate graph, updated in place
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>.tablassert/agent/                       # checkpoint/artifact workspace
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  state.json                             # supervisor checkpoint (atomic)
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  configs/&lt;pmc_id&gt;.yaml                  # accepted generated table config (absolute source.local)
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial generated config
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload; stable across runs
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  builds/&lt;pmc_id&gt;/table.yaml             # temporary one-table audit input
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  builds/&lt;pmc_id&gt;/artifacts/             # &lt;graph-name&gt;_&lt;graph-version&gt;.{nodes,edges}.ndjson + RIG
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>  builds/&lt;pmc_id&gt;/.tablassert/store/      # temporary parquet cache
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>project/graph.yaml                       # caller-owned aggregate graph, updated in place
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>.tablassert/agent/                       # checkpoint/artifact workspace
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  state.json                             # supervisor checkpoint (atomic)
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  configs/&lt;pmc_id&gt;.yaml                  # accepted generated table config (absolute source.local)
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  configs/&lt;pmc_id&gt;.derived.yaml          # initial generated config
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  downloads/&lt;pmc_id&gt;/&lt;prefix&gt;/...        # fetched PMC payload; stable across runs
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  builds/&lt;pmc_id&gt;/table.yaml             # temporary one-table audit input
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>  builds/&lt;pmc_id&gt;/artifacts/             # &lt;graph-name&gt;_&lt;graph-version&gt;.{nodes,edges}.ndjson + RIG
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>  builds/&lt;pmc_id&gt;/.tablassert/store/      # temporary parquet cache
 </code></pre></div>
 <p>Only newly generated agent table configs are normalized: every section's <code>source.local</code> is written as
 an absolute local/data-lake path, and the graph's new <code>tables</code> entry is an absolute path. Existing
@@ -1991,9 +2031,9 @@ metrics. A failed rerun does not replace the prior successful config.</p>
 already present in the target graph. The temporary audit inherits the target graph's semantic metadata
 and graph identity but writes physical artifacts to an isolated per-article workspace. Build the complete
 aggregate explicitly after the agent finishes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--state-dir<span class="w"> </span>.tablassert/agent
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># inspect graph.yaml, then build every existing + generated table together</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./graph.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--state-dir<span class="w"> </span>.tablassert/agent
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># inspect graph.yaml, then build every existing + generated table together</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./graph.yaml
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Absolute paths are intentional</p>
@@ -2141,15 +2181,15 @@ run fast while the strong model does the thinking; without <code>--task-model</c
 both. <code>--gepa-threads</code> parallelizes GEPA's candidate <strong>LM forward passes</strong> only: the coverage-scoring
 builds stay serialized on the process-wide <code>_GEPA_BUILD_LOCK</code> (<code>agent.py</code>, since <code>os.chdir</code> is
 process-global), so a higher thread count does not speed up the expensive build/coverage step.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">  </span>--instructions-file<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
 </code></pre></div>
 <p><code>--dataset</code> is a YAML/JSON list of examples. Each example carries <code>table_summary</code> and
 <code>coverage_feedback</code> (the program inputs); it MAY also carry:</p>
@@ -2186,38 +2226,38 @@ PMC10766526-shaped disease x system workbook plus three configs: the improved-ag
 (multi-section, correct <code>sheet</code> + <code>row_slice</code>, <code>explode_by</code>/<code>prioritize</code> breadth, paired
 <code>effect_size</code> + <code>effect_type</code> annotations), a strictly richer reference (all three sheets), and an
 intentionally-impoverished single-section no-<code>explode_by</code> negative control that MUST fail the gate:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>uv<span class="w"> </span>run<span class="w"> </span>--extra<span class="w"> </span>qc<span class="w"> </span>--extra<span class="w"> </span>agent<span class="w"> </span>pytest<span class="w"> </span>tests/test_agent_edgecount.py<span class="w"> </span>-q
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>uv<span class="w"> </span>run<span class="w"> </span>--extra<span class="w"> </span>qc<span class="w"> </span>--extra<span class="w"> </span>agent<span class="w"> </span>pytest<span class="w"> </span>tests/test_agent_edgecount.py<span class="w"> </span>-q
 </code></pre></div>
 <p><strong>Real runbook (PMC10766526):</strong> run the agent over the downloaded payload, build one-table graphs
 for the agent config and the already-converted v12 reference config, and compare the
 <code>&lt;name&gt;_&lt;version&gt;.edges.ndjson</code> line counts from <code>rig.artifact_base_path</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># 1. Run the agent OFFLINE against a local payload (no PMC-AWS fetch)</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC10766526<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--local<span class="w"> </span><span class="nv">PMC10766526</span><span class="o">=</span>./downloads/PMC10766526
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># accepted config: .tablassert/agent/configs/PMC10766526.yaml</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># 2. Build each as a one-table graph (same fullmap, same graph name/version conventions)</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./agent_graph.yaml<span class="w">       </span><span class="c1"># tables: [.tablassert/agent/configs/PMC10766526.yaml]</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./reference_graph.yaml<span class="w">   </span><span class="c1"># tables: [./legacy/PMC10766526.v12.yaml]</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># 3. Count edges; acceptance: agent &gt;= 0.5 * reference</span>
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>wc<span class="w"> </span>-l<span class="w"> </span>&lt;agent-graph-name&gt;_&lt;version&gt;.edges.ndjson<span class="w"> </span>&lt;reference-graph-name&gt;_&lt;version&gt;.edges.ndjson
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># 1. Run the agent OFFLINE against a local payload (no PMC-AWS fetch)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC10766526<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>--local<span class="w"> </span><span class="nv">PMC10766526</span><span class="o">=</span>./downloads/PMC10766526
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># accepted config: .tablassert/agent/configs/PMC10766526.yaml</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="c1"># 2. Build each as a one-table graph (same fullmap, same graph name/version conventions)</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./agent_graph.yaml<span class="w">       </span><span class="c1"># tables: [.tablassert/agent/configs/PMC10766526.yaml]</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>-f<span class="w"> </span>./reference_graph.yaml<span class="w">   </span><span class="c1"># tables: [./legacy/PMC10766526.v12.yaml]</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="c1"># 3. Count edges; acceptance: agent &gt;= 0.5 * reference</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>wc<span class="w"> </span>-l<span class="w"> </span>&lt;agent-graph-name&gt;_&lt;version&gt;.edges.ndjson<span class="w"> </span>&lt;reference-graph-name&gt;_&lt;version&gt;.edges.ndjson
 </code></pre></div>
 <p>The same comparison is scriptable via the env-gated test: set <code>TABLASSERT_PMC_COMPARE</code> to a JSON
 array of four paths: the agent config, the reference config, the payload, and the fullmap redb.
 A JSON array (not a colon-separated string) keeps POSIX paths containing <code>:</code> and Windows
 drive-letter paths working. The <code>&lt;agent-config&gt;</code> and <code>&lt;reference-config&gt;</code> may carry relative
 <code>source.local</code> paths; both are rebuilt over <code>&lt;payload&gt;</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">TABLASSERT_PMC_COMPARE</span><span class="o">=</span><span class="s1">&#39;[&quot;.tablassert/agent/configs/PMC10766526.yaml&quot;, &quot;./legacy/PMC10766526.v12.yaml&quot;, &quot;./downloads/PMC10766526/PMC10766526.1/table.xlsx&quot;, &quot;data/fullmap.redb&quot;]&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>uv<span class="w"> </span>run<span class="w"> </span>--extra<span class="w"> </span>qc<span class="w"> </span>--extra<span class="w"> </span>agent<span class="w"> </span>pytest<span class="w"> </span>tests/test_agent_edgecount.py::test_real_pmc_comparison<span class="w"> </span>-q
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">TABLASSERT_PMC_COMPARE</span><span class="o">=</span><span class="s1">&#39;[&quot;.tablassert/agent/configs/PMC10766526.yaml&quot;, &quot;./legacy/PMC10766526.v12.yaml&quot;, &quot;./downloads/PMC10766526/PMC10766526.1/table.xlsx&quot;, &quot;data/fullmap.redb&quot;]&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>uv<span class="w"> </span>run<span class="w"> </span>--extra<span class="w"> </span>qc<span class="w"> </span>--extra<span class="w"> </span>agent<span class="w"> </span>pytest<span class="w"> </span>tests/test_agent_edgecount.py::test_real_pmc_comparison<span class="w"> </span>-q
 </code></pre></div>
 <p>Unset, that test skips with a printed reason; the offline fixture tests run regardless.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>The agent suite is <strong>fully offline</strong>: no live LLM or network. It uses a <code>FakeModel</code> smolagents stub,
 mocked/snapshotted PMC data, a tiny real redb (<code>rs.build_fullmap_db</code>), and injectable GEPA stubs.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Agent tests SKIP without the extra and PASS with it:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>agent
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/test_agent_eval.py<span class="w"> </span>tests/test_agent_supervisor.py<span class="w"> </span>tests/test_agent_assembly.py
 </code></pre></div>
 <p>Without the extra, the base suite stays green and every agent test skips via <code>pytest.importorskip</code>.</p>
 <div class="admonition tip">

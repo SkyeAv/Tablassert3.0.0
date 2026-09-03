@@ -685,6 +685,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#distill-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        distill-export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#build-fullmap" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1240,6 +1251,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#distill-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        distill-export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#build-fullmap" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1327,7 +1349,7 @@
 
 <h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
 <p>Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The <code>tablassert</code> app
-exposes <strong>five subcommands</strong>: <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>validate</code>,
+exposes <strong>six subcommands</strong>: <code>agent</code>, <code>build-fullmap</code>, <code>build-kg</code>, <code>distill-export</code>, <code>validate</code>,
 and <code>validate-kgx</code>, plus an app-level <code>--version</code> flag. Run <code>tablassert --help</code> (or <code>&lt;command&gt; --help</code>)
 for the live surface.</p>
 <h2 id="command-index">Command index<a class="headerlink" href="#command-index" title="Permanent link">&para;</a></h2>
@@ -1350,6 +1372,10 @@ for the live surface.</p>
 <tr>
 <td><a href="#build-kg"><code>build-kg</code></a></td>
 <td>Build a KGX NDJSON knowledge graph from a YAML configuration</td>
+</tr>
+<tr>
+<td><a href="#distill-export"><code>distill-export</code></a></td>
+<td>Export a recorded distillation NDJSON dataset to an on-disk Hugging Face dataset</td>
 </tr>
 <tr>
 <td><a href="#validate"><code>validate</code></a></td>
@@ -1532,6 +1558,13 @@ page lists the flags; see
 <td>Run GEPA prompt optimization and persist optimized instructions instead of running the supervisor</td>
 </tr>
 <tr>
+<td><code>--distill</code>, <code>-d</code>, <code>-dt</code></td>
+<td>bool</td>
+<td>No</td>
+<td><code>False</code></td>
+<td>Record every LLM call (agent, judge, reflexion) as ChatML NDJSON under <code>&lt;state-dir&gt;/distill/records.ndjson</code> for fine-tuning; not supported with <code>--optimize</code></td>
+</tr>
+<tr>
 <td><code>--instructions-file</code></td>
 <td>Path</td>
 <td>No</td>
@@ -1586,11 +1619,47 @@ page lists the flags; see
 (exit 2) <strong>before</strong> any model is built.</p>
 </div>
 <hr />
+<h2 id="distill-export">distill-export<a class="headerlink" href="#distill-export" title="Permanent link">&para;</a></h2>
+<p>Use this to convert a distillation dataset recorded with
+<a href="#agent"><code>agent --distill</code></a> into an on-disk Hugging Face dataset (<code>save_to_disk</code>). Requires the
+<code>[distill]</code> extra (<code>pip install "tablassert[distill]"</code>, pulls <code>datasets</code>). The raw NDJSON already
+loads directly in Unsloth Studio and via <code>datasets.load_dataset("json", ...)</code> — this export is
+only needed for <code>datasets</code>-native workflows.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tablassert<span class="w"> </span>distill-export<span class="w"> </span>--distill-dir<span class="w"> </span>.tablassert/agent/distill<span class="w"> </span>--out<span class="w"> </span>./hf-dataset
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--distill-dir</code>, <code>-dd</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>n/a</td>
+<td>Directory holding the recorded <code>*.ndjson</code> files (exit 2 when empty)</td>
+</tr>
+<tr>
+<td><code>--out</code>, <code>-o</code></td>
+<td>Path</td>
+<td>Yes</td>
+<td>n/a</td>
+<td>Destination directory for the <code>save_to_disk</code> dataset</td>
+</tr>
+</tbody>
+</table>
+<hr />
 <h2 id="build-fullmap">build-fullmap<a class="headerlink" href="#build-fullmap" title="Permanent link">&para;</a></h2>
 <p>Use this to obtain the embedded <code>fullmap.redb</code> entity-resolution database. By default it first tries
 to <strong>download a prebuilt database</strong> published for this Tablassert version; <code>--force</code> skips that and
 builds from RENCI BABEL exports instead (download class + synonym files, then build a single redb).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1647,12 +1716,12 @@ builds from RENCI BABEL exports instead (download class + synonym files, then bu
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Force a from-scratch rebuild from BABEL outputs (e.g. after a BABEL snapshot bump)</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--force<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Accelerate either download with bundled aria2c (`pip install &quot;tablassert[aria2]&quot;`; the multi-GB prebuilt is the ideal aria2 use case)</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Force a from-scratch rebuild from BABEL outputs (e.g. after a BABEL snapshot bump)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--force<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Accelerate either download with bundled aria2c (`pip install &quot;tablassert[aria2]&quot;`; the multi-GB prebuilt is the ideal aria2 use case)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
 </code></pre></div>
 <p>By default <code>build-fullmap</code> looks for a prebuilt <code>fullmap.tar.zst</code> at
 <code>https://stars.renci.org/var/babel_outputs/&lt;babel-version&gt;/fullmap/&lt;tablassert-version&gt;/</code> (the version
@@ -1669,7 +1738,7 @@ pass <code>--force</code> to rebuild.</p>
 <h2 id="build-kg">build-kg<a class="headerlink" href="#build-kg" title="Permanent link">&para;</a></h2>
 <p>Use this to build a KGX NDJSON knowledge graph (nodes, edges, and a Resource Ingest Guide) from a
 YAML configuration file.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>GRAPH-CONFIGURATION-FILE<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>GRAPH-CONFIGURATION-FILE<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>
 </code></pre></div>
 <p>The positional <code>GRAPH-CONFIGURATION-FILE</code> (also <code>--configuration-file</code>, <code>-f</code>) is a <strong>graph</strong> YAML.</p>
 <table>
@@ -1734,7 +1803,7 @@ YAML configuration file.</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>graph.yaml<span class="w"> </span>--qc<span class="w"> </span>--log
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>graph.yaml<span class="w"> </span>--qc<span class="w"> </span>--log
 </code></pre></div>
 <p>Output is written to <code>rig.artifact_base_path</code> (created when missing) as <code>{name}_{version}.nodes.ndjson</code>,
 <code>{name}_{version}.edges.ndjson</code>, and <code>{name}_{version}.RIG.yaml</code>; intermediate parquet lands in
@@ -1756,8 +1825,8 @@ Subgraphs the detail line also shows the per-section phase (<code>load</code>, <
 <p>Use this to validate a configuration against a schema without running the build, ideal for CI and
 pre-commit hooks. The required <code>--schema</code> flag selects which schema to validate against (the kind is
 no longer sniffed from the YAML).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>table
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>graph
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>-f<span class="w"> </span>CONFIGURATION-FILE<span class="w"> </span>--schema<span class="w"> </span>table
 </code></pre></div>
 <table>
 <thead>
@@ -1788,8 +1857,8 @@ no longer sniffed from the YAML).</p>
 </table>
 <p>Exits non-zero on any schema error. See <a href="../configuration/table/">Table Configuration</a> and
 <a href="../configuration/graph/">Graph Configuration</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml<span class="w"> </span>--schema<span class="w"> </span>table
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>table-config.yaml<span class="w"> </span>--schema<span class="w"> </span>table
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>tablassert<span class="w"> </span>validate<span class="w"> </span>graph.yaml<span class="w"> </span>--schema<span class="w"> </span>graph
 </code></pre></div>
 <hr />
 <h2 id="validate-kgx">validate-kgx<a class="headerlink" href="#validate-kgx" title="Permanent link">&para;</a></h2>
@@ -1798,7 +1867,7 @@ no longer sniffed from the YAML).</p>
 and edge is constructed as the Biolink Pydantic class named by its own <code>category</code>, the same classes
 <a href="https://github.com/NCATSTranslator/translator-ingests"><code>NCATSTranslator/translator-ingests</code></a> builds
 when it ingests your files.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>tablassert<span class="w"> </span>validate-kgx<span class="w"> </span>--nodes<span class="w"> </span>MY_KG_1.0.0.nodes.ndjson<span class="w"> </span>--edges<span class="w"> </span>MY_KG_1.0.0.edges.ndjson
 </code></pre></div>
 <table>
 <thead>
@@ -1836,10 +1905,10 @@ when it ingests your files.</p>
 </table>
 <p>Failures are grouped by field and error type, so a systematic modelling problem shows up as one line
 rather than a million:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>biolink-model 4.4.4
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>nodes: 424141/424141 valid (0 failures)
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>edges: 2000085/2000085 valid (0 failures)
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>KGX output is Biolink-compliant.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>biolink-model 4.4.4
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>nodes: 424141/424141 valid (0 failures)
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>edges: 2000085/2000085 valid (0 failures)
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>KGX output is Biolink-compliant.
 </code></pre></div>
 <p>Exits non-zero when any record fails, so it can gate a release in CI. A missing or misspelled path is
 reported as <code>file not found</code> and also exits non-zero: a file that was never read must never count as
@@ -1850,7 +1919,7 @@ so they are counted separately as <em>pending</em> rather than treated as defect
 from the installed package, so a field leaves it the moment a <code>biolink-model</code> release declares
 it, as <code>effect_size</code> / <code>effect_type</code> did when 4.4.4 shipped
 <a href="https://github.com/biolink/biolink-model/pull/1774">#1774</a>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>edges: 1200000/2000085 valid (800085 failures; 800085 pending biolink-model support)
 </code></pre></div>
 <p>The strict count is what <code>ok</code> and the exit code use; the pending count is what
 <a href="#agent"><code>tablassert agent</code></a> optimizes against, so a deliberate gap never reads as a modelling error.</p>
