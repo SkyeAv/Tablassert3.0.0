@@ -1646,6 +1646,58 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
     assert "PMID:123" not in nodes
 
 
+def test_compile_graph_no_original_drops_original_columns(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
+    """compile_graph drops ``original_*`` edge columns only when ``no_original`` is set."""
+
+    def write_subgraph(p: Path) -> None:
+        pl.DataFrame(
+            {
+                "subject": ["A"],
+                "subject_name": ["Alpha"],
+                "subject_category": ["gene"],
+                "subject_taxon": [None],
+                "subject_source": [None],
+                "subject_source_version": [None],
+                "subject_pre_resolution": ["A"],
+                "original_subject": ["ALPHA"],
+                "object": ["X"],
+                "object_name": ["Xray"],
+                "object_category": ["disease"],
+                "object_pre_resolution": ["X"],
+                "original_object": ["X-RAY"],
+                "predicate": ["biolink:related_to"],
+                "knowledge_level": ["knowledge_assertion"],
+                "agent_type": ["manual_agent"],
+                "primary_knowledge_source": ["infores:no-orig-kg"],
+                "sources": [
+                    [
+                        {
+                            "resource_id": "infores:no-orig-kg",
+                            "resource_role": "primary_knowledge_source",
+                            "source_record_urls": ["https://example.org/no-orig.tsv"],
+                        }
+                    ]
+                ],
+            }
+        ).write_parquet(p)
+
+    monkeypatch.chdir(tmp_path)
+    default_sub: Path = tmp_path / "default.parquet"
+    write_subgraph(default_sub)
+    lib.compile_graph([default_sub], "orig", "1.0.0", rig_factory(tmp_path, infores_id="infores:no-orig-kg"))
+    default_edges: str = (tmp_path / "orig_1.0.0.edges.ndjson").read_text()
+    assert '"original_subject":"ALPHA"' in default_edges
+    assert '"original_object":"X-RAY"' in default_edges
+
+    stripped_sub: Path = tmp_path / "stripped.parquet"
+    write_subgraph(stripped_sub)
+    lib.compile_graph([stripped_sub], "stripped", "1.0.0", rig_factory(tmp_path, infores_id="infores:no-orig-kg"), no_original=True)
+    stripped_edges: str = (tmp_path / "stripped_1.0.0.edges.ndjson").read_text()
+    assert "original_" not in stripped_edges
+    assert '"subject":"A"' in stripped_edges
+    assert '"object":"X"' in stripped_edges
+
+
 def test_dedup_stream_nodes(tmp_path: Path) -> None:
     """dedup_stream deduplicates and strips null like values from node streams."""
     p_in: Path = tmp_path / "nodes.ndjson.tmp"

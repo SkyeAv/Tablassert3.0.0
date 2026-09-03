@@ -374,11 +374,13 @@ def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.M
 
     monkeypatch.setattr(cli, "run", _fake_run)
     monkeypatch.setattr(extras, "missing", lambda extra: ())
-    build_kg(config, release=True, qc=True, log=True, head=True, threads=8)
-    assert calls == [(7, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True, "threads": 8})]
+    build_kg(config, release=True, qc=True, log=True, head=True, no_original=True, threads=8)
+    assert calls == [(7, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True, "no_original": True, "threads": 8})]
     calls.clear()
     build_kg(config)
-    assert calls == [(6, cli.build_pipeline, config, {"release": False, "qc": False, "log": False, "head": False, "threads": None})]
+    assert calls == [
+        (6, cli.build_pipeline, config, {"release": False, "qc": False, "log": False, "head": False, "no_original": False, "threads": None})
+    ]
 
 
 @pytest.mark.parametrize("bad_threads", [0, -1, -8])
@@ -556,6 +558,10 @@ def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
     # reads the cluster as ``-t c`` and rejects the non-integer value instead of the option.
     with pytest.raises(CoercionError):
         parse(["build-kg", str(config), "-tc"])
+    # --no-original / -no bind the no_original flag.
+    assert parse(["build-kg", str(config), "--no-original"])["no_original"] is True
+    assert parse(["build-kg", str(config), "-no"])["no_original"] is True
+    assert parse(["build-kg", str(config)]).get("no_original", False) is False
 
 
 def test_build_fullmap_pipeline_reports_download_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
