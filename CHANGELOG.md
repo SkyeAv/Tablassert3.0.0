@@ -2,9 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 16.3.0 - 2026-09-03
 
-### Removed
+### Added
+- **`loguru` is now an optional `[log]` extra with a stdlib-backed fallback.** Removing it from core dependencies makes base installs lighter while preserving logging: `tablassert.log` keeps the same `log/tablassert.log` destination and brace-style category/sink API without loguru, and `pip install "tablassert[log]"` restores rotation and enqueue support; CI, setup instructions, and installation docs now install the extra when they need full logging. ([#129](https://github.com/SkyeAv/Tablassert/pull/129))
+
+### Performance
+- **PMC OA fetches no longer download redundant `.txt` main-text copies.** The agent reads JATS `.xml`/`.nxml` for article context, so `.txt` objects duplicated data and consumed bandwidth; `MAIN_TEXT_EXTENSIONS` now rejects them while local `.txt` payload rendering remains available. ([#127](https://github.com/SkyeAv/Tablassert/pull/127))
+
+### Changed
 - **`pdfminer.six` is no longer an `[agent]` dependency, and article PDFs are never downloaded.** The `pmc_article_context` `.pdf` branch was unreachable: the supervisor only ever selects `.xml`/`.nxml` main text, and every `pmc-oa-opendata` version ships JATS `.xml` (verified against the live bucket, including the scanned Historical OCR backfile), so a PDF-only main text cannot occur. `_extract_pdf_text` and the `.pdf` excerpt branch are gone; `.pdf` left `MAIN_TEXT_EXTENSIONS`, so fetches no longer download the article PDF (typically the largest file in a version payload). ([#128](https://github.com/SkyeAv/Tablassert/pull/128))
 
 ## 16.2.0 - 2026-09-03
