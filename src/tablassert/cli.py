@@ -265,6 +265,7 @@ def build_graph_pipeline(
         no_original=no_original,
         uuid_fields=g.uuid_fields,
         uuid_domain=g.uuid_namespace,
+        uuid_on_collision=g.uuid_on_collision,
     )
 
     # Stage 7/7 (only with --qc): assert over the final NDJSON files.

@@ -1578,7 +1578,7 @@ def upstream_resource_ids(repo: Repositories) -> list[str]:
     return [InformationResources.PUBMED.value]
 
 
-def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fields: list[str] | None = None) -> None:
+def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fields: list[str] | None = None, on_collision: str = "error") -> None:
     """Remove null values from and deduplicate an NDJSON stream.
 
     Args:
@@ -1588,12 +1588,17 @@ def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fi
             Ignored for nodes, whose ids are CURIEs rather than derived hashes.
         uuid_fields: Optional edge fields that constitute edge identity
             (``Graph.uuid_fields``). ``None`` hashes the whole record.
+        on_collision: ``error`` aborts on two different edges deriving one id;
+            ``merge`` folds them into one edge (``Graph.uuid_on_collision``).
 
     Notes:
         Also adds UUIDs to edges. Edges deduplicate on their derived id, so the
         output can never carry the same id twice: an exact repeat is collapsed,
         while two genuinely different edges deriving one id abort the build with
-        ``uuid-fields-not-a-key`` rather than shipping a duplicate.
+        ``uuid-fields-not-a-key`` rather than shipping a duplicate -- unless
+        ``on_collision="merge"``, which unions their list fields (sorted, so the
+        output is merge-order independent), keeps the first value of conflicting
+        scalars, and buffers one full record per unique id until end-of-stream.
 
     Returns:
         ``None``; writes the deduplicated stream alongside ``p_in`` with no
@@ -1604,7 +1609,13 @@ def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fi
     if p_out.is_file():
         p_out.unlink()
 
-    rs.dedup_ndjson(p_in, p_out, is_edges, domain, uuid_fields)
+    merged, scalar_conflicts = rs.dedup_ndjson(p_in, p_out, is_edges, domain, uuid_fields, on_collision)
+    if merged:
+        logger.warning(
+            "uuid_on_collision=merge folded {merged} divergent edge records into their first-seen edges; {conflicts} conflicting scalar fields kept the first value",
+            merged=merged,
+            conflicts=scalar_conflicts,
+        )
 
     p_in.unlink()
 
@@ -1762,6 +1773,7 @@ def _write_ndjson(
     on_phase: Callable[[str], None] | None = None,
     domain: str = "TABLASSERT",
     uuid_fields: list[str] | None = None,
+    on_collision: str = "error",
 ) -> None:
     """Write, dedup, and RIG the KGX NDJSON outputs.
 
@@ -1790,6 +1802,8 @@ def _write_ndjson(
             boundary, used to drive progress UX.
         domain: UUID namespace for derived edge ids (``Graph.uuid_namespace``).
         uuid_fields: Optional edge identity fields (``Graph.uuid_fields``).
+        on_collision: Collision policy for divergent same-id edges
+            (``Graph.uuid_on_collision``).
     """
     # Phase: write-nodes. Collection point: appending to output files.
     if on_phase is not None:
@@ -1810,7 +1824,7 @@ def _write_ndjson(
     # Phase: dedup.
     if on_phase is not None:
         on_phase("dedup")
-    dedup_stream(edges_tmp, is_edges=True, domain=domain, uuid_fields=uuid_fields)
+    dedup_stream(edges_tmp, is_edges=True, domain=domain, uuid_fields=uuid_fields, on_collision=on_collision)
     # The deduper hashes the record WITH the literal `{edge_id}` placeholder still
     # in place, so edge ids stay deterministic regardless of this resolution pass.
     _resolve_edge_id_placeholders(edges_tmp.with_suffix(""))
@@ -1834,6 +1848,7 @@ def compile_graph(
     no_original: bool = False,
     uuid_fields: list[str] | None = None,
     uuid_domain: str | None = None,
+    uuid_on_collision: str = "error",
 ) -> None:
     """Aggregate subgraph parquets for NDJSON KGX export using a lazy scan.
 
@@ -1861,6 +1876,8 @@ def compile_graph(
             infores when ``uuid_fields`` is set -- narrowing the hash inputs
             removes the accidental cross-graph uniqueness that full-record hashing
             provided -- and to ``TABLASSERT`` otherwise.
+        uuid_on_collision: ``error`` aborts when two different edges derive one id;
+            ``merge`` folds them into one edge instead (``Graph.uuid_on_collision``).
 
     Returns:
         ``None``; writes ``<name>_<version>.nodes.ndjson``,
@@ -1871,7 +1888,8 @@ def compile_graph(
         TablassertError: With code ``rig-validation-failed`` when the
             generated RIG fails its built-in audit (nothing is then written).
         RuntimeError: Tagged ``uuid-fields-not-a-key`` when two genuinely
-            different edges derive one id under the declared ``uuid_fields``.
+            different edges derive one id under the declared ``uuid_fields``
+            and ``uuid_on_collision`` is ``error``.
     """
     rig_cfg: RIGConfig = rig if isinstance(rig, RIGConfig) else RIGConfig.model_validate(rig)
     out_dir: Path = Path(rig_cfg.artifact_base_path)
@@ -1891,7 +1909,7 @@ def compile_graph(
     subnodes: list[pl.LazyFrame]
     subedges: list[pl.LazyFrame]
     subnodes, subedges = _collect_subframes(subgraphs, on_phase, on_subgraph, rig_cfg.source_info.infores_id, no_original)
-    _write_ndjson(subnodes, subedges, n, e, name, version, rig_cfg, section_sources, on_phase, domain, uuid_fields)
+    _write_ndjson(subnodes, subedges, n, e, name, version, rig_cfg, section_sources, on_phase, domain, uuid_fields, uuid_on_collision)
 
 
 def resolve_many(

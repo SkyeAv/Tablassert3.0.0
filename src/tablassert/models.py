@@ -1139,6 +1139,10 @@ class Graph(TablaBase):
         description="Explicit UUID namespace. Defaults to `rig.source_info.infores_id` when `uuid_fields` is set, `TABLASSERT` otherwise. Set it only when graphs must deliberately share an id space.",
         examples=["infores:multiomicskg"],
     )
+    uuid_on_collision: Literal["error", "merge"] = Field(
+        default="error",
+        description="What to do when two different edges derive one id under `uuid_fields`: `error` aborts the build with `uuid-fields-not-a-key`; `merge` folds the records into one edge (list fields unioned and sorted, scalars first-wins). Requires `uuid_fields`, and buffers one full record per unique id, which is why it is opt-in.",
+    )
 
     @model_validator(mode="after")
     def validate_uuid_fields(self: Self) -> Self:
@@ -1147,9 +1151,16 @@ class Graph(TablaBase):
         Every entry must be a real emittable edge field, or the id would silently derive
         from nothing and every edge in the graph would collide. `id` itself is rejected
         because it is the value being derived. Casing follows `Annotation.clean_annotation`
-        so `Subject` and `subject` both work and mixed-case Biolink slots survive.
+        so `Subject` and `subject` both work and mixed-case Biolink slots survive. Also
+        rejects `uuid_on_collision: merge` without `uuid_fields`: under the whole-record
+        hash no two different records can share an id, so there is nothing to merge.
         """
         if self.uuid_fields is None:
+            if self.uuid_on_collision == "merge":
+                raise TablassertValidationError(
+                    "`uuid_on_collision: merge` requires `uuid_fields`. With the whole-record hash every field is an identity field, so two different records can never derive one id and there is nothing to merge.",
+                    code="uuid-merge-without-fields",
+                )
             return self
         if not self.uuid_fields:
             raise TablassertValidationError(

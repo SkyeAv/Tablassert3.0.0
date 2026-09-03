@@ -1218,3 +1218,57 @@ def test_graph_rejects_uuid_fields_that_cannot_identify_an_edge(rig_factory: Any
         Graph.model_validate(data)
     assert "uuid-bad-fields" in str(exc_info.value)
     assert reason in str(exc_info.value)
+
+
+def test_graph_uuid_on_collision_defaults_to_error(rig_factory: Any) -> None:
+    """an unset `uuid_on_collision` keeps the abort-on-divergence behavior."""
+    graph: Graph = Graph(name="TEST", version="1.0.0", tables=[Path("./table.yaml")], fullmap=Path("./fullmap"), rig=rig_factory())
+    assert graph.uuid_on_collision == "error"
+
+
+def test_graph_uuid_on_collision_merge_is_accepted_with_uuid_fields(rig_factory: Any) -> None:
+    """`merge` opts divergent same-id edges into folding instead of aborting."""
+    graph: Graph = Graph(
+        name="TEST",
+        version="1.0.0",
+        tables=[Path("./table.yaml")],
+        fullmap=Path("./fullmap"),
+        rig=rig_factory(),
+        uuid_fields=["subject", "predicate", "object"],
+        uuid_on_collision="merge",
+    )
+    assert graph.uuid_on_collision == "merge"
+
+
+def test_graph_uuid_on_collision_merge_requires_uuid_fields(rig_factory: Any) -> None:
+    """`merge` without `uuid_fields` is rejected at config time.
+
+    Under the whole-record hash every field is an identity field, so divergent records
+    can never share an id -- a merge policy would silently never fire.
+    """
+    data: dict[str, Any] = {
+        "name": "TEST",
+        "version": "1.0.0",
+        "tables": [Path("./table.yaml")],
+        "fullmap": Path("./fullmap"),
+        "rig": rig_factory(),
+        "uuid_on_collision": "merge",
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        Graph.model_validate(data)
+    assert "uuid-merge-without-fields" in str(exc_info.value)
+
+
+def test_graph_uuid_on_collision_rejects_unknown_values(rig_factory: Any) -> None:
+    """only `error` and `merge` are meaningful policies; typos fail at config time."""
+    data: dict[str, Any] = {
+        "name": "TEST",
+        "version": "1.0.0",
+        "tables": [Path("./table.yaml")],
+        "fullmap": Path("./fullmap"),
+        "rig": rig_factory(),
+        "uuid_fields": ["subject"],
+        "uuid_on_collision": "merg",
+    }
+    with pytest.raises(ValidationError):
+        Graph.model_validate(data)

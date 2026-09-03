@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 16.2.0 - Unreleased
+
+### Added
+- **`uuid_on_collision: merge` folds divergent same-id edges into one instead of aborting the build.** `uuid_fields` (16.0.0) narrows what feeds the derived edge id; when the declared set is the *resolved statement* — subject, predicate, object, qualifiers — two rows with different raw mention spellings that resolve to the same CURIE derive one id, and the build failed with `uuid-fields-not-a-key` even though the correct output is plainly a single edge with the combined evidence. `Graph` gained an optional `uuid_on_collision: Literal["error", "merge"]` (default `error`, behavior unchanged in every respect). Under `merge`, the Rust deduper buffers one full record per unique id, folds each divergent same-id record into the first — list fields (`publications`, `sources`, `source_record_urls`, `supporting_text`, `category`, `upstream_resource_ids`, `has_supporting_studies`, …) unioned, deduplicated by canonical content (object entries like `sources[]` that differ only in key order collapse), and **sorted**, so merged output is identical regardless of row order; scalar fields keep the first record's value, with each conflict counted into a build-log summary — and writes the merged edges in first-seen order at end-of-stream. That buffering is the memory trade-off the default streaming path avoids, which is why the mode is opt-in, and why it is rejected without `uuid_fields` (under the whole-record hash no two different records can share an id, so there would be nothing to merge) as `uuid-merge-without-fields`. ([#126](https://github.com/SkyeAv/Tablassert/pull/126))
+
 ## 16.1.0 - 2026-09-03
 
 ### Added
