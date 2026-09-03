@@ -260,6 +260,57 @@ def test_agent_optimize_flag_parses() -> None:
     assert bound.kwargs["optimize"] is True
 
 
+def test_agent_distill_flag_parses() -> None:
+    """``--distill`` and both shorthands parse to distill=True without executing the body."""
+    for flag in ("--distill", "-d", "-dt"):
+        fn, bound, _ = APP.parse_args(["agent", "PMC9", "--configuration-file", str(_graph_path()), flag], exit_on_error=False)
+        assert fn is agent
+        assert bound.kwargs["distill"] is True, flag
+
+
+def test_agent_distill_forwards_a_recorder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """``--distill`` builds a DistillRecorder under <state-dir>/distill and forwards it.
+
+    Why: recording is off by default (``None`` reaches the supervisor untouched); opting in must
+    thread a recorder pointing at the state dir's ``distill/records.ndjson`` so the dataset
+    accumulates in one append-only file across invocations.
+    """
+    _set_model_env(monkeypatch)
+    captured: dict[str, object] = {}
+
+    def fake_run_supervisor(pmc_ids: list[str], **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"records": {}, "metrics": {}}
+
+    monkeypatch.setattr("tablassert.agent.run_supervisor", fake_run_supervisor)
+
+    agent(["PMC1"], graph_configuration_file=_graph_path(), state_dir=tmp_path)
+    assert captured["distill_recorder"] is None  # off by default
+
+    agent(["PMC1"], graph_configuration_file=_graph_path(), state_dir=tmp_path, distill=True)
+    recorder: object = captured["distill_recorder"]
+    assert recorder is not None
+    assert recorder.path == tmp_path / "distill" / "records.ndjson"  # pyright: ignore[reportAttributeAccessIssue]
+    assert "distilling LLM calls" in capsys.readouterr().out
+
+
+def test_agent_distill_rejects_optimize(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """``--distill --optimize`` exits 2: the GEPA path bypasses the recording seam.
+
+    Why: ``--optimize`` returns before the supervisor runs and its dspy LM never routes through
+    the wrapped ``generate``, so the combination would silently record nothing.
+    """
+    _set_model_env(monkeypatch)
+    monkeypatch.setattr("tablassert.agent.run_supervisor", lambda *a, **k: pytest.fail("supervisor must not run"))
+    monkeypatch.setattr("tablassert.agent.run_gepa", lambda *a, **k: pytest.fail("GEPA must not run"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        agent(["PMC1"], graph_configuration_file=_graph_path(), distill=True, optimize=True)
+
+    assert exc_info.value.code == 2
+    assert "--distill" in capsys.readouterr().err
+
+
 def test_agent_optimize_persists_instructions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """W6: ``--optimize`` runs GEPA (stubbed) and persists optimized instructions; the supervisor is NOT run."""
     monkeypatch.setenv(ENV_MODEL_ID, "m")

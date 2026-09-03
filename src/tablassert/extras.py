@@ -35,6 +35,7 @@ EXTRA_PACKAGES: Final[dict[str, dict[str, str]]] = {
     "qc": {"sklearn": "scikit-learn", "sentence_transformers": "sentence-transformers"},
     "agent": {"smolagents": "smolagents", "litellm": "litellm"},
     "optimize": {"dspy": "dspy"},
+    "distill": {"datasets": "datasets"},
     "log": {"loguru": "loguru"},
 }
 
@@ -48,6 +49,7 @@ FEATURES: Final[dict[str, str]] = {
     "qc": "the QC audit",
     "agent": "the tablassert agent",
     "optimize": "GEPA prompt optimization (tablassert agent --optimize)",
+    "distill": "the distillation dataset export (tablassert distill-export)",
     "log": "file and progress logging",
 }
 
