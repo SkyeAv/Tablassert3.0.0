@@ -17,7 +17,7 @@ import openpyxl
 import polars as pl
 
 import tablassert.lib as lib
-from tablassert.enums import Tokens
+from tablassert.enums import Functions, Tokens
 from tablassert.ingests import from_yaml
 from tablassert.lib import Tcode
 
@@ -30,7 +30,7 @@ def test_math_op_copysign_applies_values_token() -> None:
     placeholder.
     """
     lf: pl.LazyFrame = pl.LazyFrame({"x": ["4", "9"]})
-    result: list[float] = lib.math_op(lf, "x", "copysign", [Tokens.VALUES, -1]).collect()["x"].to_list()
+    result: list[float] = lib.math_op(lf, "x", Functions.COPYSIGN, [Tokens.VALUES, -1]).collect()["x"].to_list()
     assert result == [-4.0, -9.0]
 
 
@@ -41,7 +41,7 @@ def test_math_op_pow_substitutes_literal_args() -> None:
     exercising both arms of the expression builder.
     """
     lf: pl.LazyFrame = pl.LazyFrame({"x": [2.0, 3.0]})
-    result: list[float] = lib.math_op(lf, "x", "pow", [Tokens.VALUES, 2]).collect()["x"].to_list()
+    result: list[float] = lib.math_op(lf, "x", Functions.POW, [Tokens.VALUES, 2]).collect()["x"].to_list()
     assert result == [4.0, 9.0]
 
 
