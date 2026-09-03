@@ -106,7 +106,7 @@ PMC_HTTPS_BASE: str = "https://pmc-oa-opendata.s3.amazonaws.com"
 PMC_S3API_BASE: str = "https://pmc-oa-opendata.s3.us-east-1.amazonaws.com"
 TABLE_EXTENSIONS: frozenset[str] = frozenset({".xlsx", ".xls", ".csv", ".tsv"})
 DROP_EXTENSIONS: frozenset[str] = frozenset({".jpg", ".jpeg", ".png", ".pdf", ".gif", ".docx"})
-MAIN_TEXT_EXTENSIONS: frozenset[str] = frozenset({".xml", ".nxml", ".txt", ".pdf"})  # .nxml = defensive alias; bucket uses .xml
+MAIN_TEXT_EXTENSIONS: frozenset[str] = frozenset({".xml", ".nxml", ".pdf"})  # .nxml = defensive alias; bucket uses .xml
 METADATA_EXTENSION: str = ".json"
 _ABSTRACT_HEADINGS: tuple[str, ...] = ("ABSTRACT", "Abstract", "SUMMARY", "Summary")
 
@@ -385,8 +385,9 @@ def fetch_pmc_article(pmc_id: str, outdir: Path, *, timeout: int = 120) -> list[
     Lists the version prefixes, selects the LATEST version, confirms open access via the ``.json``
     metadata (FAIL-FAST, before any large download), enumerates the version's objects, confirms a data
     table is present (FAIL-FAST, before any large download), then downloads only the useful files (main
-    text ``.xml/.nxml/.txt/.pdf``, ``.json`` metadata, and data tables) to ``outdir/<key>`` — binary
-    media (images/``.docx``) are skipped. Raises ``ValueError`` (bad id), ``FileNotFoundError`` (no OA
+    text ``.xml/.nxml/.pdf``, ``.json`` metadata, and data tables) to ``outdir/<key>`` — binary
+    media (images/``.docx``) and redundant ``.txt`` main-text copies are skipped. Raises
+    ``ValueError`` (bad id), ``FileNotFoundError`` (no OA
     versions / no files / no tables) or ``PermissionError`` (metadata readable but not CC-licensed). S3
     only; never scrapes the PMC website.
     """
