@@ -334,3 +334,132 @@ def test_demoted_edge_pct_catches_a_predicate_its_class_forbids(tmp_path: Path) 
     assert legal["edge_count"] == forbidden["edge_count"] == 1
     assert legal["demoted_edge_pct"] == 0.0  # keeps GeneToDiseaseAssociation
     assert forbidden["demoted_edge_pct"] == 1.0  # demoted to bare biolink:Association
+
+
+# --------------------------------------------------------------------------- #
+# Actionable audit feedback: predicate_advice + multivalued_suspects + head flag
+# --------------------------------------------------------------------------- #
+
+
+def test_build_and_audit_report_shape_includes_advice_fields(tmp_path: Path, redb: Path) -> None:
+    """Every report — success or failure — carries the advice fields with a uniform shape."""
+    data: Path = _write_table(tmp_path, "brca1\tmapk1\n")
+    ok = build_and_audit(_yaml(_section_config(data)), fullmap=redb, workdir=tmp_path)
+    assert ok["ok"] is True
+    assert ok["predicate_advice"] == []  # nothing demoted -> no advice
+    assert ok["multivalued_suspects"] == []  # nothing unresolved -> no suspects
+    assert ok["head"] is False
+
+    bad = build_and_audit("::: not yaml", fullmap=redb, workdir=tmp_path)
+    assert bad["ok"] is False
+    assert bad["predicate_advice"] == []
+    assert bad["multivalued_suspects"] == []
+    assert bad["head"] is False
+
+
+def test_build_and_audit_head_build_is_flagged(tmp_path: Path, redb: Path) -> None:
+    """A head build is marked so its sampled edge_count is never compared against a full build's."""
+    data: Path = _write_table(tmp_path, "brca1\tmapk1\n" * 10)
+    result = build_and_audit(_yaml(_section_config(data)), fullmap=redb, workdir=tmp_path, head=True)
+    assert result["ok"] is True
+    assert result["head"] is True
+
+
+def test_predicate_advice_names_the_legal_fix(tmp_path: Path) -> None:
+    """End to end: a forbidden predicate yields predicate_advice naming the legal predicates.
+
+    The same demotion as ``test_demoted_edge_pct_catches_a_predicate_its_class_forbids``, asserting
+    the ACTIONABLE half: which predicate was demoted, for which category pair, and what is legal.
+    """
+    fullmap: Path = _gene_disease_redb(tmp_path / "fullmap")
+    data: Path = _write_table(tmp_path, "brca1\tlung cancer\n")
+    config: dict[str, Any] = _section_config(data)
+    config["statement"]["predicate"] = "gene_associated_with_condition"  # forbidden on GeneToDiseaseAssociation
+
+    result = build_and_audit(_yaml(config), fullmap=fullmap, workdir=tmp_path)
+
+    assert result["ok"] is True
+    assert result["demoted_edge_pct"] == 1.0
+    advice = result["predicate_advice"]
+    assert isinstance(advice, list)
+    assert len(advice) == 1
+    entry = advice[0]
+    assert entry["predicate"] == "gene_associated_with_condition"
+    assert entry["subject_category"] == "Gene"
+    assert entry["object_category"] == "Disease"
+    assert entry["association"] == "GeneToDiseaseAssociation"
+    assert entry["legal_predicates"] == ["affects", "associated_with", "contributes_to"]
+    assert entry["edges"] == 1
+
+    # A legal predicate yields no advice.
+    legal = build_and_audit(_yaml(_section_config(data)), fullmap=fullmap, workdir=tmp_path / "legal")
+    assert legal["demoted_edge_pct"] == 0.0
+    assert legal["predicate_advice"] == []
+
+
+def test_multivalued_suspects_flags_joined_unresolved_terms(tmp_path: Path, redb: Path) -> None:
+    """A subject column of joined cells maps as unusable blobs; the audit names the explode_by fix."""
+    data: Path = _write_table(tmp_path, "brca1;mapk1\tmapk1\nmapk1;brca1\tbrca1\n")
+    result = build_and_audit(_yaml(_section_config(data)), fullmap=redb, workdir=tmp_path)
+
+    assert result["ok"] is True
+    suspects = result["multivalued_suspects"]
+    assert isinstance(suspects, list)
+    assert len(suspects) == 1
+    suspect = suspects[0]
+    assert suspect["column"] == "subject"
+    assert suspect["separator"] == ";"
+    assert suspect["count"] == 2
+    assert "explode_by" in suspect["hint"]
+
+
+def test_multivalued_suspects_skips_exploded_columns(tmp_path: Path, redb: Path) -> None:
+    """No suspect when the encoding already explodes: the join resolves per-entity."""
+    data: Path = _write_table(tmp_path, "brca1;mapk1\tmapk1\nmapk1;brca1\tbrca1\n")
+    cfg: dict[str, Any] = _section_config(data)
+    cfg["statement"]["subject"]["explode_by"] = ";"
+    result = build_and_audit(_yaml(cfg), fullmap=redb, workdir=tmp_path)
+    assert result["ok"] is True
+    assert result["coverage_pct"] == 1.0  # the join now resolves per-entity
+    assert result["multivalued_suspects"] == []
+    assert result["edge_count"] == 4  # 2 rows x 2 genes each
+
+
+def test_predicate_advice_unit_synthetic_ndjson(tmp_path: Path) -> None:
+    """_predicate_advice reads demoted edges + node categories directly, never raises on gaps."""
+    from tablassert.agent import _predicate_advice
+
+    nodes: Path = _write_jsonl(
+        tmp_path / "nodes.ndjson", [{"id": "HGNC:1100", "category": ["biolink:Gene"]}, {"id": "MONDO:0008903", "category": ["biolink:Disease"]}]
+    )
+    edges: Path = _write_jsonl(
+        tmp_path / "edges.ndjson",
+        [
+            {
+                "subject": "HGNC:1100",
+                "predicate": "biolink:gene_associated_with_condition",
+                "object": "MONDO:0008903",
+                "category": ["biolink:Association"],
+            },
+            {
+                "subject": "HGNC:1100",
+                "predicate": "biolink:associated_with",
+                "object": "MONDO:0008903",
+                "category": ["biolink:GeneToDiseaseAssociation"],
+            },
+        ],
+    )
+    advice = _predicate_advice(nodes, edges)
+    assert len(advice) == 1
+    assert advice[0]["predicate"] == "gene_associated_with_condition"
+    legal_predicates = advice[0]["legal_predicates"]
+    assert isinstance(legal_predicates, list)
+    assert "affects" in legal_predicates
+
+    # Missing artifacts and unknown node ids degrade to no advice, never an error.
+    assert _predicate_advice(tmp_path / "absent.nodes", tmp_path / "absent.edges") == []
+    orphan_edges: Path = _write_jsonl(
+        tmp_path / "orphan.edges.ndjson",
+        [{"subject": "X:1", "predicate": "biolink:related_to", "object": "Y:2", "category": ["biolink:Association"]}],
+    )
+    assert _predicate_advice(nodes, orphan_edges) == []

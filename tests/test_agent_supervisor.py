@@ -490,7 +490,7 @@ def test_supervisor_breaks_after_rejected_edit(tmp_path: Path, fullmap_db: Path,
             "unresolved": ["g__x"],
         },
     )
-    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "proposed edit"))
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep, audit=None: (good_yaml, "proposed edit"))
 
     result: dict[str, Any] = run_supervisor(
         ["PMC1"],
@@ -545,7 +545,7 @@ def test_supervisor_built_unmeasured_is_non_failure(tmp_path: Path, fullmap_db: 
 
     monkeypatch.setattr(agent_mod, "build_and_audit", fake_build)
     monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []})
-    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "no safe edit"))
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep, audit=None: (good_yaml, "no safe edit"))
 
     result: dict[str, Any] = run_supervisor(
         ["PMC1"],
@@ -595,7 +595,7 @@ def test_supervisor_reruns_built_unmeasured(tmp_path: Path, fullmap_db: Path, mo
         },
     )
     monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.0, "measured": False, "per_column": {}, "unresolved": []})
-    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep: (good_yaml, "no safe edit"))
+    monkeypatch.setattr(agent_mod, "propose_config_edit", lambda cfg, rep, audit=None: (good_yaml, "no safe edit"))
 
     def factory() -> object:
         return make_fake_model(final_yaml=good_yaml)
@@ -683,7 +683,7 @@ def test_supervisor_tier2_reflexion_on_stall(tmp_path: Path, fullmap_db: Path, m
     _patch_fetch(monkeypatch, table)
     first_yaml: str = yaml.safe_dump(_column_cfg(table))
 
-    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [])  # tier 1 stalls
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep, audit=None: [])  # tier 1 stalls
     # Builds: initial 0.5, then the tier-2 head + full builds both 1.0 (the reflexion fix).
     _patch_build_sequence(monkeypatch, [0.5, 1.0, 1.0])
 
@@ -731,7 +731,7 @@ def test_supervisor_improve_rejects_unconfirmed_full_build(
     _patch_fetch(monkeypatch, table)
     good_yaml: str = yaml.safe_dump(_column_cfg(table))
 
-    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [(good_yaml, "edit")])
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep, audit=None: [(good_yaml, "edit")])
     monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.3, "measured": True, "per_column": {}, "unresolved": []})
 
     base: dict[str, Any] = {
@@ -795,7 +795,7 @@ def test_supervisor_tier2_rejects_unconfirmed_full_build(tmp_path: Path, fullmap
     _patch_fetch(monkeypatch, table)
     good_yaml: str = yaml.safe_dump(_column_cfg(table))
 
-    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [])  # tier 1 stalls
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep, audit=None: [])  # tier 1 stalls
     monkeypatch.setattr(agent_mod, "llm_propose_config_edit", lambda cfg, rep, task, model=None: good_yaml)  # tier 2 proposes
     monkeypatch.setattr(agent_mod, "map_coverage", lambda *a, **k: {"overall": 0.3, "measured": True, "per_column": {}, "unresolved": []})
     _patch_build_sequence(monkeypatch, [0.3, 0.8, 0.2])  # initial 0.3, tier-2 head 0.8, tier-2 full 0.2 (regresses)
@@ -936,7 +936,7 @@ def test_supervisor_loop_iterates_while_improving(tmp_path: Path, fullmap_db: Pa
     _patch_fetch(monkeypatch, table)
     good_yaml: str = yaml.safe_dump(_column_cfg(table))
 
-    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep: [(good_yaml, "edit")])
+    monkeypatch.setattr(agent_mod, "propose_config_candidates", lambda cfg, rep, audit=None: [(good_yaml, "edit")])
     coverages: list[float] = [0.2, 0.5, 0.5, 0.9, 0.9]  # initial, then (head, full) per accepted iter
     idx: dict[str, int] = {"i": 0}
 

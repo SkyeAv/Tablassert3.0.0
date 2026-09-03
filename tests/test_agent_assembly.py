@@ -247,3 +247,63 @@ def test_instructions_do_not_recommend_a_class_forbidden_predicate() -> None:
     legal = predicate_options("Gene", "Disease")
     assert legal is not None
     assert f"biolink:{match.group(1)}" in legal
+
+
+def test_instructions_carry_detail_first_hardening() -> None:
+    """Regression guard for the detail-first hardening: the prompt teaches the four struggle knobs.
+
+    (a) goals are ordered breadth+detail FIRST and efficiency LAST; (b) the REGEX COOKBOOK teaches
+    Rust-regex semantics (no backreferences/lookarounds) and single-quoted YAML patterns; (c)
+    qualifiers get POSITIVE guidance (direction/aspect, nullable) not only bans; (d) predicate
+    specificity is an explicit rule with predicate_advice named as the fix; (e) exemplar (d)
+    demonstrates explode_by + a qualifier + regex + the statistical pair.
+    """
+    # (a) detail-first goal ordering
+    assert "BREADTH + DETAIL" in INSTRUCTIONS
+    assert "efficiency is scored LAST" in INSTRUCTIONS
+    # (b) regex cookbook
+    assert "# REGEX COOKBOOK" in INSTRUCTIONS
+    assert "NO backreferences" in INSTRUCTIONS
+    assert "NO lookarounds" in INSTRUCTIONS
+    assert "SINGLE quotes" in INSTRUCTIONS
+    # (c) positive qualifier guidance
+    assert "object_direction_qualifier" in INSTRUCTIONS
+    assert "object_aspect_qualifier" in INSTRUCTIONS
+    assert "nullable: true" in INSTRUCTIONS
+    assert "qualified_predicate: biolink:causes" in INSTRUCTIONS
+    # (d) predicate specificity + actionable audit feedback
+    assert "MOST-SPECIFIC predicate" in INSTRUCTIONS
+    assert "predicate_advice" in INSTRUCTIONS
+    assert "multivalued_suspects" in INSTRUCTIONS
+    # (e) the rich exemplar (bounded to its own block, before the next `## ` section)
+    start: int = INSTRUCTIONS.index("# (d) RICH")
+    exemplar_d: str = INSTRUCTIONS[start : INSTRUCTIONS.index("\n## ", start)]
+    assert 'explode_by: ";"' in exemplar_d
+    assert "object_direction_qualifier" in exemplar_d
+    assert "regex:" in exemplar_d
+    assert "effect_size" in exemplar_d
+    assert "effect_type" in exemplar_d
+
+
+def test_instructions_exemplar_d_is_schema_valid() -> None:
+    """Exemplar (d) is not decorative: it must validate against the Section schema it teaches."""
+    import re
+
+    from tablassert.agent import table_config_error
+
+    # The exemplar runs from its comment header to the next `## ` section of the prompt.
+    start: int = INSTRUCTIONS.index("# (d) RICH")
+    end: int = INSTRUCTIONS.index("\n## ", start)
+    exemplar_d: str = INSTRUCTIONS[start:end]
+    # The exemplar body starts at the first `source:` line; comment lines (# ...) are prose.
+    body: str = "\n".join(line for line in exemplar_d.splitlines() if not line.startswith("#"))
+    body = body[body.index("source:") :]
+    assert table_config_error(body) is None
+    # And its predicate must be legal for its gene~disease pair (same guard as exemplar (a)).
+    from tablassert.lib import predicate_options
+
+    match = re.search(r"predicate:\s*(\w+)", body)
+    assert match is not None
+    legal = predicate_options("Gene", "Disease")
+    assert legal is not None
+    assert f"biolink:{match.group(1)}" in legal
