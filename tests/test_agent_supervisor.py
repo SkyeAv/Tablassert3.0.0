@@ -19,8 +19,8 @@ from typing import Any
 import pytest
 import yaml
 
-from tablassert import rs
-from tablassert.agent import ConfigRecord, SupervisorState, load_state, make_fake_model, run_supervisor, save_state
+from tablassert import distill, rs
+from tablassert.agent import ConfigRecord, SupervisorState, distill_dir, load_state, make_fake_model, run_supervisor, save_state
 
 pytest.importorskip("smolagents")
 
@@ -136,6 +136,42 @@ def test_supervisor_happy_path_mapped(tmp_path: Path, fullmap_db: Path, monkeypa
     reloaded: SupervisorState | None = load_state(state_dir)
     assert reloaded is not None
     assert reloaded.records["PMC1"].status == "MAPPED"
+
+
+def test_supervisor_distill_records_every_generate_call(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``distill_recorder`` end-to-end: every inner-agent ``generate`` lands in the NDJSON dataset.
+
+    Why: the supervisor owns the per-article model construction, so it is the seam that tags each
+    record with its ``pmc_id`` — the field downstream filtering joins against ``state.json`` to keep
+    only MAPPED runs as training data.
+    """
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    good_yaml: str = yaml.safe_dump(_column_cfg(table), sort_keys=False)
+    state_dir: Path = tmp_path / "state"
+    recorder = distill.DistillRecorder(distill_dir(state_dir) / distill.RECORDS_FILENAME)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=good_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        workdir=tmp_path / "w",
+        min_rows=0,
+        distill_recorder=recorder,
+    )
+
+    assert result["records"]["PMC1"].status == "MAPPED"  # pyright: ignore[reportIndexIssue]
+    records: list[dict[str, object]] = [json.loads(line) for line in recorder.path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert records, "the wrapped model must record at least one call"
+    for index, record in enumerate(records):
+        assert record["purpose"] == "agent"
+        assert record["pmc_id"] == "PMC1"
+        assert record["call_index"] == index
+        assert record["messages"][-1]["role"] == "assistant"  # pyright: ignore[reportAttributeAccessIssue]
+    # The final (most complete) record's assistant turn carries the FakeModel's final-answer config.
+    assert "final_answer" in records[-1]["messages"][-1]["content"]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_supervisor_improve_loop_accepts_better(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -217,6 +217,32 @@ endpoint; neither is required):
   the threshold turns that measurement into a terminal gate. See
   [Biolink validity](#biolink-validity) below.
 
+### Distilling a fine-tuning dataset (`--distill`)
+
+`--distill` (short: `-d`, `-dt`) records **every LLM call of the run** — the inner agent's
+multi-turn conversations, plus the judge and reflexion calls when those gates are enabled — as one
+ChatML JSON object per line, appended to `<state-dir>/distill/records.ndjson`:
+
+```json
+{"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}], "purpose": "agent", "model_id": "...", "pmc_id": "PMC11708054", "call_index": 0, "timestamp": "...", "token_usage": {"input_tokens": 0, "output_tokens": 0}}
+```
+
+The file is **append-only**: every `--distill` invocation keeps adding to the same dataset, so a
+corpus accumulates over many batches. The `messages` column is plain ChatML, which Unsloth Studio
+auto-detects on JSONL upload (no column mapping needed); the metadata columns (`purpose`,
+`pmc_id`, `call_index`, `timestamp`, `token_usage`) ride along for filtering — e.g. join on
+`pmc_id` against `state.json` to keep only `MAPPED` runs, or keep each run's highest `call_index`
+for the most complete conversation. Recording is zero-dependency and never breaks a run: a failed
+write is logged, not raised. `--distill` is not supported with `--optimize` (the GEPA path
+bypasses the recording seam).
+
+To convert the NDJSON into an on-disk Hugging Face dataset, use
+[`tablassert distill-export`](cli.md#distill-export) (requires the `[distill]` extra):
+
+```bash
+tablassert distill-export --distill-dir .tablassert/agent/distill --out ./hf-dataset
+```
+
 ### Biolink validity
 
 Coverage answers *did the terms resolve?* It says nothing about whether the resulting records are

@@ -776,6 +776,7 @@ def agent(
     biolink_threshold: Annotated[float, cyclopts.Parameter(name=["--biolink-threshold"])] = 0.0,
     local: Annotated[list[str] | None, cyclopts.Parameter(name=["--local", "-l"])] = None,
     optimize: Annotated[bool, cyclopts.Parameter(name=["--optimize", "-o"], negative="")] = False,
+    distill: Annotated[bool, cyclopts.Parameter(name=["--distill", "-d", "-dt"], negative="")] = False,
     instructions_file: Annotated[Path | None, cyclopts.Parameter(name=["--instructions-file"])] = None,
     instructions_out: Annotated[Path | None, cyclopts.Parameter(name=["--instructions-out"])] = None,
     max_metric_calls: Annotated[int, cyclopts.Parameter(name=["--max-metric-calls"])] = 8,
@@ -825,6 +826,9 @@ def agent(
             one or more ``PMCid=DIR`` mappings (per-article). Fails loud (exit 2) if a DIR does not exist.
         optimize: Run GEPA prompt optimization over the model config and persist optimized instructions
             (instead of running the supervisor); use ``--instructions-out`` to choose the output file.
+        distill: Record every LLM call of the run (inner agent, judge, reflexion) as ChatML NDJSON
+            under ``<state-dir>/distill/records.ndjson`` for fine-tuning (Unsloth Studio / QLoRA).
+            Zero extra dependencies; ``tablassert distill-export`` converts it to an on-disk HF dataset.
         instructions_file: Load GEPA-optimized instructions (from a prior ``--optimize`` run) for this run.
         instructions_out: Where ``--optimize`` writes optimized instructions (default
             ``<state-dir>/optimized_instructions.yaml``).
@@ -877,6 +881,12 @@ def agent(
         print("tablassert agent: --gepa-threads must be a positive integer.", file=sys.stderr)
         raise SystemExit(2)
 
+    # --distill records the SUPERVISOR's model calls; the --optimize path returns early below and
+    # GEPA's dspy LM bypasses the recording seam, so the combination would silently record nothing.
+    if distill and optimize:
+        print("tablassert agent: --distill records supervisor LLM calls and is not supported with --optimize.", file=sys.stderr)
+        raise SystemExit(2)
+
     # Preflight the extras once the flags are known to be valid and BEFORE any model is
     # built or any article fetched. smolagents is otherwise only required per-article
     # (inside build_agent) and dspy only once GEPA starts, so an absent extra would
@@ -884,6 +894,17 @@ def agent(
     extras.require("agent", required_by="tablassert agent")
     if optimize:
         extras.require("optimize", required_by="tablassert agent --optimize")
+
+    # Distillation capture (optional, zero-dep): every LLM call is appended as one ChatML NDJSON
+    # record. The inner agent's model is wrapped per-article inside run_supervisor (which knows the
+    # pmc_id); the judge and reflexion models are wrapped at their construction sites below.
+    distill_recorder: object | None = None
+    if distill:
+        from tablassert import distill as distill_mod
+
+        distill_path: Path = agent_mod.distill_dir(state_dir) / distill_mod.RECORDS_FILENAME
+        distill_recorder = distill_mod.DistillRecorder(distill_path)
+        print(f"tablassert agent: distilling LLM calls -> {distill_path}")
 
     def build_model_factory() -> object:
         return agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend)
@@ -893,14 +914,20 @@ def agent(
     if reflexion:
 
         def _make_reflexion() -> object:
-            return agent_mod.make_prompt_callable(agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend))
+            reflexion_model: object = agent_mod.build_model(resolved_id, resolved_base, resolved_key, backend=backend)
+            if distill_recorder is not None:
+                reflexion_model = agent_mod.make_distilling_model(reflexion_model, distill_recorder, purpose="reflexion")
+            return agent_mod.make_prompt_callable(reflexion_model)
 
         reflexion_factory = _make_reflexion
 
     # Semantic judge (optional): a prompt-callable over the judge model (same api_base/api_key).
     judge: object | None = None
     if judge_model is not None:
-        judge = agent_mod.make_prompt_callable(agent_mod.build_model(judge_model, resolved_base, resolved_key, backend=backend))
+        judge_base_model: object = agent_mod.build_model(judge_model, resolved_base, resolved_key, backend=backend)
+        if distill_recorder is not None:
+            judge_base_model = agent_mod.make_distilling_model(judge_base_model, distill_recorder, purpose="judge")
+        judge = agent_mod.make_prompt_callable(judge_base_model)
 
     # Local payload (optional, W4): a DIR for all ids, or PMCid=DIR mappings; fail loud on a missing dir.
     def parse_local(specs: list[str] | None) -> dict[str, Path] | Path | None:
@@ -990,6 +1017,7 @@ def agent(
         biolink_threshold=biolink_threshold,
         local=local_payload,
         instructions=run_instructions,
+        distill_recorder=distill_recorder,
     )
 
     metrics_raw: object = result.get("metrics")
@@ -1010,6 +1038,38 @@ def agent(
         f"tablassert agent: processed {len(records)} article(s) ({mapped} mapped, {skipped} skipped); "
         f"mean best coverage {mean_best:.3f}; {total_tokens} tokens over {total_steps} steps."
     )
+
+
+@APP.command(name="distill-export")
+def distill_export(
+    *, distill_dir: Annotated[Path, cyclopts.Parameter(name=["--distill-dir", "-dd"])], out: Annotated[Path, cyclopts.Parameter(name=["--out", "-o"])]
+) -> None:
+    """Export a recorded distillation NDJSON dataset to an on-disk Hugging Face dataset.
+
+    Loads every ``*.ndjson`` under ``--distill-dir`` (the ChatML records written by ``tablassert
+    agent --distill``) with ``datasets.load_dataset("json", ...)`` and writes the result with
+    ``save_to_disk`` to ``--out``. Requires the ``distill`` extra (``pip install
+    "tablassert[distill]"``). The raw NDJSON also loads directly in Unsloth Studio — this export
+    is only needed for ``datasets``-native workflows.
+
+    Args:
+        distill_dir: Directory holding the recorded ``*.ndjson`` files (default output of
+            ``tablassert agent --distill`` is ``<state-dir>/distill``).
+        out: Destination directory for the ``save_to_disk`` dataset.
+    """
+    # Input validation precedes the extras preflight: a missing directory is the user's typo, an
+    # absent extra is their environment, and the typo is the faster loop to close first.
+    files: list[Path] = sorted(distill_dir.glob("*.ndjson"))
+    if not files:
+        print(f"tablassert distill-export: no .ndjson records under {distill_dir} — run tablassert agent --distill first.", file=sys.stderr)
+        raise SystemExit(2)
+    extras.require("distill", required_by="tablassert distill-export")
+    from datasets import load_dataset  # local import keeps the CLI import-light  # pyright: ignore[reportMissingImports]
+
+    dataset: object = load_dataset("json", data_files=[str(path) for path in files], split="train")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    dataset.save_to_disk(str(out))  # pyright: ignore[reportAttributeAccessIssue]
+    print(f"tablassert distill-export: {len(dataset)} record(s) from {len(files)} file(s) -> {out}")  # pyright: ignore[reportArgumentType]
 
 
 class PrebuiltFullmapUnavailable(Exception):

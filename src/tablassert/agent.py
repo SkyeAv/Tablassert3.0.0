@@ -3232,6 +3232,56 @@ def make_fake_model(responses: list[str] | None = None, final_yaml: str | None =
     return FakeModel()
 
 
+def make_distilling_model(model: object, recorder: object, *, purpose: str, meta: dict[str, object] | None = None) -> object:
+    """Wrap a smolagents model so every ``generate`` call is recorded by ``recorder``.
+
+    Returns a ``Model`` subclass (same shape as :func:`make_fake_model`) that delegates
+    ``generate`` to the wrapped model and appends one ChatML NDJSON record per call, tagged with
+    ``purpose`` (``"agent"``/``"judge"``/``"reflexion"``) plus ``meta`` (e.g. ``pmc_id``). The
+    wrapped model's own ``model_id`` is added to the record when recoverable. Attribute access
+    falls through to the wrapped model (``__getattr__``) so smolagents sees the real model's
+    metadata. Recording failures never propagate — the response is returned untouched.
+    """
+    _require("smolagents")
+    from smolagents.models import ChatMessage, Model  # local import keeps module import lazy  # pyright: ignore[reportMissingImports]
+
+    extra_meta: dict[str, object] = dict(meta or {})
+    if "model_id" not in extra_meta:
+        model_id: object = getattr(model, "model_id", None)
+        if model_id is not None:
+            extra_meta["model_id"] = str(model_id)
+
+    class DistillingModel(Model):  # pyright: ignore[reportMissingImports]
+        def __init__(self) -> None:
+            with contextlib.suppress(Exception):
+                super().__init__()
+            self._wrapped: object = model
+
+        def __getattr__(self, name: str) -> object:
+            # Only fires for attributes Model does not define; delegates model_id & friends.
+            return getattr(self._wrapped, name)
+
+        def generate(
+            self,
+            messages: list[ChatMessage],
+            stop_sequences: list[str] | None = None,
+            response_format: dict[str, str] | None = None,
+            tools_to_call_from: object = None,
+            **kwargs: Any,
+        ) -> ChatMessage:
+            response: ChatMessage = cast(
+                ChatMessage,
+                self._wrapped.generate(  # pyright: ignore[reportAttributeAccessIssue]
+                    messages, stop_sequences=stop_sequences, response_format=response_format, tools_to_call_from=tools_to_call_from, **kwargs
+                ),
+            )
+            with contextlib.suppress(Exception):  # recording must never break the run
+                recorder.record(purpose, messages, response, **extra_meta)  # pyright: ignore[reportAttributeAccessIssue]
+            return response
+
+    return DistillingModel()
+
+
 # --------------------------------------------------------------------------- #
 # US-009: outer DETERMINISTIC supervisor + monotonic improve loop + checkpoint/resume
 #
@@ -3433,6 +3483,11 @@ def pmc_build_dir(root: Path, pmc_id: str) -> Path:
     return root / "builds" / pmc_id
 
 
+def distill_dir(root: Path) -> Path:
+    """Return ``<root>/distill`` (the distillation dataset dir); pure, no mkdir."""
+    return root / "distill"
+
+
 @dataclass
 class ConfigRecord:
     """Per-PMC supervisor record: status, derived/best config paths, and coverage history.
@@ -3616,6 +3671,7 @@ def run_supervisor(
     instructions: str | None = None,
     derive_mode: DeriveMode = "full",
     min_rows: int = MIN_TABLE_ROWS,
+    distill_recorder: object | None = None,
 ) -> dict[str, object]:
     """Run the deterministic supervisor over a batch of PMC ids with checkpoint/resume.
 
@@ -3652,7 +3708,9 @@ def run_supervisor(
     The whole per-pmc body is wrapped in try/except: ANY failure marks that record SKIPPED with the
     reason and advances (one bad pmc never aborts the batch). ``build_model_factory`` is a zero-arg
     callable returning a configured model so tests inject a FakeModel and the real CLI keeps secrets
-    out of this signature. Returns ``{"state", "records", "metrics"}`` after a final checkpoint.
+    out of this signature. ``distill_recorder`` (optional) wraps each article's model via
+    :func:`make_distilling_model` so every LLM call is appended to the distillation NDJSON dataset.
+    Returns ``{"state", "records", "metrics"}`` after a final checkpoint.
     """
     if min_rows < 0:
         raise ValueError("min_rows must be non-negative")
@@ -3749,8 +3807,13 @@ def run_supervisor(
             article_xml: Path | None = next((path for path in files if path.suffix.lower() in {".xml", ".nxml"}), None)
 
             metrics: dict[str, object] = {}
+            model: object = build_model_factory()
+            if distill_recorder is not None:
+                # Distillation capture: wrap so every generate() call lands in the NDJSON dataset,
+                # tagged with this article's id for later filtering against state.json status.
+                model = make_distilling_model(model, distill_recorder, purpose="agent", meta={"pmc_id": pmc_id})
             agent: object = build_agent(
-                model=build_model_factory(),
+                model=model,
                 tools=make_tools(
                     graph=target_graph,
                     fullmap=effective_fullmap,

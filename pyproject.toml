@@ -95,6 +95,9 @@ agent = [
 optimize = [
     "dspy>=3.2.1",
 ]
+distill = [
+    "datasets>=3.0.0",
+]
 log = [
     "loguru>=0.7.3",
 ]

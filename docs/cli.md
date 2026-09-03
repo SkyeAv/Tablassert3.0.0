@@ -1,7 +1,7 @@
 # CLI Reference
 
 Tablassert extracts knowledge assertions from tabular data into KGX NDJSON. The `tablassert` app
-exposes **five subcommands**: `agent`, `build-fullmap`, `build-kg`, `validate`,
+exposes **six subcommands**: `agent`, `build-fullmap`, `build-kg`, `distill-export`, `validate`,
 and `validate-kgx`, plus an app-level `--version` flag. Run `tablassert --help` (or `<command> --help`)
 for the live surface.
 
@@ -12,6 +12,7 @@ for the live surface.
 | [`agent`](#agent) | Autonomously derive, build, audit, and improve KG configs from PMC articles |
 | [`build-fullmap`](#build-fullmap) | Build the embedded fullmap redb used for entity resolution |
 | [`build-kg`](#build-kg) | Build a KGX NDJSON knowledge graph from a YAML configuration |
+| [`distill-export`](#distill-export) | Export a recorded distillation NDJSON dataset to an on-disk Hugging Face dataset |
 | [`validate`](#validate) | Validate a graph or table configuration without executing it |
 | [`validate-kgx`](#validate-kgx) | Validate built KGX NDJSON against the Biolink Model |
 
@@ -68,6 +69,7 @@ page lists the flags; see
 | `--biolink-threshold` | float | No | `0.0` | Minimum Biolink pass rate of the built KGX for MAPPED; `0.0` reports the rate without gating |
 | `--local`, `-l` | list[str] | No | `None` | Local payload: one DIR for all ids, or `PMCid=DIR` mappings; skips the PMC-AWS fetch (exit 2 on a missing DIR) |
 | `--optimize`, `-o` | bool | No | `False` | Run GEPA prompt optimization and persist optimized instructions instead of running the supervisor |
+| `--distill`, `-d`, `-dt` | bool | No | `False` | Record every LLM call (agent, judge, reflexion) as ChatML NDJSON under `<state-dir>/distill/records.ndjson` for fine-tuning; not supported with `--optimize` |
 | `--instructions-file` | Path | No | `None` | Load GEPA-optimized instructions from a prior `--optimize` run |
 | `--instructions-out` | Path | No | `None` | Where `--optimize` writes optimized instructions (default `<state-dir>/optimized_instructions.yaml`) |
 | `--max-metric-calls` | int | No | `8` | GEPA metric-call budget for `--optimize` |
@@ -85,6 +87,25 @@ tablassert agent PMC11708054 -f ./graph.yaml
     Model config comes from the flags above **or** the `TABLASSERT_AGENT_*` environment variables
     (explicit flags win). Secrets are **never** hardcoded or defaulted: a missing value fails loud
     (exit 2) **before** any model is built.
+
+---
+
+## distill-export
+
+Use this to convert a distillation dataset recorded with
+[`agent --distill`](#agent) into an on-disk Hugging Face dataset (`save_to_disk`). Requires the
+`[distill]` extra (`pip install "tablassert[distill]"`, pulls `datasets`). The raw NDJSON already
+loads directly in Unsloth Studio and via `datasets.load_dataset("json", ...)` — this export is
+only needed for `datasets`-native workflows.
+
+```bash
+tablassert distill-export --distill-dir .tablassert/agent/distill --out ./hf-dataset
+```
+
+| Option | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--distill-dir`, `-dd` | Path | Yes | n/a | Directory holding the recorded `*.ndjson` files (exit 2 when empty) |
+| `--out`, `-o` | Path | Yes | n/a | Destination directory for the `save_to_disk` dataset |
 
 ---
 
