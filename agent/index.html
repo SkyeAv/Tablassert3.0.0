@@ -1839,10 +1839,19 @@ control flow over agentic decisions. For each PMC id it:</p>
    schema). The agent maps <strong>each</strong> mappable table/worksheet as its own section, <strong>one config per paper</strong>
    (see below).</li>
 <li><strong>Builds + audits</strong> in one deterministic mega-tool (<code>build_and_audit</code>: validate → build → QC → coverage
-   → <strong>Biolink validity</strong>).</li>
+   → <strong>Biolink validity</strong>). The report is <em>actionable</em>, not just a score: a nonzero <code>demoted_edge_pct</code>
+   comes with <code>predicate_advice</code> (the legal predicates for the demoted category pair), unresolved terms
+   that still contain a separator surface as <code>multivalued_suspects</code> (a missed <code>explode_by</code>), and every
+   report carries a <code>head</code> fidelity flag so sampled edge counts are never compared against full builds.</li>
 <li><strong>Improves</strong> while coverage <code>&lt; map_threshold</code> and budget remains: <code>propose_config_edit</code> → rebuild →
    <strong>accept iff no worse on coverage <em>or</em> Biolink validity and strictly better on one</strong> (monotonic:
-   regressions on either axis are rejected, so a coverage win can no longer be bought with invalid KGX).</li>
+   regressions on either axis are rejected, so a coverage win can no longer be bought with invalid KGX) —
+   and an edit that shrinks the full-build <strong>edge count</strong> by more than 25% is rejected even with a gain
+   (the detail-first objective: the biggest solid config wins). The deterministic proposer now covers
+   <strong>four</strong> knob families: NodeEncoding knobs (<code>prioritize</code>/<code>avoid</code>/<code>regex</code>/<code>remove</code>/<code>exclude_*</code>),
+   <strong><code>explode_by</code></strong> (added when unresolved terms still carry a separator), and — fed the audit report —
+   a <strong>demoted-predicate fix</strong> (the first legal predicate from <code>predicate_advice</code>); tier-2 LLM reflexion
+   may additionally change qualifiers, <code>split_by</code>, node categories, and the source.</li>
 <li><strong>Records</strong> metrics, <strong>checkpoints</strong>, and moves to the next config.</li>
 </ol>
 <p>A config that won't map after <code>--max-improve-iters</code> is marked <code>SKIPPED: &lt;reason&gt;</code> and the supervisor
@@ -1872,7 +1881,7 @@ endpoint; neither is required):</p>
 consumable. The agent therefore validates <strong>its own output</strong>: after each build, <code>build_and_audit</code>
 constructs every emitted node and edge as the Biolink Pydantic class named by its own <code>category</code>,
 the same check <a href="../cli/#validate-kgx"><code>tablassert validate-kgx</code></a> runs, and the same classes
-<code>translator-ingests</code> builds. Four fields land in the audit report:</p>
+<code>translator-ingests</code> builds. Six fields land in the audit report:</p>
 <table>
 <thead>
 <tr>
@@ -1897,6 +1906,14 @@ the same check <a href="../cli/#validate-kgx"><code>tablassert validate-kgx</cod
 <td><code>demoted_edge_pct</code></td>
 <td>Fraction of edges that fell back to bare <code>biolink:Association</code></td>
 </tr>
+<tr>
+<td><code>predicate_advice</code></td>
+<td>Per demoted (predicate, subject, object) group: the derived association class and the <strong>legal predicates</strong> — the exact fix, not just the symptom</td>
+</tr>
+<tr>
+<td><code>multivalued_suspects</code></td>
+<td>Entity columns whose unresolved terms still contain a separator (<code>;</code>, <code>\|</code>, <code>,</code>) — a missed <code>explode_by</code>, with the literal separator to declare</td>
+</tr>
 </tbody>
 </table>
 <p><strong><code>demoted_edge_pct</code> is the predicate signal.</strong> Tablassert derives an edge's association class from
@@ -1904,7 +1921,8 @@ the (subject category, object category) pair, then <code>resolve_association_cla
 that class as the predicate requires. A predicate the class forbids is <strong>never an error</strong>: it
 silently demotes the edge and discards every qualifier and evidence slot that class declared. So
 <code>gene_associated_with_condition</code> on a gene~disease table builds cleanly, maps perfectly, and produces
-<code>biolink:Association</code> edges. Nothing but this number tells you.</p>
+<code>biolink:Association</code> edges. <code>predicate_advice</code> turns that signal into a fix, and the deterministic
+proposer applies it automatically when handed the audit report.</p>
 <p>The prompt now carries a <strong>generated legal-predicate table</strong> for the category pairs the agent meets in
 practice, rendered at import from the installed <code>biolink-model</code> (via <code>lib.predicate_options</code>) so it
 cannot drift from the model the build validates against:</p>
@@ -2022,7 +2040,7 @@ another's entries and a same-PMC rerun has deterministic last-writer-wins replac
 <tr>
 <td><code>build_and_audit</code></td>
 <td>tool</td>
-<td><strong>one</strong> deterministic validate→build→QC→coverage→<strong>Biolink-validity</strong> mega-tool</td>
+<td><strong>one</strong> deterministic validate→build→QC→coverage→<strong>Biolink-validity</strong> mega-tool; the report's <code>predicate_advice</code> / <code>multivalued_suspects</code> fields make demotions and missed <code>explode_by</code>s directly actionable</td>
 </tr>
 <tr>
 <td><code>map_coverage</code></td>
@@ -2032,7 +2050,7 @@ another's entries and a same-PMC rerun has deterministic last-writer-wins replac
 <tr>
 <td><code>propose_config_edit</code></td>
 <td>tool</td>
-<td>deterministic, constrained <code>NodeEncoding</code> edits + rationale</td>
+<td>deterministic, constrained edits + rationale: <code>NodeEncoding</code> knobs, <code>explode_by</code> from separator-carrying unresolved terms, and (given the audit report) a demoted-predicate fix</td>
 </tr>
 </tbody>
 </table>
@@ -2043,6 +2061,10 @@ gate can only answer true/false and would otherwise swallow the reason.</p>
 <h2 id="prompt-engineering">Prompt engineering<a class="headerlink" href="#prompt-engineering" title="Permanent link">&para;</a></h2>
 <p>The agent's <code>instructions</code> make the techniques explicit:</p>
 <ul>
+<li><strong>Detail-first goal ordering</strong>: the goals are (1) BREADTH + DETAIL — every mappable sheet as its own
+  section, every evidence slot captured, multi-valued cells exploded, direction/aspect columns
+  qualified; (2) coverage; (3) Biolink validity / QC; (4) efficiency LAST — the prompt states plainly
+  that a mappable sheet or evidence column is never sacrificed to save a tool call.</li>
 <li><strong>ReAct, planning off</strong>: <code>CodeAgent</code> is a ReAct loop, but periodic re-planning is disabled
   (<code>planning_interval=None</code>): each planning turn is a whole extra LLM round trip carrying the full
   prompt, and the task already prescribes a fixed short workflow (derive → build → optional edit →
@@ -2051,8 +2073,22 @@ gate can only answer true/false and would otherwise swallow the reason.</p>
 <li><strong>Structured / constrained output</strong>: <code>derive_config</code> injects the Section JSON schema; a
   <code>final_answer_checks=[validate_table_config]</code> gate means the agent can only terminate with a config
   whose <strong>every section</strong> is schema-valid (multi-section configs are validated section-by-section).</li>
-<li><strong>Few-shot exemplars</strong>: the tutorial gene~disease section, the ALAMV6 organism~chemical section, and a
-  multi-section config (one config, two tables, each section its own source/url).</li>
+<li><strong>A regex cookbook</strong>: the prompt teaches the actual semantics agents get wrong — Rust-regex
+  substitutions (no backreferences, no lookarounds), single-quoted YAML so backslashes stay literal,
+  <code>regex</code> vs <code>remove</code> vs <code>exclude_regex</code>, and that CURIEs come from resolution or <code>prefix</code>/<code>suffix</code>,
+  never from capture groups.</li>
+<li><strong>Positive qualifier guidance</strong>: direction/aspect columns map to <code>object_direction_qualifier</code> /
+  <code>object_aspect_qualifier</code> (<code>method: column</code> + <code>nullable: true</code> for blanks); enum-ranged qualifiers
+  take literal tokens; <code>qualified_predicate: biolink:causes</code> is the one CURIE-taking exception;
+  <code>species_context_qualifier</code> stays banned.</li>
+<li><strong>Predicate specificity</strong>: pick the most-specific predicate the derived association class permits,
+  chosen from the generated legal-predicate table — never a generic default and never a predicate the
+  class forbids; <code>predicate_advice</code> in the audit report names the exact fix when demotion happens.</li>
+<li><strong>Few-shot exemplars</strong>: the tutorial gene~disease section, the ALAMV6 organism~chemical section, a
+  multi-section config (one config, two tables, each section its own source/url), and a <strong>rich
+  exemplar</strong> combining <code>explode_by: ";"</code>, a column qualifier, a regex strip, and the paired
+  <code>effect_size</code>/<code>effect_type</code> annotations — every exemplar's predicate is a legal, specific choice for
+  its category pair (guarded by tests).</li>
 <li><strong>Reflexion-style self-critique</strong>: <code>propose_config_edit</code> / <code>reflexion_improve</code> reflect on failing rows,
   error codes, and unresolved terms, then make a targeted, schema-valid edit.</li>
 <li><strong>Error-recovery prompting</strong>: tools return rich coded errors; the prompt directs the agent to read the
@@ -2090,7 +2126,8 @@ deterministic heuristic is used.</p>
 <li><strong>GEPA</strong>: <code>dspy.GEPA(metric=gepa_metric, candidate_selection_strategy="pareto", …)</code> optimizes the
   agent's <code>instructions</code> + tool <code>description</code>s + exemplars as a <strong>black box</strong> from textual feedback
   (<code>gepa_metric</code> returns <code>dspy.Prediction(score=weighted_quality, feedback="&lt;failing rows + error codes +
-  Biolink problems + demoted-edge fraction + wrong-call list&gt;")</code>). It is system-agnostic, Pareto-native, and needs few rollouts.</li>
+  Biolink problems + demoted-edge fraction + the legal predicates from predicate_advice + missed
+  explode_by suspects + wrong-call list&gt;")</code>). It is system-agnostic, Pareto-native, and needs few rollouts.</li>
 </ul>
 <p><strong>Reporting:</strong> <code>pareto_frontier(runs)</code> returns the <strong>non-dominated set</strong> over (quality ↑, cost ↓,
 wrong-calls ↓) and its <strong>knee</strong> (best quality per unit cost).</p>
@@ -2126,8 +2163,11 @@ process-global), so a higher thread count does not speed up the expensive build/
 </ul>
 <p><code>--max-metric-calls</code> bounds the GEPA metric budget. <code>save_optimized_instructions</code> /
 <code>load_optimized_instructions</code> persist and reload the prompt (a <code>{instructions, descriptions}</code> mapping).
-Without <code>--instructions-file</code> the built-in <code>INSTRUCTIONS</code> prompt is used. (A real optimization run needs a
-live model; the offline suite exercises this path via an injectable <code>gepa_cls</code> stub.)</p>
+Without <code>--instructions-file</code> the built-in <code>INSTRUCTIONS</code> prompt is used. The committed
+<code>examples/agent/optimized_instructions.yaml</code> is a GEPA <strong>artifact</strong> from an older seed — do not hand-edit
+it; rerun <code>--optimize</code> so GEPA starts from the current (detail-first) seed prompt instead. (A real
+optimization run needs a live model; the offline suite exercises this path via an injectable <code>gepa_cls</code>
+stub.)</p>
 <h3 id="golden-fixture">Golden fixture<a class="headerlink" href="#golden-fixture" title="Permanent link">&para;</a></h3>
 <p><code>tests/agent_fixtures/PMC11708054/</code> is an offline replay pair: the ALAMV6 reference config, a small
 <strong>synthetic</strong> source table, and a trimmed reference config (CC-BY attribution to PMC11708054; the
