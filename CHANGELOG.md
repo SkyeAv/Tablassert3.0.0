@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
 - **PyPI metadata now reflects the current Tablassert feature set.** Keywords
   identify KGX, Biolink, biomedical and tabular data, quality control, and the
   optional LLM agent; classifiers identify the Python 3-only library, Pydantic
-  2, and supported implementation targets.
+  2, and supported implementation targets. ([#132](https://github.com/SkyeAv/Tablassert/pull/132))
 
 ## 16.3.0 - 2026-09-03
 
