@@ -673,6 +673,91 @@ def read_table(source: str | Path, *, sheet: str | None = None, max_rows: int = 
     return f"{DATA_GUARDRAIL}\n{DATA_FENCE_BEGIN}\nsource: {path}\nshape: {total_rows}x{total_cols}{sheets_note}\n{body}{col_note}{row_note}\n{DATA_FENCE_END}"
 
 
+#: Separators whose statistics :func:`column_digest` reports (the explode_by/split_by candidates).
+DIGEST_SEPARATORS: tuple[str, ...] = (";", "|", ",", "/")
+#: Digest sample values are truncated to this many characters.
+DIGEST_SAMPLE_CHARS: int = 40
+#: Maximum sample values rendered per digested column.
+DIGEST_MAX_SAMPLES: int = 3
+
+
+def _column_letter(index: int) -> str:
+    """Render a zero-based column index as its Excel-style letter (0 -> A, 25 -> Z, 26 -> AA)."""
+    letters: str = ""
+    position: int = index
+    while True:
+        letters = chr(ord("A") + position % 26) + letters
+        position = position // 26 - 1
+        if position < 0:
+            return letters
+
+
+def column_digest(source: str | Path, *, sheet: str | None = None, max_scan_rows: int = 500) -> str:
+    """Render a deterministic per-column digest of a table sheet for explode_by/split_by detection.
+
+    Scans the FIRST ``max_scan_rows`` data rows of a readable csv/tsv/xlsx sheet (the SAME
+    readers :func:`read_table` uses — calamine with an openpyxl fallback for Excel; ``sheet``
+    selects a worksheet by name and is ignored for delimited files) and renders ONE fenced line
+    per column: its Excel-style letter, the row-1 header, the non-null and distinct counts within
+    the scan window, the max cell length, separator statistics ``sep[X]=<fraction>`` (fixed 3
+    decimals) for each of `;` `|` `,` `/` — the FRACTION of the column's non-null cells in the
+    scan window (the denominator, stated as ``non_null``) whose text contains ``X`` (the
+    numerator); a column with no non-null cells reports 0.000 for every separator, never a
+    division by zero — plus supplemental ``sep counts`` for separators that occur (the number of
+    cells containing the separator and the max tokens one such cell splits into), and up to 3
+    sample values each truncated to 40 chars. The scan-window limit is part of the output.
+
+    This is upfront context injection: the digest ships inside the task text so the agent can
+    detect joined multi-entity cells WITHOUT spending a read_table call. The output is wrapped in
+    ``DATA_FENCE_BEGIN``/``DATA_FENCE_END`` preceded by ``DATA_GUARDRAIL`` (spotlighting) because
+    headers, samples, and counts are derived from UNTRUSTED cells. A readable input NEVER raises:
+    a pathological column degrades to a per-column note. Raises ``ValueError`` for
+    ``max_scan_rows < 1`` or an unreadable/unsupported file and ``FileNotFoundError`` for a
+    missing path, exactly like :func:`read_table`.
+    """
+    if max_scan_rows < 1:
+        raise ValueError("max_scan_rows must be >= 1")
+    path: Path = Path(source)
+    if not path.is_file():
+        raise FileNotFoundError(f"Table not found: {source}")
+    frame: pl.DataFrame = _load_table(path, sheet).head(max_scan_rows)
+    sheet_note: str = f" sheet: {sheet}" if sheet is not None else ""
+    lines: list[str] = [
+        f"column_digest source: {path}{sheet_note} | scan_window: first {max_scan_rows} data rows | rows_scanned: {frame.height} "
+        "| per column: letter, row-1 header, non_null, distinct, max_len, seps sep[X]=<fraction of non-null cells containing X, 3 decimals>, "
+        "sep counts (supplemental: cells containing X, max tokens), samples"
+    ]
+    for index, name in enumerate(frame.columns):
+        try:
+            series: pl.Series = frame[name]
+            non_null: int = int(series.count())
+            texts: list[str] = [str(value) for value in series.drop_nulls().to_list()]
+            distinct: int = len(set(texts))
+            max_len: int = max((len(text) for text in texts), default=0)
+            seps: list[str] = []
+            sep_counts: list[str] = []
+            for sep in DIGEST_SEPARATORS:
+                containing: list[str] = [text for text in texts if sep in text]
+                # fraction denominator = non-null cells in the scan window; 0.000 when none exist (never divide by zero)
+                fraction: float = len(containing) / non_null if non_null else 0.0
+                seps.append(f"sep[{sep}]={fraction:.3f}")
+                if containing:
+                    max_tokens: int = max(text.count(sep) + 1 for text in containing)
+                    sep_counts.append(f"{sep}={len(containing)} cells, max {max_tokens} tokens")
+            samples: list[str] = [
+                f'"{text[:DIGEST_SAMPLE_CHARS]}{"…" if len(text) > DIGEST_SAMPLE_CHARS else ""}"' for text in texts[:DIGEST_MAX_SAMPLES]
+            ]
+            samples_text: str = ", ".join(samples) if samples else "(none)"
+            lines.append(
+                f"- {_column_letter(index)} | header: {name} | non_null: {non_null} | distinct: {distinct} | max_len: {max_len} "
+                f"| seps: {' '.join(seps)} | sep counts: {', '.join(sep_counts) if sep_counts else '(none)'} | samples: {samples_text}"
+            )
+        except Exception as exc:  # a pathological column degrades ITS line only; the digest never raises
+            lines.append(f"- {_column_letter(index)} | header: {name} | (column stats unavailable: {exc})")
+    body: str = "\n".join(lines)
+    return f"{DATA_GUARDRAIL}\n{DATA_FENCE_BEGIN}\n{body}\n{DATA_FENCE_END}"
+
+
 def pmc_article_context(source: str | Path, *, max_chars: int = 6000) -> str:
     """Render a PMC article's main text as a data-fenced, spotlighted summary (xml/nxml) or excerpt (txt).
 
@@ -714,6 +799,29 @@ def pmc_article_context(source: str | Path, *, max_chars: int = 6000) -> str:
     return f"{DATA_GUARDRAIL}\n{DATA_FENCE_BEGIN}\n{body}\n{DATA_FENCE_END}"
 
 
+def _append_context_digest(parts: list[str], path: Path, *, sheet: str | None, max_chars: int) -> None:
+    """Append the column digest for a table/worksheet just previewed, or a visible skip note.
+
+    The digest lands IMMEDIATELY after its head preview so separator statistics sit next to the
+    cells they describe. It honors the SAME shared ``max_chars`` budget the whole task-context
+    block truncates at: when the digest cannot fit in the remaining budget, a visible note naming
+    ``read_table`` as the fallback takes its place instead. A digest failure is fail-visible
+    in-band exactly like the preview path — never a raise.
+    """
+    label: str = path.name if sheet is None else f"{path.name}:{sheet!r}"
+    try:
+        digest: str = column_digest(path, sheet=sheet)
+    except Exception as exc:  # the preview shipped; a digest failure must not retro-break it
+        parts.append(f"(column digest for {label} unavailable: {exc} — call read_table to inspect its cells)")
+        return
+    used: int = sum(len(part) + 2 for part in parts)  # +2 == the "\n\n" join separator per part
+    if used + len(digest) <= max_chars:
+        parts.append(digest)
+    else:
+        target: str = f"read_table('{path}')" if sheet is None else f"read_table('{path}', sheet={sheet!r})"
+        parts.append(f"(column digest for {label} skipped: does not fit the {max_chars}-char context budget — call {target} to inspect its cells)")
+
+
 def render_task_context(
     tables: list[Path],
     article_xml: Path | None,
@@ -736,8 +844,12 @@ def render_task_context(
     qualifying worksheets), because the config maps one section per mappable sheet. Small sheets
     and files get visible, deterministic exclusion notes naming the sheets to focus on. An
     unreadable table NEVER raises — a visible note is rendered instead so the agent can fall back
-    to ``read_table`` for the coded error. The joined block is truncated at ``max_chars`` (with an
-    explicit marker) so a pathological article cannot flood the context.
+    to ``read_table`` for the coded error. Every PREVIEWED table/worksheet is additionally followed
+    by its :func:`column_digest` block (separator statistics over the first 500 data rows) so
+    explode_by/split_by detection needs no extra read_table; a digest that cannot fit the shared
+    ``max_chars`` budget is skipped with a visible note naming ``read_table`` as the fallback, and
+    excluded or cap-exceeding sheets get neither preview nor digest. The joined block is truncated
+    at ``max_chars`` (with an explicit marker) so a pathological article cannot flood the context.
     """
     if min_rows < 0:
         raise ValueError("min_rows must be non-negative")
@@ -781,16 +893,19 @@ def render_task_context(
                 shown: list[str] = qualifying[:max_sheets]
                 for name in shown:
                     parts.append(read_table(path, sheet=name, max_rows=preview_rows))
+                    _append_context_digest(parts, path, sheet=name, max_chars=max_chars)
                 if len(qualifying) > len(shown):
                     parts.append(f"(workbook {path.name}: +{len(qualifying) - len(shown)} more qualifying worksheets not previewed)")
             elif min_rows == 0:
                 parts.append(read_table(path, max_rows=preview_rows))
+                _append_context_digest(parts, path, sheet=None, max_chars=max_chars)
             else:
                 rows = _effective_rows(path)
                 if rows < min_rows:
                     parts.append(f"(table {path.name} skipped: {rows} rows < {min_rows} minimum — excluded from candidates)")
                 else:
                     parts.append(read_table(path, max_rows=preview_rows))
+                    _append_context_digest(parts, path, sheet=None, max_chars=max_chars)
         except Exception as exc:  # fail VISIBLE in-band, never crash the supervisor
             parts.append(f"(table {path} could not be previewed: {exc} — call read_table('{path}') yourself for the coded error)")
     text: str = "\n\n".join(parts)
@@ -2855,9 +2970,9 @@ exactly. Legal predicates, from the installed Biolink Model:
   into `supporting_text`. Prefer `p_value`, `adjusted_p_value`, `effect_size`,
   `effect_type`, `has_evidence`.
 - MULTIVALUED slots (`has_evidence` and friends) take a real JSON array, never a joined string:
-  `split_by` is the ONLY multivalued encoding — there is no literal-list method. INSPECT the
-  column's cells first (read_table shows them); the separator they ACTUALLY use — `|`, `,`, or
-  `;` — is the one you declare: `{method: column, encoding: <letter>, split_by: "<separator>"}`.
+  `split_by` is the ONLY multivalued encoding — there is no literal-list method. Read the column's
+  injected digest FIRST (its `seps:` statistics show which separator its cells ACTUALLY use — `|`,
+  `,`, or `;`); that separator is the one you declare: `{method: column, encoding: <letter>, split_by: "<separator>"}`.
   A SINGLE-value cell gets NO `split_by`: its scalar wraps into a one-element array, the correct
   shape. Cells that DO join multiple values but OMIT `split_by` ship as one unusable joined blob.
 - QUALIFIERS add the detail that makes an edge consumable — use them WHENEVER the table carries
@@ -2881,11 +2996,12 @@ exactly. Legal predicates, from the installed Biolink Model:
   row_slice only when row 1 already is the header.
 - explode_by: a subject/object cell joining MULTIPLE entities must declare
   `explode_by: "<separator>"` so EACH entity emits its own edge; without it the joined string maps
-  as ONE unusable blob and the table under-extracts. DETECTION CHECKLIST: scan the previewed
-  entity cells for separators between entity-looking tokens (`BRCA1;TP53`, `D001|D002`; common
-  separators: `;`, `|`, `,`, `/`). The task preview shows only the FIRST rows, so when a table is
-  long or a suspicious column's cells look truncated, ONE extra read_table call specifically to
-  check for joins is always justified. `explode_by` takes the LITERAL separator string
+  as ONE unusable blob and the table under-extracts. DETECTION (digest-first): each previewed
+  table/worksheet carries an injected column digest whose `seps:` line gives, per column over the
+  first 500 data rows, the fraction of non-null cells containing each of `;`, `|`, `,`, `/`
+  (`sep[;]=0.31`; supplemental counts + max token count follow). Read those statistics FIRST: an
+  entity column with a dominant separator there gets `explode_by` for exactly that separator. Call read_table ONLY to check rows
+  BEYOND the digest's 500-row scan window. `explode_by` takes the LITERAL separator string
   (`explode_by: ";"`) — never a regex, never an enum token — and belongs ONLY on subject/object
   entity encodings; a multi-valued ANNOTATION cell uses `split_by` instead. After a build,
   build_and_audit's `multivalued_suspects` lists unresolved terms that still contain a
@@ -2919,7 +3035,8 @@ pattern (e.g. `.*` alone) destroys the very terms you need to resolve.
 
 ## Fast ReAct workflow (target: finish in 3 steps or fewer)
 Reason briefly between actions (ReAct), but do NOT re-derive information you already have: the task
-ALREADY CONTAINS the article summary and head previews of EVERY candidate table/worksheet.
+ALREADY CONTAINS the article summary, head previews, and column digests (separator statistics over
+the first 500 data rows) of EVERY candidate table/worksheet.
 1. derive_config(config_yaml) — author your best table config directly from the task previews
    (template + one section per mappable table/worksheet).
 2. build_and_audit(config_yaml) to validate + build + score it in ONE call (coverage_pct,
@@ -3011,8 +3128,9 @@ annotations:
 
 ## Article context & table/sheet selection
 The task renders the article summary (title, abstract, section outline, supplementary-table manifest)
-and a head preview of EVERY candidate table AND EVERY Excel worksheet up front — start from those;
-pmc_article_context and read_table are FALLBACKS only (rows beyond a preview, or a preview that failed).
+and a head preview + column digest of EVERY candidate table AND EVERY Excel worksheet up front —
+start from those; pmc_article_context and read_table are FALLBACKS only (rows beyond a digest's
+500-row scan window, a preview that failed, or a digest skipped for budget).
 read_table reports every worksheet of an Excel file (read a specific one via sheet='<name>' and set
 source.sheet in the config). Tables/worksheets below the minimum row count stated in the task are
 excluded from candidacy; never author a section for one. Map EACH mappable table/worksheet as its OWN
@@ -3036,8 +3154,8 @@ in one call) over many small calls. Never call a tool whose output is already pr
 or a previous observation, and do not re-run an unchanged config. Minimize wrong and redundant
 tool calls: author deliberately from the previews, and fix only the field a coded build error names.
 Efficiency is the LOWEST priority: never sacrifice a mappable sheet, an explode_by, a qualifier,
-or an annotation column to save a tool call — one extra read_table to confirm a multi-valued
-column or a header position is always justified.
+or an annotation column to save a tool call — the digests already carry the separator statistics,
+so read_table is justified ONLY for rows beyond a digest's 500-row scan window.
 """
 
 INSTRUCTIONS: str = _INSTRUCTIONS_TEMPLATE.replace("{{PREDICATE_CHEATSHEET}}", predicate_cheatsheet())
