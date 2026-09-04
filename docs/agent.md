@@ -375,8 +375,8 @@ another's entries and a same-PMC rerun has deterministic last-writer-wins replac
 | `read_table` | tool | render a table as **data-fenced, spotlighted** text; lists **all worksheets** of an Excel file (`sheet=`) |
 | `derive_config` | tool | author a table config (`template` + one section per table); each section must satisfy `Section.model_json_schema()` |
 | `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage→**Biolink-validity** mega-tool; the report's `predicate_advice` / `multivalued_suspects` fields make demotions and missed `explode_by`s directly actionable |
-| `map_coverage` | tool | fullmap term-resolution coverage (per-column + overall) |
-| `propose_config_edit` | tool | deterministic, constrained edits + rationale: `NodeEncoding` knobs, `explode_by` from separator-carrying unresolved terms, and (given the audit report) a demoted-predicate fix |
+| `map_coverage` | tool (`derive_coverage` mode only) | fullmap term-resolution coverage (per-column + overall); the supervisor calls the pure function in its deterministic improve loop |
+| `propose_config_edit` | function | deterministic, constrained edits + rationale used by the supervisor's improve loop: `NodeEncoding` knobs, `explode_by` from separator-carrying unresolved terms, and (given the audit report) a demoted-predicate fix |
 
 `build_and_audit` returns coded errors **verbatim** (each carries a docs URL) so the agent can
 self-correct the exact offending field. `derive_config` does the same: a candidate config that fails
@@ -393,9 +393,10 @@ The agent's `instructions` make the techniques explicit:
   that a mappable sheet or evidence column is never sacrificed to save a tool call.
 - **ReAct, planning off**: `CodeAgent` is a ReAct loop, but periodic re-planning is disabled
   (`planning_interval=None`): each planning turn is a whole extra LLM round trip carrying the full
-  prompt, and the task already prescribes a fixed short workflow (derive → build → optional edit →
-  answer). The prompt caps in-agent improve rounds at two; the supervisor's deterministic improve loop
-  continues after the agent finishes.
+  prompt, and the task already prescribes a fixed short workflow (derive → build → answer): on a
+  coded build error the agent fixes exactly the named field and rebuilds (at most twice) and never
+  loops on coverage — the supervisor's deterministic improve loop keeps raising coverage after the
+  agent finishes.
 - **Structured / constrained output**: `derive_config` injects the Section JSON schema; a
   `final_answer_checks=[validate_table_config]` gate means the agent can only terminate with a config
   whose **every section** is schema-valid (multi-section configs are validated section-by-section).

@@ -272,15 +272,16 @@ def test_load_state_non_mapping_returns_none(tmp_path: Path) -> None:
 
 
 def test_make_tools_get_fullmap_closure(tmp_path: Path, fullmap_db: Path) -> None:
-    """Covers agent.py:1813 — the ``get_fullmap`` closure returns the bound fullmap path.
+    """Covers the ``get_fullmap`` closure — ``derive_coverage`` mode keeps the fullmap binding.
 
-    ``make_tools`` binds ``fullmap`` via the nested ``get_fullmap`` closure; invoking the returned
-    ``map_coverage`` tool's ``forward`` calls ``get_fullmap()`` (the ``return fullmap`` line) to feed
+    US-002 slimmed the full surface to four tools, but ``derive_coverage`` still ships
+    ``map_coverage``: ``make_tools`` binds ``fullmap`` via the nested ``get_fullmap`` closure,
+    and invoking the returned ``map_coverage`` tool's ``forward`` calls ``get_fullmap()`` to feed
     the real coverage measurement, which resolves both genes in the tiny redb to full coverage.
     """
     pytest.importorskip("smolagents")
-    tools: list[Any] = make_tools(fullmap=fullmap_db, name="agent", version="0.0.1")
-    assert len(tools) == 6
+    tools: list[Any] = make_tools(fullmap=fullmap_db, name="agent", version="0.0.1", derive_mode="derive_coverage")
+    assert [tool.name for tool in tools] == ["read_table", "pmc_article_context", "derive_config", "map_coverage"]
     by_name: dict[str, Any] = {tool.name: tool for tool in tools}
 
     table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")

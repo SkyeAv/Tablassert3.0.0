@@ -1,27 +1,20 @@
 """Tests for US-007 ``propose_config_edit`` — deterministic, constrained config editor.
 
-The core ``propose_config_edit`` tests are PURE and run in the base environment (no
-``[agent]`` extra). The smolagents ``Tool`` test calls ``pytest.importorskip("smolagents")``
-so it skips cleanly when the extra is absent. ``Categories`` is imported from
+Every test here is PURE and runs in the base environment (no ``[agent]`` extra): the proposer,
+its ranked ``propose_config_candidates``, and the tier-2 ``llm_propose_config_edit`` are all
+offline. US-002 removed the LLM tool wrapper — the supervisor now drives the proposer
+deterministically, so no smolagents ``Tool`` test remains. ``Categories`` is imported from
 ``tablassert.biolink`` so the assertions use the EXACT enum ``.value`` strings.
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
 import yaml
 
-from tablassert.agent import (
-    llm_propose_config_edit,
-    make_propose_config_edit_tool,
-    propose_config_candidates,
-    propose_config_edit,
-    validate_section,
-    validate_table_config,
-)
+from tablassert.agent import llm_propose_config_edit, propose_config_candidates, propose_config_edit, validate_section, validate_table_config
 from tablassert.biolink import Categories
 
 # ``Categories`` is built dynamically; biolink's TYPE_CHECKING stub omits ORGANISM_TAXON, so derive the
@@ -151,24 +144,6 @@ def test_propose_exclude_hints() -> None:
     assert validate_section(edited) is True
     assert "OMIM" in yaml.safe_load(edited)["statement"]["subject"]["exclude_prefixes"]
     assert "OMIM" in rationale
-
-
-# --------------------------------------------------------------------------- #
-# Tool test (requires the [agent] extra; skips cleanly when absent)
-# --------------------------------------------------------------------------- #
-
-
-def test_propose_tool() -> None:
-    """The lazily-built tool returns JSON {config_yaml, rationale} with a schema-valid edit."""
-    pytest.importorskip("smolagents")
-    tool = make_propose_config_edit_tool()
-    assert tool.name == "propose_config_edit"
-
-    original: str = yaml.safe_dump(_alamv6_section(), sort_keys=False)
-    payload = json.loads(tool.forward(original, json.dumps(_taxonomic_report())))
-    assert "config_yaml" in payload
-    assert "rationale" in payload
-    assert validate_section(payload["config_yaml"]) is True
 
 
 # --------------------------------------------------------------------------- #
@@ -482,15 +457,3 @@ def test_propose_predicate_fix_disambiguated_by_prioritize() -> None:
     edited, _ = propose_config_edit(_demoted_section(), _joined_report([]), audit=audit)
     # prioritize [Gene] ~ [Disease] selects the second entry's legal set.
     assert yaml.safe_load(edited)["statement"]["predicate"] in {"affects", "associated_with", "contributes_to"}
-
-
-def test_propose_tool_accepts_audit_report() -> None:
-    """The smolagents tool applies the demoted-predicate fix when audit_report is passed."""
-    pytest.importorskip("smolagents")
-    tool = make_propose_config_edit_tool()
-    original: str = yaml.safe_dump(_demoted_section(), sort_keys=False)
-    payload = json.loads(tool.forward(original, json.dumps(_joined_report([])), json.dumps(_demotion_audit())))
-    assert yaml.safe_load(payload["config_yaml"])["statement"]["predicate"] in {"affects", "associated_with", "contributes_to"}
-    # The audit argument stays OPTIONAL: the two-arg call still works.
-    payload2 = json.loads(tool.forward(original, json.dumps(_joined_report([]))))
-    assert yaml.safe_load(payload2["config_yaml"])["statement"]["predicate"] == "gene_associated_with_condition"

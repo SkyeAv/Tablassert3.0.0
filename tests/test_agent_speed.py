@@ -201,17 +201,22 @@ def test_render_task_context_truncates_at_max_chars(tmp_path: Path) -> None:
 
 
 def test_instructions_target_short_workflow_with_fallback_tools() -> None:
-    """INSTRUCTIONS prescribe the short derive->build->edit->answer workflow.
+    """INSTRUCTIONS prescribe the short derive->build->answer workflow.
 
     WHY: the old prompt MANDATED read_table/pmc_article_context first (2+ wasted steps per PMC);
     the rewrite must make those tools explicit FALLBACKS while keeping the ReAct framing and the
-    final_answer gate that other tests rely on.
+    final_answer gate that other tests rely on. Coverage improvement is the supervisor's
+    deterministic job, so the prompt must not hand the LLM coverage tools or a coverage loop.
     """
-    assert "4 steps or fewer" in INSTRUCTIONS
+    assert "3 steps or fewer" in INSTRUCTIONS
     assert "ReAct" in INSTRUCTIONS
     assert "final_answer" in INSTRUCTIONS
     assert "call pmc_article_context(path) FIRST" not in INSTRUCTIONS  # old mandated step gone
     assert "FALLBACKS" in INSTRUCTIONS.upper()
+    # US-002: no coverage tool and no in-agent coverage loop survive in the prompt.
+    assert "propose_config_edit" not in INSTRUCTIONS
+    assert "map_coverage" not in INSTRUCTIONS
+    assert len(INSTRUCTIONS) <= 19_200
 
 
 def test_build_agent_disables_periodic_planning_by_default() -> None:
