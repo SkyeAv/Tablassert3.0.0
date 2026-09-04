@@ -1301,10 +1301,11 @@ def test_numeric_columns_matches_p_value_substring() -> None:
 
 
 def test_numeric_columns_matches_exact_names() -> None:
-    """numeric_columns matches exact effect size and study size names."""
-    names: list[str] = ["effect_size", "study_size", "cohort", "sample_size", "relationship_strength"]
+    """numeric_columns matches exact effect size, number-of-cases and study size names."""
+    names: list[str] = ["effect_size", "number_of_cases", "study_size", "cohort", "sample_size", "relationship_strength"]
     result: list[str] = numeric_columns(names)
     assert "effect_size" in result
+    assert "number_of_cases" in result
     assert "study_size" in result
     assert "cohort" not in result
     # Old names are superseded: coercion renames them before clean_numeric/format_numeric run.
@@ -1404,6 +1405,20 @@ def test_format_numeric_nulls_invalid_study_counts() -> None:
     result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
     assert result["study_size"].to_list() == [None, None, None, 2, None]
     assert result.schema["study_size"] == pl.Int64
+
+
+def test_format_numeric_emits_number_of_cases_as_int() -> None:
+    """number_of_cases leaves the pipeline as a real JSON int, not a TSV-text string.
+
+    biolink-model 4.4.4 types ``number_of_cases`` ``int`` on the disease/phenotype
+    ``Association`` classes, and the Rust ``uuid_on_collision: merge`` recompute already
+    writes an int union length, so first-wins edges must not ship the raw source string.
+    Fractional, negative, non-finite and non-numeric counts become null, like study counts.
+    """
+    lf: pl.LazyFrame = pl.DataFrame({"number_of_cases": ["1", "25", "0.42", "-3", "abc", None]}).lazy()
+    result: pl.DataFrame = format_numeric(clean_numeric(lf)).collect()
+    assert result["number_of_cases"].to_list() == [1, 25, None, None, None, None]
+    assert result.schema["number_of_cases"] == pl.Int64
 
 
 def test_format_numeric_preserves_nulls() -> None:

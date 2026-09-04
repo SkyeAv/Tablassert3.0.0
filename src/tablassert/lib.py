@@ -698,11 +698,11 @@ def math_op(lf: pl.LazyFrame, col: str, func: Functions, args: list[Literal[Toke
 def numeric_columns(names: list[str]) -> list[str]:
     """Return column names that should be coerced and formatted as numbers.
 
-    P-value columns by substring plus the exact ``effect_size`` and
-    ``study_size`` fields. The old ``sample_size`` / ``relationship_strength`` /
-    ``supporting_study_size`` names are absent on purpose: the column coercions
-    rename them to ``study_size`` / ``effect_size`` before ``clean_numeric`` /
-    ``format_numeric`` run.
+    P-value columns by substring plus the exact ``effect_size``,
+    ``number_of_cases`` and ``study_size`` fields. The old ``sample_size`` /
+    ``relationship_strength`` / ``supporting_study_size`` names are absent on
+    purpose: the column coercions rename them to ``study_size`` / ``effect_size``
+    before ``clean_numeric`` / ``format_numeric`` run.
 
     Args:
         names: Schema column names to filter.
@@ -710,15 +710,15 @@ def numeric_columns(names: list[str]) -> list[str]:
     Returns:
         Subset of ``names`` destined for numeric coercion/formatting.
     """
-    # P-value columns by substring plus exact effect-size and study-size fields.
-    exact: set[str] = {"effect_size", "study_size"}
+    # P-value columns by substring plus exact effect-size, case-count and study-size fields.
+    exact: set[str] = {"effect_size", "number_of_cases", "study_size"}
     return [c for c in names if ("p_value" in c.lower()) or (c in exact)]
 
 
 def clean_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Coerce numeric annotation columns to Float64, dropping non-numeric values to null.
 
-    Only touches p-value, effect-size and study-size columns.
+    Only touches p-value, effect-size, number-of-cases and study-size columns.
 
     Args:
         lf: Source LazyFrame.
@@ -746,7 +746,8 @@ def format_numeric(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     Remaining numeric columns are emitted as real JSON numbers when the installed
     biolink model types them ``int`` / ``float`` -- ``effect_size`` (``float``,
-    biolink-model#1774) and ``study_size`` (``int`` on the inlined ``Study``,
+    biolink-model#1774), ``number_of_cases`` (``int`` on the disease/phenotype
+    ``Association`` classes) and ``study_size`` (``int`` on the inlined ``Study``,
     biolink-model#1770) -- and keep the controlled decimal general string notation
     (``{:.4g}``) only while a slot stays untyped, since such values end up in
     human-readable text. Null values stay null.
