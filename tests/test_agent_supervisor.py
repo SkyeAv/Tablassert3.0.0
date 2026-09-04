@@ -20,7 +20,19 @@ import pytest
 import yaml
 
 from tablassert import distill, rs
-from tablassert.agent import ConfigRecord, SupervisorState, distill_dir, load_state, make_fake_model, run_supervisor, save_state
+from tablassert.agent import (
+    ConfigRecord,
+    SupervisorState,
+    best_config_path,
+    compact_config,
+    derived_config_path,
+    distill_dir,
+    load_state,
+    make_fake_model,
+    normalize_agent_table_config,
+    run_supervisor,
+    save_state,
+)
 
 pytest.importorskip("smolagents")
 
@@ -169,9 +181,9 @@ def test_supervisor_distill_records_every_generate_call(tmp_path: Path, fullmap_
         assert record["purpose"] == "agent"
         assert record["pmc_id"] == "PMC1"
         assert record["call_index"] == index
-        assert record["messages"][-1]["role"] == "assistant"  # pyright: ignore[reportAttributeAccessIssue]
+        assert record["messages"][-1]["role"] == "assistant"  # pyright: ignore[reportIndexIssue]
     # The final (most complete) record's assistant turn carries the FakeModel's final-answer config.
-    assert "final_answer" in records[-1]["messages"][-1]["content"]  # pyright: ignore[reportAttributeAccessIssue]
+    assert "final_answer" in records[-1]["messages"][-1]["content"]  # pyright: ignore[reportIndexIssue]
 
 
 def test_supervisor_improve_loop_accepts_better(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -453,7 +465,9 @@ def test_state_roundtrip_atomic(tmp_path: Path) -> None:
     original: SupervisorState = SupervisorState(
         pmc_ids=["PMC1", "PMC2"],
         records={
-            "PMC1": ConfigRecord(pmc_id="PMC1", status="MAPPED", coverage_history=[0.5, 1.0], best_coverage=1.0, attempts=2, last_edits="edit"),
+            "PMC1": ConfigRecord(
+                pmc_id="PMC1", status="MAPPED", coverage_history=[0.5, 1.0], best_coverage=1.0, attempts=2, last_edits="edit", config_chars=123
+            ),
             "PMC2": ConfigRecord(pmc_id="PMC2", status="SKIPPED", notes="SKIPPED: budget", qc_pass_rate=None),
         },
         metrics={"mapped": 1, "skipped": 1, "mean_best_coverage": 0.5},
@@ -472,6 +486,7 @@ def test_state_roundtrip_atomic(tmp_path: Path) -> None:
     assert loaded.records["PMC1"].attempts == 2
     assert loaded.records["PMC2"].status == "SKIPPED"
     assert loaded.records["PMC2"].qc_pass_rate is None
+    assert loaded.records["PMC1"].config_chars == 123, "the US-005 config-size metric round-trips through state.json"
     assert loaded.metrics["mapped"] == 1
 
 
@@ -1265,3 +1280,124 @@ def test_supervisor_target_rerun_replaces_same_pmc_entry(tmp_path: Path, fullmap
     tables: list[str] = yaml.safe_load(target_path.read_text())["tables"]
     assert len(tables) == 1
     assert tables[0] == str((state_dir / "configs" / "PMC1.yaml").resolve())
+
+
+# --------------------------------------------------------------------------- #
+# US-005: deterministic config compaction of the persisted best config
+# --------------------------------------------------------------------------- #
+
+
+def _verbose_column_cfg(table: Path) -> dict[str, Any]:
+    """``_column_cfg`` plus PROVABLY no-op entries: explicit model defaults and a default-null."""
+    cfg: dict[str, Any] = _column_cfg(table)
+    cfg["statement"]["subject"]["taxon"] = 9606  # NodeEncoding.taxon default
+    cfg["statement"]["object"]["taxon"] = 9606  # NodeEncoding.taxon default
+    cfg["source"]["rows"] = None  # BaseSource.rows default is None
+    return cfg
+
+
+def test_supervisor_best_config_is_compacted_and_metric_recorded(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The accepted best config is compacted before write, ``config_chars`` tracks the written
+    size, and the derived intermediate config stays UNCOMPACTED."""
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    verbose_yaml: str = yaml.safe_dump(_verbose_column_cfg(table), sort_keys=False)
+    state_dir: Path = tmp_path / "state"
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=verbose_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        workdir=tmp_path / "w",
+        min_rows=0,
+    )
+
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "MAPPED"
+
+    # The terminal best config is compacted: proven no-ops are gone, semantics kept.
+    best_text: str = best_config_path(state_dir, "PMC1").read_text()
+    best: dict[str, Any] = yaml.safe_load(best_text)
+    assert "taxon" not in best["statement"]["subject"], "default taxon must be compacted out of the best config"
+    assert "rows" not in best["source"], "rows: null must be compacted out of the best config"
+    assert best["source"]["delimiter"] == "\t", "the non-default delimiter must survive compaction"
+    expected_best: str = compact_config(normalize_agent_table_config(verbose_yaml))
+    assert best_text == expected_best, "the written best config must be exactly the compacted normalized config"
+
+    # The derived intermediate config is NOT compacted.
+    derived: dict[str, Any] = yaml.safe_load(derived_config_path(state_dir, "PMC1").read_text())
+    assert derived["statement"]["subject"]["taxon"] == 9606, "the derived config must stay uncompacted"
+
+    # config_chars tracks the COMPACTED size that was written, in-memory and on disk.
+    assert rec.config_chars == len(best_text)
+    reloaded: SupervisorState | None = load_state(state_dir)
+    assert reloaded is not None
+    assert reloaded.records["PMC1"].config_chars == len(best_text)
+
+
+@pytest.mark.parametrize("failure", ["invalid", "raises"])
+def test_supervisor_compaction_failure_writes_uncompacted_keeps_status(
+    tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """A compaction failure never changes the terminal status: the normalized UNCOMPACTED config
+    is written (with a warning) and ``config_chars`` tracks what was actually written."""
+    table: Path = _write_table(tmp_path, "good.tsv", "brca1\tmapk1\nbrca1\tmapk1\n")
+    _patch_fetch(monkeypatch, table)
+    verbose_yaml: str = yaml.safe_dump(_verbose_column_cfg(table), sort_keys=False)
+    state_dir: Path = tmp_path / "state"
+
+    def broken_compact(config_yaml: str) -> str:  # pyright: ignore[reportUnusedParameter]
+        if failure == "raises":
+            raise RuntimeError("simulated compaction failure")
+        return "{{{ compacted into garbage"  # invalid output: the supervisor must reject it
+
+    monkeypatch.setattr("tablassert.agent.compact_config", broken_compact)
+
+    result = run_supervisor(
+        ["PMC1"],
+        fullmap=fullmap_db,
+        build_model_factory=lambda: make_fake_model(final_yaml=verbose_yaml),
+        map_threshold=0.8,
+        state_dir=state_dir,
+        workdir=tmp_path / "w",
+        min_rows=0,
+    )
+
+    rec: ConfigRecord = result["records"]["PMC1"]  # pyright: ignore[reportIndexIssue]
+    assert rec.status == "MAPPED", "a compaction failure must never change the terminal status"
+    best_text: str = best_config_path(state_dir, "PMC1").read_text()
+    assert best_text == normalize_agent_table_config(verbose_yaml), "the normalized uncompacted config must be written"
+    assert "taxon" in yaml.safe_load(best_text)["statement"]["subject"], "the fallback write keeps the un-compacted entries"
+    assert rec.config_chars == len(best_text)
+
+
+def test_state_loading_is_backward_compatible_for_config_chars(tmp_path: Path) -> None:
+    """Pre-US-005 state files (no ``config_chars`` key) load with ``None``; present values load as ints."""
+    state_dir: Path = tmp_path / "state"
+    legacy: SupervisorState = SupervisorState(
+        pmc_ids=["PMCOLD"],
+        records={"PMCOLD": ConfigRecord(pmc_id="PMCOLD", status="MAPPED", coverage_history=[1.0], best_coverage=1.0, config_chars=456)},
+    )
+    save_state(state_dir, legacy)
+
+    # Simulate a PRE-US-005 state.json: the field simply does not exist.
+    raw: dict[str, Any] = json.loads((state_dir / "state.json").read_text())
+    del raw["records"]["PMCOLD"]["config_chars"]
+    (state_dir / "state.json").write_text(json.dumps(raw))
+    old_state: SupervisorState | None = load_state(state_dir)
+    assert old_state is not None
+    assert old_state.records["PMCOLD"].config_chars is None, "a missing key must default to None, never raise"
+
+    # The new value round-trips; a garbage value degrades to None instead of raising.
+    raw["records"]["PMCOLD"]["config_chars"] = 456
+    (state_dir / "state.json").write_text(json.dumps(raw))
+    new_state: SupervisorState | None = load_state(state_dir)
+    assert new_state is not None
+    assert new_state.records["PMCOLD"].config_chars == 456
+    raw["records"]["PMCOLD"]["config_chars"] = "not-a-number"
+    (state_dir / "state.json").write_text(json.dumps(raw))
+    bad_state: SupervisorState | None = load_state(state_dir)
+    assert bad_state is not None
+    assert bad_state.records["PMCOLD"].config_chars is None

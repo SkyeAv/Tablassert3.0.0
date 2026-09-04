@@ -26,9 +26,10 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast, get_args, get_origin
 from urllib.request import Request, urlopen
 
 import pydantic
@@ -1120,6 +1121,208 @@ def normalize_agent_table_config(config_yaml: str, *, base_dirs: Sequence[Path] 
 
     visit(data)
     return yaml.safe_dump(data, sort_keys=False)
+
+
+# --------------------------------------------------------------------------- #
+# US-005: deterministic config compaction + config-size metric
+#
+# compact_config shrinks a VALID table config by removing ONLY provably no-op
+# entries — values read straight from the Pydantic model defaults (never a
+# hand-maintained guess table), so a model default change automatically changes
+# what counts as removable. Semantic guards: the ``provenance`` subtree is never
+# touched (legal attribution), ``kind`` is never dropped (it discriminates the
+# ``Excel | Text`` source union), a non-default null such as ``taxon: null``
+# (default 9606) is preserved, and in ``{template, sections}`` configs a section
+# entry equal to a model default is only removed when the template cannot change
+# the merged result (fastmerge lets section scalars override template values, so
+# a differing template value at the same path blocks the removal).
+# --------------------------------------------------------------------------- #
+
+#: Sentinel marking "the template carries no value at this path" for compaction.
+_COMPACT_ABSENT: object = object()
+
+#: Keys compaction never removes and never recurses into: ``provenance`` values are
+#: the edge's legal attribution (untouched even when they equal a model default),
+#: and ``kind`` discriminates the ``Excel | Text`` source union — dropping it could
+#: flip which model a re-parsed source validates as.
+_COMPACT_UNTOUCHED_KEYS: frozenset[str] = frozenset({"provenance", "kind"})
+
+
+def _compact_field_default(field_info: pydantic.fields.FieldInfo) -> tuple[bool, object]:
+    """Return ``(has_default, default)`` for a model field, evaluating any default factory."""
+    if field_info.is_required():
+        return False, None
+    return True, field_info.get_default(call_default_factory=True)
+
+
+def _compact_equals_default(value: object, default: object) -> bool:
+    """Strict equality between a raw YAML value and a Pydantic field default.
+
+    Type-aware so Python's ``True == 1`` trap never makes a bool match a numeric
+    default (or vice versa). Enum defaults (stored as members on the model class)
+    compare against their ``.value`` — the spelling ``use_enum_values`` configs carry.
+    """
+    if isinstance(value, bool) or isinstance(default, bool):
+        return isinstance(value, bool) and isinstance(default, bool) and value == default
+    if isinstance(default, Enum):
+        return value == default.value
+    if isinstance(default, (int, float)):
+        return isinstance(value, (int, float)) and value == default
+    return value == default
+
+
+def _compact_nested_models(annotation: object) -> list[type[pydantic.BaseModel]]:
+    """The BaseModel classes nested inside a field annotation (unions, optionals, lists)."""
+    found: list[type[pydantic.BaseModel]] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, type) and issubclass(node, pydantic.BaseModel):
+            found.append(node)
+            return
+        if get_origin(node) is not None or node is Any:
+            for arg in get_args(node):
+                walk(arg)
+
+    walk(annotation)
+    return found
+
+
+def _compact_pick_model(candidates: list[type[pydantic.BaseModel]], value: object) -> type[pydantic.BaseModel]:
+    """Choose the model for a unioned field: ``kind`` discriminates sources, else the first candidate.
+
+    Deterministic: ``model_fields`` order is stable, so the fallback pick never varies
+    between runs (idempotence).
+    """
+    if len(candidates) == 1:
+        return candidates[0]
+    kind: object = value.get("kind") if isinstance(value, dict) else None
+    for candidate in candidates:
+        kind_field: pydantic.fields.FieldInfo | None = candidate.model_fields.get("kind")
+        if kind_field is not None:
+            kind_default: object = kind_field.get_default(call_default_factory=True)
+            if kind == (kind_default.value if isinstance(kind_default, Enum) else kind_default):
+                return candidate
+    return candidates[0]
+
+
+def _compact_model_dict(data: dict[str, Any], model: type[pydantic.BaseModel], template: dict[str, Any] | None) -> dict[str, Any]:
+    """Remove provably no-op entries from one Section-shaped dict against ``model``'s defaults.
+
+    Args:
+        data: The parsed section (or template) dict to compact.
+        model: The Pydantic model whose field defaults define removability.
+        template: For a ``sections`` entry, the parsed ``template`` dict (else ``None``).
+            A removal at some path is only allowed when the template is absent there or
+            carries the SAME value: fastmerge gives section scalars precedence over
+            template values, so a differing template value would change the merged
+            section if the section entry vanished.
+
+    Removal rules (the ONLY ones applied):
+      * ``null`` entries whose model default is ``None`` (a non-default null such as
+        ``taxon: null`` — default 9606 — is semantic and kept);
+      * empty lists whose model default is empty;
+      * explicit values equal to a verified model default (``taxon: 9606``,
+        ``method: value``, ``predicate: related_to``, ``sheet: Sheet1``, ...).
+
+    Never removed/entered: keys in :data:`_COMPACT_UNTOUCHED_KEYS` (the provenance
+    subtree, ``kind``) and keys unknown to ``model`` (kept verbatim). Recurses into
+    nested model dicts and into the elements of model lists; list elements are always
+    safe to slim because fastmerge concatenates section lists after template lists.
+    """
+    out: dict[str, Any] = {}
+    for key, value in data.items():
+        field_info: pydantic.fields.FieldInfo | None = model.model_fields.get(key)
+        if field_info is None or key in _COMPACT_UNTOUCHED_KEYS:
+            out[key] = value  # unknown key or protected subtree: verbatim
+            continue
+        template_value: object = template.get(key, _COMPACT_ABSENT) if isinstance(template, dict) else _COMPACT_ABSENT
+        nested: list[type[pydantic.BaseModel]] = _compact_nested_models(field_info.annotation)
+        if isinstance(value, dict) and nested:
+            sub_template: dict[str, Any] | None = template_value if isinstance(template_value, dict) else None  # pyright: ignore[reportAssignmentType]
+            out[key] = _compact_model_dict(value, _compact_pick_model(nested, value), sub_template)
+            continue
+        if isinstance(value, list) and nested:
+            out[key] = [_compact_model_dict(item, _compact_pick_model(nested, item), None) if isinstance(item, dict) else item for item in value]
+            continue
+        has_default, default = _compact_field_default(field_info)
+        if has_default and _compact_equals_default(value, default) and (template_value is _COMPACT_ABSENT or template_value == value):
+            continue  # provably a no-op, and the template cannot change the merged result
+        out[key] = value
+    return out
+
+
+def compact_config(config_yaml: str) -> str:
+    """Deterministically compact a VALID table config; any failure returns the exact input.
+
+    Removes ONLY provably no-op entries using the actual Pydantic model defaults of
+    :class:`~tablassert.models.Section` and its nested models (:class:`NodeEncoding`
+    included) — see :func:`_compact_model_dict` for the three removal rules. Handles
+    both shapes: a flat single-section YAML and a ``{template, sections}`` multi-section
+    table config (template and each section compacted independently; a section entry
+    equal to a default is kept when the template carries a differing value at the same
+    path). Provenance values are never touched; semantic non-default nulls
+    (``taxon: null``) and ``nullable: true`` survive.
+
+    Failure/semantic rules:
+      * the input is FIRST validated with :func:`validate_table_config`; an invalid
+        input is returned unchanged (never compacted, never raised);
+      * ANY YAML/compaction/serialization error returns the exact input unchanged —
+        compaction may shrink a config or leave it alone, never corrupt it;
+      * pure, deterministic, and idempotent: ``compact_config(compact_config(x)) ==
+        compact_config(x)``.
+    """
+    try:
+        if not validate_table_config(config_yaml):
+            return config_yaml
+        data: object = yaml.safe_load(config_yaml)
+        if not isinstance(data, dict):
+            return config_yaml
+        if "template" in data or "sections" in data:
+            template: object = data.get("template")
+            template_dict: dict[str, Any] | None = template if isinstance(template, dict) else None
+            compacted: dict[str, Any] = dict(data)
+            if template_dict is not None:
+                compacted["template"] = _compact_model_dict(template_dict, Section, None)
+            sections: object = data.get("sections")
+            if isinstance(sections, list):
+                compacted["sections"] = [
+                    _compact_model_dict(section, Section, template_dict) if isinstance(section, dict) else section for section in sections
+                ]
+            return yaml.safe_dump(compacted, sort_keys=False)
+        return yaml.safe_dump(_compact_model_dict(data, Section, None), sort_keys=False)
+    except Exception:
+        return config_yaml
+
+
+def config_size_metric(config_yaml: str) -> dict[str, int]:
+    """Deterministic config-size metric: ``{"chars": <len>, "sections": <n>}``.
+
+    ``chars`` is always ``len(config_yaml)`` — the exact string length used for
+    tracking. Section counting: a flat config (neither ``template`` nor ``sections``
+    key) counts ONE section; a ``{template, sections: [...]}`` config counts the actual
+    list length; a template-only config counts ONE (matching ``to_sections``, which
+    merges it over a single empty section). Documented deterministic fallbacks, never
+    raising: unparseable YAML or a non-mapping yields ``sections=0``; a ``sections``
+    key holding a non-list (malformed) yields ``sections=0``.
+    """
+
+    def metric(sections: int) -> dict[str, int]:
+        return {"chars": len(config_yaml), "sections": sections}
+
+    try:
+        data: object = yaml.safe_load(config_yaml)
+    except yaml.YAMLError:
+        return metric(0)
+    if not isinstance(data, dict):
+        return metric(0)
+    if "template" not in data and "sections" not in data:
+        return metric(1)
+    sections: object = data.get("sections")
+    if isinstance(sections, list):
+        return metric(len(sections))
+    if "sections" not in data:
+        return metric(1)  # template-only config expands to exactly one section
+    return metric(0)  # malformed sections value: documented deterministic fallback
 
 
 def make_derive_config_tool() -> Tool:
@@ -3638,6 +3841,10 @@ class ConfigRecord:
     #: always visible in state.json rather than only when someone opted into the gate.
     biolink_valid_pct: float | None = None
     demoted_edge_pct: float | None = None
+    #: Character count of the persisted best config after US-005 compaction (the length of
+    #: what was actually written to ``configs/<pmc_id>.yaml``); ``None`` in pre-US-005 state
+    #: files and for records that never persisted a best config.
+    config_chars: int | None = None
 
 
 @dataclass
@@ -3660,6 +3867,7 @@ def _record_from_dict(key: str, value: dict[str, object]) -> ConfigRecord:
     raw_section_coverages: object = value.get("section_coverages")
     raw_biolink: object = value.get("biolink_valid_pct")
     raw_demoted: object = value.get("demoted_edge_pct")
+    raw_chars: object = value.get("config_chars")
     return ConfigRecord(
         pmc_id=str(value.get("pmc_id", key)),
         status=str(value.get("status", "PENDING")),
@@ -3674,6 +3882,8 @@ def _record_from_dict(key: str, value: dict[str, object]) -> ConfigRecord:
         section_coverages=[float(c) for c in raw_section_coverages if isinstance(c, (int, float))] if isinstance(raw_section_coverages, list) else [],
         biolink_valid_pct=float(raw_biolink) if isinstance(raw_biolink, (int, float)) else None,
         demoted_edge_pct=float(raw_demoted) if isinstance(raw_demoted, (int, float)) else None,
+        # Optional US-005 field: pre-US-005 state files simply lack the key -> None.
+        config_chars=int(raw_chars) if isinstance(raw_chars, (int, float)) and not isinstance(raw_chars, bool) else None,
     )
 
 
@@ -4167,8 +4377,23 @@ def run_supervisor(
             if rec.status in SUCCESSFUL_STATUSES:
                 best_path = best_config_path(state_dir, pmc_id).resolve()
                 best_path.parent.mkdir(parents=True, exist_ok=True)
+                # US-005: shrink the accepted best config deterministically BEFORE persisting it.
+                # Only the terminal best config is compacted — never the derived intermediate config
+                # or user-authored graph tables. A compaction failure (by contract compact_config
+                # returns the input unchanged/valid, so these branches are defensive) logs a warning
+                # and writes the normalized uncompacted config; the status is never affected.
+                best_config: str = current_config
+                try:
+                    compacted_best: str = compact_config(current_config)
+                    if validate_table_config(compacted_best):
+                        best_config = compacted_best
+                    else:
+                        logger.warning("config compaction produced an invalid config for {pmc}; writing the uncompacted config", pmc=pmc_id)
+                except Exception as compact_exc:
+                    logger.warning("config compaction failed for {pmc}: {error}; writing the uncompacted config", pmc=pmc_id, error=compact_exc)
+                rec.config_chars = len(best_config)
                 config_tmp: Path = best_path.with_name(f".{best_path.name}.tmp")
-                config_tmp.write_text(current_config)
+                config_tmp.write_text(best_config)
                 os.replace(config_tmp, best_path)
                 rec.best_config_path = str(best_path)
                 rec.config_path = str(best_path)
