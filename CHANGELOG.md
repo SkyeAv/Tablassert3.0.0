@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **`number_of_cases` is now emitted as a JSON integer instead of source text.** The slot is typed `int` on biolink-model's `EntityToDiseaseAssociation` / `EntityToPhenotypicFeatureAssociation`, but it was absent from `lib.numeric_columns`' exact set — since 15.1's `STUDY_SIZE_EXEMPT_PATTERN` (#119) stopped it being *renamed* onto `study_size`, nothing cast its *values*, so the raw TSV cell (`"1"`) shipped on the edge NDJSON. Pydantic's lax validation coerced the string back to int inside `validate_kgx`, so the record still validated, and the Rust `uuid_on_collision: merge` recompute already wrote a real int — leaving the shipped graph type-inconsistent edge to edge. `number_of_cases` now rides the same `clean_numeric` / `format_numeric` machinery as `study_size`: `numeric_slot_kind` reads the `int` typing off the installed model, fractional / negative / non-numeric counts become null, and the release-mode `drop_low_number_of_cases` filter is untouched (it already cast inline).
+
 ## 16.6.1 - 2026-09-04
 
 ### Performance
