@@ -1851,6 +1851,60 @@ def build_and_audit(
         return _err(exc)
 
 
+# --------------------------------------------------------------------------- #
+# Token-efficient audit report (US-003): the smolagents tool observation keeps
+# ONLY the high-signal verdict/score/advice keys of build_and_audit. Artifact
+# paths and bookkeeping internals are noise to the LLM and cost context tokens
+# on every observation, so they are dropped. The PURE build_and_audit still
+# returns the FULL report to direct (supervisor) callers; only the tool wrapper
+# compacts.
+# --------------------------------------------------------------------------- #
+
+#: High-signal ``build_and_audit`` keys worth the LLM's context tokens; everything else
+#: (artifact paths, bookkeeping flags, strict biolink internals) is dropped from the tool payload.
+COMPACT_AUDIT_KEYS: tuple[str, ...] = (
+    "ok",
+    "errors",
+    "error_codes",
+    "coverage_pct",
+    "biolink_valid_pct",
+    "demoted_edge_pct",
+    "predicate_advice",
+    "multivalued_suspects",
+    "node_count",
+    "edge_count",
+    "head",
+    "unresolved",
+)
+#: Maximum ``unresolved`` entries the compact report ships before a ``+N more`` marker replaces the tail.
+UNRESOLVED_CAP: int = 20
+
+
+def compact_audit_report(report: dict[str, object]) -> dict[str, object]:
+    """Reduce a full ``build_and_audit`` report to the high-signal keys the LLM tool observation needs.
+
+    Keeps ONLY ``COMPACT_AUDIT_KEYS`` when present — the verdict (``ok``), the coded errors, and the
+    actionable scores/advice — and drops artifact paths (``kgx_path``/``edges_path``), bookkeeping
+    flags (``measured``, ``qc_pass_rate``), biolink internals (``biolink_valid_pct_strict``,
+    ``biolink_problems``) and every other internal key. ``unresolved`` is capped at the FIRST
+    ``UNRESOLVED_CAP`` (20) entries: a longer list ships those 20 in order plus ONE visible
+    ``"+N more"`` string marker naming how many were cut, so the truncation is never silent; a list
+    at or below the cap passes through unchanged.
+
+    Behavior guarantees:
+    - PURE and non-mutating: the INPUT dict is never modified (a truncated ``unresolved`` is a fresh
+      list); retained values keep their existing shapes as shared references, never deep copies.
+    - Missing optional keys are simply absent from the result (never a ``KeyError``), so partial
+      failure reports and future report shapes compact cleanly.
+    - A non-list ``unresolved`` is retained as-is; only real lists are capped.
+    """
+    compact: dict[str, object] = {key: report[key] for key in COMPACT_AUDIT_KEYS if key in report}
+    unresolved: object = compact.get("unresolved")
+    if isinstance(unresolved, list) and len(unresolved) > UNRESOLVED_CAP:
+        compact["unresolved"] = [*unresolved[:UNRESOLVED_CAP], f"+{len(unresolved) - UNRESOLVED_CAP} more"]
+    return compact
+
+
 def make_build_and_audit_tool(
     get_fullmap: Callable[[], Path] | None = None,
     *,
@@ -1871,8 +1925,9 @@ def make_build_and_audit_tool(
 
     # Memoize identical builds PER TOOL INSTANCE (one per article run): models re-run unchanged
     # configs despite instructions, and each repeat pays a full validate+build+coverage pass on a
-    # fresh tempdir. Cached kgx_path/edges_path point at the first build's tempdir, which is never
-    # cleaned within the process lifetime, so downstream readers of those paths stay correct.
+    # fresh tempdir. The cached string is the COMPACT report (compact_audit_report), so repeated
+    # identical calls cost zero rebuilds and every observation stays token-cheap; the pure
+    # build_and_audit still hands direct (supervisor) callers the FULL report.
     def _audit_uncached(config_yaml: str) -> str:
         if graph is not None:
             report = build_and_audit(config_yaml, graph=graph, qc=qc, head=head)
@@ -1880,7 +1935,7 @@ def make_build_and_audit_tool(
             if get_fullmap is None:
                 raise ValueError("make_build_and_audit_tool requires graph or get_fullmap")
             report = build_and_audit(config_yaml, fullmap=get_fullmap(), name=name, version=version, qc=qc, head=head)
-        return json.dumps(report, default=str)
+        return json.dumps(compact_audit_report(report), default=str)
 
     audit_cached = lru_cache(maxsize=16)(_audit_uncached)
 
@@ -1889,9 +1944,10 @@ def make_build_and_audit_tool(
         description = (
             "Validate, build, QC, and score a Tablassert Section/table config (YAML) in ONE deterministic call. Runs "
             "the real validate + build pipelines in an isolated workdir, then measures fullmap coverage. Returns a "
-            "JSON report: ok, coverage_pct, qc_pass_rate, errors (coded, verbatim, with docs URL), error_codes, "
-            "kgx_path, edges_path, node_count, edge_count, and unresolved terms. Use it to turn a candidate config "
-            "into a built KGX graph plus its coverage/quality signals in a single step; on failure read errors to self-correct."
+            "compact JSON report: ok, errors (coded, verbatim, with docs URL), error_codes, coverage_pct, "
+            "biolink_valid_pct, demoted_edge_pct, node_count, edge_count, head, unresolved (first 20 with a '+N more' "
+            "marker when truncated), predicate_advice, and multivalued_suspects. Use it to turn a candidate config "
+            "into its build + coverage/quality signals in a single step; on failure read errors to self-correct."
         )
         inputs: ClassVar[dict[str, dict[str, str | type | bool]]] = {  # pyright: ignore[reportIncompatibleVariableOverride]
             "config_yaml": {"type": "string", "description": "A Tablassert Section/table config YAML to validate, build, QC, and score."}
@@ -2867,7 +2923,7 @@ ALREADY CONTAINS the article summary and head previews of EVERY candidate table/
 1. derive_config(config_yaml) — author your best table config directly from the task previews
    (template + one section per mappable table/worksheet).
 2. build_and_audit(config_yaml) to validate + build + score it in ONE call (coverage_pct,
-   qc_pass_rate, errors, unresolved terms). ONLY if it returns a coded build ERROR: fix exactly
+   errors, unresolved terms). ONLY if it returns a coded build ERROR: fix exactly
    the field the error names and rebuild — at most TWO such error fixes. Do NOT loop on coverage:
    the supervisor keeps improving coverage deterministically after you finish.
 3. final_answer(best_config_yaml) once the build is clean.

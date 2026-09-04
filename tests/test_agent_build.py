@@ -10,6 +10,7 @@ HGNC:1100, ``mapk1`` -> HGNC:6871). The smolagents ``Tool`` wrapper test calls
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,7 @@ import pytest
 import yaml
 
 from tablassert import rs
-from tablassert.agent import build_and_audit, make_build_and_audit_tool
+from tablassert.agent import build_and_audit, compact_audit_report, make_build_and_audit_tool
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
@@ -463,3 +464,121 @@ def test_predicate_advice_unit_synthetic_ndjson(tmp_path: Path) -> None:
         [{"subject": "X:1", "predicate": "biolink:related_to", "object": "Y:2", "category": ["biolink:Association"]}],
     )
     assert _predicate_advice(nodes, orphan_edges) == []
+
+
+# --------------------------------------------------------------------------- #
+# US-003: compact_audit_report — token-efficient tool payload (pure unit tests)
+# --------------------------------------------------------------------------- #
+
+
+def _full_report(unresolved: list[str]) -> dict[str, object]:
+    """A full-shape ``build_and_audit`` success report: every key the pure core emits."""
+    return {
+        "ok": True,
+        "coverage_pct": 0.75,
+        "measured": True,
+        "qc_pass_rate": None,
+        "biolink_valid_pct": 1.0,
+        "biolink_valid_pct_strict": 0.9,
+        "biolink_problems": {"bad_predicate": 2},
+        "demoted_edge_pct": 0.0,
+        "errors": ["coverage unavailable: nope"],
+        "error_codes": ["qualifier-unsatisfiable"],
+        "kgx_path": "/tmp/agent-x/kg.nodes.ndjson",
+        "edges_path": "/tmp/agent-x/kg.edges.ndjson",
+        "node_count": 3,
+        "edge_count": 2,
+        "unresolved": unresolved,
+        "predicate_advice": [{"predicate": "gene_associated_with_condition", "legal_predicates": ["affects"]}],
+        "multivalued_suspects": [{"column": "subject", "separator": ";", "count": 2, "hint": "add explode_by"}],
+        "head": False,
+    }
+
+
+def test_compact_audit_report_caps_unresolved_with_marker() -> None:
+    """More than 20 unresolved terms ship the FIRST 20 in order plus a visible '+N more' marker."""
+    terms: list[str] = [f"term{i}" for i in range(25)]
+
+    compact = compact_audit_report(_full_report(terms))
+
+    unresolved = compact["unresolved"]
+    assert isinstance(unresolved, list)
+    assert len(unresolved) == 21  # the 20-entry cap + the marker
+    assert unresolved[:20] == terms[:20]
+    assert unresolved[-1] == "+5 more"
+
+
+def test_compact_audit_report_no_marker_at_or_below_cap() -> None:
+    """Exactly 20 unresolved terms pass through untouched (no marker); fewer is unchanged."""
+    at_cap = compact_audit_report(_full_report([f"term{i}" for i in range(20)]))
+    at = at_cap["unresolved"]
+    assert isinstance(at, list)
+    assert at == [f"term{i}" for i in range(20)]  # no '+0 more' marker appended
+
+    below = compact_audit_report(_full_report(["only"]))
+    assert below["unresolved"] == ["only"]
+
+
+def test_compact_audit_report_tolerates_missing_optional_keys() -> None:
+    """A partial report (e.g. an early failure) compacts without raising: absent keys stay absent."""
+    assert compact_audit_report({}) == {}
+    minimal = compact_audit_report({"ok": False, "errors": ["config is not a YAML mapping"], "error_codes": []})
+    assert minimal == {"ok": False, "errors": ["config is not a YAML mapping"], "error_codes": []}
+    assert "coverage_pct" not in minimal
+
+
+def test_compact_audit_report_handles_odd_unresolved_shapes() -> None:
+    """A missing or non-list ``unresolved`` never raises: the cap applies only to real lists."""
+    assert "unresolved" not in compact_audit_report({"ok": True})
+    compact = compact_audit_report({"ok": True, "unresolved": None})
+    assert compact["unresolved"] is None  # shape preserved as-is
+
+
+def test_compact_audit_report_drops_paths_and_internals_without_mutation() -> None:
+    """Paths + bookkeeping + strict biolink internals are dropped; retained shapes and the input survive."""
+    terms: list[str] = [f"term{i}" for i in range(25)]
+    report: dict[str, object] = _full_report(terms)
+    report["_notes"] = ["internal"]  # any non-allowlisted internal is dropped too
+    snapshot: dict[str, object] = copy.deepcopy(report)
+
+    compact = compact_audit_report(report)
+
+    kept: set[str] = {
+        "ok",
+        "errors",
+        "error_codes",
+        "coverage_pct",
+        "biolink_valid_pct",
+        "demoted_edge_pct",
+        "predicate_advice",
+        "multivalued_suspects",
+        "node_count",
+        "edge_count",
+        "head",
+        "unresolved",
+    }
+    assert set(compact) == kept
+    for dropped in ("kgx_path", "edges_path", "measured", "qc_pass_rate", "biolink_valid_pct_strict", "biolink_problems", "_notes"):
+        assert dropped not in compact
+    for key in kept - {"unresolved"}:
+        assert compact[key] == snapshot[key]  # retained value shapes preserved
+    assert report == snapshot  # the INPUT is never mutated: its 25 unresolved survive intact
+    assert report["unresolved"] is terms
+
+
+def test_build_and_audit_tool_returns_compact_report(tmp_path: Path, redb: Path) -> None:
+    """The tool observation is the COMPACT report: high-signal keys only, no paths/internals."""
+    pytest.importorskip("smolagents")
+    data: Path = _write_table(tmp_path, "brca1\tmapk1\n")
+    tool = make_build_and_audit_tool(lambda: redb)
+
+    parsed: dict[str, Any] = json.loads(tool.forward(_yaml(_section_config(data))))
+
+    assert parsed["ok"] is True
+    assert parsed["coverage_pct"] == 1.0
+    assert parsed["node_count"] > 0
+    assert parsed["edge_count"] > 0
+    assert parsed["unresolved"] == []
+    assert parsed["head"] is False
+    for dropped in ("kgx_path", "edges_path", "measured", "qc_pass_rate", "biolink_valid_pct_strict", "biolink_problems"):
+        assert dropped not in parsed
