@@ -1058,7 +1058,7 @@ def drop_zero_effect_size(lf: pl.LazyFrame, col: str = "effect_size") -> pl.Lazy
     return lf.filter(pl.col(col).cast(pl.Float64, strict=False).ne_missing(0.0))
 
 
-def drop_low_number_of_cases(lf: pl.LazyFrame, col: str = "number_of_cases", threshold: float = 25.0) -> pl.LazyFrame:
+def drop_low_number_of_cases(lf: pl.LazyFrame, col: str = "number_of_cases", threshold: float = 10.0) -> pl.LazyFrame:
     """Drop release-mode ``applied_to_treat`` edges whose number of cases is below the threshold.
 
     Args:

@@ -1309,11 +1309,11 @@ def test_drop_zero_effect_size_noop_without_column() -> None:
 
 
 def test_drop_low_number_of_cases_removes_below_threshold_keeps_at_threshold_and_nulls() -> None:
-    """drop_low_number_of_cases drops case counts under 25 while keeping 25+ and nulls."""
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b", "c", "d", "e"], "number_of_cases": [24, 25, 26, None, 0]}).lazy()
+    """drop_low_number_of_cases drops case counts under 10 while keeping 10+ and nulls."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b", "c", "d", "e"], "number_of_cases": [9, 10, 11, None, 0]}).lazy()
     result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
     assert list(result["subject"]) == ["b", "c", "d"]
-    assert list(result["number_of_cases"]) == [25, 26, None]
+    assert list(result["number_of_cases"]) == [10, 11, None]
 
 
 def test_drop_low_number_of_cases_noop_without_column() -> None:
@@ -1328,7 +1328,7 @@ def test_drop_low_number_of_cases_keeps_non_numeric_cells() -> None:
     """drop_low_number_of_cases keeps non-numeric cells (a header row read as data) instead of crashing on a strict cast."""
     # The csv op reads sources with has_header=False, so a TSV's header row flows
     # through as a data row; the strict cast raised InvalidOperationError on it.
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["hdr", "a", "b", "c"], "number_of_cases": ["number_of_cases", "30", "10", None]}).lazy()
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["hdr", "a", "b", "c"], "number_of_cases": ["number_of_cases", "30", "9", None]}).lazy()
     result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
     assert list(result["subject"]) == ["hdr", "a", "c"]
 

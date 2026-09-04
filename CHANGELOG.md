@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+- **The release-mode minimum `number_of_cases` threshold for `applied_to_treat` edges is now 10 instead of 25.** `drop_low_number_of_cases` keeps edges whose case count is >= 10 (nulls kept, as before); release builds now ship `applied_to_treat` edges backed by 10-24 cases that earlier releases dropped. Gating (`--release` *and* `applied_to_treat`), null handling, non-numeric tolerance, and `significance`-phase placement are unchanged.
+
 ## 16.6.2 - 2026-09-04
 
 ### Fixed
