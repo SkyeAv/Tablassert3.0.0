@@ -49,6 +49,32 @@ BABEL_CLASS_RE: re.Pattern[str] = re.compile(r'<a href="([^"]*_nodes[^"]*\.gz)"'
 BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
 
 
+def _section_store_path(h: str, head: bool = False, release: bool = False, qc: bool = False) -> Path:
+    """Name a section's cached subgraph parquet so build-mode flags never share a cache file.
+
+    The cached parquet's content depends on the build mode: ``--head`` samples
+    rows, ``--release`` applies the release-mode significance filters, and
+    ``--qc`` drops fullmap-audit rejects. ``Tcode.collect`` quick-exits on any
+    existing store file, skipping the whole op chain, so each mode combination
+    must cache under its own suffix or one mode's build is silently reused as
+    another's.
+
+    Args:
+        h: Section config hash (``mkhash`` of the section dict).
+        head: ``--head`` preview build flag.
+        release: ``--release`` build flag.
+        qc: ``--qc`` build flag.
+
+    Returns:
+        Store path like ``<h>.parquet`` with ``.head`` / ``.release`` / ``.qc``
+        inserted before the extension for each set flag.
+    """
+    from tablassert.utils import STORE
+
+    suffix: str = (".head" if head else "") + (".release" if release else "") + (".qc" if qc else "")
+    return STORE / f"{h}{suffix}.parquet"
+
+
 def _load_table_indexed(args: tuple[int, Path]) -> tuple[int, object]:
     """Load one table, tagged with its input index (multiprocessing worker).
 
@@ -162,7 +188,7 @@ def build_graph_pipeline(
     from tablassert.fullmap import fullmap_db_path
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
     from tablassert.progress import flatten_pydantic_error, format_section_compact
-    from tablassert.utils import STORE, mkhash
+    from tablassert.utils import mkhash
 
     # Stage 1/6: load tables.
     progress.stage("Loading Tables")
@@ -204,8 +230,9 @@ def build_graph_pipeline(
     for s in sections:
         h: str = mkhash(s)
         start(f"{Path(str(s['config'])).stem} · {h[:8]}")
-        # --head preview builds cache to a distinct .head.parquet so they never clobber full builds.
-        store: Path = STORE / (f"{h}.head.parquet" if head else f"{h}.parquet")
+        # Mode flags change the cached parquet's content, so each combination caches
+        # to a distinct file and can never quick-exit another mode's build.
+        store: Path = _section_store_path(h, head=head, release=release, qc=qc)
         try:
             tcode.append(
                 Tcode.model_validate(
