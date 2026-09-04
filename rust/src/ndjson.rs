@@ -2,7 +2,7 @@ use crate::json::{canonical_json_bytes, emitted_json_bytes, strip_nulls};
 use crate::uuid::uuid_for_json_object;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 use std::collections::hash_map::Entry;
 use std::fs::File;
@@ -192,8 +192,8 @@ fn not_a_key_error(output: &Path, id: &str, incoming: &Value, fields: Option<&[S
     ))
 }
 
-/// Merge-mode dedup state: derived id -> (hashes of every absorbed record, merged record),
-/// plus the first-seen id order so the buffered output is deterministic.
+/// Merge-mode dedup state: derived id -> the record that first claimed it plus its fold
+/// bookkeeping, plus the first-seen id order so the buffered output is deterministic.
 ///
 /// Unlike the default `EdgeIndex` (24 bytes per edge, streaming writes), this retains one
 /// COMPLETE record per unique id and writes nothing until end-of-stream, because a
@@ -201,18 +201,127 @@ fn not_a_key_error(output: &Path, id: &str, incoming: &Value, fields: Option<&[S
 /// memory cost is exactly why merge mode is opt-in (`uuid_on_collision: merge`).
 #[derive(Default)]
 struct MergeIndex {
-    records: FxHashMap<[u8; 16], (Vec<u64>, Value)>,
+    records: FxHashMap<[u8; 16], MergedRecord>,
     order: Vec<[u8; 16]>,
     merged: u64,
     scalar_conflicts: u64,
 }
 
+/// Union bookkeeping for one array field of one buffered record.
+///
+/// Canonical bytes are computed ONCE per item -- when the item first enters the record,
+/// either with the record itself or appended by a fold -- and are reused for membership
+/// and the final sort: each fold costs O(1) per incoming item instead of re-canonicalizing
+/// every stored item on every fold (the pre-US-002 quadratic).
+struct ListState {
+    /// Canonical bytes of every stored item. Membership oracle for INCOMING items only:
+    /// duplicates inside the first-seen record stay in the list but still reject an equal
+    /// incoming item, exactly like the former linear `seen` scan.
+    seen: FxHashSet<Vec<u8>>,
+    /// Canonical bytes parallel to the live items, so the deferred write-out sort never
+    /// re-canonicalizes anything.
+    bytes: Vec<Vec<u8>>,
+    /// Set when a real union ran (BOTH sides carried an array). Only then does the
+    /// write-out sort the list; a list merely copied from a later record keeps its source
+    /// order, byte-for-byte with the pre-US-002 fold.
+    unioned: bool,
+}
+
+impl ListState {
+    /// Seed from an array that just entered the record (first-seen, or copied from a later
+    /// record): keep EVERY item -- duplicates included -- and record each item's canonical
+    /// bytes once.
+    fn from_items(items: &[Value]) -> PyResult<Self> {
+        let mut state = Self {
+            seen: FxHashSet::with_capacity_and_hasher(items.len(), Default::default()),
+            bytes: Vec::with_capacity(items.len()),
+            unioned: false,
+        };
+        for item in items {
+            let bytes: Vec<u8> = canonical_json_bytes(item).map_err(runtime_error)?;
+            state.seen.insert(bytes.clone());
+            state.bytes.push(bytes);
+        }
+        Ok(state)
+    }
+}
+
+/// One buffered edge record plus the O(1) bookkeeping its folds need.
+///
+/// Replaces the pre-US-002 `(Vec<u64>, Value)` tuple: exact-repeat suppression and list
+/// membership are hash sets, and the per-fold re-canonicalization + re-sort of every
+/// stored list item is gone -- lists sort ONCE, at write-out, and only if a union ran.
+struct MergedRecord {
+    /// The live record: scalars first-wins, lists in original/append order until the
+    /// deferred write-out sort.
+    value: Value,
+    /// Content hashes of every record absorbed into this id: O(1) exact-repeat
+    /// suppression. Bare hashes keep the pre-US-002 `Vec<u64>` semantics exactly (a false
+    /// hit could only skip re-folding a record, matching the old `contains`); node dedup
+    /// stays full-bytes because a collision there would drop a DISTINCT record.
+    hashes: FxHashSet<u64>,
+    /// Union state for every field whose current value is an array.
+    lists: FxHashMap<String, ListState>,
+}
+
+impl MergedRecord {
+    /// Buffer the record that first claimed its id, seeding union state for every array
+    /// field (items kept verbatim, canonical bytes recorded once).
+    fn new(value: Value, content: u64) -> PyResult<Self> {
+        let mut lists: FxHashMap<String, ListState> = FxHashMap::default();
+        if let Some(map) = value.as_object() {
+            for (key, item) in map {
+                if let Value::Array(items) = item {
+                    lists.insert(key.clone(), ListState::from_items(items)?);
+                }
+            }
+        }
+        let mut hashes: FxHashSet<u64> = FxHashSet::default();
+        hashes.insert(content);
+        Ok(Self {
+            value,
+            hashes,
+            lists,
+        })
+    }
+
+    /// Apply the one deferred sort just before the write: every list that went through a
+    /// real union is sorted by canonical bytes (stable, so equal-byte items keep arrival
+    /// order -- byte-identical to the pre-US-002 per-fold sort). Lists that were only
+    /// copied keep their source order. Returns the finished record.
+    fn finish(mut self) -> PyResult<Value> {
+        let Some(map) = self.value.as_object_mut() else {
+            return Err(runtime_error("expected JSON object"));
+        };
+        for (key, state) in &mut self.lists {
+            if !state.unioned {
+                continue;
+            }
+            // The `number_of_cases` recompute may have replaced a unioned array with a
+            // number after the union; only arrays are sortable.
+            let Some(Value::Array(items)) = map.get_mut(key) else {
+                continue;
+            };
+            let bytes: Vec<Vec<u8>> = std::mem::take(&mut state.bytes);
+            let mut keyed: Vec<(Vec<u8>, Value)> = bytes.into_iter().zip(items.drain(..)).collect();
+            keyed.sort_by(|left, right| left.0.cmp(&right.0));
+            items.extend(keyed.into_iter().map(|(_, item)| item));
+        }
+        Ok(self.value)
+    }
+}
+
 /// Fold `incoming` into `stored`, field-wise. Returns the number of conflicting scalar
 /// fields (kept first-wins) so the caller can report them.
 ///
+/// Near-linear implementation of the semantics frozen by `merge_records_reference` and
+/// policed by `merge_fold_matches_reference_on_fuzz`:
+///
 /// - list fields: union, deduped by canonical JSON bytes (so two `sources` objects that
-///   differ only in key order collapse), then sorted by canonical bytes so the merged
-///   output is identical regardless of which record arrived first;
+///   differ only in key order collapse). Each incoming item is canonicalized ONCE and
+///   checked against the field's `ListState` set in O(1); stored items are never
+///   re-canonicalized, and the sort by canonical bytes is deferred to write-out
+///   (`MergedRecord::finish`), where it runs only for fields that saw a real union;
 /// - scalar fields: first-wins on conflict, counted;
 /// - fields only on `incoming`: copied over (only a conflict when both sides disagree);
 /// - `id` is never touched: both sides carry the same one by construction.
@@ -225,16 +334,16 @@ struct MergeIndex {
 /// summing both over- and under-report; the union length is the exact count. The
 /// superseded divergence is NOT reported as a scalar conflict. When neither side
 /// carries the list, `number_of_cases` stays an ordinary first-wins scalar.
-fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
+fn merge_records(stored: &mut MergedRecord, incoming: &Value) -> PyResult<u64> {
     let Some(incoming_map) = incoming.as_object() else {
         return Err(runtime_error("expected JSON object"));
     };
     let mut conflicts: u64 = 0;
     // Read both counts BEFORE the fold: the fold may copy incoming's over a stored side
     // that lacks it, and the recompute rule below needs to know each side contributed one.
-    let stored_cases: Option<Value> = stored.get("number_of_cases").cloned();
+    let stored_cases: Option<Value> = stored.value.get("number_of_cases").cloned();
     let incoming_cases: Option<Value> = incoming_map.get("number_of_cases").cloned();
-    let Some(stored_map) = stored.as_object_mut() else {
+    let Some(stored_map) = stored.value.as_object_mut() else {
         return Err(runtime_error("expected JSON object"));
     };
     for (key, incoming_value) in incoming_map {
@@ -243,29 +352,35 @@ fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
         }
         match stored_map.get_mut(key) {
             None => {
+                // First time this field appears on the stored record: copy it over. An
+                // array gets union state seeded so LATER folds can union into it in O(1)
+                // (this copy itself is NOT a union: it keeps its source order).
+                if let Value::Array(items) = incoming_value {
+                    stored
+                        .lists
+                        .insert(key.clone(), ListState::from_items(items)?);
+                }
                 stored_map.insert(key.clone(), incoming_value.clone());
             }
             Some(stored_value) => {
                 if let (Value::Array(stored_items), Value::Array(incoming_items)) =
                     (&mut *stored_value, incoming_value)
                 {
-                    let mut seen: Vec<Vec<u8>> = Vec::with_capacity(stored_items.len());
-                    for item in stored_items.iter() {
-                        seen.push(canonical_json_bytes(item).map_err(runtime_error)?);
-                    }
+                    let Some(state) = stored.lists.get_mut(key) else {
+                        // Invariant: every stored array field carries union state.
+                        return Err(runtime_error("list field without union state"));
+                    };
+                    // BOTH sides arrays -> a union happened: this field sorts at write-out
+                    // even when no new item survives membership (the pre-US-002 fold
+                    // sorted on every such fold).
+                    state.unioned = true;
                     for item in incoming_items {
                         let bytes: Vec<u8> = canonical_json_bytes(item).map_err(runtime_error)?;
-                        if !seen.contains(&bytes) {
-                            seen.push(bytes);
+                        if state.seen.insert(bytes.clone()) {
+                            state.bytes.push(bytes);
                             stored_items.push(item.clone());
                         }
                     }
-                    let mut keyed: Vec<(Vec<u8>, Value)> = Vec::with_capacity(stored_items.len());
-                    for item in stored_items.drain(..) {
-                        keyed.push((canonical_json_bytes(&item).map_err(runtime_error)?, item));
-                    }
-                    keyed.sort_by(|left, right| left.0.cmp(&right.0));
-                    stored_items.extend(keyed.into_iter().map(|(_, item)| item));
                 } else if stored_value != incoming_value {
                     conflicts += 1;
                 }
@@ -276,6 +391,7 @@ fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
     // merged record actually carrying the ID list: a one-sided carrier is fine (the union
     // is just that side's list), while a carrier-less merge never recomputes.
     if let Some(union_len) = stored
+        .value
         .get("supporting_case_ids")
         .and_then(Value::as_array)
         .map(Vec::len)
@@ -290,7 +406,7 @@ fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
                     conflicts -= 1;
                 }
             }
-            let Some(map) = stored.as_object_mut() else {
+            let Some(map) = stored.value.as_object_mut() else {
                 return Err(runtime_error("expected JSON object"));
             };
             map.insert(
@@ -318,21 +434,21 @@ impl MergeIndex {
     fn absorb(&mut self, id: [u8; 16], value: Value, content: u64) -> PyResult<()> {
         match self.records.entry(id) {
             Entry::Vacant(slot) => {
-                slot.insert((vec![content], value));
+                slot.insert(MergedRecord::new(value, content)?);
                 self.order.push(id);
                 Ok(())
             }
             Entry::Occupied(mut slot) => {
-                let (hashes, stored_value) = slot.get_mut();
+                let record: &mut MergedRecord = slot.get_mut();
                 // Exact repeat of ANY record already folded into this id -- including a
                 // divergent one -- is suppressed, so the conflict summary never
                 // double-counts a re-seen row.
-                if hashes.contains(&content) {
+                if record.hashes.contains(&content) {
                     return Ok(());
                 }
                 self.merged += 1;
-                self.scalar_conflicts += merge_records(stored_value, &value)?;
-                hashes.push(content);
+                self.scalar_conflicts += merge_records(record, &value)?;
+                record.hashes.insert(content);
                 Ok(())
             }
         }
@@ -507,9 +623,11 @@ fn dedup_edges_merge(
         index.absorb(edge_id_bytes(&value)?, value, content)?;
     }
     for id in std::mem::take(&mut index.order) {
-        let Some((_, mut value)) = index.records.remove(&id) else {
+        let Some(record) = index.records.remove(&id) else {
             continue;
         };
+        // The one deferred sort: unioned lists sort here, everything else ships as-is.
+        let mut value: Value = record.finish()?;
         strip_internal_edge_fields(&mut value);
         writer
             .write_all(&emitted_json_bytes(&value).map_err(runtime_error)?)
@@ -1366,6 +1484,49 @@ mod tests {
         let error = dedup_ndjson(input, output, true, None, None, Some("bogus".to_string()))
             .expect_err("unknown mode");
         assert!(error.to_string().contains("bogus"), "{error}");
+    }
+
+    #[test]
+    fn merge_mode_sorts_only_lists_that_went_through_a_union() {
+        // WHY: the US-002 fold defers sorting to write-out and sorts ONLY fields that saw
+        // a real union (both sides arrays). A list copied from a later record is evidence
+        // in its source order and must NOT be sorted -- byte parity with the pre-US-002
+        // fold, pinned here directly in addition to the fuzz oracle.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                // Group 1 (subject A): first record has no `tags`; the second copies its
+                // deliberately unsorted list in -- never unioned, so it stays unsorted.
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"tags\":[\"z\",\"m\"]}\n",
+                // Group 2 (subject X): both records carry `tags`, so a real union runs
+                // and the write-out sorts.
+                "{\"subject\":\"X\",\"predicate\":\"r\",\"object\":\"Y\",\"tags\":[\"z\",\"m\"]}\n",
+                "{\"subject\":\"X\",\"predicate\":\"r\",\"object\":\"Y\",\"tags\":[\"a\"]}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (2, 0));
+        let lines: Vec<Value> = fs::read_to_string(output)
+            .expect("read output")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+        assert_eq!(lines.len(), 2);
+        // Copied, never unioned: source order preserved.
+        assert_eq!(lines[0]["tags"], serde_json::json!(["z", "m"]));
+        // Unioned: sorted by canonical bytes.
+        assert_eq!(lines[1]["tags"], serde_json::json!(["a", "m", "z"]));
     }
 }
 
