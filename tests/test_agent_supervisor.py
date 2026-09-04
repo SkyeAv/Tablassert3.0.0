@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from itertools import pairwise
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -181,9 +181,9 @@ def test_supervisor_distill_records_every_generate_call(tmp_path: Path, fullmap_
         assert record["purpose"] == "agent"
         assert record["pmc_id"] == "PMC1"
         assert record["call_index"] == index
-        assert record["messages"][-1]["role"] == "assistant"  # pyright: ignore[reportIndexIssue]
+        assert cast(list[dict[str, str]], record["messages"])[-1]["role"] == "assistant"
     # The final (most complete) record's assistant turn carries the FakeModel's final-answer config.
-    assert "final_answer" in records[-1]["messages"][-1]["content"]  # pyright: ignore[reportIndexIssue]
+    assert "final_answer" in cast(list[dict[str, str]], records[-1]["messages"])[-1]["content"]
 
 
 def test_supervisor_improve_loop_accepts_better(tmp_path: Path, fullmap_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:

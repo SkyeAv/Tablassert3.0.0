@@ -2,7 +2,8 @@
 
 **Why this exists:** hand-authoring a Tablassert config for every PMC supplementary table does not scale.
 The optional `[agent]` extra makes it autonomous: point it at **PubMed Central (PMC)** article IDs and it
-**derives the config for you**, then builds, audits, and iteratively improves the graph until the entity
+**derives the config for you**, then builds, audits, and iteratively improves the graph — the
+improve loop is deterministic supervisor Python, not more LLM calls — until the entity
 resolution *maps* (coverage threshold). The outcome is an **NCATS Translator-compliant KGX knowledge
 graph** per article, a claim the loop verifies rather than asserts, by constructing every emitted
 record as its own Biolink class (see [Biolink validity](#biolink-validity)), with the whole loop
@@ -66,10 +67,17 @@ failing fast (cheap checks before any large download and before any model call):
    `fetch_pmc_tables` remains as a thin wrapper returning only the table files.
 
 The main text and every candidate table are wired into the agent TWICE, deliberately: the supervisor
-pre-renders the `pmc_article_context` summary (JATS title/abstract/outline/supplementary manifest) and
-a head preview of **every** qualifying candidate table **and every qualifying Excel worksheet** directly into the task text
-(`render_task_context`), so the agent can author a config with **zero inspection tool calls**. The
-`pmc_article_context` / `read_table` tools stay registered as fallbacks for rows beyond a preview (for
+pre-renders the `pmc_article_context` summary (JATS title/abstract/outline/supplementary manifest),
+a head preview of **every** qualifying candidate table **and every qualifying Excel worksheet**, and a
+per-column **`column_digest`** block per previewed table/worksheet directly into the task text
+(`render_task_context`), so the agent can author a config with **zero inspection tool calls**. Each
+digest scans the first **500 data rows** and reports, per column, the **fraction of non-null cells
+containing each separator** (`;`, `|`, `,`, `/`) plus non-null/distinct counts, max cell length, and
+sample values — enough for `explode_by`/`split_by` detection without a single tool call. Previews and
+digests are rendered inside the data fences (untrusted data, never instructions; see
+[Prompt-injection defenses](#prompt-injection-defenses)). The
+`pmc_article_context` / `read_table` tools stay registered as fallbacks for rows beyond a preview or a
+digest's 500-row scan window (for
 Excel, `read_table` lists **all worksheets** and reads a chosen one via `sheet=` (set `source.sheet`
 in the config). Small tables and worksheets are filtered before this context is rendered; see
 [Small-table guard](#small-table-guard).
@@ -172,24 +180,37 @@ control flow over agentic decisions. For each PMC id it:
    fails fast on not-open-access / no-table), filters out below-threshold tables and worksheets, and
    presents only qualifying candidates to the agent. If no readable candidate qualifies, it records
    `SKIPPED` before constructing the inner model.
-2. Runs the **inner `CodeAgent`** to *derive* an initial table config (the task already contains the
-   article summary + head previews of every table/worksheet, so the typical path is just `derive_config`;
-   `pmc_article_context` / `read_table` remain fallbacks; every section gated by the Section JSON
-   schema). The agent maps **each** mappable table/worksheet as its own section, **one config per paper**
-   (see below).
+2. Runs the **inner `CodeAgent`** to *derive* an initial table config. The task already contains the
+   article summary, head previews, and `column_digest` separator statistics of every table/worksheet,
+   so the canonical path is a fixed **derive → build → answer** workflow over the four-tool surface
+   (`derive_config` → `build_and_audit` → final answer, target: 3 steps or fewer); `read_table` /
+   `pmc_article_context` remain fallbacks only for rows beyond a digest's 500-row scan window. The
+   agent rebuilds **only on a coded build error** — fixing exactly the field the error names, at most
+   twice — and never loops on coverage: coverage improvement is the supervisor's job (step 4). Every
+   section is gated by the Section JSON schema. The agent maps **each** mappable table/worksheet as its
+   own section, **one config per paper** (see below).
 3. **Builds + audits** in one deterministic mega-tool (`build_and_audit`: validate → build → QC → coverage
-   → **Biolink validity**). The report is *actionable*, not just a score: a nonzero `demoted_edge_pct`
+   → **Biolink validity**). The LLM sees a **compact** observation — exactly the 12 high-signal keys
+   (verdict, coded errors + codes, coverage/Biolink/demoted-edge scores, `predicate_advice`,
+   `multivalued_suspects`, node/edge counts, the `head` flag, and `unresolved` capped at 20 entries
+   with a visible `+N more` marker) — while the pure `build_and_audit` function still hands the
+   supervisor the **full** report (artifact paths, bookkeeping, strict-Biolink internals). The report is
+   *actionable*, not just a score: a nonzero `demoted_edge_pct`
    comes with `predicate_advice` (the legal predicates for the demoted category pair), unresolved terms
    that still contain a separator surface as `multivalued_suspects` (a missed `explode_by`), and every
    report carries a `head` fidelity flag so sampled edge counts are never compared against full builds.
-4. **Improves** while coverage `< map_threshold` and budget remains: `propose_config_edit` → rebuild →
-   **accept iff no worse on coverage *or* Biolink validity and strictly better on one** (monotonic:
+4. **Improves** coverage with **deterministic Python — never the LLM** — while coverage `< map_threshold`
+   and budget remains: tier 1 feeds `map_coverage` feedback (called as a pure function) to a **ranked**
+   list of distinct `propose_config_edit` candidates (also pure), scores them with fast head builds, and
+   accepts the first full build that is **strictly better — iff no worse on coverage *or* Biolink
+   validity and strictly better on one** (monotonic:
    regressions on either axis are rejected, so a coverage win can no longer be bought with invalid KGX) —
    and an edit that shrinks the full-build **edge count** by more than 25% is rejected even with a gain
-   (the detail-first objective: the biggest solid config wins). The deterministic proposer now covers
+   (the detail-first objective: the biggest solid config wins). The deterministic proposer covers
    **four** knob families: NodeEncoding knobs (`prioritize`/`avoid`/`regex`/`remove`/`exclude_*`),
    **`explode_by`** (added when unresolved terms still carry a separator), and — fed the audit report —
-   a **demoted-predicate fix** (the first legal predicate from `predicate_advice`); tier-2 LLM reflexion
+   a **demoted-predicate fix** (the first legal predicate from `predicate_advice`). Only tier 2, the
+   OPT-IN `--reflexion` path, spends an LLM call, and only after tier 1 stalls; it
    may additionally change qualifiers, `split_by`, node categories, and the source.
 5. **Records** metrics, **checkpoints**, and moves to the next config.
 
@@ -307,7 +328,8 @@ mappable supplementary table/worksheet. The config is shaped as `{template, sect
 The final-answer gate (`validate_table_config`) validates **every** section, so a config is accepted
 only when all of its sections are schema-valid. `map_coverage` measures each section and reports an
 **aggregate** (`overall` = mean of section coverages, `min` = weakest section, `measured` = true iff
-every section measured, plus the per-section breakdown under `sections`). `propose_config_edit` edits
+every section measured, plus the per-section breakdown under `sections`). The supervisor's
+`propose_config_edit` edits
 each section independently from its own coverage entry. A single-table paper is still one config with
 one section. State and storage stay **per-paper**: one best config (`configs/<pmc_id>.yaml`) holding
 all sections, with `section_coverages` recorded for visibility.
@@ -335,6 +357,15 @@ Only newly generated agent table configs are normalized: every section's `source
 an absolute local/data-lake path, and the graph's new `tables` entry is an absolute path. Existing
 user-authored table YAMLs and their source paths are not rewritten. The target graph's existing metadata
 and unrelated table entries are preserved.
+
+Before the accepted best config is persisted it is also **compacted deterministically**
+(`compact_config`), after normalization: provably no-op entries (keys equal to the Pydantic model
+defaults) are removed while semantics are preserved — the compacted config builds the identical KGX
+and scores the identical `quality_score` (pinned by the offline accuracy-invariance test). Compaction
+can only shrink a config or leave it alone, never corrupt it: any failure writes the normalized
+uncompacted config and the status is unaffected. Each record tracks `config_chars` — the character
+count of what was actually written to `configs/<pmc_id>.yaml` — in `state.json`, so size deltas are
+auditable per article.
 
 A result is appended to the target graph only when it is `MAPPED` or `BUILT_UNMEASURED`. `SKIPPED`
 articles never append. If the same PMC is processed again, its old table entry is replaced and the new
@@ -368,15 +399,24 @@ another's entries and a same-PMC rerun has deterministic last-writer-wins replac
 
 ## The tools
 
+Full mode registers **exactly four** LLM tools — `read_table`, `pmc_article_context`, `derive_config`,
+`build_and_audit` — the derive → build → answer surface. `map_coverage` and `propose_config_edit` are
+**not** in the full-mode agent's surface: they are pure helpers the deterministic supervisor calls
+itself in its improve loop (coverage improvement is the supervisor's job, after the agent answers).
+Two batch derive modes vary the surface: `derive_only` registers only the three
+inspection/authoring tools (no fullmap tools, so derivations parallelize), and `derive_coverage`
+swaps `build_and_audit` for `map_coverage` (coverage feedback without the KGX build, so the agent
+can pick the best sheet/columns).
+
 | Tool | Kind | Purpose |
 | --- | --- | --- |
 | `fetch_pmc_article` | function | PMC-AWS download of the useful latest-version payload (main text + metadata + tables), fail-fast |
 | `pmc_article_context` | tool | parse the JATS main text into a **data-fenced** summary (title/abstract/sections/supplementary manifest); `.txt` renders a fenced excerpt |
 | `read_table` | tool | render a table as **data-fenced, spotlighted** text; lists **all worksheets** of an Excel file (`sheet=`) |
 | `derive_config` | tool | author a table config (`template` + one section per table); each section must satisfy `Section.model_json_schema()` |
-| `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage→**Biolink-validity** mega-tool; the report's `predicate_advice` / `multivalued_suspects` fields make demotions and missed `explode_by`s directly actionable |
-| `map_coverage` | tool (`derive_coverage` mode only) | fullmap term-resolution coverage (per-column + overall); the supervisor calls the pure function in its deterministic improve loop |
-| `propose_config_edit` | function | deterministic, constrained edits + rationale used by the supervisor's improve loop: `NodeEncoding` knobs, `explode_by` from separator-carrying unresolved terms, and (given the audit report) a demoted-predicate fix |
+| `build_and_audit` | tool | **one** deterministic validate→build→QC→coverage→**Biolink-validity** mega-tool; the LLM observation is the **compact** 12-key report (`unresolved` capped at 20 + `+N more`), while direct/supervisor callers of the pure function get the **full** report; the report's `predicate_advice` / `multivalued_suspects` fields make demotions and missed `explode_by`s directly actionable |
+| `map_coverage` | tool (`derive_coverage` mode only) / supervisor pure helper | fullmap term-resolution coverage (per-column + overall); in full mode ONLY the deterministic supervisor calls the pure function (improve loop + per-section recording), never the LLM |
+| `propose_config_edit` | supervisor pure helper | deterministic, constrained edits + rationale used ONLY by the supervisor's improve loop (never an LLM tool): `NodeEncoding` knobs, `explode_by` from separator-carrying unresolved terms, and (given the audit report) a demoted-predicate fix |
 
 `build_and_audit` returns coded errors **verbatim** (each carries a docs URL) so the agent can
 self-correct the exact offending field. `derive_config` does the same: a candidate config that fails
@@ -391,6 +431,11 @@ The agent's `instructions` make the techniques explicit:
   section, every evidence slot captured, multi-valued cells exploded, direction/aspect columns
   qualified; (2) coverage; (3) Biolink validity / QC; (4) efficiency LAST — the prompt states plainly
   that a mappable sheet or evidence column is never sacrificed to save a tool call.
+- **Digest-first `explode_by`/`split_by` detection**: every previewed table/worksheet ships its
+  injected `column_digest` (separator fractions over the first 500 data rows), and the prompt directs
+  the agent to read those statistics FIRST — an entity column with a dominant separator gets
+  `explode_by` for exactly that separator; `read_table` is justified only for rows beyond the digest's
+  scan window.
 - **ReAct, planning off**: `CodeAgent` is a ReAct loop, but periodic re-planning is disabled
   (`planning_interval=None`): each planning turn is a whole extra LLM round trip carrying the full
   prompt, and the task already prescribes a fixed short workflow (derive → build → answer): on a
@@ -416,8 +461,10 @@ The agent's `instructions` make the techniques explicit:
   exemplar** combining `explode_by: ";"`, a column qualifier, a regex strip, and the paired
   `effect_size`/`effect_type` annotations — every exemplar's predicate is a legal, specific choice for
   its category pair (guarded by tests).
-- **Reflexion-style self-critique**: `propose_config_edit` / `reflexion_improve` reflect on failing rows,
-  error codes, and unresolved terms, then make a targeted, schema-valid edit.
+- **Reflexion-style self-critique (supervisor-side)**: the deterministic `propose_config_edit` /
+  `reflexion_improve` reflect on failing rows,
+  error codes, and unresolved terms, then make a targeted, schema-valid edit — in the supervisor's
+  improve loop, never inside the agent's tool surface.
 - **Error-recovery prompting**: tools return rich coded errors; the prompt directs the agent to read the
   code + message and fix precisely that field, never repeating an unchanged config.
 - **Context trimming**: a `step_callback` tallies tokens/steps and failed/wrong/redundant tool calls, and

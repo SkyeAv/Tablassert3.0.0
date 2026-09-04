@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -39,7 +40,7 @@ class _Usage:
         self.output_tokens = output_tokens
 
 
-def _read_records(path: Path) -> list[dict[str, object]]:
+def _read_records(path: Path) -> list[dict[str, Any]]:
     """Parse an NDJSON file into a list of records, asserting strict one-object-per-line."""
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
@@ -92,8 +93,8 @@ def test_recorder_writes_complete_chatml_records(tmp_path: Path) -> None:
     records = _read_records(path)
     assert len(records) == 1
     record = records[0]
-    assert [m["role"] for m in record["messages"]] == ["system", "user", "assistant"]  # pyright: ignore[reportAttributeAccessIssue]
-    assert record["messages"][-1]["content"] == "<code>final_answer(...)</code>"  # pyright: ignore[reportAttributeAccessIssue]
+    assert [m["role"] for m in record["messages"]] == ["system", "user", "assistant"]
+    assert record["messages"][-1]["content"] == "<code>final_answer(...)</code>"
     assert record["purpose"] == "agent"
     assert record["pmc_id"] == "PMC1"
     assert record["model_id"] == "big-model"
@@ -126,7 +127,7 @@ def test_recorder_without_response_still_records(tmp_path: Path) -> None:
     path: Path = tmp_path / distill.RECORDS_FILENAME
     distill.DistillRecorder(path).record("reflexion", [_Msg("user", "propose an edit")])
     (record,) = _read_records(path)
-    assert [m["role"] for m in record["messages"]] == ["user"]  # pyright: ignore[reportAttributeAccessIssue]
+    assert [m["role"] for m in record["messages"]] == ["user"]
     assert record["token_usage"] is None
 
 
@@ -168,8 +169,8 @@ def test_distilling_model_records_every_generate_call(tmp_path: Path) -> None:
         assert record["purpose"] == "agent"
         assert record["pmc_id"] == "PMC7"
         assert record["call_index"] == index
-        assert record["messages"][-1]["role"] == "assistant"  # pyright: ignore[reportAttributeAccessIssue]
-    assert "final_answer" in records[0]["messages"][-1]["content"]  # pyright: ignore[reportAttributeAccessIssue]
+        assert record["messages"][-1]["role"] == "assistant"
+    assert "final_answer" in records[0]["messages"][-1]["content"]
 
 
 def test_distilling_model_survives_a_raising_recorder(tmp_path: Path) -> None:
