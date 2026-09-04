@@ -35,7 +35,7 @@ from tablassert.lib import (
     coerce_pvalue_columns,
     coerce_study_size_columns,
     coerced_target,
-    drop_low_case_count,
+    drop_low_number_of_cases,
     drop_not_significant,
     drop_zero_effect_size,
     edge_category,
@@ -307,15 +307,15 @@ def test_tcode_collect_omits_release_filters_without_release(fixtures_path: Path
 
     assert "drop_not_significant" not in names
     assert "drop_zero_effect_size" not in names
-    assert "drop_low_case_count" not in names
+    assert "drop_low_number_of_cases" not in names
     assert names.index("sig") < names.index("resolve_batch")
 
 
-def test_tcode_collect_includes_drop_low_case_count_for_applied_to_treat_release(fixtures_path: Path, tmp_path: Path) -> None:
-    """tcode collect gates drop_low_case_count on release and the applied_to_treat predicate."""
+def test_tcode_collect_includes_drop_low_number_of_cases_for_applied_to_treat_release(fixtures_path: Path, tmp_path: Path) -> None:
+    """tcode collect gates drop_low_number_of_cases on release and the applied_to_treat predicate."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     data["statement"]["predicate"] = "applied_to_treat"
-    store: Path = tmp_path / "sectionhash_case_count.parquet"
+    store: Path = tmp_path / "sectionhash_number_of_cases.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "release": True}
     )
@@ -323,12 +323,12 @@ def test_tcode_collect_includes_drop_low_case_count_for_applied_to_treat_release
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
     names: list[str] = [op[0].__name__ for op in collected]
 
-    assert "drop_low_case_count" in names
-    assert names.index("drop_low_case_count") < names.index("resolve_batch")
+    assert "drop_low_number_of_cases" in names
+    assert names.index("drop_low_number_of_cases") < names.index("resolve_batch")
 
 
-def test_tcode_collect_omits_drop_low_case_count_for_other_predicates_in_release(fixtures_path: Path, tmp_path: Path) -> None:
-    """tcode collect omits drop_low_case_count in release mode when the predicate is not applied_to_treat."""
+def test_tcode_collect_omits_drop_low_number_of_cases_for_other_predicates_in_release(fixtures_path: Path, tmp_path: Path) -> None:
+    """tcode collect omits drop_low_number_of_cases in release mode when the predicate is not applied_to_treat."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = tmp_path / "sectionhash_related_to.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -338,7 +338,7 @@ def test_tcode_collect_omits_drop_low_case_count_for_other_predicates_in_release
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
     names: list[str] = [op[0].__name__ for op in collected]
 
-    assert "drop_low_case_count" not in names
+    assert "drop_low_number_of_cases" not in names
     assert "drop_not_significant" in names
 
 
@@ -1276,18 +1276,18 @@ def test_drop_zero_effect_size_noop_without_column() -> None:
     assert list(result["subject"]) == ["a", "b"]
 
 
-def test_drop_low_case_count_removes_below_threshold_keeps_at_threshold_and_nulls() -> None:
-    """drop_low_case_count drops case counts under 25 while keeping 25+ and nulls."""
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b", "c", "d", "e"], "case_count": [24, 25, 26, None, 0]}).lazy()
-    result: pl.DataFrame = drop_low_case_count(lf).collect()
+def test_drop_low_number_of_cases_removes_below_threshold_keeps_at_threshold_and_nulls() -> None:
+    """drop_low_number_of_cases drops case counts under 25 while keeping 25+ and nulls."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b", "c", "d", "e"], "number_of_cases": [24, 25, 26, None, 0]}).lazy()
+    result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
     assert list(result["subject"]) == ["b", "c", "d"]
-    assert list(result["case_count"]) == [25, 26, None]
+    assert list(result["number_of_cases"]) == [25, 26, None]
 
 
-def test_drop_low_case_count_noop_without_column() -> None:
-    """drop_low_case_count is a no-op when the case-count column is absent."""
+def test_drop_low_number_of_cases_noop_without_column() -> None:
+    """drop_low_number_of_cases is a no-op when the number-of-cases column is absent."""
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b"]}).lazy()
-    result: pl.DataFrame = drop_low_case_count(lf).collect()
+    result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
     assert result.shape == (2, 1)
     assert list(result["subject"]) == ["a", "b"]
 
