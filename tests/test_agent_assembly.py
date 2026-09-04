@@ -9,6 +9,7 @@ call ``pytest.importorskip("smolagents")`` so they skip cleanly when the extra i
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -23,6 +24,7 @@ from tablassert.agent import (
     build_model,
     make_fake_model,
     make_step_callback,
+    make_tools,
     resolve_model_config,
     validate_section,
     validate_table_config,
@@ -185,6 +187,27 @@ def test_build_model_constructs_offline() -> None:
     assert "OpenAI" in type(model).__name__
     lite = build_model("test-model", "http://localhost:9/v1", "sk-test", backend="litellm")
     assert "LiteLLM" in type(lite).__name__
+
+
+def test_make_tools_full_mode_ships_the_four_tool_surface(tmp_path: Path) -> None:
+    """US-002: full mode assembles EXACTLY the derive→build→answer surface, in order.
+
+    The LLM no longer sees coverage tools: map_coverage/propose_config_edit stay pure helpers
+    of the deterministic supervisor, so the agent's whole job is derive_config →
+    build_and_audit (fixing only coded build errors) → final_answer. The derive modes are
+    public API and stay exactly as before.
+    """
+    pytest.importorskip("smolagents")
+    fullmap: Path = tmp_path / "fullmap.redb"
+
+    full: list[Any] = make_tools(fullmap=fullmap, derive_mode="full")
+    assert [tool.name for tool in full] == ["read_table", "pmc_article_context", "derive_config", "build_and_audit"]
+
+    derive_only: list[Any] = make_tools(fullmap=fullmap, derive_mode="derive_only")
+    assert [tool.name for tool in derive_only] == ["read_table", "pmc_article_context", "derive_config"]
+
+    derive_coverage: list[Any] = make_tools(fullmap=fullmap, derive_mode="derive_coverage")
+    assert [tool.name for tool in derive_coverage] == ["read_table", "pmc_article_context", "derive_config", "map_coverage"]
 
 
 def test_build_agent_wires_checks_and_callback() -> None:
