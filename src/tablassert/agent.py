@@ -1266,6 +1266,8 @@ def compact_config(config_yaml: str) -> str:
     Failure/semantic rules:
       * the input is FIRST validated with :func:`validate_table_config`; an invalid
         input is returned unchanged (never compacted, never raised);
+      * the compacted OUTPUT is re-validated with :func:`validate_table_config`; an
+        output-validation failure returns the exact input unchanged;
       * ANY YAML/compaction/serialization error returns the exact input unchanged —
         compaction may shrink a config or leave it alone, never corrupt it;
       * pure, deterministic, and idempotent: ``compact_config(compact_config(x)) ==
@@ -1288,8 +1290,13 @@ def compact_config(config_yaml: str) -> str:
                 compacted["sections"] = [
                     _compact_model_dict(section, Section, template_dict) if isinstance(section, dict) else section for section in sections
                 ]
-            return yaml.safe_dump(compacted, sort_keys=False)
-        return yaml.safe_dump(_compact_model_dict(data, Section, None), sort_keys=False)
+            result: str = yaml.safe_dump(compacted, sort_keys=False)
+        else:
+            result = yaml.safe_dump(_compact_model_dict(data, Section, None), sort_keys=False)
+        # Contract: the compacted output must itself re-validate. Compaction only removes
+        # provably no-op entries, but if it ever produced an invalid config, the untouched
+        # input is returned instead — identical to the input-validation failure path.
+        return result if validate_table_config(result) else config_yaml
     except Exception:
         return config_yaml
 

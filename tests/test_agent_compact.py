@@ -15,6 +15,7 @@ object)`` triples, and equal coverage before vs after compaction.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -242,6 +243,39 @@ def test_compact_flat_and_template_only_shapes() -> None:
 def test_compact_invalid_input_returned_unchanged(bad_input: str) -> None:
     """Any YAML/validation failure returns the EXACT input: never corrupt, never raise."""
     assert compact_config(bad_input) == bad_input
+
+
+@pytest.mark.parametrize("make_config", [_flat_config, _multi_config], ids=["flat", "template-sections"])
+def test_compact_invalid_output_returned_unchanged(monkeypatch: pytest.MonkeyPatch, make_config: Callable[[], dict[str, Any]]) -> None:
+    """Output re-validation: when compaction itself yields a config that fails
+    ``validate_table_config``, the pure function returns the EXACT original input.
+
+    The seam is a controlled COMPACTION side effect (``_compact_model_dict`` patched to drop
+    a required field) while validation stays REAL and its calls are recorded, so the test
+    exercises post-compaction validation — not merely invalid-input validation.
+    """
+    original: str = _dump(make_config())
+
+    def broken_compact(data: dict[str, Any], model: object, template: dict[str, Any] | None) -> dict[str, Any]:
+        broken: dict[str, Any] = dict(data)
+        broken.pop("statement", None)  # a required field: guarantees the compacted output cannot validate
+        return broken
+
+    monkeypatch.setattr("tablassert.agent._compact_model_dict", broken_compact)
+
+    checked: list[str] = []
+
+    def recording_validate(cfg: str, agent_memory: object = None, agent: object = None) -> bool:
+        checked.append(cfg)
+        return validate_table_config(cfg, agent_memory, agent)
+
+    monkeypatch.setattr("tablassert.agent.validate_table_config", recording_validate)
+
+    assert compact_config(original) == original, "an invalid compacted output must return the exact input unchanged"
+    assert len(checked) == 2, "the input and the compacted output must each be validated exactly once"
+    assert checked[0] == original, "the first validation must run on the input"
+    assert checked[1] != original, "the second validation must run on the post-compaction output"
+    assert not validate_table_config(checked[1]), "the corrupted compacted output must fail real validation"
 
 
 def test_compact_is_idempotent_and_deterministic() -> None:
