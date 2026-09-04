@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 16.6.1 - 2026-09-04
+
+### Performance
+- **The agent's LLM workflow now carries a far smaller tool surface, tighter context, and smaller persisted configs.** Full mode registers exactly four tools — `read_table`, `pmc_article_context`, `derive_config`, `build_and_audit` — because coverage improvement left the LLM's hands entirely: `map_coverage` and `propose_config_edit` are pure helpers the deterministic supervisor calls in its own improve loop, and the opt-in `--reflexion` path is the only place an LLM call is still spent on improvement. The task text now injects a bounded per-column `column_digest` for every previewed table/worksheet (separator fractions over the first 500 data rows, plus non-null/distinct counts, max cell length, and sample values), so the canonical path is a fixed derive → build → answer of three or fewer steps with zero inspection tool calls, and the agent rebuilds only on a coded build error — fixing exactly the field the error names, at most twice. The LLM sees a compact `build_and_audit` observation (twelve high-signal keys, with `unresolved` capped at 20 entries and a visible `+N more` marker) while the supervisor still receives the full report, and the accepted best config is **compacted deterministically** before persistence: `compact_config` strips keys equal to their Pydantic model defaults while preserving semantics — the pinned accuracy-invariance test proves the compacted config builds the identical KGX and scores the identical `quality_score`, and any compaction failure falls back to the exact original config. `state.json` records `config_chars` so the shrink is auditable per article. Builds, scores, and persisted configs remain behaviorally equivalent. ([#138](https://github.com/SkyeAv/Tablassert/pull/138))
+
 ## 16.6.0 - 2026-09-04
 
 ### Added
