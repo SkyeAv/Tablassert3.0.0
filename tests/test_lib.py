@@ -1925,6 +1925,37 @@ def test_prune_to_class_keeps_class_field_override_grants() -> None:
     assert out[PRUNED_COLUMN].to_list() == [[], ["disease_context_qualifier=MONDO:0005148"], []]
 
 
+def test_supporting_case_ids_survives_prune_and_fold_to_dedup_input() -> None:
+    """The build-internal ``supporting_case_ids`` carrier survives to the dedup input.
+
+    ``merge_records`` recomputes ``number_of_cases`` from the union of these lists, so
+    the column must reach the final edge frames as a real ``list[str]``: allow-listed,
+    it is not folded into ``supporting_text``, and declared by no association class, it
+    hits ``prune_to_class``'s no-declaring-class path and is left untouched on ANY
+    category -- pinned or pair-derived -- without a ``CLASS_FIELD_OVERRIDES`` grant.
+    """
+    from tablassert.lib import PRUNED_COLUMN, prune_to_class
+
+    lf: pl.LazyFrame = pl.LazyFrame(
+        {
+            "subject category": ["biolink:ChemicalEntity"] * 2,
+            "object category": ["biolink:Disease", "biolink:PhenotypicFeature"],
+            "supporting_case_ids": [["FAERS:1", "FAERS:2"], ["FAERS:3"]],
+        }
+    )
+    override: dict[str, str] = {"Disease": "biolink:EntityToDiseaseAssociation", "PhenotypicFeature": "biolink:EntityToPhenotypicFeatureAssociation"}
+    for categorized in (edge_category(lf, "biolink:associated_with", override), edge_category(lf, "biolink:associated_with")):
+        pruned: pl.DataFrame = prune_to_class(categorized).collect()
+        assert pruned.schema["supporting_case_ids"] == pl.List(pl.String)
+        assert pruned["supporting_case_ids"].to_list() == [["FAERS:1", "FAERS:2"], ["FAERS:3"]]
+        assert PRUNED_COLUMN not in pruned.columns
+        # The ``<col> category`` scaffolding columns are consumed by node derivation in
+        # the real pipeline; fold runs on what remains.
+        folded: pl.DataFrame = fold_unknown_to_supporting_text(pruned.drop("subject category", "object category").lazy()).collect()
+        assert "supporting_text" not in folded.columns
+        assert folded["supporting_case_ids"].to_list() == [["FAERS:1", "FAERS:2"], ["FAERS:3"]]
+
+
 def test_parse_edge_name_standard() -> None:
     """parse_edge_name parses standard name."""
     assert parse_edge_name("GeneToDiseaseAssociation") == ("Gene", ["Disease"])
@@ -3882,6 +3913,43 @@ def test_dedup_stream_edges_merge_output_is_order_independent(tmp_path: Path) ->
     lib.dedup_stream(p_right, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="merge")
 
     assert (tmp_path / "left.ndjson").read_text() == (tmp_path / "right.ndjson").read_text()
+
+
+def test_dedup_stream_edges_merge_recomputes_number_of_cases_from_case_id_union(tmp_path: Path) -> None:
+    """`supporting_case_ids` turns `number_of_cases` into the exact union size, then is stripped.
+
+    The DAKP case: two builds of one edge (e.g. different FAERS quarters) each know
+    their own case count and case IDs. First-wins under-reports and summing
+    double-counts the shared case, so merge mode recomputes the count as the union
+    length and never ships the build-internal carrier.
+    """
+    import json
+
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text(
+        '{"subject":"A","object":"B","predicate":"r","number_of_cases":2,"supporting_case_ids":["case:1","case:2"]}\n'
+        '{"subject":"A","object":"B","predicate":"r","number_of_cases":5,"supporting_case_ids":["case:2","case:3"]}\n'
+    )
+    lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="merge")
+
+    lines: list[str] = (tmp_path / "edges.ndjson").read_text().strip().splitlines()
+    assert len(lines) == 1
+    edge: dict[str, Any] = json.loads(lines[0])
+    assert edge["number_of_cases"] == 3
+    assert "supporting_case_ids" not in edge
+
+
+def test_dedup_stream_edges_strip_supporting_case_ids_without_merge(tmp_path: Path) -> None:
+    """The default streaming path strips the carrier too, so it never ships."""
+    import json
+
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text('{"subject":"A","object":"B","predicate":"r","number_of_cases":2,"supporting_case_ids":["case:1","case:2"]}\n')
+    lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"])
+
+    edge: dict[str, Any] = json.loads((tmp_path / "edges.ndjson").read_text().strip())
+    assert edge["number_of_cases"] == 2
+    assert "supporting_case_ids" not in edge
 
 
 def test_dedup_stream_edges_default_mode_still_aborts_on_divergence(tmp_path: Path) -> None:

@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- **`uuid_on_collision: merge` now recomputes `number_of_cases` as the exact union of a new build-internal `supporting_case_ids` edge field.** Folding two divergent same-id edges used to keep the first record's `number_of_cases` (under-reporting the merged evidence) and count the divergence as a scalar conflict; summing the two counts would instead double-count every shared case. Edge frames may now carry a `supporting_case_ids` `list[str]` column -- allow-listed via `TABLASERT_EDGE_EXTRAS` so it is never folded into `supporting_text`, and declared by no association class so `prune_to_class` leaves it untouched without a `CLASS_FIELD_OVERRIDES` grant. When a merged record carries the list and either side carried a count, the Rust merge sets `number_of_cases` to the union length (shared case IDs count once) and reports no scalar conflict; merges with no carrier keep first-wins exactly. The carrier is stripped from every edge record before write in both the merge and default streaming dedup paths, so it never ships in the final NDJSON and QC/`validate_kgx` never see it.
+
 ## 16.5.0 - 2026-09-03
 
 ### Added

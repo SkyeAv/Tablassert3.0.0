@@ -216,11 +216,24 @@ struct MergeIndex {
 /// - scalar fields: first-wins on conflict, counted;
 /// - fields only on `incoming`: copied over (only a conflict when both sides disagree);
 /// - `id` is never touched: both sides carry the same one by construction.
+///
+/// `number_of_cases` has one hardcoded exception to first-wins: when the MERGED record
+/// carries `supporting_case_ids` (a build-internal `list[str]` of the case IDs behind
+/// the count -- allowed onto edge frames so it reaches this pass, then stripped before
+/// write) and either side carried a count, the count is recomputed as the length of the
+/// unioned ID list. A case ID shared by both records is one case, so first-wins and
+/// summing both over- and under-report; the union length is the exact count. The
+/// superseded divergence is NOT reported as a scalar conflict. When neither side
+/// carries the list, `number_of_cases` stays an ordinary first-wins scalar.
 fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
     let Some(incoming_map) = incoming.as_object() else {
         return Err(runtime_error("expected JSON object"));
     };
     let mut conflicts: u64 = 0;
+    // Read both counts BEFORE the fold: the fold may copy incoming's over a stored side
+    // that lacks it, and the recompute rule below needs to know each side contributed one.
+    let stored_cases: Option<Value> = stored.get("number_of_cases").cloned();
+    let incoming_cases: Option<Value> = incoming_map.get("number_of_cases").cloned();
     let Some(stored_map) = stored.as_object_mut() else {
         return Err(runtime_error("expected JSON object"));
     };
@@ -259,7 +272,46 @@ fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
             }
         }
     }
+    // WHY: exact-unique `number_of_cases` semantics (see the docstring). Guarded on the
+    // merged record actually carrying the ID list: a one-sided carrier is fine (the union
+    // is just that side's list), while a carrier-less merge never recomputes.
+    if let Some(union_len) = stored
+        .get("supporting_case_ids")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+    {
+        if stored_cases.is_some() || incoming_cases.is_some() {
+            // Undo the loop's conflict count when it fired on this very field: the
+            // recompute supersedes first-wins, so the divergence is not a conflict.
+            // Mirrors the loop's condition exactly -- both sides present, unequal, and
+            // not both arrays (two arrays took the union path and were never counted).
+            if let (Some(left), Some(right)) = (&stored_cases, &incoming_cases) {
+                if left != right && !(left.is_array() && right.is_array()) {
+                    conflicts -= 1;
+                }
+            }
+            let Some(map) = stored.as_object_mut() else {
+                return Err(runtime_error("expected JSON object"));
+            };
+            map.insert(
+                "number_of_cases".to_string(),
+                Value::Number(serde_json::Number::from(union_len)),
+            );
+        }
+    }
     Ok(conflicts)
+}
+
+/// Remove build-internal carrier fields from an edge record before it is written.
+///
+/// `supporting_case_ids` exists only so merge mode can recompute `number_of_cases`
+/// (see `merge_records`); it must never ship in the final NDJSON, so EVERY edge write
+/// path drops it -- the buffering merge pass and the default streaming path alike.
+/// Nodes never carry it and are untouched.
+fn strip_internal_edge_fields(value: &mut Value) {
+    if let Some(map) = value.as_object_mut() {
+        map.remove("supporting_case_ids");
+    }
 }
 
 impl MergeIndex {
@@ -290,7 +342,8 @@ impl MergeIndex {
 /// Merge-mode edge pass: buffer every unique edge, fold divergent same-id records into the
 /// first, then write in first-seen order. Returns (divergent records merged, conflicting
 /// scalar fields) for the summary log. Runs ONLY under `uuid_on_collision: merge`; the
-/// default path stays streaming and never buffers a record.
+/// default path stays streaming and never buffers a record. The build-internal
+/// `supporting_case_ids` carrier is stripped from each record right before the write.
 fn dedup_edges_merge(
     reader: BufReader<File>,
     mut writer: BufWriter<File>,
@@ -310,10 +363,13 @@ fn dedup_edges_merge(
         };
         index.absorb(edge_id_bytes(&value)?, value, content)?;
     }
-    for id in &index.order {
-        let (_, value) = &index.records[id];
+    for id in std::mem::take(&mut index.order) {
+        let Some((_, mut value)) = index.records.remove(&id) else {
+            continue;
+        };
+        strip_internal_edge_fields(&mut value);
         writer
-            .write_all(&emitted_json_bytes(value).map_err(runtime_error)?)
+            .write_all(&emitted_json_bytes(&value).map_err(runtime_error)?)
             .map_err(runtime_error)?;
         writer.write_all(b"\n").map_err(runtime_error)?;
     }
@@ -359,7 +415,7 @@ pub fn dedup_ndjson(
         })
         .map(|value| value.and_then(|value| finalize_record(value, is_edges, &domain, fields)))
         .try_for_each(|record| -> PyResult<()> {
-            let Some(Finalized { value, content }) = record? else {
+            let Some(Finalized { mut value, content }) = record? else {
                 return Ok(());
             };
             let write: bool = if is_edges {
@@ -382,6 +438,9 @@ pub fn dedup_ndjson(
                 )
             };
             if write {
+                if is_edges {
+                    strip_internal_edge_fields(&mut value);
+                }
                 writer
                     .write_all(&emitted_json_bytes(&value).map_err(runtime_error)?)
                     .map_err(runtime_error)?;
@@ -875,6 +934,162 @@ mod tests {
             fs::read_to_string(left_out).expect("read left"),
             fs::read_to_string(right_out).expect("read right")
         );
+    }
+
+    #[test]
+    fn merge_mode_recomputes_number_of_cases_from_case_id_union() {
+        // WHY: the hardcoded merge rule. Two builds of one edge (e.g. different FAERS
+        // quarters) each know their own case count and case IDs; first-wins would keep
+        // the left count and summing would double-count the shared case. The merged
+        // count is the size of the UNION of both `supporting_case_ids` lists -- exact.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":2,\"supporting_case_ids\":[\"case:1\",\"case:2\"]}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":5,\"supporting_case_ids\":[\"case:2\",\"case:3\"]}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        // The recomputed count supersedes the 2-vs-5 divergence: no scalar conflict.
+        assert_eq!((merged, conflicts), (1, 0));
+        let edge = merged_edge(&output);
+        // |{case:1, case:2} u {case:2, case:3}| = 3 -- the shared ID counts once.
+        assert_eq!(edge["number_of_cases"], serde_json::json!(3));
+        // The carrier is build-internal and must never ship.
+        assert!(edge.get("supporting_case_ids").is_none());
+    }
+
+    #[test]
+    fn merge_mode_one_sided_case_ids_still_recompute_the_count() {
+        // WHY: only one side carries `supporting_case_ids`. The union is that side's
+        // list, but the other side still contributed a `number_of_cases`, so the count
+        // is recomputed to the union length rather than kept from either record.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":7}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"supporting_case_ids\":[\"case:1\",\"case:2\"]}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (1, 0));
+        let edge = merged_edge(&output);
+        assert_eq!(edge["number_of_cases"], serde_json::json!(2));
+        assert!(edge.get("supporting_case_ids").is_none());
+    }
+
+    #[test]
+    fn merge_mode_without_case_ids_keeps_first_wins_number_of_cases() {
+        // WHY: the rule only fires when the carrier is present. With no
+        // `supporting_case_ids` on either record, `number_of_cases` is an ordinary
+        // first-wins scalar and the divergence is still counted as a conflict.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":2}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":5}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (1, 1));
+        assert_eq!(
+            merged_edge(&output)["number_of_cases"],
+            serde_json::json!(2)
+        );
+    }
+
+    #[test]
+    fn merge_mode_case_count_is_order_independent() {
+        // WHY: the recomputed count derives from the sorted canonical-bytes list union,
+        // so both arrival orders must produce byte-identical output, count included.
+        let left_dir = tempdir().expect("tempdir");
+        let (left_in, left_out) = write_edges(
+            left_dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":1,\"supporting_case_ids\":[\"case:2\"]}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":2,\"supporting_case_ids\":[\"case:1\",\"case:3\"]}\n"
+            ),
+        );
+        dedup_ndjson(
+            left_in,
+            left_out.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        let right_dir = tempdir().expect("tempdir");
+        let (right_in, right_out) = write_edges(
+            right_dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":2,\"supporting_case_ids\":[\"case:1\",\"case:3\"]}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":1,\"supporting_case_ids\":[\"case:2\"]}\n"
+            ),
+        );
+        dedup_ndjson(
+            right_in,
+            right_out.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        let count = merged_edge(&right_out)["number_of_cases"].clone();
+        assert_eq!(
+            fs::read_to_string(left_out).expect("read left"),
+            fs::read_to_string(right_out).expect("read right")
+        );
+        assert_eq!(count, serde_json::json!(3));
+    }
+
+    #[test]
+    fn streaming_edges_never_ship_supporting_case_ids() {
+        // WHY: the carrier is stripped on the default path too, so a graph that never
+        // opts into merge mode still cannot leak the build-internal field.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"number_of_cases\":2,\"supporting_case_ids\":[\"case:1\",\"case:2\"]}\n",
+        );
+        dedup_ndjson(input, output.clone(), true, None, spo_fields(), None).expect("dedup");
+
+        let edge = merged_edge(&output);
+        assert_eq!(edge["number_of_cases"], serde_json::json!(2));
+        assert!(edge.get("supporting_case_ids").is_none());
     }
 
     #[test]

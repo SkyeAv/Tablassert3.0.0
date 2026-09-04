@@ -1596,6 +1596,11 @@ def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fi
         ``on_collision="merge"``, which unions their list fields (sorted, so the
         output is merge-order independent), keeps the first value of conflicting
         scalars, and buffers one full record per unique id until end-of-stream.
+        One scalar is exempt from first-wins: when a merged edge carries the
+        build-internal ``supporting_case_ids`` list and either side carried
+        ``number_of_cases``, the count is recomputed as the union length. The
+        carrier is stripped from every edge record before write, in both modes,
+        so it never ships in the final NDJSON.
 
     Returns:
         ``None``; writes the deduplicated stream alongside ``p_in`` with no

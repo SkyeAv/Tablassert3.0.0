@@ -349,6 +349,20 @@ def test_allowed_edge_fields_keeps_fda_regulatory_approvals_strict() -> None:
     assert "FDA_regulatory_approvals" not in KNOWN_PENDING_EDGE_FIELDS
 
 
+def test_supporting_case_ids_is_an_allow_listed_pending_extra() -> None:
+    """``supporting_case_ids`` is a curated, build-internal edge extra.
+
+    Allow-listed so ``fold_unknown_to_supporting_text`` never folds it into
+    ``supporting_text``, and pending because no Biolink association class declares it --
+    which is also why ``prune_to_class`` leaves the column alone without any
+    ``CLASS_FIELD_OVERRIDES`` grant. The Rust dedup pass strips it before write, so
+    ``validate_kgx`` and QC never see it.
+    """
+    assert "supporting_case_ids" in TABLASERT_EDGE_EXTRAS
+    assert "supporting_case_ids" in ALLOWED_EDGE_FIELDS
+    assert "supporting_case_ids" in KNOWN_PENDING_EDGE_FIELDS
+
+
 def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
     """Slots declared only by ``Association`` *subclasses* are still allowed columns.
 
