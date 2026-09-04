@@ -1046,12 +1046,16 @@ def drop_zero_effect_size(lf: pl.LazyFrame, col: str = "effect_size") -> pl.Lazy
     Notes:
         Only filters when the effect-size column exists; no-op for sections
         without an ``effect_size`` column. Null effect sizes are kept (no
-        score was detected for that row).
+        score was detected for that row). The cast is non-strict (like
+        ``clean_numeric``) and paired with ``ne_missing``: a non-numeric cell --
+        e.g. a header row flowing through as data because the ``csv`` op reads
+        with ``has_header=False`` -- becomes null and is kept, dying later at
+        entity resolution instead of crashing the build with a strict-cast error.
     """
     names: list[str] = lf.collect_schema().names()
     if col not in names:
         return lf
-    return lf.filter(pl.col(col).is_null() | (pl.col(col).cast(pl.Float64) != 0.0))
+    return lf.filter(pl.col(col).cast(pl.Float64, strict=False).ne_missing(0.0))
 
 
 def drop_low_number_of_cases(lf: pl.LazyFrame, col: str = "number_of_cases", threshold: float = 25.0) -> pl.LazyFrame:
@@ -1068,13 +1072,18 @@ def drop_low_number_of_cases(lf: pl.LazyFrame, col: str = "number_of_cases", thr
     Notes:
         Only filters when the number-of-cases column exists; no-op for sections
         without a ``number_of_cases`` column. Null case counts are kept (no count
-        was detected for that row). Only wired in for ``applied_to_treat``
-        sections at op-construction time, so it never touches other predicates.
+        was detected for that row). The cast is non-strict (like ``clean_numeric``)
+        with ``fill_null(True)``: a non-numeric cell -- e.g. a header row flowing
+        through as data because the ``csv`` op reads with ``has_header=False`` --
+        becomes null and is kept, dying later at entity resolution instead of
+        crashing the build with a strict-cast error. Only wired in for
+        ``applied_to_treat`` sections at op-construction time, so it never
+        touches other predicates.
     """
     names: list[str] = lf.collect_schema().names()
     if col not in names:
         return lf
-    return lf.filter(pl.col(col).is_null() | (pl.col(col).cast(pl.Float64) >= threshold))
+    return lf.filter(pl.col(col).cast(pl.Float64, strict=False).ge(threshold).fill_null(True))
 
 
 def idxname(col: Any) -> str:

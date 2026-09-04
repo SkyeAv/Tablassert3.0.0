@@ -342,6 +342,38 @@ def test_tcode_collect_omits_drop_low_number_of_cases_for_other_predicates_in_re
     assert "drop_not_significant" in names
 
 
+def test_section_store_path_suffixes_every_build_mode() -> None:
+    """_section_store_path gives each build-mode flag combination its own cache file name."""
+    assert cli._section_store_path("abc123").name == "abc123.parquet"
+    assert cli._section_store_path("abc123", head=True).name == "abc123.head.parquet"
+    assert cli._section_store_path("abc123", release=True).name == "abc123.release.parquet"
+    assert cli._section_store_path("abc123", qc=True).name == "abc123.qc.parquet"
+    # Modes compose instead of overwriting one another's suffix.
+    assert cli._section_store_path("abc123", head=True, release=True, qc=True).name == "abc123.head.release.qc.parquet"
+
+
+def test_tcode_collect_quick_exit_never_serves_another_mode_cached_parquet(monkeypatch: Any, fixtures_path: Path, tmp_path: Path) -> None:
+    """A parquet cached by a non-release build never quick-exits a release build (and vice versa)."""
+    # STORE is relative to the cwd, so chdir keeps the simulated cache inside tmp_path.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".tablassert" / "store").mkdir(parents=True)
+    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
+    # A previous non-release build cached this section's subgraph (filters skipped).
+    pl.DataFrame({"subject": ["cached"]}).write_parquet(cli._section_store_path("sectionhash"))
+    store: Path = cli._section_store_path("sectionhash", release=True)
+    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
+        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "release": True}
+    )
+
+    collected: Any = tcode_model.collect(tmp_path / "fullmap.redb")
+
+    # The release store does not exist yet: the non-release parquet must not be reused.
+    assert not isinstance(collected, Path)
+    # Once the release-mode build has written its own parquet, the quick exit serves it.
+    pl.DataFrame({"subject": ["release"]}).write_parquet(store)
+    assert tcode_model.collect(tmp_path / "fullmap.redb") == store
+
+
 def test_tcode_model_validate_rejects_duplicate_qualifier_keys(fixtures_path: Path) -> None:
     """Tcode construction rejects a section whose statement repeats a qualifier key.
 
@@ -1290,6 +1322,22 @@ def test_drop_low_number_of_cases_noop_without_column() -> None:
     result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
     assert result.shape == (2, 1)
     assert list(result["subject"]) == ["a", "b"]
+
+
+def test_drop_low_number_of_cases_keeps_non_numeric_cells() -> None:
+    """drop_low_number_of_cases keeps non-numeric cells (a header row read as data) instead of crashing on a strict cast."""
+    # The csv op reads sources with has_header=False, so a TSV's header row flows
+    # through as a data row; the strict cast raised InvalidOperationError on it.
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["hdr", "a", "b", "c"], "number_of_cases": ["number_of_cases", "30", "10", None]}).lazy()
+    result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
+    assert list(result["subject"]) == ["hdr", "a", "c"]
+
+
+def test_drop_zero_effect_size_keeps_non_numeric_cells() -> None:
+    """drop_zero_effect_size keeps non-numeric cells (a header row read as data) instead of crashing on a strict cast."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["hdr", "a", "b", "c"], "effect_size": ["effect_size", "0.0", "1.5", None]}).lazy()
+    result: pl.DataFrame = drop_zero_effect_size(lf).collect()
+    assert list(result["subject"]) == ["hdr", "b", "c"]
 
 
 def test_numeric_columns_matches_p_value_substring() -> None:
