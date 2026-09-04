@@ -1837,6 +1837,12 @@ answer is one edge with the combined evidence, not a failed build. Opt in with:<
   build-log summary.</li>
 <li>fields only the later record carries are copied over — first-wins arbitrates <em>conflicts</em>, not
   additions.</li>
+<li><strong>one scalar is exempt from first-wins:</strong> when the merged record carries the build-internal
+  <code>supporting_case_ids</code> list — the case IDs behind a <code>number_of_cases</code> count — the merged count
+  becomes the length of the unioned list, so a case ID shared by both records counts once where
+  first-wins would under-report and summing would double-count. The superseded divergence is not
+  reported as a scalar conflict, and the carrier list is stripped from every edge before write in
+  both modes, so it never ships in the final NDJSON.</li>
 </ul>
 <p><code>merge</code> requires <code>uuid_fields</code> (under the whole-record hash every field is an identity field, so
 two different records can never share an id — there would be nothing to merge) and is rejected
