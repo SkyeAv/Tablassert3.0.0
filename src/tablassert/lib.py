@@ -1053,20 +1053,20 @@ def drop_zero_effect_size(lf: pl.LazyFrame, col: str = "effect_size") -> pl.Lazy
     return lf.filter(pl.col(col).is_null() | (pl.col(col).cast(pl.Float64) != 0.0))
 
 
-def drop_low_case_count(lf: pl.LazyFrame, col: str = "case_count", threshold: float = 25.0) -> pl.LazyFrame:
-    """Drop release-mode ``applied_to_treat`` edges whose case count is below the threshold.
+def drop_low_number_of_cases(lf: pl.LazyFrame, col: str = "number_of_cases", threshold: float = 25.0) -> pl.LazyFrame:
+    """Drop release-mode ``applied_to_treat`` edges whose number of cases is below the threshold.
 
     Args:
         lf: Source LazyFrame.
-        col: Case-count column name.
-        threshold: Minimum case count required to keep the edge.
+        col: Number-of-cases column name.
+        threshold: Minimum number of cases required to keep the edge.
 
     Returns:
-        LazyFrame with low case-count edges removed.
+        LazyFrame with low-number-of-cases edges removed.
 
     Notes:
-        Only filters when the case-count column exists; no-op for sections
-        without a ``case_count`` column. Null case counts are kept (no count
+        Only filters when the number-of-cases column exists; no-op for sections
+        without a ``number_of_cases`` column. Null case counts are kept (no count
         was detected for that row). Only wired in for ``applied_to_treat``
         sections at op-construction time, so it never touches other predicates.
     """
@@ -1239,7 +1239,7 @@ class Tcode(Section):
             (sig, ()),
             (drop_not_significant, ()) if self.release else None,
             (drop_zero_effect_size, ()) if self.release else None,
-            (drop_low_case_count, ()) if self.release and self.statement.predicate == "applied_to_treat" else None,
+            (drop_low_number_of_cases, ()) if self.release and self.statement.predicate == "applied_to_treat" else None,
         ]
 
     def _node_ops(self: Self, db: Path) -> list[Any]:
@@ -1422,7 +1422,7 @@ PHASE_OF: dict[Callable, str] = {
     sig: "significance",
     drop_not_significant: "significance",
     drop_zero_effect_size: "significance",
-    drop_low_case_count: "significance",
+    drop_low_number_of_cases: "significance",
     format_numeric: "finalize",
     to_store: "write",
 }
@@ -1596,6 +1596,11 @@ def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fi
         ``on_collision="merge"``, which unions their list fields (sorted, so the
         output is merge-order independent), keeps the first value of conflicting
         scalars, and buffers one full record per unique id until end-of-stream.
+        One scalar is exempt from first-wins: when a merged edge carries the
+        build-internal ``supporting_case_ids`` list and either side carried
+        ``number_of_cases``, the count is recomputed as the union length. The
+        carrier is stripped from every edge record before write, in both modes,
+        so it never ships in the final NDJSON.
 
     Returns:
         ``None``; writes the deduplicated stream alongside ``p_in`` with no

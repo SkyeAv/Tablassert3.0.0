@@ -131,6 +131,12 @@ Under `merge`, a divergent same-id record is folded into the first record that c
   build-log summary.
 - fields only the later record carries are copied over — first-wins arbitrates *conflicts*, not
   additions.
+- **one scalar is exempt from first-wins:** when the merged record carries the build-internal
+  `supporting_case_ids` list — the case IDs behind a `number_of_cases` count — the merged count
+  becomes the length of the unioned list, so a case ID shared by both records counts once where
+  first-wins would under-report and summing would double-count. The superseded divergence is not
+  reported as a scalar conflict, and the carrier list is stripped from every edge before write in
+  both modes, so it never ships in the final NDJSON.
 
 `merge` requires `uuid_fields` (under the whole-record hash every field is an identity field, so
 two different records can never share an id — there would be nothing to merge) and is rejected

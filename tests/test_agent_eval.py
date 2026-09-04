@@ -258,7 +258,7 @@ def test_gepa_metric_returns_prediction() -> None:
     good = gepa_metric(
         {
             "config_yaml": VALID_CFG,
-            "report": {"coverage_pct": 1.0, "qc_pass_rate": 1.0, "errors": [], "unresolved": []},
+            "report": {"coverage_pct": 1.0, "qc_pass_rate": 1.0, "biolink_valid_pct": 1.0, "errors": [], "unresolved": []},
             "f1": {"node_f1": 1.0, "edge_f1": 1.0},
             "metrics": {},
         }

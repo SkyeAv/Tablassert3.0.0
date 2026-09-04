@@ -395,6 +395,13 @@ def resolve_association_class(category: str, predicate: str) -> type[Any]:
 #     (see ``UNSATISFIABLE_EDGE_FIELDS``); coercion renames them onto the current
 #     ``study_*`` slots (``STUDY_METADATA_FIELDS``), which hang off the inlined ``Study``.
 #   - ``taxon`` -- a node property; no species-context edge is synthesized from it.
+#
+# ``supporting_case_ids`` is build-internal: it carries the per-row case-ID list that
+# lets ``uuid_on_collision: merge`` recompute ``number_of_cases`` as the union size, and
+# the Rust dedup pass strips it before any edge is written, so it never ships in the
+# final NDJSON (which also keeps it out of ``validate_kgx`` and QC). No association
+# class declares it, so ``lib.prune_to_class`` leaves the column untouched and no
+# ``CLASS_FIELD_OVERRIDES`` grant is needed.
 TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
     [
         "broad_synonym",
@@ -408,6 +415,7 @@ TABLASERT_EDGE_EXTRAS: frozenset[str] = frozenset(
         "provided_by",
         "related_synonym",
         "relation",
+        "supporting_case_ids",
         "supporting_documents",
         "synonym",
         "xref",

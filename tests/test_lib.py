@@ -35,7 +35,7 @@ from tablassert.lib import (
     coerce_pvalue_columns,
     coerce_study_size_columns,
     coerced_target,
-    drop_low_case_count,
+    drop_low_number_of_cases,
     drop_not_significant,
     drop_zero_effect_size,
     edge_category,
@@ -307,15 +307,15 @@ def test_tcode_collect_omits_release_filters_without_release(fixtures_path: Path
 
     assert "drop_not_significant" not in names
     assert "drop_zero_effect_size" not in names
-    assert "drop_low_case_count" not in names
+    assert "drop_low_number_of_cases" not in names
     assert names.index("sig") < names.index("resolve_batch")
 
 
-def test_tcode_collect_includes_drop_low_case_count_for_applied_to_treat_release(fixtures_path: Path, tmp_path: Path) -> None:
-    """tcode collect gates drop_low_case_count on release and the applied_to_treat predicate."""
+def test_tcode_collect_includes_drop_low_number_of_cases_for_applied_to_treat_release(fixtures_path: Path, tmp_path: Path) -> None:
+    """tcode collect gates drop_low_number_of_cases on release and the applied_to_treat predicate."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     data["statement"]["predicate"] = "applied_to_treat"
-    store: Path = tmp_path / "sectionhash_case_count.parquet"
+    store: Path = tmp_path / "sectionhash_number_of_cases.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
         {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "release": True}
     )
@@ -323,12 +323,12 @@ def test_tcode_collect_includes_drop_low_case_count_for_applied_to_treat_release
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
     names: list[str] = [op[0].__name__ for op in collected]
 
-    assert "drop_low_case_count" in names
-    assert names.index("drop_low_case_count") < names.index("resolve_batch")
+    assert "drop_low_number_of_cases" in names
+    assert names.index("drop_low_number_of_cases") < names.index("resolve_batch")
 
 
-def test_tcode_collect_omits_drop_low_case_count_for_other_predicates_in_release(fixtures_path: Path, tmp_path: Path) -> None:
-    """tcode collect omits drop_low_case_count in release mode when the predicate is not applied_to_treat."""
+def test_tcode_collect_omits_drop_low_number_of_cases_for_other_predicates_in_release(fixtures_path: Path, tmp_path: Path) -> None:
+    """tcode collect omits drop_low_number_of_cases in release mode when the predicate is not applied_to_treat."""
     data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
     store: Path = tmp_path / "sectionhash_related_to.parquet"
     tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
@@ -338,7 +338,7 @@ def test_tcode_collect_omits_drop_low_case_count_for_other_predicates_in_release
     collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(tmp_path / "fullmap.redb")  # pyright: ignore
     names: list[str] = [op[0].__name__ for op in collected]
 
-    assert "drop_low_case_count" not in names
+    assert "drop_low_number_of_cases" not in names
     assert "drop_not_significant" in names
 
 
@@ -1276,18 +1276,18 @@ def test_drop_zero_effect_size_noop_without_column() -> None:
     assert list(result["subject"]) == ["a", "b"]
 
 
-def test_drop_low_case_count_removes_below_threshold_keeps_at_threshold_and_nulls() -> None:
-    """drop_low_case_count drops case counts under 25 while keeping 25+ and nulls."""
-    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b", "c", "d", "e"], "case_count": [24, 25, 26, None, 0]}).lazy()
-    result: pl.DataFrame = drop_low_case_count(lf).collect()
+def test_drop_low_number_of_cases_removes_below_threshold_keeps_at_threshold_and_nulls() -> None:
+    """drop_low_number_of_cases drops case counts under 25 while keeping 25+ and nulls."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b", "c", "d", "e"], "number_of_cases": [24, 25, 26, None, 0]}).lazy()
+    result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
     assert list(result["subject"]) == ["b", "c", "d"]
-    assert list(result["case_count"]) == [25, 26, None]
+    assert list(result["number_of_cases"]) == [25, 26, None]
 
 
-def test_drop_low_case_count_noop_without_column() -> None:
-    """drop_low_case_count is a no-op when the case-count column is absent."""
+def test_drop_low_number_of_cases_noop_without_column() -> None:
+    """drop_low_number_of_cases is a no-op when the number-of-cases column is absent."""
     lf: pl.LazyFrame = pl.DataFrame({"subject": ["a", "b"]}).lazy()
-    result: pl.DataFrame = drop_low_case_count(lf).collect()
+    result: pl.DataFrame = drop_low_number_of_cases(lf).collect()
     assert result.shape == (2, 1)
     assert list(result["subject"]) == ["a", "b"]
 
@@ -1923,6 +1923,37 @@ def test_prune_to_class_keeps_class_field_override_grants() -> None:
     out: pl.DataFrame = prune_to_class(lf).collect()
     assert out["disease_context_qualifier"].to_list() == ["MONDO:0005148", None, "MONDO:0005015"]
     assert out[PRUNED_COLUMN].to_list() == [[], ["disease_context_qualifier=MONDO:0005148"], []]
+
+
+def test_supporting_case_ids_survives_prune_and_fold_to_dedup_input() -> None:
+    """The build-internal ``supporting_case_ids`` carrier survives to the dedup input.
+
+    ``merge_records`` recomputes ``number_of_cases`` from the union of these lists, so
+    the column must reach the final edge frames as a real ``list[str]``: allow-listed,
+    it is not folded into ``supporting_text``, and declared by no association class, it
+    hits ``prune_to_class``'s no-declaring-class path and is left untouched on ANY
+    category -- pinned or pair-derived -- without a ``CLASS_FIELD_OVERRIDES`` grant.
+    """
+    from tablassert.lib import PRUNED_COLUMN, prune_to_class
+
+    lf: pl.LazyFrame = pl.LazyFrame(
+        {
+            "subject category": ["biolink:ChemicalEntity"] * 2,
+            "object category": ["biolink:Disease", "biolink:PhenotypicFeature"],
+            "supporting_case_ids": [["FAERS:1", "FAERS:2"], ["FAERS:3"]],
+        }
+    )
+    override: dict[str, str] = {"Disease": "biolink:EntityToDiseaseAssociation", "PhenotypicFeature": "biolink:EntityToPhenotypicFeatureAssociation"}
+    for categorized in (edge_category(lf, "biolink:associated_with", override), edge_category(lf, "biolink:associated_with")):
+        pruned: pl.DataFrame = prune_to_class(categorized).collect()
+        assert pruned.schema["supporting_case_ids"] == pl.List(pl.String)
+        assert pruned["supporting_case_ids"].to_list() == [["FAERS:1", "FAERS:2"], ["FAERS:3"]]
+        assert PRUNED_COLUMN not in pruned.columns
+        # The ``<col> category`` scaffolding columns are consumed by node derivation in
+        # the real pipeline; fold runs on what remains.
+        folded: pl.DataFrame = fold_unknown_to_supporting_text(pruned.drop("subject category", "object category").lazy()).collect()
+        assert "supporting_text" not in folded.columns
+        assert folded["supporting_case_ids"].to_list() == [["FAERS:1", "FAERS:2"], ["FAERS:3"]]
 
 
 def test_parse_edge_name_standard() -> None:
@@ -3882,6 +3913,43 @@ def test_dedup_stream_edges_merge_output_is_order_independent(tmp_path: Path) ->
     lib.dedup_stream(p_right, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="merge")
 
     assert (tmp_path / "left.ndjson").read_text() == (tmp_path / "right.ndjson").read_text()
+
+
+def test_dedup_stream_edges_merge_recomputes_number_of_cases_from_case_id_union(tmp_path: Path) -> None:
+    """`supporting_case_ids` turns `number_of_cases` into the exact union size, then is stripped.
+
+    The DAKP case: two builds of one edge (e.g. different FAERS quarters) each know
+    their own case count and case IDs. First-wins under-reports and summing
+    double-counts the shared case, so merge mode recomputes the count as the union
+    length and never ships the build-internal carrier.
+    """
+    import json
+
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text(
+        '{"subject":"A","object":"B","predicate":"r","number_of_cases":2,"supporting_case_ids":["case:1","case:2"]}\n'
+        '{"subject":"A","object":"B","predicate":"r","number_of_cases":5,"supporting_case_ids":["case:2","case:3"]}\n'
+    )
+    lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"], on_collision="merge")
+
+    lines: list[str] = (tmp_path / "edges.ndjson").read_text().strip().splitlines()
+    assert len(lines) == 1
+    edge: dict[str, Any] = json.loads(lines[0])
+    assert edge["number_of_cases"] == 3
+    assert "supporting_case_ids" not in edge
+
+
+def test_dedup_stream_edges_strip_supporting_case_ids_without_merge(tmp_path: Path) -> None:
+    """The default streaming path strips the carrier too, so it never ships."""
+    import json
+
+    p_in: Path = tmp_path / "edges.ndjson.tmp"
+    p_in.write_text('{"subject":"A","object":"B","predicate":"r","number_of_cases":2,"supporting_case_ids":["case:1","case:2"]}\n')
+    lib.dedup_stream(p_in, is_edges=True, domain="infores:test-kg", uuid_fields=["subject", "object", "predicate"])
+
+    edge: dict[str, Any] = json.loads((tmp_path / "edges.ndjson").read_text().strip())
+    assert edge["number_of_cases"] == 2
+    assert "supporting_case_ids" not in edge
 
 
 def test_dedup_stream_edges_default_mode_still_aborts_on_divergence(tmp_path: Path) -> None:
