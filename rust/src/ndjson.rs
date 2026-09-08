@@ -2,12 +2,13 @@ use crate::json::{canonical_json_bytes, emitted_json_bytes, strip_nulls};
 use crate::uuid::uuid_for_json_object;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use uuid::Uuid;
 use xxhash_rust::xxh64::xxh64;
 
@@ -192,8 +193,8 @@ fn not_a_key_error(output: &Path, id: &str, incoming: &Value, fields: Option<&[S
     ))
 }
 
-/// Merge-mode dedup state: derived id -> (hashes of every absorbed record, merged record),
-/// plus the first-seen id order so the buffered output is deterministic.
+/// Merge-mode dedup state: derived id -> the record that first claimed it plus its fold
+/// bookkeeping, plus the first-seen id order so the buffered output is deterministic.
 ///
 /// Unlike the default `EdgeIndex` (24 bytes per edge, streaming writes), this retains one
 /// COMPLETE record per unique id and writes nothing until end-of-stream, because a
@@ -201,12 +202,309 @@ fn not_a_key_error(output: &Path, id: &str, incoming: &Value, fields: Option<&[S
 /// memory cost is exactly why merge mode is opt-in (`uuid_on_collision: merge`).
 #[derive(Default)]
 struct MergeIndex {
-    records: FxHashMap<[u8; 16], (Vec<u64>, Value)>,
+    records: FxHashMap<[u8; 16], MergedRecord>,
     order: Vec<[u8; 16]>,
     merged: u64,
     scalar_conflicts: u64,
 }
 
+/// The canonical bytes of one list item, shared by every structure that needs them.
+///
+/// ONE heap allocation per distinct item instead of one per consumer: `Rc<T>`'s `Hash`,
+/// `Eq`, and `Ord` all delegate to `T`, so set membership still compares FULL canonical
+/// bytes (never a bare hash -- a hash-only membership set would merge two distinct items
+/// on a collision) and the deferred write-out sort still orders by those same bytes.
+/// `Rc<[u8]>` rather than `Rc<Vec<u8>>` because the slice form stores the bytes inline in
+/// the reference-count block: one exactly-sized allocation per item instead of a count
+/// block plus a `Vec` buffer that keeps `canonical_json_bytes`' 128-byte starting
+/// capacity. At scenario-C shapes (~5M stored list items, since every row contributes its
+/// own `supporting_case_ids`) that is roughly 64 resident bytes per short item instead of
+/// ~320 for two full copies -- measured on the committed harness, scenario C's peak RSS
+/// falls from 1.93 GB to 1.26 GB.
+type SharedBytes = Rc<[u8]>;
+
+/// Union bookkeeping for one array field of one buffered record.
+///
+/// Canonical bytes are computed ONCE per item -- when the item first enters the record,
+/// either with the record itself or appended by a fold -- and are reused for membership
+/// and the final sort: each fold costs O(1) per incoming item instead of re-canonicalizing
+/// every stored item on every fold (the pre-US-002 quadratic). The two structures below
+/// SHARE that one allocation per item (`SharedBytes`), so the bookkeeping costs one
+/// canonical-bytes copy per distinct item, not two.
+struct ListState {
+    /// Canonical bytes of every stored item. Membership oracle for INCOMING items only:
+    /// duplicates inside the first-seen record stay in the list but still reject an equal
+    /// incoming item, exactly like the former linear `seen` scan.
+    seen: FxHashSet<SharedBytes>,
+    /// Canonical bytes parallel to the live items, so the deferred write-out sort never
+    /// re-canonicalizes anything. The SAME allocation `seen` holds -- a refcount, not a
+    /// second copy.
+    bytes: Vec<SharedBytes>,
+    /// Set when a real union ran (BOTH sides carried an array). Only then does the
+    /// write-out sort the list; a list merely copied from a later record keeps its source
+    /// order, byte-for-byte with the pre-US-002 fold.
+    unioned: bool,
+}
+
+impl ListState {
+    /// Seed from an array that just entered the record (first-seen, or copied from a later
+    /// record): keep EVERY item -- duplicates included -- and record each item's canonical
+    /// bytes once.
+    fn from_items(items: &[Value]) -> PyResult<Self> {
+        let mut state = Self {
+            seen: FxHashSet::with_capacity_and_hasher(items.len(), Default::default()),
+            bytes: Vec::with_capacity(items.len()),
+            unioned: false,
+        };
+        for item in items {
+            let bytes: SharedBytes = canonical_json_bytes(item).map_err(runtime_error)?.into();
+            state.seen.insert(Rc::clone(&bytes));
+            state.bytes.push(bytes);
+        }
+        Ok(state)
+    }
+}
+
+/// One buffered edge record plus the O(1) bookkeeping its folds need.
+///
+/// Replaces the pre-US-002 `(Vec<u64>, Value)` tuple: exact-repeat suppression and list
+/// membership are hash sets, and the per-fold re-canonicalization + re-sort of every
+/// stored list item is gone -- lists sort ONCE, at write-out, and only if a union ran.
+struct MergedRecord {
+    /// The live record: scalars first-wins, lists in original/append order until the
+    /// deferred write-out sort.
+    value: Value,
+    /// Content hashes of every record absorbed into this id: O(1) exact-repeat
+    /// suppression. Bare hashes keep the pre-US-002 `Vec<u64>` semantics exactly (a false
+    /// hit could only skip re-folding a record, matching the old `contains`); node dedup
+    /// stays full-bytes because a collision there would drop a DISTINCT record.
+    hashes: FxHashSet<u64>,
+    /// Union state for every field whose current value is an array.
+    lists: FxHashMap<String, ListState>,
+}
+
+impl MergedRecord {
+    /// Buffer the record that first claimed its id, seeding union state for every array
+    /// field (items kept verbatim, canonical bytes recorded once).
+    fn new(value: Value, content: u64) -> PyResult<Self> {
+        let mut lists: FxHashMap<String, ListState> = FxHashMap::default();
+        if let Some(map) = value.as_object() {
+            for (key, item) in map {
+                if let Value::Array(items) = item {
+                    lists.insert(key.clone(), ListState::from_items(items)?);
+                }
+            }
+        }
+        let mut hashes: FxHashSet<u64> = FxHashSet::default();
+        hashes.insert(content);
+        Ok(Self {
+            value,
+            hashes,
+            lists,
+        })
+    }
+
+    /// Apply the one deferred sort just before the write: every list that went through a
+    /// real union is sorted by canonical bytes (stable, so equal-byte items keep arrival
+    /// order -- byte-identical to the pre-US-002 per-fold sort). Lists that were only
+    /// copied keep their source order. Returns the finished record.
+    fn finish(mut self) -> PyResult<Value> {
+        let Some(map) = self.value.as_object_mut() else {
+            return Err(runtime_error("expected JSON object"));
+        };
+        for (key, state) in &mut self.lists {
+            if !state.unioned {
+                continue;
+            }
+            // The `number_of_cases` recompute may have replaced a unioned array with a
+            // number after the union; only arrays are sortable.
+            let Some(Value::Array(items)) = map.get_mut(key) else {
+                continue;
+            };
+            let bytes: Vec<SharedBytes> = std::mem::take(&mut state.bytes);
+            // Fail loudly on a desync instead of silently corrupting the record: `zip`
+            // truncates to the shorter side while `drain(..)` empties the WHOLE array, so
+            // ANY length mismatch drops entries without a trace -- live items when `bytes`
+            // is short, canonical-byte entries when `items` is short. The invariant
+            // (`bytes` is parallel to the live items) holds by construction -- every push
+            // into one is paired with a push into the other -- but this repo's standard is
+            // fail-loudly: hash-only keying once silently dropped records the same way.
+            // Deliberately a plain runtime check, not a `debug_assert_eq!`: a debug assert
+            // would panic first in test/debug builds, so the structured error below could
+            // never be observed or tested there. This fires in EVERY build profile.
+            if bytes.len() != items.len() {
+                return Err(runtime_error(format!(
+                    "merge-state-desync: list field {key:?} carries {} canonical-byte entries \
+                     for {} live items; refusing to write the record, because pairing them would \
+                     silently truncate {} entry/entries",
+                    bytes.len(),
+                    items.len(),
+                    items.len().abs_diff(bytes.len())
+                )));
+            }
+            let mut keyed: Vec<(SharedBytes, Value)> =
+                bytes.into_iter().zip(items.drain(..)).collect();
+            keyed.sort_by(|left, right| left.0.cmp(&right.0));
+            items.extend(keyed.into_iter().map(|(_, item)| item));
+        }
+        Ok(self.value)
+    }
+}
+
+/// Fold `incoming` into `stored`, field-wise. Returns the number of conflicting scalar
+/// fields (kept first-wins) so the caller can report them.
+///
+/// Near-linear implementation of the semantics frozen by `merge_records_reference` and
+/// policed by `merge_fold_matches_reference_on_fuzz`:
+///
+/// - list fields: union, deduped by canonical JSON bytes (so two `sources` objects that
+///   differ only in key order collapse). Each incoming item is canonicalized ONCE and
+///   checked against the field's `ListState` set in O(1); stored items are never
+///   re-canonicalized, and the sort by canonical bytes is deferred to write-out
+///   (`MergedRecord::finish`), where it runs only for fields that saw a real union;
+/// - scalar fields: first-wins on conflict, counted;
+/// - fields only on `incoming`: copied over (only a conflict when both sides disagree);
+/// - `id` is never touched: both sides carry the same one by construction.
+///
+/// `number_of_cases` has one hardcoded exception to first-wins: when the MERGED record
+/// carries `supporting_case_ids` (a build-internal `list[str]` of the case IDs behind
+/// the count -- allowed onto edge frames so it reaches this pass, then stripped before
+/// write) and either side carried a count, the count is recomputed as the length of the
+/// unioned ID list. A case ID shared by both records is one case, so first-wins and
+/// summing both over- and under-report; the union length is the exact count. The
+/// superseded divergence is NOT reported as a scalar conflict. When neither side
+/// carries the list, `number_of_cases` stays an ordinary first-wins scalar.
+fn merge_records(stored: &mut MergedRecord, incoming: &Value) -> PyResult<u64> {
+    let Some(incoming_map) = incoming.as_object() else {
+        return Err(runtime_error("expected JSON object"));
+    };
+    let mut conflicts: u64 = 0;
+    // Read both counts BEFORE the fold: the fold may copy incoming's over a stored side
+    // that lacks it, and the recompute rule below needs to know each side contributed one.
+    let stored_cases: Option<Value> = stored.value.get("number_of_cases").cloned();
+    let incoming_cases: Option<Value> = incoming_map.get("number_of_cases").cloned();
+    let Some(stored_map) = stored.value.as_object_mut() else {
+        return Err(runtime_error("expected JSON object"));
+    };
+    for (key, incoming_value) in incoming_map {
+        if key == "id" {
+            continue;
+        }
+        match stored_map.get_mut(key) {
+            None => {
+                // First time this field appears on the stored record: copy it over. An
+                // array gets union state seeded so LATER folds can union into it in O(1)
+                // (this copy itself is NOT a union: it keeps its source order).
+                if let Value::Array(items) = incoming_value {
+                    stored
+                        .lists
+                        .insert(key.clone(), ListState::from_items(items)?);
+                }
+                stored_map.insert(key.clone(), incoming_value.clone());
+            }
+            Some(stored_value) => {
+                if let (Value::Array(stored_items), Value::Array(incoming_items)) =
+                    (&mut *stored_value, incoming_value)
+                {
+                    let Some(state) = stored.lists.get_mut(key) else {
+                        // Invariant: every stored array field carries union state.
+                        return Err(runtime_error("list field without union state"));
+                    };
+                    // BOTH sides arrays -> a union happened: this field sorts at write-out
+                    // even when no new item survives membership (the pre-US-002 fold
+                    // sorted on every such fold).
+                    state.unioned = true;
+                    for item in incoming_items {
+                        let bytes: SharedBytes =
+                            canonical_json_bytes(item).map_err(runtime_error)?.into();
+                        if state.seen.insert(Rc::clone(&bytes)) {
+                            state.bytes.push(bytes);
+                            stored_items.push(item.clone());
+                        }
+                    }
+                } else if stored_value != incoming_value {
+                    conflicts += 1;
+                }
+            }
+        }
+    }
+    // WHY: exact-unique `number_of_cases` semantics (see the docstring). Guarded on the
+    // merged record actually carrying the ID list: a one-sided carrier is fine (the union
+    // is just that side's list), while a carrier-less merge never recomputes.
+    if let Some(union_len) = stored
+        .value
+        .get("supporting_case_ids")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+    {
+        if stored_cases.is_some() || incoming_cases.is_some() {
+            // Undo the loop's conflict count when it fired on this very field: the
+            // recompute supersedes first-wins, so the divergence is not a conflict.
+            // Mirrors the loop's condition exactly -- both sides present, unequal, and
+            // not both arrays (two arrays took the union path and were never counted).
+            if let (Some(left), Some(right)) = (&stored_cases, &incoming_cases) {
+                if left != right && !(left.is_array() && right.is_array()) {
+                    conflicts -= 1;
+                }
+            }
+            let Some(map) = stored.value.as_object_mut() else {
+                return Err(runtime_error("expected JSON object"));
+            };
+            map.insert(
+                "number_of_cases".to_string(),
+                Value::Number(serde_json::Number::from(union_len)),
+            );
+        }
+    }
+    Ok(conflicts)
+}
+
+/// Remove build-internal carrier fields from an edge record before it is written.
+///
+/// `supporting_case_ids` exists only so merge mode can recompute `number_of_cases`
+/// (see `merge_records`); it must never ship in the final NDJSON, so EVERY edge write
+/// path drops it -- the buffering merge pass and the default streaming path alike.
+/// Nodes never carry it and are untouched.
+fn strip_internal_edge_fields(value: &mut Value) {
+    if let Some(map) = value.as_object_mut() {
+        map.remove("supporting_case_ids");
+    }
+}
+
+impl MergeIndex {
+    fn absorb(&mut self, id: [u8; 16], value: Value, content: u64) -> PyResult<()> {
+        match self.records.entry(id) {
+            Entry::Vacant(slot) => {
+                slot.insert(MergedRecord::new(value, content)?);
+                self.order.push(id);
+                Ok(())
+            }
+            Entry::Occupied(mut slot) => {
+                let record: &mut MergedRecord = slot.get_mut();
+                // Exact repeat of ANY record already folded into this id -- including a
+                // divergent one -- is suppressed, so the conflict summary never
+                // double-counts a re-seen row.
+                if record.hashes.contains(&content) {
+                    return Ok(());
+                }
+                self.merged += 1;
+                self.scalar_conflicts += merge_records(record, &value)?;
+                record.hashes.insert(content);
+                Ok(())
+            }
+        }
+    }
+}
+
+/// FROZEN EQUIVALENCE ORACLE -- BYTE-VERBATIM copy of the pre-US-002 `merge_records`
+/// fold, compiled ONLY under `cfg(test)`. US-002 may rewrite the production fold for
+/// speed, but this copy stays the exact algorithm of record: `merge_fold_matches_
+/// reference_on_fuzz` drives both and demands identical output and counters. Never edit
+/// this copy to match an optimization -- edit the production code and let the fuzz test
+/// arbitrate. See the module docs on `merge_fold_reference` below.
+///
+/// Original semantics doc:
+///
 /// Fold `incoming` into `stored`, field-wise. Returns the number of conflicting scalar
 /// fields (kept first-wins) so the caller can report them.
 ///
@@ -225,7 +523,8 @@ struct MergeIndex {
 /// summing both over- and under-report; the union length is the exact count. The
 /// superseded divergence is NOT reported as a scalar conflict. When neither side
 /// carries the list, `number_of_cases` stays an ordinary first-wins scalar.
-fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
+#[cfg(test)]
+fn merge_records_reference(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
     let Some(incoming_map) = incoming.as_object() else {
         return Err(runtime_error("expected JSON object"));
     };
@@ -302,19 +601,20 @@ fn merge_records(stored: &mut Value, incoming: &Value) -> PyResult<u64> {
     Ok(conflicts)
 }
 
-/// Remove build-internal carrier fields from an edge record before it is written.
-///
-/// `supporting_case_ids` exists only so merge mode can recompute `number_of_cases`
-/// (see `merge_records`); it must never ship in the final NDJSON, so EVERY edge write
-/// path drops it -- the buffering merge pass and the default streaming path alike.
-/// Nodes never carry it and are untouched.
-fn strip_internal_edge_fields(value: &mut Value) {
-    if let Some(map) = value.as_object_mut() {
-        map.remove("supporting_case_ids");
-    }
+/// FROZEN EQUIVALENCE ORACLE -- BYTE-VERBATIM copy of the pre-US-002 `MergeIndex` absorb
+/// path (state shape included), compiled ONLY under `cfg(test)`; drives
+/// `merge_records_reference`. Treat as read-only -- see that fn's docs.
+#[cfg(test)]
+#[derive(Default)]
+struct MergeIndexReference {
+    records: FxHashMap<[u8; 16], (Vec<u64>, Value)>,
+    order: Vec<[u8; 16]>,
+    merged: u64,
+    scalar_conflicts: u64,
 }
 
-impl MergeIndex {
+#[cfg(test)]
+impl MergeIndexReference {
     fn absorb(&mut self, id: [u8; 16], value: Value, content: u64) -> PyResult<()> {
         match self.records.entry(id) {
             Entry::Vacant(slot) => {
@@ -331,7 +631,7 @@ impl MergeIndex {
                     return Ok(());
                 }
                 self.merged += 1;
-                self.scalar_conflicts += merge_records(stored_value, &value)?;
+                self.scalar_conflicts += merge_records_reference(stored_value, &value)?;
                 hashes.push(content);
                 Ok(())
             }
@@ -364,9 +664,11 @@ fn dedup_edges_merge(
         index.absorb(edge_id_bytes(&value)?, value, content)?;
     }
     for id in std::mem::take(&mut index.order) {
-        let Some((_, mut value)) = index.records.remove(&id) else {
+        let Some(record) = index.records.remove(&id) else {
             continue;
         };
+        // The one deferred sort: unioned lists sort here, everything else ships as-is.
+        let mut value: Value = record.finish()?;
         strip_internal_edge_fields(&mut value);
         writer
             .write_all(&emitted_json_bytes(&value).map_err(runtime_error)?)
@@ -1223,5 +1525,818 @@ mod tests {
         let error = dedup_ndjson(input, output, true, None, None, Some("bogus".to_string()))
             .expect_err("unknown mode");
         assert!(error.to_string().contains("bogus"), "{error}");
+    }
+
+    #[test]
+    fn merge_mode_sorts_only_lists_that_went_through_a_union() {
+        // WHY: the US-002 fold defers sorting to write-out and sorts ONLY fields that saw
+        // a real union (both sides arrays). A list copied from a later record is evidence
+        // in its source order and must NOT be sorted -- byte parity with the pre-US-002
+        // fold, pinned here directly in addition to the fuzz oracle.
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                // Group 1 (subject A): first record has no `tags`; the second copies its
+                // deliberately unsorted list in -- never unioned, so it stays unsorted.
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"tags\":[\"z\",\"m\"]}\n",
+                // Group 2 (subject X): both records carry `tags`, so a real union runs
+                // and the write-out sorts.
+                "{\"subject\":\"X\",\"predicate\":\"r\",\"object\":\"Y\",\"tags\":[\"z\",\"m\"]}\n",
+                "{\"subject\":\"X\",\"predicate\":\"r\",\"object\":\"Y\",\"tags\":[\"a\"]}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (2, 0));
+        let lines: Vec<Value> = fs::read_to_string(output)
+            .expect("read output")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+        assert_eq!(lines.len(), 2);
+        // Copied, never unioned: source order preserved.
+        assert_eq!(lines[0]["tags"], serde_json::json!(["z", "m"]));
+        // Unioned: sorted by canonical bytes.
+        assert_eq!(lines[1]["tags"], serde_json::json!(["a", "m", "z"]));
+    }
+}
+
+/// Seeded fuzz equivalence gate for the merge-mode fold.
+///
+/// Drives the CURRENT production path (through the real `dedup_ndjson` entry point) and
+/// the frozen `merge_records_reference` / `MergeIndexReference` oracle with the SAME
+/// reproducible randomized stream and demands byte-identical output, identical output
+/// order, and identical `(merged, scalar_conflicts)` counters. Trivially green while the
+/// reference IS the current algorithm; it becomes the tripwire for the US-002 rewrite.
+#[cfg(test)]
+mod merge_fold_reference {
+    use super::{
+        dedup_ndjson, edge_id_bytes, finalize_record, runtime_error, strip_internal_edge_fields,
+        Finalized, MergeIndexReference,
+    };
+    use crate::json::{canonical_json_bytes, emitted_json_bytes};
+    use pyo3::prelude::*;
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::tempdir;
+
+    /// The same pass as `dedup_edges_merge`, but every fold runs through the frozen
+    /// reference oracle instead of the production `MergeIndex`.
+    fn reference_pipeline(
+        lines: &[String],
+        domain: &str,
+        fields: &[String],
+    ) -> PyResult<(Vec<u8>, u64, u64)> {
+        let mut index: MergeIndexReference = MergeIndexReference::default();
+        for line in lines {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value: Value = serde_json::from_str(line).map_err(runtime_error)?;
+            let Some(Finalized { value, content }) =
+                finalize_record(value, true, domain, Some(fields))?
+            else {
+                continue;
+            };
+            index.absorb(edge_id_bytes(&value)?, value, content)?;
+        }
+        let mut output: Vec<u8> = Vec::new();
+        for id in std::mem::take(&mut index.order) {
+            let Some((_, mut value)) = index.records.remove(&id) else {
+                continue;
+            };
+            strip_internal_edge_fields(&mut value);
+            output.extend_from_slice(&emitted_json_bytes(&value).map_err(runtime_error)?);
+            output.push(b'\n');
+        }
+        Ok((output, index.merged, index.scalar_conflicts))
+    }
+
+    /// Tiny deterministic PRNG (splitmix64): the fuzz stream must be reproducible across
+    /// machines without pulling in a `rand` dependency.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z: u64 = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+
+        fn below(&mut self, bound: usize) -> usize {
+            (self.next_u64() % u64::try_from(bound).expect("bound fits in u64")) as usize
+        }
+
+        fn one_in(&mut self, odds: usize) -> bool {
+            self.below(odds) == 0
+        }
+    }
+
+    fn shuffle<T>(rng: &mut Rng, items: &mut [T]) {
+        for high in (1..items.len()).rev() {
+            let low: usize = rng.below(high + 1);
+            items.swap(high, low);
+        }
+    }
+
+    const SUBJECTS: [&str; 4] = ["MONDO:1", "MONDO:2", "MONDO:3", "MONDO:4"];
+    const PREDICATES: [&str; 2] = ["biolink:related_to", "biolink:associated_with"];
+    const OBJECTS: [&str; 3] = ["NCBIGene:1", "NCBIGene:2", "NCBIGene:3"];
+    const TAGS: [&str; 5] = ["tag:a", "tag:b", "tag:c", "tag:d", "tag:e"];
+    const CASES: [&str; 6] = ["case:1", "case:2", "case:3", "case:4", "case:5", "case:6"];
+    const P_VALUES: [&str; 3] = ["0.01", "0.05", "0.99"];
+
+    /// One of two logical `sources` entries, emitted in a random key order: the fold must
+    /// collapse key-order variants of the same object via canonical bytes.
+    fn source_object(rng: &mut Rng) -> Value {
+        let (id, role): (&str, &str) = if rng.one_in(2) {
+            ("infores:one", "primary_knowledge_source")
+        } else {
+            ("infores:two", "aggregator_knowledge_source")
+        };
+        let mut map = serde_json::Map::new();
+        if rng.one_in(2) {
+            map.insert("resource_id".to_string(), Value::String(id.to_string()));
+            map.insert("resource_role".to_string(), Value::String(role.to_string()));
+        } else {
+            map.insert("resource_role".to_string(), Value::String(role.to_string()));
+            map.insert("resource_id".to_string(), Value::String(id.to_string()));
+        }
+        Value::Object(map)
+    }
+
+    fn fuzz_record(rng: &mut Rng, group: usize, record_index: usize) -> Value {
+        let mut map = serde_json::Map::new();
+        // The identity triple, inserted in a random key order: all records of a group
+        // derive the same id while their bytes diverge, so the fold decides the outcome.
+        let triple: [(&str, &str); 3] = [
+            ("subject", SUBJECTS[rng.below(SUBJECTS.len())]),
+            ("predicate", PREDICATES[rng.below(PREDICATES.len())]),
+            ("object", OBJECTS[rng.below(OBJECTS.len())]),
+        ];
+        let mut order: [usize; 3] = [0, 1, 2];
+        shuffle(rng, &mut order);
+        for index in order {
+            let (key, value) = triple[index];
+            map.insert(key.to_string(), Value::String(value.to_string()));
+        }
+        // Scalar fields drawn from small pools -> first-wins conflicts.
+        map.insert(
+            "p_value".to_string(),
+            Value::String(P_VALUES[rng.below(P_VALUES.len())].to_string()),
+        );
+        map.insert(
+            "effect_size".to_string(),
+            Value::Number(serde_json::Number::from(rng.below(4) as u64)),
+        );
+        if rng.one_in(4) {
+            map.insert("negated".to_string(), Value::Bool(rng.one_in(2)));
+        }
+        // String list field drawn WITH replacement: a record may repeat an item inside its
+        // own array (stored-side duplicates survive; incoming-side ones collapse).
+        if rng.one_in(2) {
+            let mut tags: Vec<Value> = Vec::new();
+            for _ in 0..rng.below(4) {
+                tags.push(Value::String(TAGS[rng.below(TAGS.len())].to_string()));
+            }
+            map.insert("tags".to_string(), Value::Array(tags));
+        }
+        // Object list field with key-order variants -> canonical-bytes union + sort.
+        if rng.one_in(2) {
+            let mut sources: Vec<Value> = Vec::new();
+            for _ in 0..1 + rng.below(2) {
+                sources.push(source_object(rng));
+            }
+            map.insert("sources".to_string(), Value::Array(sources));
+        }
+        // Scalar-vs-array conflict on one field.
+        if rng.one_in(3) {
+            let mode: Value = if rng.one_in(2) {
+                Value::String("solo".to_string())
+            } else {
+                serde_json::json!(["solo", "extra"])
+            };
+            map.insert("mode".to_string(), mode);
+        }
+        // A field only LATER records of the group carry (fold must copy it, not conflict).
+        if record_index > 0 && (group.is_multiple_of(3) || rng.one_in(2)) {
+            map.insert("late".to_string(), Value::String(format!("late:{group}")));
+        }
+        // The same "only a later record carries it" shape, but LIST-valued and on exactly
+        // ONE record per group: the field is COPIED into the stored record and never
+        // unioned, so `unioned` stays false and the deferred write-out sort must leave it
+        // in its SOURCE order. The items are drawn strictly DESCENDING by canonical bytes
+        // (`TAGS` reversed), which is what makes a stray sort observable --
+        // `merge_fold_matches_reference_on_fuzz` counts the descending survivors. Before
+        // US-006 no fuzz dataset produced this shape at all, so the `unioned == false` gate
+        // (the subtlest semantic in the fold) rested on one hand-written test.
+        if group.is_multiple_of(2) && record_index == 1 {
+            let descending: Vec<Value> = TAGS
+                .iter()
+                .rev()
+                .take(2 + rng.below(3))
+                .map(|tag| Value::String(tag.to_string()))
+                .collect();
+            map.insert("late_list".to_string(), Value::Array(descending));
+        }
+        // The `number_of_cases` carrier pair in its three shapes: count + list, list only,
+        // or absent. The count is deliberately wrong sometimes -- the recompute supersedes
+        // it and must also undo the scalar conflict it would otherwise have counted.
+        if rng.one_in(2) {
+            let mut case_ids: Vec<Value> = Vec::new();
+            for _ in 0..1 + rng.below(4) {
+                case_ids.push(Value::String(CASES[rng.below(CASES.len())].to_string()));
+            }
+            map.insert(
+                "supporting_case_ids".to_string(),
+                Value::Array(case_ids.clone()),
+            );
+            if !rng.one_in(4) {
+                let count: u64 = if rng.one_in(3) {
+                    case_ids.len() as u64
+                } else {
+                    (case_ids.len() + 1 + rng.below(3)) as u64
+                };
+                map.insert(
+                    "number_of_cases".to_string(),
+                    Value::Number(serde_json::Number::from(count)),
+                );
+            }
+        }
+        Value::Object(map)
+    }
+
+    fn fuzz_stream(rng: &mut Rng) -> Vec<String> {
+        // 24 groups of 1-8 divergent same-id records, arrival order shuffled so first-seen
+        // id order and fold order disagree.
+        let mut records: Vec<Value> = Vec::new();
+        for group in 0..24 {
+            for record_index in 0..1 + rng.below(8) {
+                records.push(fuzz_record(rng, group, record_index));
+            }
+        }
+        shuffle(rng, &mut records);
+        let mut lines: Vec<String> = records
+            .iter()
+            .map(|record| serde_json::to_string(record).expect("serialize fuzz record"))
+            .collect();
+        // Exact byte repeats -- including of records that already diverged -- which the
+        // content-hash membership must suppress without merging or counting.
+        let unique: usize = lines.len();
+        for _ in 0..12 {
+            lines.push(lines[rng.below(unique)].clone());
+        }
+        shuffle(rng, &mut lines);
+        // Blank lines and empty objects are legal stream noise the pass must skip.
+        let mut stream: Vec<String> = Vec::new();
+        for line in lines {
+            if rng.one_in(14) {
+                stream.push(String::new());
+            }
+            if rng.one_in(20) {
+                stream.push("   ".to_string());
+            }
+            if rng.one_in(16) {
+                stream.push("{}".to_string());
+            }
+            stream.push(line);
+        }
+        stream
+    }
+
+    /// Count the emitted records that carry `late_list`, and how many of those kept it in
+    /// strictly DESCENDING canonical order -- proof that a list merely COPIED from one
+    /// record was never sorted at write-out (the `unioned == false` gate).
+    fn late_list_order(output: &[u8]) -> PyResult<(usize, usize)> {
+        let mut carriers: usize = 0;
+        let mut preserved: usize = 0;
+        for line in String::from_utf8_lossy(output).lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value: Value = serde_json::from_str(line).map_err(runtime_error)?;
+            let Some(items) = value.get("late_list").and_then(Value::as_array) else {
+                continue;
+            };
+            carriers += 1;
+            let mut bytes: Vec<Vec<u8>> = Vec::with_capacity(items.len());
+            for item in items {
+                bytes.push(canonical_json_bytes(item).map_err(runtime_error)?);
+            }
+            if bytes.len() >= 2 && bytes.windows(2).all(|pair| pair[0] > pair[1]) {
+                preserved += 1;
+            }
+        }
+        Ok((carriers, preserved))
+    }
+
+    #[test]
+    fn merge_fold_matches_reference_on_fuzz() {
+        // WHY: US-002 will rewrite the merge fold for speed. This seeded fuzz drives the
+        // CURRENT fold through the real `dedup_ndjson` entry point and the frozen
+        // `merge_records_reference` oracle with the SAME randomized stream -- divergent
+        // same-id groups of varying sizes, list unions over object and scalar items,
+        // key-order variants, fields only later records carry, scalar-vs-array conflicts,
+        // exact byte repeats, empty objects, and blank lines -- and demands byte-identical
+        // records in identical order plus identical `(merged, scalar_conflicts)` counters.
+        let mut rng = Rng(0x5EED_2024_0000_0001);
+        let lines: Vec<String> = fuzz_stream(&mut rng);
+        let domain: String = "infores:multiomicskg".to_string();
+        let fields: Vec<String> = ["subject", "predicate", "object"]
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+
+        let dir = tempdir().expect("tempdir");
+        let input = dir.path().join("fuzz.ndjson.tmp");
+        let output = dir.path().join("fuzz.ndjson");
+        fs::write(&input, lines.join("\n") + "\n").expect("write fuzz input");
+        let current: (u64, u64) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            Some(domain.clone()),
+            Some(fields.clone()),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+        let current_bytes: Vec<u8> = fs::read(&output).expect("read merged output");
+
+        let (reference_bytes, reference_merged, reference_conflicts): (Vec<u8>, u64, u64) =
+            reference_pipeline(&lines, &domain, &fields).expect("reference pipeline");
+
+        // Non-vacuity: the seeded stream must actually exercise the fold -- records merge,
+        // scalars conflict, several ids survive, and the carrier never leaks -- or the
+        // equivalence check could pass on a trivially degenerate input.
+        let output_lines: usize = current_bytes.iter().filter(|byte| **byte == b'\n').count();
+        assert!(
+            current.0 >= 10,
+            "expected real folding, merged={}",
+            current.0
+        );
+        assert!(
+            current.1 >= 1,
+            "expected scalar conflicts, got {}",
+            current.1
+        );
+        assert!(
+            output_lines >= 8,
+            "expected distinct ids, got {output_lines}"
+        );
+        assert!(
+            !current_bytes
+                .windows("supporting_case_ids".len())
+                .any(|window| window == b"supporting_case_ids"),
+            "build-internal carrier leaked into the merged output"
+        );
+
+        assert_eq!(
+            current,
+            (reference_merged, reference_conflicts),
+            "counters diverged from the frozen reference"
+        );
+        assert_eq!(
+            current_bytes, reference_bytes,
+            "merged output diverged from the frozen reference"
+        );
+
+        // The copied-never-unioned gate, asserted on the shape `fuzz_record` was extended
+        // to emit (US-006): `late_list` arrives strictly descending, so any write-out that
+        // sorted a merely COPIED list would flip it ascending and drop this count. It is a
+        // lower bound, not an exact count, because the identity triple is drawn per RECORD,
+        // so two carriers can land on one derived id -- those legitimately union and sort
+        // (and both implementations still agree, checked above). Zero would mean the
+        // unsorted-copy shape never reached the output at all.
+        let (carriers, preserved): (usize, usize) =
+            late_list_order(&current_bytes).expect("parse merged output");
+        println!("copied-never-unioned `late_list`: {carriers} emitted carriers, {preserved} kept their source (descending) order");
+        assert!(
+            preserved >= 3,
+            "expected the copied, never-unioned `late_list` to keep its source (descending) \
+             order on at least 3 emitted records, got {preserved} of {carriers}"
+        );
+    }
+}
+
+/// Performance bound gate for the merge-mode fold.
+///
+/// US-002 rewrote the merge fold from quadratic to near-linear. Equivalence with the
+/// frozen pre-US-002 oracle is policed by `merge_fold_reference` above; this module
+/// polices the SPEED: it drives the production `MergeIndex` and the frozen
+/// `MergeIndexReference` through the SAME seeded quadratic-shaped workload in-process
+/// and demands the production fold win by a fixed ratio. A ratio -- not an absolute
+/// wall-clock limit -- is machine-independent, because both legs share the same core,
+/// allocator, and input.
+///
+/// The module is deliberately self-contained (own splitmix64 `Rng`, own generators):
+/// the frozen equivalence harness above must stay byte-verbatim.
+#[cfg(test)]
+mod merge_fold_speedup {
+    use super::{runtime_error, strip_internal_edge_fields, MergeIndex, MergeIndexReference};
+    use crate::json::{canonical_json_bytes, emitted_json_bytes};
+    use pyo3::prelude::*;
+    use serde_json::Value;
+    use std::time::{Duration, Instant};
+    use uuid::Uuid;
+    use xxhash_rust::xxh64::xxh64;
+
+    /// Workload shape: `GROUPS` ids, each accumulating `RECORDS_PER_GROUP` divergent
+    /// records whose unioned lists grow into the hundreds of items. Sized so the frozen
+    /// quadratic leg takes ~1-5s in debug builds and the near-linear leg milliseconds;
+    /// the whole test stays in single-digit seconds.
+    const GROUPS: usize = 16;
+    const RECORDS_PER_GROUP: usize = 280;
+    /// The near-linear fold must beat the frozen quadratic oracle by at least this
+    /// factor. The observed margin is far larger (the reference re-canonicalizes and
+    /// re-sorts EVERY stored list item on EVERY fold), so the bound leaves ample headroom
+    /// for machine noise while still tripping on any regression back toward quadratic.
+    const BOUND: f64 = 5.0;
+    /// Timing attempts for the NEW-fold leg (the reference leg stays single-shot). The new
+    /// fold finishes in milliseconds, where one shot measures mostly scheduler and
+    /// allocator noise; the MINIMUM over three attempts is the stable estimate of the leg's
+    /// own cost, because noise only ever ADDS time.
+    const NEW_FOLD_ATTEMPTS: usize = 3;
+    const WORKLOAD_SEED: u64 = 0x5EED_2024_0000_0003;
+    const WARMUP_SEED: u64 = 0x5EED_2024_0000_0004;
+
+    const SUBJECTS: [&str; 4] = ["MONDO:1", "MONDO:2", "MONDO:3", "MONDO:4"];
+    const PREDICATES: [&str; 2] = ["biolink:related_to", "biolink:associated_with"];
+    const OBJECTS: [&str; 3] = ["NCBIGene:1", "NCBIGene:2", "NCBIGene:3"];
+    const P_VALUES: [&str; 3] = ["0.01", "0.05", "0.99"];
+    const CASES: [&str; 6] = ["case:1", "case:2", "case:3", "case:4", "case:5", "case:6"];
+
+    /// Tiny deterministic PRNG (splitmix64): a COPY of `merge_fold_reference::Rng` --
+    /// sharing it would mean editing the frozen harness, so the copy is deliberate.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z: u64 = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+
+        fn below(&mut self, bound: usize) -> usize {
+            (self.next_u64() % u64::try_from(bound).expect("bound fits in u64")) as usize
+        }
+
+        fn one_in(&mut self, odds: usize) -> bool {
+            self.below(odds) == 0
+        }
+    }
+
+    fn shuffle<T>(rng: &mut Rng, items: &mut [T]) {
+        for high in (1..items.len()).rev() {
+            let low: usize = rng.below(high + 1);
+            items.swap(high, low);
+        }
+    }
+
+    /// One of many logical `sources` entries, emitted in a random key order: the union
+    /// must collapse key-order variants of the same object via canonical bytes.
+    fn source_variant(rng: &mut Rng, identity: usize) -> Value {
+        let resource_id: String = format!("infores:bulk{identity}");
+        let role: &str = if identity.is_multiple_of(2) {
+            "primary_knowledge_source"
+        } else {
+            "aggregator_knowledge_source"
+        };
+        let mut map = serde_json::Map::new();
+        if rng.one_in(2) {
+            map.insert("resource_id".to_string(), Value::String(resource_id));
+            map.insert("resource_role".to_string(), Value::String(role.to_string()));
+        } else {
+            map.insert("resource_role".to_string(), Value::String(role.to_string()));
+            map.insert("resource_id".to_string(), Value::String(resource_id));
+        }
+        Value::Object(map)
+    }
+
+    /// One record ready for `absorb`: the derived id bytes, the labeled record, and the
+    /// xxh64 of its canonical id-free content -- exactly what the production
+    /// `dedup_edges_merge` path computes before each fold, minus the file IO and parsing
+    /// that are identical for both legs and would only dilute the ratio.
+    #[derive(Clone)]
+    struct FoldCase {
+        id: [u8; 16],
+        record: Value,
+        content: u64,
+    }
+
+    /// The quadratic-shaped workload: many divergent records per id, unioned list fields
+    /// growing into the hundreds of items (string items, object items with key-order
+    /// variants), scalar conflicts, scalar-vs-array conflicts, the `number_of_cases`
+    /// carrier, exact byte repeats, and shuffled arrival order. Deterministic in `seed`,
+    /// so two calls with the same arguments yield identical streams.
+    fn fold_workload(
+        seed: u64,
+        groups: usize,
+        records_per_group: usize,
+    ) -> PyResult<Vec<FoldCase>> {
+        let mut rng = Rng(seed);
+        // A tag pool large enough that intra-record dedup is rare: each id's unioned
+        // `tags` list grows near-linearly toward the hundreds of items.
+        let tag_pool: Vec<String> = (0..records_per_group * 4)
+            .map(|index| format!("tag:{index}"))
+            .collect();
+        let mut cases: Vec<FoldCase> = Vec::with_capacity(groups * records_per_group);
+        for group in 0..groups {
+            let mut id_bytes = [0u8; 16];
+            for byte in &mut id_bytes {
+                *byte = rng.below(256) as u8;
+            }
+            let subject: &str = SUBJECTS[rng.below(SUBJECTS.len())];
+            let predicate: &str = PREDICATES[rng.below(PREDICATES.len())];
+            let object: &str = OBJECTS[rng.below(OBJECTS.len())];
+            for record_index in 0..records_per_group {
+                let mut map = serde_json::Map::new();
+                // The identity triple is constant within a group, so every record of the
+                // group derives the same id and the fold decides the outcome.
+                map.insert("subject".to_string(), Value::String(subject.to_string()));
+                map.insert(
+                    "predicate".to_string(),
+                    Value::String(predicate.to_string()),
+                );
+                map.insert("object".to_string(), Value::String(object.to_string()));
+                // Scalars from small pools -> first-wins conflicts on most folds.
+                map.insert(
+                    "p_value".to_string(),
+                    Value::String(P_VALUES[rng.below(P_VALUES.len())].to_string()),
+                );
+                map.insert(
+                    "effect_size".to_string(),
+                    Value::Number(serde_json::Number::from(rng.below(4) as u64)),
+                );
+                if rng.one_in(4) {
+                    map.insert("negated".to_string(), Value::Bool(rng.one_in(2)));
+                }
+                // The growing string list: 2-5 items from the large pool per record.
+                let mut tags: Vec<Value> = Vec::new();
+                for _ in 0..2 + rng.below(4) {
+                    tags.push(Value::String(tag_pool[rng.below(tag_pool.len())].clone()));
+                }
+                map.insert("tags".to_string(), Value::Array(tags));
+                // The growing object list with key-order variants: a mix of new items and
+                // canonical-byte duplicates of earlier ones.
+                if rng.one_in(2) {
+                    let mut sources: Vec<Value> = Vec::new();
+                    for _ in 0..1 + rng.below(3) {
+                        let identity: usize = rng.below(records_per_group);
+                        sources.push(source_variant(&mut rng, identity));
+                    }
+                    map.insert("sources".to_string(), Value::Array(sources));
+                }
+                // Scalar-vs-array conflict on one field.
+                if rng.one_in(3) {
+                    let mode: Value = if rng.one_in(2) {
+                        Value::String("solo".to_string())
+                    } else {
+                        serde_json::json!(["solo", "extra"])
+                    };
+                    map.insert("mode".to_string(), mode);
+                }
+                // A field only LATER records carry (fold copies it, no conflict).
+                if record_index > 0 && rng.one_in(2) {
+                    map.insert("late".to_string(), Value::String(format!("late:{group}")));
+                }
+                // The `number_of_cases` carrier pair, count deliberately wrong sometimes.
+                if rng.one_in(2) {
+                    let mut case_ids: Vec<Value> = Vec::new();
+                    for _ in 0..1 + rng.below(5) {
+                        case_ids.push(Value::String(CASES[rng.below(CASES.len())].to_string()));
+                    }
+                    map.insert(
+                        "supporting_case_ids".to_string(),
+                        Value::Array(case_ids.clone()),
+                    );
+                    if !rng.one_in(4) {
+                        let count: u64 = case_ids.len() as u64
+                            + if rng.one_in(3) {
+                                0
+                            } else {
+                                1 + rng.below(3) as u64
+                            };
+                        map.insert(
+                            "number_of_cases".to_string(),
+                            Value::Number(serde_json::Number::from(count)),
+                        );
+                    }
+                }
+                let mut record: Value = Value::Object(map);
+                // Content hashes the canonical id-free record exactly like
+                // `finalize_record`, so an exact byte repeat carries the same content.
+                let content: u64 = xxh64(&canonical_json_bytes(&record).map_err(runtime_error)?, 0);
+                record.as_object_mut().expect("record is an object").insert(
+                    "id".to_string(),
+                    Value::String(Uuid::from_bytes(id_bytes).to_string()),
+                );
+                cases.push(FoldCase {
+                    id: id_bytes,
+                    record,
+                    content,
+                });
+            }
+        }
+        // Exact byte repeats (~10%): content-hash suppression must keep them out of BOTH
+        // folds without counting a merge.
+        let unique: usize = cases.len();
+        for _ in 0..unique / 10 {
+            cases.push(cases[rng.below(unique)].clone());
+        }
+        // Arrival order shuffled so first-seen id order and fold order disagree.
+        shuffle(&mut rng, &mut cases);
+        Ok(cases)
+    }
+
+    /// Drive the production fold over a prepared workload: absorb every record, then
+    /// `finish` in first-seen order (the one deferred union sort) -- exactly
+    /// `dedup_edges_merge` minus the file IO, parsing, and finalization that are
+    /// identical for both legs.
+    fn run_merge_index(cases: Vec<FoldCase>) -> PyResult<(Vec<u8>, u64, u64)> {
+        let mut index: MergeIndex = MergeIndex::default();
+        for case in cases {
+            index.absorb(case.id, case.record, case.content)?;
+        }
+        let mut output: Vec<u8> = Vec::new();
+        for id in std::mem::take(&mut index.order) {
+            let Some(record) = index.records.remove(&id) else {
+                continue;
+            };
+            let mut value: Value = record.finish()?;
+            strip_internal_edge_fields(&mut value);
+            output.extend_from_slice(&emitted_json_bytes(&value).map_err(runtime_error)?);
+            output.push(b'\n');
+        }
+        Ok((output, index.merged, index.scalar_conflicts))
+    }
+
+    /// Drive the frozen quadratic oracle over a prepared workload: the absorb path of
+    /// `reference_pipeline` minus the file IO, parsing, and finalization.
+    fn run_merge_index_reference(cases: Vec<FoldCase>) -> PyResult<(Vec<u8>, u64, u64)> {
+        let mut index: MergeIndexReference = MergeIndexReference::default();
+        for case in cases {
+            index.absorb(case.id, case.record, case.content)?;
+        }
+        let mut output: Vec<u8> = Vec::new();
+        for id in std::mem::take(&mut index.order) {
+            let Some((_, mut value)) = index.records.remove(&id) else {
+                continue;
+            };
+            strip_internal_edge_fields(&mut value);
+            output.extend_from_slice(&emitted_json_bytes(&value).map_err(runtime_error)?);
+            output.push(b'\n');
+        }
+        Ok((output, index.merged, index.scalar_conflicts))
+    }
+
+    /// WHY: US-002 rewrote the merge fold from quadratic to near-linear, and equivalence
+    /// with the frozen oracle is already policed by
+    /// `merge_fold_matches_reference_on_fuzz` -- this test guards the SPEED half of that
+    /// work. It drives the production `MergeIndex` and the frozen quadratic
+    /// `MergeIndexReference` through the SAME seeded quadratic-shaped workload
+    /// in-process and demands the new fold beat the reference by at least `BOUND`.
+    /// If a future change silently regresses the fold back toward quadratic, this
+    /// trips. The bound is a same-process RATIO, not an absolute wall-clock limit:
+    /// both legs share the same core, allocator, and input, so the assertion is
+    /// machine-independent and needs no per-CI-box tuning.
+    #[test]
+    fn merge_fold_speedup_bound_vs_reference() {
+        // Warmup: lazy allocator/paging work must not bill to whichever leg runs first.
+        run_merge_index(fold_workload(WARMUP_SEED, 2, 4).expect("warmup workload"))
+            .expect("warmup new fold");
+        run_merge_index_reference(fold_workload(WARMUP_SEED, 2, 4).expect("warmup workload"))
+            .expect("warmup reference fold");
+
+        // Build the same seeded workload per leg so each one consumes its own owned
+        // records and the timed region clones nothing: the ratio measures the fold
+        // algorithm alone, not input preparation.
+        //
+        // The NEW fold is timed FIRST (cold caches bill against it, so a bound that passes
+        // anyway is conservative) and BEST-OF-`NEW_FOLD_ATTEMPTS` (US-006): a millisecond
+        // leg timed once is dominated by noise, and noise in a ratio's denominator is how
+        // a >=5x bound turns flaky. The minimum of the attempts is compared, and each
+        // attempt rebuilds its workload so no timed region clones.
+        let mut new_elapsed: Duration = Duration::MAX;
+        let mut new_outcome: Option<(Vec<u8>, u64, u64)> = None;
+        for _ in 0..NEW_FOLD_ATTEMPTS {
+            let cases: Vec<FoldCase> =
+                fold_workload(WORKLOAD_SEED, GROUPS, RECORDS_PER_GROUP).expect("workload");
+            let started: Instant = Instant::now();
+            let outcome: (Vec<u8>, u64, u64) = run_merge_index(cases).expect("new fold");
+            let elapsed: Duration = started.elapsed();
+            if elapsed < new_elapsed {
+                new_elapsed = elapsed;
+                new_outcome = Some(outcome);
+            }
+        }
+        let (new_bytes, new_merged, new_conflicts): (Vec<u8>, u64, u64) =
+            new_outcome.expect("at least one new-fold attempt ran");
+
+        // The frozen quadratic leg stays SINGLE-shot: it already runs for seconds, so its
+        // timing is stable, and repeating it would multiply this test's runtime without
+        // reducing noise.
+        let reference_cases: Vec<FoldCase> =
+            fold_workload(WORKLOAD_SEED, GROUPS, RECORDS_PER_GROUP).expect("workload");
+        let started: Instant = Instant::now();
+        let (reference_bytes, reference_merged, reference_conflicts): (Vec<u8>, u64, u64) =
+            run_merge_index_reference(reference_cases).expect("reference fold");
+        let reference_elapsed = started.elapsed();
+
+        // Identical input must yield identical outcomes: the ratio measures the
+        // algorithm, not an input mismatch.
+        assert_eq!(
+            (new_merged, new_conflicts),
+            (reference_merged, reference_conflicts),
+            "fold counters diverged on the identical workload"
+        );
+        assert_eq!(
+            new_bytes, reference_bytes,
+            "fold outputs diverged on the identical workload"
+        );
+
+        // Non-vacuity: the workload must actually fold heavily, or a ratio on a
+        // degenerate input would be meaningless.
+        assert!(
+            new_merged >= (GROUPS * RECORDS_PER_GROUP * 9 / 10) as u64,
+            "expected heavy folding, merged={new_merged}"
+        );
+        assert!(
+            new_conflicts >= 1,
+            "expected scalar conflicts, got {new_conflicts}"
+        );
+        let output_lines: usize = new_bytes.iter().filter(|byte| **byte == b'\n').count();
+        assert_eq!(output_lines, GROUPS, "expected one merged record per id");
+
+        let speedup: f64 = reference_elapsed.as_secs_f64() / new_elapsed.as_secs_f64();
+        println!(
+            "merge fold speedup: new {new_elapsed:.3?} vs frozen quadratic reference \
+             {reference_elapsed:.3?} -> {speedup:.1}x (bound {BOUND}x)"
+        );
+        assert!(
+            speedup >= BOUND,
+            "the near-linear merge fold lost its speed margin: only {speedup:.2}x faster \
+             than the frozen quadratic reference (new fold {new_elapsed:.3?}, reference \
+             {reference_elapsed:.3?}); expected >= {BOUND}x on the identical workload"
+        );
+    }
+}
+
+#[cfg(test)]
+mod merge_state_desync {
+    use super::MergedRecord;
+    use serde_json::json;
+
+    /// WHY this test exists: `MergedRecord::finish`'s desync guard is load-bearing
+    /// fail-loudly precedent, not decoration. Hash-only edge keying once silently dropped
+    /// DISTINCT records at scale (the collision class `record_if_new_suppresses_only_exact_
+    /// byte_duplicates` polices); the same silent-data-loss class lurks here if the
+    /// `bytes`-parallel-to-`items` invariant ever breaks, because `zip` truncates to the
+    /// shorter side while `drain(..)` empties the whole array. This forces that desync and
+    /// asserts `finish` REFUSES to write -- returning a structured `merge-state-desync`
+    /// error -- proving the guard is a real runtime check observable in EVERY build
+    /// profile, not a `debug_assert_eq!` that panics first in tests and can never surface
+    /// the structured error path.
+    #[test]
+    fn merge_state_desync_is_a_structured_error_not_silent_truncation() {
+        // Reading a `PyErr`'s message needs an initialized interpreter (pyo3 is built
+        // without `auto-initialize`); idempotent, so this is safe alongside the full suite.
+        pyo3::Python::initialize();
+
+        // Seed a record whose `ids` array holds three live items; `new` records a matching
+        // three-entry canonical-`bytes` list (unioned = false, so `finish` skips it as-is).
+        let mut record =
+            MergedRecord::new(json!({ "ids": [1, 2, 3] }), 0).expect("seed merged record");
+
+        // Desync it the way a broken parallel-invariant would: drop ONE canonical-byte
+        // entry (2 byte-entries left for 3 live items) and mark the field unioned so
+        // `finish` routes it through the zip/drain path the guard protects.
+        let state = record.lists.get_mut("ids").expect("ids list state");
+        state.bytes.pop().expect("a canonical-byte entry to drop");
+        state.unioned = true;
+
+        // The guard must fire BEFORE any zip/drain mutates the record: `finish` returns a
+        // structured error naming the desync, so nothing is silently truncated/written.
+        let error = record
+            .finish()
+            .expect_err("a desynced list must fail loudly, not silently truncate");
+        let message = error.to_string();
+        assert!(
+            message.contains("merge-state-desync"),
+            "expected a structured merge-state-desync error, got: {message}"
+        );
     }
 }
