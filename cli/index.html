@@ -1599,13 +1599,6 @@ page lists the flags; see
 <td><code>None</code></td>
 <td>Fast model id for GEPA's many program evaluations (cheap task LM + strong reflection LM); <code>--model-id</code> is the reflection LM. Defaults to the reflection LM</td>
 </tr>
-<tr>
-<td><code>--gepa-threads</code></td>
-<td>int</td>
-<td>No</td>
-<td><code>None</code></td>
-<td>Thread count for GEPA's evaluation pool (<code>--optimize</code>): parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on <code>_GEPA_BUILD_LOCK</code></td>
-</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml
@@ -1694,13 +1687,6 @@ builds from RENCI BABEL exports instead (download class + synonym files, then bu
 <td>BABEL snapshot date to fetch (a RENCI stamp, <strong>not</strong> Tablassert's version)</td>
 </tr>
 <tr>
-<td><code>--threads</code>, <code>-t</code></td>
-<td>int</td>
-<td>No</td>
-<td><code>None</code> (auto)</td>
-<td>Worker threads for a from-scratch build; auto-capped by memory on Linux (<code>/proc/meminfo</code>), else ~90% of CPUs</td>
-</tr>
-<tr>
 <td><code>--aria2c</code>, <code>-a</code></td>
 <td>Flag</td>
 <td>No</td>
@@ -1733,6 +1719,9 @@ shard set, and per-shard <code>build_id</code> equality) before atomically renam
 prebuilt exists for this version (or the download or extraction fails), it falls back to a
 from-scratch BABEL build and logs a warning. A database already present at <code>--output</code> is reused as-is;
 pass <code>--force</code> to rebuild.</p>
+<p>A from-scratch build parallelizes automatically across all available CPU threads — on Linux the
+worker count is capped by available memory (~2 GB per thread, read from <code>/proc/meminfo</code>) to avoid
+OOMs. There is no flag to tune.</p>
 <p>See <a href="../fullmap/">Fullmap</a> for the data pipeline, output schema, and graph-config usage.</p>
 <hr />
 <h2 id="build-kg">build-kg<a class="headerlink" href="#build-kg" title="Permanent link">&para;</a></h2>
@@ -1794,17 +1783,14 @@ YAML configuration file.</p>
 <td><code>False</code></td>
 <td>Omit the verbatim source-cell copies (<code>original_subject</code>, <code>original_object</code>, and any other <code>original_*</code> fields) from the final edge NDJSON</td>
 </tr>
-<tr>
-<td><code>--threads</code>, <code>-t</code></td>
-<td>int</td>
-<td>No</td>
-<td><code>None</code> (auto)</td>
-<td>Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard; redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count</td>
-</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tablassert<span class="w"> </span>build-kg<span class="w"> </span>graph.yaml<span class="w"> </span>--qc<span class="w"> </span>--log
 </code></pre></div>
+<p>The parallel fullmap reads behind entity resolution are automatic: large lookup batches (≥ 1024
+terms) fan out across the record-shard files on all available CPU threads (redb readers share-lock,
+so they never contend), while smaller batches stay serial. There is no flag to tune, and results are
+identical at any worker count.</p>
 <p>Output is written to <code>rig.artifact_base_path</code> (created when missing) as <code>{name}_{version}.nodes.ndjson</code>,
 <code>{name}_{version}.edges.ndjson</code>, and <code>{name}_{version}.RIG.yaml</code>; intermediate parquet lands in
 <code>.tablassert/store/</code>. The RIG document is audited in memory before it is written: an invalid

@@ -2224,13 +2224,13 @@ wrong-calls ↓) and its <strong>knee</strong> (best quality per unit cost).</p>
 proposes the few instruction edits, and an optional <strong>fast task LM</strong> (<code>--task-model</code>) runs the many
 candidate program evaluations. Pointing <code>--task-model</code> at a cheap model (e.g. a flash model) keeps the
 run fast while the strong model does the thinking; without <code>--task-model</code> the reflection LM is used for
-both. <code>--gepa-threads</code> parallelizes GEPA's candidate <strong>LM forward passes</strong> only: the coverage-scoring
+both. GEPA runs its candidate evaluations with its library default parallelism; the coverage-scoring
 builds stay serialized on the process-wide <code>_GEPA_BUILD_LOCK</code> (<code>agent.py</code>, since <code>os.chdir</code> is
-process-global), so a higher thread count does not speed up the expensive build/coverage step.</p>
+process-global), so extra parallelism does not speed up the expensive build/coverage step.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># optimize the agent prompt over a dataset of examples, writing the result to a file</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>tablassert<span class="w"> </span>agent<span class="w"> </span>PMC11708054<span class="w"> </span>--configuration-file<span class="w"> </span>./graph.yaml<span class="w"> </span>--optimize<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--dataset<span class="w"> </span>examples/gepa-dataset.yaml<span class="w"> </span>--task-model<span class="w"> </span>qwen-flash<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span>--gepa-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>--max-metric-calls<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span>--instructions-out<span class="w"> </span>.tablassert/agent/optimized_instructions.yaml
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
 <a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># later, run the supervisor with the optimized prompt</span>
