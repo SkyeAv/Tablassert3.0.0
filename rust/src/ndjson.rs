@@ -1829,3 +1829,348 @@ mod merge_fold_reference {
         );
     }
 }
+
+/// Performance bound gate for the merge-mode fold.
+///
+/// US-002 rewrote the merge fold from quadratic to near-linear. Equivalence with the
+/// frozen pre-US-002 oracle is policed by `merge_fold_reference` above; this module
+/// polices the SPEED: it drives the production `MergeIndex` and the frozen
+/// `MergeIndexReference` through the SAME seeded quadratic-shaped workload in-process
+/// and demands the production fold win by a fixed ratio. A ratio -- not an absolute
+/// wall-clock limit -- is machine-independent, because both legs share the same core,
+/// allocator, and input.
+///
+/// The module is deliberately self-contained (own splitmix64 `Rng`, own generators):
+/// the frozen equivalence harness above must stay byte-verbatim.
+#[cfg(test)]
+mod merge_fold_speedup {
+    use super::{runtime_error, strip_internal_edge_fields, MergeIndex, MergeIndexReference};
+    use crate::json::{canonical_json_bytes, emitted_json_bytes};
+    use pyo3::prelude::*;
+    use serde_json::Value;
+    use std::time::Instant;
+    use uuid::Uuid;
+    use xxhash_rust::xxh64::xxh64;
+
+    /// Workload shape: `GROUPS` ids, each accumulating `RECORDS_PER_GROUP` divergent
+    /// records whose unioned lists grow into the hundreds of items. Sized so the frozen
+    /// quadratic leg takes ~1-5s in debug builds and the near-linear leg milliseconds;
+    /// the whole test stays in single-digit seconds.
+    const GROUPS: usize = 16;
+    const RECORDS_PER_GROUP: usize = 280;
+    /// The near-linear fold must beat the frozen quadratic oracle by at least this
+    /// factor. The observed margin is far larger (the reference re-canonicalizes and
+    /// re-sorts EVERY stored list item on EVERY fold), so the bound leaves ample headroom
+    /// for machine noise while still tripping on any regression back toward quadratic.
+    const BOUND: f64 = 5.0;
+    const WORKLOAD_SEED: u64 = 0x5EED_2024_0000_0003;
+    const WARMUP_SEED: u64 = 0x5EED_2024_0000_0004;
+
+    const SUBJECTS: [&str; 4] = ["MONDO:1", "MONDO:2", "MONDO:3", "MONDO:4"];
+    const PREDICATES: [&str; 2] = ["biolink:related_to", "biolink:associated_with"];
+    const OBJECTS: [&str; 3] = ["NCBIGene:1", "NCBIGene:2", "NCBIGene:3"];
+    const P_VALUES: [&str; 3] = ["0.01", "0.05", "0.99"];
+    const CASES: [&str; 6] = ["case:1", "case:2", "case:3", "case:4", "case:5", "case:6"];
+
+    /// Tiny deterministic PRNG (splitmix64): a COPY of `merge_fold_reference::Rng` --
+    /// sharing it would mean editing the frozen harness, so the copy is deliberate.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z: u64 = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+
+        fn below(&mut self, bound: usize) -> usize {
+            (self.next_u64() % u64::try_from(bound).expect("bound fits in u64")) as usize
+        }
+
+        fn one_in(&mut self, odds: usize) -> bool {
+            self.below(odds) == 0
+        }
+    }
+
+    fn shuffle<T>(rng: &mut Rng, items: &mut [T]) {
+        for high in (1..items.len()).rev() {
+            let low: usize = rng.below(high + 1);
+            items.swap(high, low);
+        }
+    }
+
+    /// One of many logical `sources` entries, emitted in a random key order: the union
+    /// must collapse key-order variants of the same object via canonical bytes.
+    fn source_variant(rng: &mut Rng, identity: usize) -> Value {
+        let resource_id: String = format!("infores:bulk{identity}");
+        let role: &str = if identity.is_multiple_of(2) {
+            "primary_knowledge_source"
+        } else {
+            "aggregator_knowledge_source"
+        };
+        let mut map = serde_json::Map::new();
+        if rng.one_in(2) {
+            map.insert("resource_id".to_string(), Value::String(resource_id));
+            map.insert("resource_role".to_string(), Value::String(role.to_string()));
+        } else {
+            map.insert("resource_role".to_string(), Value::String(role.to_string()));
+            map.insert("resource_id".to_string(), Value::String(resource_id));
+        }
+        Value::Object(map)
+    }
+
+    /// One record ready for `absorb`: the derived id bytes, the labeled record, and the
+    /// xxh64 of its canonical id-free content -- exactly what the production
+    /// `dedup_edges_merge` path computes before each fold, minus the file IO and parsing
+    /// that are identical for both legs and would only dilute the ratio.
+    #[derive(Clone)]
+    struct FoldCase {
+        id: [u8; 16],
+        record: Value,
+        content: u64,
+    }
+
+    /// The quadratic-shaped workload: many divergent records per id, unioned list fields
+    /// growing into the hundreds of items (string items, object items with key-order
+    /// variants), scalar conflicts, scalar-vs-array conflicts, the `number_of_cases`
+    /// carrier, exact byte repeats, and shuffled arrival order. Deterministic in `seed`,
+    /// so two calls with the same arguments yield identical streams.
+    fn fold_workload(
+        seed: u64,
+        groups: usize,
+        records_per_group: usize,
+    ) -> PyResult<Vec<FoldCase>> {
+        let mut rng = Rng(seed);
+        // A tag pool large enough that intra-record dedup is rare: each id's unioned
+        // `tags` list grows near-linearly toward the hundreds of items.
+        let tag_pool: Vec<String> = (0..records_per_group * 4)
+            .map(|index| format!("tag:{index}"))
+            .collect();
+        let mut cases: Vec<FoldCase> = Vec::with_capacity(groups * records_per_group);
+        for group in 0..groups {
+            let mut id_bytes = [0u8; 16];
+            for byte in &mut id_bytes {
+                *byte = rng.below(256) as u8;
+            }
+            let subject: &str = SUBJECTS[rng.below(SUBJECTS.len())];
+            let predicate: &str = PREDICATES[rng.below(PREDICATES.len())];
+            let object: &str = OBJECTS[rng.below(OBJECTS.len())];
+            for record_index in 0..records_per_group {
+                let mut map = serde_json::Map::new();
+                // The identity triple is constant within a group, so every record of the
+                // group derives the same id and the fold decides the outcome.
+                map.insert("subject".to_string(), Value::String(subject.to_string()));
+                map.insert(
+                    "predicate".to_string(),
+                    Value::String(predicate.to_string()),
+                );
+                map.insert("object".to_string(), Value::String(object.to_string()));
+                // Scalars from small pools -> first-wins conflicts on most folds.
+                map.insert(
+                    "p_value".to_string(),
+                    Value::String(P_VALUES[rng.below(P_VALUES.len())].to_string()),
+                );
+                map.insert(
+                    "effect_size".to_string(),
+                    Value::Number(serde_json::Number::from(rng.below(4) as u64)),
+                );
+                if rng.one_in(4) {
+                    map.insert("negated".to_string(), Value::Bool(rng.one_in(2)));
+                }
+                // The growing string list: 2-5 items from the large pool per record.
+                let mut tags: Vec<Value> = Vec::new();
+                for _ in 0..2 + rng.below(4) {
+                    tags.push(Value::String(tag_pool[rng.below(tag_pool.len())].clone()));
+                }
+                map.insert("tags".to_string(), Value::Array(tags));
+                // The growing object list with key-order variants: a mix of new items and
+                // canonical-byte duplicates of earlier ones.
+                if rng.one_in(2) {
+                    let mut sources: Vec<Value> = Vec::new();
+                    for _ in 0..1 + rng.below(3) {
+                        let identity: usize = rng.below(records_per_group);
+                        sources.push(source_variant(&mut rng, identity));
+                    }
+                    map.insert("sources".to_string(), Value::Array(sources));
+                }
+                // Scalar-vs-array conflict on one field.
+                if rng.one_in(3) {
+                    let mode: Value = if rng.one_in(2) {
+                        Value::String("solo".to_string())
+                    } else {
+                        serde_json::json!(["solo", "extra"])
+                    };
+                    map.insert("mode".to_string(), mode);
+                }
+                // A field only LATER records carry (fold copies it, no conflict).
+                if record_index > 0 && rng.one_in(2) {
+                    map.insert("late".to_string(), Value::String(format!("late:{group}")));
+                }
+                // The `number_of_cases` carrier pair, count deliberately wrong sometimes.
+                if rng.one_in(2) {
+                    let mut case_ids: Vec<Value> = Vec::new();
+                    for _ in 0..1 + rng.below(5) {
+                        case_ids.push(Value::String(CASES[rng.below(CASES.len())].to_string()));
+                    }
+                    map.insert(
+                        "supporting_case_ids".to_string(),
+                        Value::Array(case_ids.clone()),
+                    );
+                    if !rng.one_in(4) {
+                        let count: u64 = case_ids.len() as u64
+                            + if rng.one_in(3) {
+                                0
+                            } else {
+                                1 + rng.below(3) as u64
+                            };
+                        map.insert(
+                            "number_of_cases".to_string(),
+                            Value::Number(serde_json::Number::from(count)),
+                        );
+                    }
+                }
+                let mut record: Value = Value::Object(map);
+                // Content hashes the canonical id-free record exactly like
+                // `finalize_record`, so an exact byte repeat carries the same content.
+                let content: u64 = xxh64(&canonical_json_bytes(&record).map_err(runtime_error)?, 0);
+                record.as_object_mut().expect("record is an object").insert(
+                    "id".to_string(),
+                    Value::String(Uuid::from_bytes(id_bytes).to_string()),
+                );
+                cases.push(FoldCase {
+                    id: id_bytes,
+                    record,
+                    content,
+                });
+            }
+        }
+        // Exact byte repeats (~10%): content-hash suppression must keep them out of BOTH
+        // folds without counting a merge.
+        let unique: usize = cases.len();
+        for _ in 0..unique / 10 {
+            cases.push(cases[rng.below(unique)].clone());
+        }
+        // Arrival order shuffled so first-seen id order and fold order disagree.
+        shuffle(&mut rng, &mut cases);
+        Ok(cases)
+    }
+
+    /// Drive the production fold over a prepared workload: absorb every record, then
+    /// `finish` in first-seen order (the one deferred union sort) -- exactly
+    /// `dedup_edges_merge` minus the file IO, parsing, and finalization that are
+    /// identical for both legs.
+    fn run_merge_index(cases: Vec<FoldCase>) -> PyResult<(Vec<u8>, u64, u64)> {
+        let mut index: MergeIndex = MergeIndex::default();
+        for case in cases {
+            index.absorb(case.id, case.record, case.content)?;
+        }
+        let mut output: Vec<u8> = Vec::new();
+        for id in std::mem::take(&mut index.order) {
+            let Some(record) = index.records.remove(&id) else {
+                continue;
+            };
+            let mut value: Value = record.finish()?;
+            strip_internal_edge_fields(&mut value);
+            output.extend_from_slice(&emitted_json_bytes(&value).map_err(runtime_error)?);
+            output.push(b'\n');
+        }
+        Ok((output, index.merged, index.scalar_conflicts))
+    }
+
+    /// Drive the frozen quadratic oracle over a prepared workload: the absorb path of
+    /// `reference_pipeline` minus the file IO, parsing, and finalization.
+    fn run_merge_index_reference(cases: Vec<FoldCase>) -> PyResult<(Vec<u8>, u64, u64)> {
+        let mut index: MergeIndexReference = MergeIndexReference::default();
+        for case in cases {
+            index.absorb(case.id, case.record, case.content)?;
+        }
+        let mut output: Vec<u8> = Vec::new();
+        for id in std::mem::take(&mut index.order) {
+            let Some((_, mut value)) = index.records.remove(&id) else {
+                continue;
+            };
+            strip_internal_edge_fields(&mut value);
+            output.extend_from_slice(&emitted_json_bytes(&value).map_err(runtime_error)?);
+            output.push(b'\n');
+        }
+        Ok((output, index.merged, index.scalar_conflicts))
+    }
+
+    /// WHY: US-002 rewrote the merge fold from quadratic to near-linear, and equivalence
+    /// with the frozen oracle is already policed by
+    /// `merge_fold_matches_reference_on_fuzz` -- this test guards the SPEED half of that
+    /// work. It drives the production `MergeIndex` and the frozen quadratic
+    /// `MergeIndexReference` through the SAME seeded quadratic-shaped workload
+    /// in-process and demands the new fold beat the reference by at least `BOUND`.
+    /// If a future change silently regresses the fold back toward quadratic, this
+    /// trips. The bound is a same-process RATIO, not an absolute wall-clock limit:
+    /// both legs share the same core, allocator, and input, so the assertion is
+    /// machine-independent and needs no per-CI-box tuning.
+    #[test]
+    fn merge_fold_speedup_bound_vs_reference() {
+        // Warmup: lazy allocator/paging work must not bill to whichever leg runs first.
+        run_merge_index(fold_workload(WARMUP_SEED, 2, 4).expect("warmup workload"))
+            .expect("warmup new fold");
+        run_merge_index_reference(fold_workload(WARMUP_SEED, 2, 4).expect("warmup workload"))
+            .expect("warmup reference fold");
+
+        // Build the same seeded workload TWICE so each leg consumes its own owned
+        // records and the timed region clones nothing: the ratio measures the fold
+        // algorithm alone, not input preparation.
+        let new_cases: Vec<FoldCase> =
+            fold_workload(WORKLOAD_SEED, GROUPS, RECORDS_PER_GROUP).expect("workload");
+        let reference_cases: Vec<FoldCase> =
+            fold_workload(WORKLOAD_SEED, GROUPS, RECORDS_PER_GROUP).expect("workload");
+
+        // The NEW fold is timed FIRST: cold caches bill against it, so a bound that
+        // passes despite that is conservative.
+        let started: Instant = Instant::now();
+        let (new_bytes, new_merged, new_conflicts): (Vec<u8>, u64, u64) =
+            run_merge_index(new_cases).expect("new fold");
+        let new_elapsed = started.elapsed();
+
+        let started: Instant = Instant::now();
+        let (reference_bytes, reference_merged, reference_conflicts): (Vec<u8>, u64, u64) =
+            run_merge_index_reference(reference_cases).expect("reference fold");
+        let reference_elapsed = started.elapsed();
+
+        // Identical input must yield identical outcomes: the ratio measures the
+        // algorithm, not an input mismatch.
+        assert_eq!(
+            (new_merged, new_conflicts),
+            (reference_merged, reference_conflicts),
+            "fold counters diverged on the identical workload"
+        );
+        assert_eq!(
+            new_bytes, reference_bytes,
+            "fold outputs diverged on the identical workload"
+        );
+
+        // Non-vacuity: the workload must actually fold heavily, or a ratio on a
+        // degenerate input would be meaningless.
+        assert!(
+            new_merged >= (GROUPS * RECORDS_PER_GROUP * 9 / 10) as u64,
+            "expected heavy folding, merged={new_merged}"
+        );
+        assert!(
+            new_conflicts >= 1,
+            "expected scalar conflicts, got {new_conflicts}"
+        );
+        let output_lines: usize = new_bytes.iter().filter(|byte| **byte == b'\n').count();
+        assert_eq!(output_lines, GROUPS, "expected one merged record per id");
+
+        let speedup: f64 = reference_elapsed.as_secs_f64() / new_elapsed.as_secs_f64();
+        println!(
+            "merge fold speedup: new {new_elapsed:.3?} vs frozen quadratic reference \
+             {reference_elapsed:.3?} -> {speedup:.1}x (bound {BOUND}x)"
+        );
+        assert!(
+            speedup >= BOUND,
+            "the near-linear merge fold lost its speed margin: only {speedup:.2}x faster \
+             than the frozen quadratic reference (new fold {new_elapsed:.3?}, reference \
+             {reference_elapsed:.3?}); expected >= {BOUND}x on the identical workload"
+        );
+    }
+}
