@@ -196,7 +196,7 @@ def _build_real_redb(root: Path) -> Path:
         [_synonym_row("HGNC:1100", "BRCA1", ["BRCA1", "brca1"], "Gene"), _synonym_row("HGNC:6871", "MAPK1", ["MAPK1", "mapk1"], "Gene")],
     )
     output: Path = root / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    rs.build_fullmap_db(output, [classes], [synonyms])
     return output
 
 

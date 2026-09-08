@@ -113,7 +113,7 @@ def _build_real_redb(root: Path) -> Path:
     classes_path: Path = _write_jsonl(root / "classes.ndjson", classes)
     synonyms_path: Path = _write_jsonl(root / "synonyms.ndjson", synonyms)
     output: Path = root / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes_path], [synonyms_path], threads=2)
+    rs.build_fullmap_db(output, [classes_path], [synonyms_path])
     return output
 
 

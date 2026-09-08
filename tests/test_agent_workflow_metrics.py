@@ -125,7 +125,7 @@ def fullmap_db(tmp_path: Path) -> Path:
         [_synonym_row("HGNC:1100", "BRCA1", ["BRCA1", "brca1"], "Gene"), _synonym_row("HGNC:6871", "MAPK1", ["MAPK1", "mapk1"], "Gene")],
     )
     output: Path = root / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    rs.build_fullmap_db(output, [classes], [synonyms])
     return output
 
 
@@ -565,7 +565,7 @@ def _build_golden_redb(root: Path) -> Path:
     classes_path: Path = _write_jsonl(root / "classes.ndjson", classes)
     synonyms_path: Path = _write_jsonl(root / "synonyms.ndjson", synonyms)
     output: Path = root / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes_path], [synonyms_path], threads=2)
+    rs.build_fullmap_db(output, [classes_path], [synonyms_path])
     return output
 
 

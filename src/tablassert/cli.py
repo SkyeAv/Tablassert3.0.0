@@ -146,11 +146,10 @@ def build_pipeline(
     log: bool = False,
     head: bool = False,
     no_original: bool = False,
-    threads: int | None = None,
 ) -> None:
     """Load a graph YAML and build it through the shared in-process core."""
     graph: Graph = _load_graph(configuration_file)
-    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head, no_original=no_original, threads=threads)
+    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head, no_original=no_original)
 
 
 def build_graph_pipeline(
@@ -162,7 +161,6 @@ def build_graph_pipeline(
     log: bool = False,
     head: bool = False,
     no_original: bool = False,
-    threads: int | None = None,
     audit_sources: bool = True,
 ) -> None:
     """Build a validated :class:`Graph` without loading another graph YAML.
@@ -182,8 +180,6 @@ def build_graph_pipeline(
         head: When ``True``, build a random sample of up to five rows per section.
         no_original: When ``True``, omit the verbatim ``original_*`` source-cell
             copies from the final edge NDJSON.
-        threads: Optional worker thread count for the parallel fullmap reads behind
-            entity resolution (auto when unset).
     """
     from tablassert.fullmap import fullmap_db_path
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
@@ -243,7 +239,6 @@ def build_graph_pipeline(
                         "qc": qc,
                         "release": release,
                         "head": head,
-                        "threads": threads,
                         "name": g.name,
                         "infores": g.rig.source_info.infores_id,
                     }
@@ -697,7 +692,6 @@ def build_kg(
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
     head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
     no_original: Annotated[bool, cyclopts.Parameter(name=["--no-original", "-no"], negative="")] = False,
-    threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
@@ -706,8 +700,7 @@ def build_kg(
 
     ``--no-original`` omits the verbatim source-cell copies (``original_subject``,
     ``original_object``, and any other ``original_*`` fields) from the final edge
-    NDJSON. ``--threads`` sets the worker count for the parallel fullmap reads behind entity
-    resolution (auto when unset). ``--qc`` requires the ``[qc]`` extra (``pip install
+    NDJSON. ``--qc`` requires the ``[qc]`` extra (``pip install
     "tablassert[qc]"``); it is checked before the build starts, because the audit stage
     runs LAST and a missing extra would otherwise surface only after entity resolution
     has finished. It also runs a final study stage that asserts over the emitted NDJSON
@@ -716,16 +709,9 @@ def build_kg(
     malformed lines, no null or empty values in any field, and no stray whitespace --
     and fails the build (non-zero exit) when any assertion is violated.
     """
-    # A non-positive thread count would only fail deep inside the Rust lookup; fail loud
-    # up front, matching the --gepa-threads pattern.
-    if threads is not None and threads < 1:
-        print("tablassert build-kg: --threads must be a positive integer.", file=sys.stderr)
-        raise SystemExit(2)
     if qc:
         extras.require("qc", required_by="--qc")
-    run(
-        7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head, no_original=no_original, threads=threads
-    )
+    run(7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head, no_original=no_original)
 
 
 @APP.command(name="validate")
@@ -809,7 +795,6 @@ def agent(
     max_metric_calls: Annotated[int, cyclopts.Parameter(name=["--max-metric-calls"])] = 8,
     dataset: Annotated[Path | None, cyclopts.Parameter(name=["--dataset"])] = None,
     task_model: Annotated[str | None, cyclopts.Parameter(name=["--task-model"])] = None,
-    gepa_threads: Annotated[int | None, cyclopts.Parameter(name=["--gepa-threads"])] = None,
 ) -> None:
     """Autonomously derive, build, audit, and improve KG configs from PMC articles.
 
@@ -866,9 +851,6 @@ def agent(
         task_model: Optional FAST model id for GEPA's many program evaluations (GEPA best practice: a cheap
             task LM + a strong reflection LM); ``--model-id`` is the strong reflection LM. Defaults to the
             reflection LM when unset.
-        gepa_threads: Optional thread count for GEPA's evaluation pool. Parallelizes the candidate LM
-            forward passes only; the coverage-scoring builds stay serialized on the process-wide
-            ``_GEPA_BUILD_LOCK`` (``os.chdir`` is process-global), so more threads do not speed up builds.
     """
     from tablassert import agent as agent_mod
     from tablassert.graph_target import prepare_graph
@@ -900,12 +882,6 @@ def agent(
     # Same reasoning for the compliance gate: a threshold outside [0, 1] would silently disable it.
     if not 0 <= biolink_threshold <= 1:
         print("tablassert agent: --biolink-threshold must be a finite number between 0 and 1.", file=sys.stderr)
-        raise SystemExit(2)
-
-    # A non-positive thread count would only fail deep inside dspy/ThreadPoolExecutor AFTER the models are
-    # built; fail loud up front, matching the --judge-threshold pattern.
-    if gepa_threads is not None and gepa_threads < 1:
-        print("tablassert agent: --gepa-threads must be a positive integer.", file=sys.stderr)
         raise SystemExit(2)
 
     # --distill records the SUPERVISOR's model calls; the --optimize path returns early below and
@@ -1009,7 +985,6 @@ def agent(
             task_lm=task_lm,
             dataset=gepa_dataset,
             max_metric_calls=max_metric_calls,
-            num_threads=gepa_threads,
         )
         # A failed GEPA compile falls back to the SEED instructions with stats["error"]; do NOT persist that
         # unoptimized prompt or report success -- fail loud with a non-zero status.
@@ -1256,12 +1231,7 @@ def fetch_prebuilt_fullmap(output: Path, progress: PipelineProgress, version: st
 
 
 def build_fullmap_pipeline(
-    output: Path,
-    progress: PipelineProgress,
-    cache: Path = Path("./fullmap/downloads"),
-    version: str = BABEL_VERSION,
-    threads: int | None = None,
-    aria2c: bool = False,
+    output: Path, progress: PipelineProgress, cache: Path = Path("./fullmap/downloads"), version: str = BABEL_VERSION, aria2c: bool = False
 ) -> None:
     """Build an embedded fullmap redb database from BABEL outputs.
 
@@ -1273,7 +1243,6 @@ def build_fullmap_pipeline(
         progress: Pipeline progress reporter.
         cache: Directory for downloaded BABEL files.
         version: BABEL version label.
-        threads: Optional thread count forwarded to Rust.
         aria2c: Use the bundled aria2c binary from the optional ``[aria2]`` extra for downloads when true.
     """
     from tablassert import rs
@@ -1317,7 +1286,7 @@ def build_fullmap_pipeline(
     # Rust drives per-phase progress (equivalents -> synonyms -> writing) via the
     # callback; the GIL is released during the build so the bar repaints live.
     on_progress = progress.dynamic_loop("Build")
-    rs.build_fullmap_db(output, class_files, synonym_files, threads=threads, progress=on_progress)
+    rs.build_fullmap_db(output, class_files, synonym_files, progress=on_progress)
     progress.end_section_task()
 
     logger.info(
@@ -1334,7 +1303,6 @@ def build_fullmap(
     output: Annotated[Path, cyclopts.Parameter(name=["--output", "-o"])] = Path("./fullmap/data/fullmap.redb"),
     cache: Annotated[Path, cyclopts.Parameter(name=["--cache", "-c"])] = Path("./fullmap/downloads"),
     version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,
-    threads: Annotated[int | None, cyclopts.Parameter(name=["--threads", "-t"])] = None,
     aria2c: Annotated[bool, cyclopts.Parameter(name=["--aria2c", "-a"], negative="")] = False,
     force: Annotated[bool, cyclopts.Parameter(name=["--force", "-f"], negative="")] = False,
 ) -> None:
@@ -1353,7 +1321,6 @@ def build_fullmap(
         output: Path to write the redb file (prebuilt extraction or build output).
         cache: Directory for downloaded BABEL files when building from scratch.
         version: BABEL snapshot date to fetch (a RENCI stamp, NOT Tablassert's version).
-        threads: Worker threads for a from-scratch build (auto when unset).
         aria2c: Use the bundled aria2c binary from the ``[aria2]`` extra for downloads
             (prebuilt or BABEL).
         force: Skip the prebuilt download and always rebuild from BABEL outputs.
@@ -1374,4 +1341,4 @@ def build_fullmap(
             return
         except PrebuiltFullmapUnavailable as exc:
             logger.warning("Prebuilt fullmap unavailable ({reason}); building from BABEL outputs.", reason=exc)
-    run(3, build_fullmap_pipeline, output, cache=cache, version=version, threads=threads, aria2c=aria2c)
+    run(3, build_fullmap_pipeline, output, cache=cache, version=version, aria2c=aria2c)

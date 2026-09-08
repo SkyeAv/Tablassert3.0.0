@@ -502,7 +502,7 @@ def test_build_and_audit_tool_memoizes_identical_config(tmp_path: Path, monkeypa
         + "\n"
     )
     output: Path = root / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    rs.build_fullmap_db(output, [classes], [synonyms])
 
     calls: list[str] = []
     real_build_and_audit = build_and_audit

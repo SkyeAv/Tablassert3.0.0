@@ -106,10 +106,10 @@ pub fn shard_path(primary: &Path, index: usize) -> PathBuf {
     primary.with_file_name(format!("{stem}.s{index}.{ext}"))
 }
 
-/// Build the fixed fixture at `<dir>/fullmap.redb` with `threads` workers and
-/// return the primary path.  Uses the public `build_fullmap_db` (the production
-/// entry point), exactly as Python callers do.
-pub fn build_fixture(dir: &Path, threads: usize) -> PathBuf {
+/// Build the fixed fixture at `<dir>/fullmap.redb` (parallelism is selected
+/// automatically by the build) and return the primary path.  Uses the public
+/// `build_fullmap_db` (the production entry point), exactly as Python callers do.
+pub fn build_fixture(dir: &Path) -> PathBuf {
     pyo3::Python::initialize();
     let classes = dir.join("classes.ndjson");
     let synonyms = dir.join("SRC.ndjson");
@@ -117,15 +117,8 @@ pub fn build_fixture(dir: &Path, threads: usize) -> PathBuf {
     write_jsonl(&synonyms, SYNONYM_LINES);
     let output = dir.join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(
-            py,
-            output.clone(),
-            vec![classes],
-            vec![synonyms],
-            Some(threads),
-            None,
-        )
-        .unwrap();
+        tablassert_rs::build_fullmap_db(py, output.clone(), vec![classes], vec![synonyms], None)
+            .unwrap();
     });
     output
 }

@@ -21,7 +21,6 @@ def resolve(
   config_file: Optional[str] = None,
   column_context: bool = True,
   tag: str = "_two",
-  threads: Optional[int] = None,
 ) -> pl.LazyFrame
 ```
 
@@ -78,10 +77,6 @@ Suffix appended to `col` to locate the `level_two` output column.
 - `col + tag`: the `level_two` output (non-word characters removed via `\W+`)
 
 The default `"_two"` matches `level_two`'s default tag.
-
-**`threads: Optional[int]` (default: `None`)**
-
-Optional worker-thread count passed through to the Rust lookup for parallel term batching.
 
 ### Return Value
 

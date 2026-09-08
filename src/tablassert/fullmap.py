@@ -178,13 +178,12 @@ def _dimension_maps(db: Path, cache_key: tuple[Path, float]) -> tuple[list[str],
     return value
 
 
-def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[dict[str, object]]:
+def lookup_rows(db: Path, terms: list[str]) -> list[dict[str, object]]:
     """Lookup terms using the v2 raw-pair path and hydrate rows once per batch.
 
     Args:
         db: Path to the fullmap redb file.
         terms: Terms to query.
-        threads: Optional thread count forwarded to Rust.
 
     Returns:
         Hydrated rows matching the legacy ``lookup_fullmap_terms`` shape.
@@ -203,7 +202,7 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
 
     if misses:
         try:
-            pair_rows: list[dict[str, object]] = _call_with_lock_retry(rs.lookup_fullmap_terms, db, misses, threads=threads, return_format="pairs")
+            pair_rows: list[dict[str, object]] = _call_with_lock_retry(rs.lookup_fullmap_terms, db, misses, return_format="pairs")
         except TypeError as exc:
             # Only swallow the signature-mismatch TypeError from an old extension that
             # lacks return_format; any other TypeError is a real bug and must propagate.
@@ -212,12 +211,12 @@ def lookup_rows(db: Path, terms: list[str], threads: int | None = None) -> list[
             # Legacy extension without return_format: re-query the FULL term set so
             # already-cached terms are not dropped from the returned rows.
             _warn_legacy_compat("no return_format support")
-            return _call_with_lock_retry(rs.lookup_fullmap_terms, db, terms, threads=threads)
+            return _call_with_lock_retry(rs.lookup_fullmap_terms, db, terms)
         if pair_rows and "records" not in pair_rows[0]:
             # Legacy row shape covers only `misses`; re-query the FULL term set so
             # already-cached terms are not dropped when _TERM_CACHE is partially warm.
             _warn_legacy_compat("legacy row shape")
-            return _call_with_lock_retry(rs.lookup_fullmap_terms, db, terms, threads=threads)
+            return _call_with_lock_retry(rs.lookup_fullmap_terms, db, terms)
         seen: set[str] = set()
         for row in pair_rows:
             term = str(row["term"])
@@ -568,7 +567,6 @@ def resolve_batch(
     config_file: str | None = None,
     column_context: bool = True,
     tag: str = "_two",
-    threads: int | None = None,
     on_phase: Callable[[str], None] | None = None,
 ) -> pl.LazyFrame:
     """Resolve multiple node columns against one shared redb fetch.
@@ -587,7 +585,6 @@ def resolve_batch(
         config_file: Originating config file (for log context).
         column_context: Whether to compute/use category frequency as a tiebreaker.
         tag: Suffix used to derive level-two column names.
-        threads: Optional thread count forwarded to the Rust lookup.
         on_phase: Optional callback fired with ``"resolve:<col>"`` before each
             column is processed, used to drive fine-grained progress UX.
 
@@ -643,7 +640,7 @@ def resolve_batch(
 
     union_terms: list[str] = pl.concat([t.select("term") for t in terms_by_col.values()]).unique().get_column("term").to_list()
 
-    rows: list[dict[str, object]] = lookup_rows(db, union_terms, threads=threads) if union_terms else []
+    rows: list[dict[str, object]] = lookup_rows(db, union_terms) if union_terms else []
     raw: pl.DataFrame = pl.DataFrame(rows)
 
     result: pl.DataFrame = df
@@ -675,7 +672,6 @@ def resolve(
     config_file: str | None = None,
     column_context: bool = True,
     tag: str = "_two",
-    threads: int | None = None,
 ) -> pl.LazyFrame:
     """Case-dependent, provenance-rich named-entity recognition (single-column wrapper).
 
@@ -696,7 +692,6 @@ def resolve(
         config_file: Originating config file (for log context).
         column_context: Whether to compute/use category frequency as a tiebreaker.
         tag: Suffix used to derive the level-two column name.
-        threads: Optional thread count forwarded to the Rust lookup.
 
     Returns:
         LazyFrame with resolved columns added.
@@ -710,5 +705,4 @@ def resolve(
         config_file=config_file,
         column_context=column_context,
         tag=tag,
-        threads=threads,
     )

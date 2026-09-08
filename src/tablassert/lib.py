@@ -1148,7 +1148,6 @@ class Tcode(Section):
     qc: bool = Field(False)
     release: bool = Field(False)
     head: bool = Field(False)
-    threads: int | None = Field(None)
     name: str | None = Field(None)
     infores: str | None = Field(None)
 
@@ -1299,10 +1298,7 @@ class Tcode(Section):
             # copied them into named slots; trim before resolution so the frame that
             # resolve_batch materializes and joins stays narrow.
             (trim, ()),
-            # ``"_two"`` is spelled explicitly (it is ``resolve_batch``'s own default tag)
-            # only so ``threads`` can follow positionally: ``compile_subgraph`` applies op
-            # args positionally (``on_phase`` arrives separately as a keyword).
-            (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True, "_two", self.threads)),
+            (resolve_batch, (specs, db, self.log, self.store.stem, self.config.name, True, "_two")),
             # QC audits only the strict columns: a nullable qualifier's nulls are expected
             # (blank cell / no match), not resolution errors for the audit to delete.
             [

@@ -519,15 +519,15 @@ Following GEPA best practice, the optimizer splits the models: a **strong reflec
 proposes the few instruction edits, and an optional **fast task LM** (`--task-model`) runs the many
 candidate program evaluations. Pointing `--task-model` at a cheap model (e.g. a flash model) keeps the
 run fast while the strong model does the thinking; without `--task-model` the reflection LM is used for
-both. `--gepa-threads` parallelizes GEPA's candidate **LM forward passes** only: the coverage-scoring
+both. GEPA runs its candidate evaluations with its library default parallelism; the coverage-scoring
 builds stay serialized on the process-wide `_GEPA_BUILD_LOCK` (`agent.py`, since `os.chdir` is
-process-global), so a higher thread count does not speed up the expensive build/coverage step.
+process-global), so extra parallelism does not speed up the expensive build/coverage step.
 
 ```bash
 # optimize the agent prompt over a dataset of examples, writing the result to a file
 tablassert agent PMC11708054 --configuration-file ./graph.yaml --optimize \
   --dataset examples/gepa-dataset.yaml --task-model qwen-flash \
-  --max-metric-calls 30 --gepa-threads 4 \
+  --max-metric-calls 30 \
   --instructions-out .tablassert/agent/optimized_instructions.yaml
 
 # later, run the supervisor with the optimized prompt

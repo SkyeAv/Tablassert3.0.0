@@ -77,8 +77,8 @@ def install_fake_fullmap(monkeypatch: Any, rows: dict[str, list[dict[str, object
     """Monkeypatch fullmap lookup and return captured term batches."""
     calls: list[list[str]] = []
 
-    def fake_lookup(db: Path, terms: list[str], threads: int | None = None, return_format: str = "rows") -> list[dict[str, object]]:
-        del db, threads, return_format
+    def fake_lookup(db: Path, terms: list[str], return_format: str = "rows") -> list[dict[str, object]]:
+        del db, return_format
         calls.append(terms)
         return [row for term in terms for row in rows.get(term, [])]
 
@@ -435,59 +435,6 @@ def test_tcode_collect_audits_follow_single_resolve_batch_with_qualifiers(fixtur
 
     assert [op[1][0] for _, op in audit_ops] == ["subject", "object", "anatomical_context_qualifier"]
     assert all(i > batch_idx for i, _ in audit_ops)
-
-
-def test_tcode_collect_threads_nullable_into_resolve_specs(fixtures_path: Path) -> None:
-    """A nullable qualifier's ResolveSpec carries nullable=True; subject/object stay strict."""
-    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
-    store: Path = Path("/tmp/sectionhash_nullable_spec.parquet")
-    data["statement"]["qualifiers"] = [
-        {"qualifier": "disease_context_qualifier", "method": "column", "encoding": "C", "nullable": True},
-        {"qualifier": "anatomical_context_qualifier", "method": "column", "encoding": "D"},
-    ]
-
-    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store}
-    )
-
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    batch_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "resolve_batch"]
-    specs: list[ResolveSpec] = batch_ops[0][1][0]
-    by_col: dict[str, ResolveSpec] = {spec.col: spec for spec in specs}
-
-    assert by_col["subject"].nullable is False
-    assert by_col["object"].nullable is False
-    assert by_col["disease_context_qualifier"].nullable is True
-    assert by_col["anatomical_context_qualifier"].nullable is False
-
-
-def test_tcode_collect_threads_reach_resolve_batch(fixtures_path: Path) -> None:
-    """``Tcode.threads`` rides the resolve_batch op args; the tag defaults to ``"_two"``.
-
-    ``compile_subgraph`` applies op args positionally, so the resolve_batch op spells the
-    tag explicitly to reach ``threads`` (positionals: specs, db, log, section_hash,
-    config_file, column_context, tag, threads).  Unset threads keeps the Rust auto behavior.
-    """
-    data: Any = from_yaml(fixtures_path / "minimal_section.yaml")
-    store: Path = Path("/tmp/sectionhash_threads.parquet")
-
-    tcode_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": store, "threads": 8}
-    )
-    collected: list[tuple[Any, tuple[Any]]] = tcode_model.collect(Path("/tmp/fullmap.redb"))  # pyright: ignore
-    batch_ops: list[tuple[Any, tuple[Any]]] = [op for op in collected if op[0].__name__ == "resolve_batch"]
-    assert len(batch_ops) == 1
-    args: tuple[Any, ...] = tuple(batch_ops[0][1])
-    assert args[6] == "_two"
-    assert args[7] == 8
-
-    default_model: Tcode = Tcode.model_validate(  # pyright: ignore
-        {**data, "config": fixtures_path / "minimal_section.yaml", "store": Path("/tmp/sectionhash_threads_default.parquet")}
-    )
-    default_ops: list[tuple[Any, tuple[Any]]] = [op for op in default_model.collect(Path("/tmp/fullmap.redb")) if op[0].__name__ == "resolve_batch"]  # pyright: ignore
-    default_args: tuple[Any, ...] = tuple(default_ops[0][1])
-    assert default_args[6] == "_two"
-    assert default_args[7] is None
 
 
 def test_tcode_collect_excludes_nullable_qualifier_from_audit(fixtures_path: Path) -> None:

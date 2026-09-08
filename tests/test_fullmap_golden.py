@@ -229,13 +229,13 @@ def golden_db(tmp_path: Path) -> Path:
     classes: Path = write_jsonl(tmp_path / "classes.ndjson", CLASSES)
     synonyms: Path = write_jsonl(tmp_path / "SRC.ndjson", SYNONYMS)
     output: Path = tmp_path / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=1)
+    rs.build_fullmap_db(output, [classes], [synonyms])
     return output
 
 
 def test_golden_lookup_is_pinned(golden_db: Path) -> None:
     """Looking up every indexed term yields exactly the pinned hydrated rows."""
-    rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(golden_db, PROBES, threads=1, return_format="rows")
+    rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(golden_db, PROBES, return_format="rows")
 
     # SOURCE_VERSION is a compile-time constant on every row (asserted once here,
     # not repeated inline in the golden).
@@ -252,7 +252,7 @@ def test_pairs_format_matches_golden_curies(golden_db: Path) -> None:
     """return_format='pairs' yields (curie_id, source_id) records whose hydrated
     CURIE strings match the golden term -> CURIE mapping (raw curie_ids are
     scheduling-dependent and deliberately not pinned)."""
-    pair_rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(golden_db, PROBES, threads=1, return_format="pairs")
+    pair_rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(golden_db, PROBES, return_format="pairs")
     prefixes: list[str] = list(rs.hydrate_prefixes(golden_db))
     expected: dict[str, list[str]] = _expected_term_curies()
 
@@ -271,7 +271,7 @@ def test_pairs_format_matches_golden_curies(golden_db: Path) -> None:
 
 def test_hydration_round_trip_is_consistent(golden_db: Path) -> None:
     """Every curie_id from the pairs hydrates to a complete, consistent CURIE row."""
-    pair_rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(golden_db, PROBES, threads=1, return_format="pairs")
+    pair_rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(golden_db, PROBES, return_format="pairs")
     curie_ids: list[int] = sorted({int(a) for row in pair_rows for a, _b in row["records"]})
 
     prefixes: list[str] = list(rs.hydrate_prefixes(golden_db))
@@ -328,16 +328,16 @@ def test_rebuild_stability(tmp_path: Path) -> None:
     synonyms: Path = write_jsonl(tmp_path / "SRC.ndjson", SYNONYMS)
     output: Path = tmp_path / "fullmap.redb"
 
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=1)
-    first: list[dict[str, object]] = _canonical(rs.lookup_fullmap_terms(output, PROBES, threads=1, return_format="rows"))
+    rs.build_fullmap_db(output, [classes], [synonyms])
+    first: list[dict[str, object]] = _canonical(rs.lookup_fullmap_terms(output, PROBES, return_format="rows"))
     assert first == GOLDEN_ROWS
 
     # Rebuild identical content at the SAME path; bump mtime so the Python-side
     # term/dimension caches (keyed on path+mtime) invalidate deterministically.
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=1)
+    rs.build_fullmap_db(output, [classes], [synonyms])
     bumped: float = output.stat().st_mtime + 10.0
     os.utime(output, (bumped, bumped))
 
-    second: list[dict[str, object]] = _canonical(rs.lookup_fullmap_terms(output, PROBES, threads=1, return_format="rows"))
+    second: list[dict[str, object]] = _canonical(rs.lookup_fullmap_terms(output, PROBES, return_format="rows"))
     assert second == GOLDEN_ROWS
     assert first == second

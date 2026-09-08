@@ -26,7 +26,7 @@ tablassert build-fullmap --aria2c
 ```
 
 See the [CLI Reference → build-fullmap](cli.md#build-fullmap) for the complete flag table (output path,
-cache directory, BABEL snapshot version, worker threads, the optional `--aria2c` / `-a` downloader,
+cache directory, BABEL snapshot version, the optional `--aria2c` / `-a` downloader,
 and the `--force` / `-f` rebuild flag), their defaults, and more examples.
 
 By default, `build-fullmap` first downloads a **prebuilt** database published for this Tablassert
@@ -49,9 +49,10 @@ Two facts matter most when planning a build:
 - The BABEL **version** flag selects a RENCI BABEL snapshot date (default `2026jul22`), *not*
   Tablassert's package version. Bumping it fetches a different snapshot and requires rebuilding; the
   value used is recorded in the primary's `meta` table (`source_version`).
-- With **threads** left unset, the Rust build caps workers at `min(available_CPUs, MemAvailable_GB / 2)`
-  on Linux (reading `MemAvailable:` from `/proc/meminfo`, each worker budgeting ~2 GB of local buffers)
-  and falls back to ~90% of CPUs elsewhere, so a large build stays within a fixed memory budget.
+- The build **parallelizes automatically** across all available CPU threads: the Rust build caps
+  workers at `min(available_CPUs, MemAvailable_GB / 2)` on Linux (reading `MemAvailable:` from
+  `/proc/meminfo`, each worker budgeting ~2 GB of local buffers) and falls back to ~90% of CPUs
+  elsewhere, so a large build stays within a fixed memory budget. There is no flag to tune.
 
 ### Data Pipeline
 

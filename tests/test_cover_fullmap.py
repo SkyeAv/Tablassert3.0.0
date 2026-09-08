@@ -58,7 +58,7 @@ def fullmap_db(tmp_path: Path) -> Path:
     classes: Path = write_jsonl(tmp_path / "classes.ndjson", [class_row("HGNC:1100", ["NCBIGene:672"])])
     synonyms: Path = write_jsonl(tmp_path / "HGNC.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["BRCA1", "breast cancer 1"], "Gene")])
     output: Path = tmp_path / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=1)
+    rs.build_fullmap_db(output, [classes], [synonyms])
     return output
 
 
