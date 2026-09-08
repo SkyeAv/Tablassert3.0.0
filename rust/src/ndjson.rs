@@ -322,24 +322,21 @@ impl MergedRecord {
                 continue;
             };
             let bytes: Vec<SharedBytes> = std::mem::take(&mut state.bytes);
-            // Fail loudly on a desync instead of silently losing items: `zip` truncates to
-            // the shorter side while `drain(..)` empties the WHOLE array, so surplus live
-            // items would vanish from the written record without a trace. The invariant
+            // Fail loudly on a desync instead of silently corrupting the record: `zip`
+            // truncates to the shorter side while `drain(..)` empties the WHOLE array, so
+            // ANY length mismatch drops entries without a trace -- live items when `bytes`
+            // is short, canonical-byte entries when `items` is short. The invariant
             // (`bytes` is parallel to the live items) holds by construction -- every push
             // into one is paired with a push into the other -- but this repo's standard is
             // fail-loudly: hash-only keying once silently dropped records the same way.
-            debug_assert_eq!(
-                bytes.len(),
-                items.len(),
-                "list field {key:?}: {} canonical-byte entries for {} live items",
-                bytes.len(),
-                items.len()
-            );
+            // Deliberately a plain runtime check, not a `debug_assert_eq!`: a debug assert
+            // would panic first in test/debug builds, so the structured error below could
+            // never be observed or tested there. This fires in EVERY build profile.
             if bytes.len() != items.len() {
                 return Err(runtime_error(format!(
                     "merge-state-desync: list field {key:?} carries {} canonical-byte entries \
                      for {} live items; refusing to write the record, because pairing them would \
-                     silently discard {} item(s)",
+                     silently truncate {} entry/entries",
                     bytes.len(),
                     items.len(),
                     items.len().abs_diff(bytes.len())
@@ -2294,6 +2291,52 @@ mod merge_fold_speedup {
             "the near-linear merge fold lost its speed margin: only {speedup:.2}x faster \
              than the frozen quadratic reference (new fold {new_elapsed:.3?}, reference \
              {reference_elapsed:.3?}); expected >= {BOUND}x on the identical workload"
+        );
+    }
+}
+
+#[cfg(test)]
+mod merge_state_desync {
+    use super::MergedRecord;
+    use serde_json::json;
+
+    /// WHY this test exists: `MergedRecord::finish`'s desync guard is load-bearing
+    /// fail-loudly precedent, not decoration. Hash-only edge keying once silently dropped
+    /// DISTINCT records at scale (the collision class `record_if_new_suppresses_only_exact_
+    /// byte_duplicates` polices); the same silent-data-loss class lurks here if the
+    /// `bytes`-parallel-to-`items` invariant ever breaks, because `zip` truncates to the
+    /// shorter side while `drain(..)` empties the whole array. This forces that desync and
+    /// asserts `finish` REFUSES to write -- returning a structured `merge-state-desync`
+    /// error -- proving the guard is a real runtime check observable in EVERY build
+    /// profile, not a `debug_assert_eq!` that panics first in tests and can never surface
+    /// the structured error path.
+    #[test]
+    fn merge_state_desync_is_a_structured_error_not_silent_truncation() {
+        // Reading a `PyErr`'s message needs an initialized interpreter (pyo3 is built
+        // without `auto-initialize`); idempotent, so this is safe alongside the full suite.
+        pyo3::Python::initialize();
+
+        // Seed a record whose `ids` array holds three live items; `new` records a matching
+        // three-entry canonical-`bytes` list (unioned = false, so `finish` skips it as-is).
+        let mut record =
+            MergedRecord::new(json!({ "ids": [1, 2, 3] }), 0).expect("seed merged record");
+
+        // Desync it the way a broken parallel-invariant would: drop ONE canonical-byte
+        // entry (2 byte-entries left for 3 live items) and mark the field unioned so
+        // `finish` routes it through the zip/drain path the guard protects.
+        let state = record.lists.get_mut("ids").expect("ids list state");
+        state.bytes.pop().expect("a canonical-byte entry to drop");
+        state.unioned = true;
+
+        // The guard must fire BEFORE any zip/drain mutates the record: `finish` returns a
+        // structured error naming the desync, so nothing is silently truncated/written.
+        let error = record
+            .finish()
+            .expect_err("a desynced list must fail loudly, not silently truncate");
+        let message = error.to_string();
+        assert!(
+            message.contains("merge-state-desync"),
+            "expected a structured merge-state-desync error, got: {message}"
         );
     }
 }
