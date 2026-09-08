@@ -69,7 +69,7 @@ def fullmap_db(tmp_path: Path) -> Path:
         ],
     )
     output: Path = tmp_path / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    rs.build_fullmap_db(output, [classes], [synonyms])
     return output
 
 
@@ -580,9 +580,9 @@ def test_resolve_batch_makes_one_redb_call_regardless_of_spec_count(fullmap_db: 
     calls: list[list[str]] = []
     original = rs.lookup_fullmap_terms
 
-    def counting_lookup(db: Path, terms: list[str], threads: Any = None) -> list[dict[str, Any]]:
+    def counting_lookup(db: Path, terms: list[str]) -> list[dict[str, Any]]:
         calls.append(list(terms))
-        return original(db, terms, threads=threads)
+        return original(db, terms)
 
     monkeypatch.setattr(rs, "lookup_fullmap_terms", counting_lookup)
 
@@ -659,13 +659,6 @@ def test_resolve_batch_three_node_columns_on_sharded_db(fullmap_db: Path) -> Non
     assert result["disease_context_qualifier_taxon"] == "NCBITaxon:9606"
 
 
-def test_lookup_threads_match(fullmap_db: Path) -> None:
-    """rust lookup is deterministic with one or more threads."""
-    single: list[dict[str, Any]] = rs.lookup_fullmap_terms(fullmap_db, ["brca1", "mapk1"], threads=1)
-    multi: list[dict[str, Any]] = rs.lookup_fullmap_terms(fullmap_db, ["brca1", "mapk1"], threads=2)
-    assert single == multi
-
-
 def test_fullmap_db_path_variants(tmp_path: Path, fullmap_db: Path) -> None:
     """fullmap base path helper supports file, direct base, and data/fullmap.redb."""
     direct: Path = tmp_path / "fullmap.redb"
@@ -694,7 +687,7 @@ def test_term_cache_invalidates_across_rebuild(tmp_path: Path) -> None:
 
     # v1: "brca1" resolves to HGNC:1100 and warms the term cache.
     synonyms_v1: Path = write_jsonl(tmp_path / "v1.ndjson", [synonym_row("HGNC:1100", "BRCA1", ["brca1"], "Gene")])
-    rs.build_fullmap_db(output, [classes], [synonyms_v1], threads=2)
+    rs.build_fullmap_db(output, [classes], [synonyms_v1])
     first: list[dict[str, object]] = lookup_rows(output, ["brca1"])
     assert first[0]["CURIE"] == "HGNC:1100"
     assert any(term == "brca1" for _path, _mtime, term in _TERM_CACHE)
@@ -702,7 +695,7 @@ def test_term_cache_invalidates_across_rebuild(tmp_path: Path) -> None:
     # v2: rebuild at the SAME path with different content ("brca1" -> HGNC:2222),
     # then guarantee a distinct mtime so the cache key changes deterministically.
     synonyms_v2: Path = write_jsonl(tmp_path / "v2.ndjson", [synonym_row("HGNC:2222", "BRCA1", ["brca1"], "Gene")])
-    rs.build_fullmap_db(output, [classes], [synonyms_v2], threads=2)
+    rs.build_fullmap_db(output, [classes], [synonyms_v2])
     bumped: float = output.stat().st_mtime + 10.0
     os.utime(output, (bumped, bumped))
 
@@ -721,7 +714,7 @@ def test_lookup_rows_propagates_unrelated_typeerror(fullmap_db: Path, monkeypatc
     """
     _TERM_CACHE.clear()
 
-    def boom(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+    def boom(db: Path, terms: list[str], return_format: str = "rows") -> list[dict[str, Any]]:
         raise TypeError("internal rust panic: null pointer")
 
     monkeypatch.setattr(rs, "lookup_fullmap_terms", boom)
@@ -745,11 +738,11 @@ def test_lookup_rows_legacy_signature_typeerror_requeries_full_term_set(fullmap_
     calls: list[tuple[list[str], str]] = []
     original = rs.lookup_fullmap_terms
 
-    def fake(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+    def fake(db: Path, terms: list[str], return_format: str = "rows") -> list[dict[str, Any]]:
         calls.append((list(terms), return_format))
         if return_format == "pairs":
             raise TypeError("lookup_fullmap_terms() got an unexpected keyword argument 'return_format'")
-        return original(db, terms, threads=threads)
+        return original(db, terms)
 
     monkeypatch.setattr(rs, "lookup_fullmap_terms", fake)
     rows: list[dict[str, object]] = lookup_rows(fullmap_db, ["brca1", "mapk1"])
@@ -776,12 +769,12 @@ def test_lookup_rows_legacy_shape_requeries_full_term_set(fullmap_db: Path, monk
     calls: list[tuple[list[str], str]] = []
     original = rs.lookup_fullmap_terms
 
-    def fake(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+    def fake(db: Path, terms: list[str], return_format: str = "rows") -> list[dict[str, Any]]:
         calls.append((list(terms), return_format))
         if return_format == "pairs":
             # Legacy shape: rows carry no "records" key and cover only the queried misses.
             return [{"term": term, "CURIE": "X:1"} for term in terms]
-        return original(db, terms, threads=threads)
+        return original(db, terms)
 
     monkeypatch.setattr(rs, "lookup_fullmap_terms", fake)
     rows: list[dict[str, object]] = lookup_rows(fullmap_db, ["brca1", "mapk1"])
@@ -812,10 +805,10 @@ def test_lookup_rows_legacy_fallback_warns_once(fullmap_db: Path, monkeypatch: p
 
     original = rs.lookup_fullmap_terms
 
-    def fake(db: Path, terms: list[str], threads: Any = None, return_format: str = "rows") -> list[dict[str, Any]]:
+    def fake(db: Path, terms: list[str], return_format: str = "rows") -> list[dict[str, Any]]:
         if return_format == "pairs":
             return [{"term": term, "CURIE": "X:1"} for term in terms]  # legacy shape: no "records"
-        return original(db, terms, threads=threads)
+        return original(db, terms)
 
     monkeypatch.setattr(rs, "lookup_fullmap_terms", fake)
 
@@ -855,10 +848,10 @@ def test_build_fullmap_cli_function_smoke(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(cli, "download_babel_file", fake_download_babel_file)
     monkeypatch.chdir(tmp_path)
 
-    build_fullmap(output=output, version="test-version", threads=1, force=True)
+    build_fullmap(output=output, version="test-version", force=True)
 
     assert downloaded_paths == [Path("fullmap/downloads/classes/classes.ndjson"), Path("fullmap/downloads/synonyms/HGNC.ndjson")]
-    rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"], threads=1)
+    rows: list[dict[str, Any]] = rs.lookup_fullmap_terms(output, ["brca1"])
     assert rows[0]["CURIE"] == "HGNC:1100"
 
 

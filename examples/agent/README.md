@@ -44,7 +44,7 @@ export TABLASSERT_AGENT_API_KEY="sk-***"
 tablassert agent PMC11947420 --configuration-file /path/to/graph.yaml --optimize \
   --dataset examples/agent/gepa-dataset.yaml \
   --task-model qwen3.6-flash \
-  --max-metric-calls 30 --gepa-threads 4 \
+  --max-metric-calls 30 \
   --instructions-out examples/agent/optimized_instructions.yaml
 ```
 
@@ -52,8 +52,8 @@ tablassert agent PMC11947420 --configuration-file /path/to/graph.yaml --optimize
 
 GEPA best practice (and what the flags above do): a **strong reflection LM** (`--model-id`) proposes the
 few instruction edits, while a **fast task LM** (`--task-model`) runs the many candidate evaluations.
-`--max-metric-calls` bounds the budget; `--gepa-threads` parallelizes the candidate LM forward passes
-(the coverage-scoring builds stay serialized on the process-wide `_GEPA_BUILD_LOCK`).
+`--max-metric-calls` bounds the budget; GEPA parallelizes the candidate LM forward passes with its
+library default (the coverage-scoring builds stay serialized on the process-wide `_GEPA_BUILD_LOCK`).
 
 ## QC state-directory requirement
 

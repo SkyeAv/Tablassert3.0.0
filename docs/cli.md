@@ -75,7 +75,6 @@ page lists the flags; see
 | `--max-metric-calls` | int | No | `8` | GEPA metric-call budget for `--optimize` |
 | `--dataset` | Path | No | `None` | YAML/JSON list of `{table_summary, coverage_feedback}` examples for `--optimize` (an example may also carry `fullmap`, `workdir`, and `head` to score each proposed config with real coverage) |
 | `--task-model` | str | No | `None` | Fast model id for GEPA's many program evaluations (cheap task LM + strong reflection LM); `--model-id` is the reflection LM. Defaults to the reflection LM |
-| `--gepa-threads` | int | No | `None` | Thread count for GEPA's evaluation pool (`--optimize`): parallelizes candidate LM forward passes only; coverage-scoring builds stay serialized on `_GEPA_BUILD_LOCK` |
 
 ```bash
 tablassert agent PMC11708054 --configuration-file ./graph.yaml
@@ -124,7 +123,6 @@ tablassert build-fullmap [ARGS]
 | `--output`, `-o` | Path | No | `./fullmap/data/fullmap.redb` | Path to write the redb file (prebuilt extraction or build output) |
 | `--cache`, `-c` | Path | No | `./fullmap/downloads` | Directory for downloaded BABEL files when building from scratch (`classes/`, `synonyms/`) |
 | `--version`, `-v` | str | No | `2026jul22` | BABEL snapshot date to fetch (a RENCI stamp, **not** Tablassert's version) |
-| `--threads`, `-t` | int | No | `None` (auto) | Worker threads for a from-scratch build; auto-capped by memory on Linux (`/proc/meminfo`), else ~90% of CPUs |
 | `--aria2c`, `-a` | Flag | No | `False` | Opt into the bundled `aria2c` binary from the `[aria2]` extra for resumable segmented downloads (the prebuilt archive **or** BABEL files); fails loud (exit 2, before any download starts) if the extra is missing or unsupported on the current platform, and on a non-zero aria2c exit |
 | `--force`, `-f` | Flag | No | `False` | Skip the prebuilt download and always rebuild from BABEL outputs |
 
@@ -147,6 +145,10 @@ shard set, and per-shard `build_id` equality) before atomically renaming them in
 prebuilt exists for this version (or the download or extraction fails), it falls back to a
 from-scratch BABEL build and logs a warning. A database already present at `--output` is reused as-is;
 pass `--force` to rebuild.
+
+A from-scratch build parallelizes automatically across all available CPU threads — on Linux the
+worker count is capped by available memory (~2 GB per thread, read from `/proc/meminfo`) to avoid
+OOMs. There is no flag to tune.
 
 See [Fullmap](fullmap.md) for the data pipeline, output schema, and graph-config usage.
 
@@ -171,11 +173,15 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
 | `--no-original`, `-no` | Flag | No | `False` | Omit the verbatim source-cell copies (`original_subject`, `original_object`, and any other `original_*` fields) from the final edge NDJSON |
-| `--threads`, `-t` | int | No | `None` (auto) | Worker threads for the parallel fullmap reads behind entity resolution. Readers fan out across the 16 record-shard files, and values above the (non-empty) shard count further split the busiest shards' term buckets across more concurrent readers of the same shard; redb readers share-lock, so they never contend with each other. Unset keeps the auto behavior: large batches (≥ 1024 terms) fan out, small ones stay serial. Results are identical at any worker count |
 
 ```bash
 tablassert build-kg graph.yaml --qc --log
 ```
+
+The parallel fullmap reads behind entity resolution are automatic: large lookup batches (≥ 1024
+terms) fan out across the record-shard files on all available CPU threads (redb readers share-lock,
+so they never contend), while smaller batches stay serial. There is no flag to tune, and results are
+identical at any worker count.
 
 Output is written to `rig.artifact_base_path` (created when missing) as `{name}_{version}.nodes.ndjson`,
 `{name}_{version}.edges.ndjson`, and `{name}_{version}.RIG.yaml`; intermediate parquet lands in

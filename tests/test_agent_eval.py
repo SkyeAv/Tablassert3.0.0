@@ -457,28 +457,6 @@ def test_run_gepa_configures_task_lm_over_reflection(monkeypatch: pytest.MonkeyP
     assert configured[-1] is refl
 
 
-def test_run_gepa_forwards_num_threads() -> None:
-    """num_threads is forwarded to GEPA only when set."""
-    pytest.importorskip("dspy")
-    created: dict[str, Any] = {}
-
-    class StubGEPA:
-        def __init__(self, metric: object = None, **kwargs: Any) -> None:
-            created["kwargs"] = kwargs
-            self.gepa_stats: dict[str, object] = {}
-
-        def compile(self, program: object, *, trainset: object = None, **kwargs: object) -> object:
-            predictor = SimpleNamespace(signature=SimpleNamespace(instructions="OPT"))
-            return SimpleNamespace(named_predictors=lambda: [("propose", predictor)])
-
-    run_gepa(seed_instructions="SEED", gepa_cls=StubGEPA, reflection_lm=SimpleNamespace(), trainset=[], num_threads=4)
-    assert created["kwargs"]["num_threads"] == 4
-
-    created.clear()
-    run_gepa(seed_instructions="SEED", gepa_cls=StubGEPA, reflection_lm=SimpleNamespace(), trainset=[])
-    assert "num_threads" not in created["kwargs"]
-
-
 # --------------------------------------------------------------------------- #
 # Offline integration: build the reference KGX from the fixture + score F1
 # --------------------------------------------------------------------------- #
@@ -520,7 +498,7 @@ def _build_reference_redb(root: Path) -> Path:
     classes_path.write_text("\n".join(json.dumps(r) for r in classes) + "\n")
     synonyms_path.write_text("\n".join(json.dumps(r) for r in synonyms) + "\n")
     output = root / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes_path], [synonyms_path], threads=2)
+    rs.build_fullmap_db(output, [classes_path], [synonyms_path])
     return output
 
 

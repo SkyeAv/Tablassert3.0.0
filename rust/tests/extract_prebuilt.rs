@@ -150,7 +150,7 @@ fn extract_prebuilt_matches_force_build() {
     // 1. Build the fixture with the production entry point (single-threaded
     //    for a deterministic, fast build).
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
 
     // 2. Package the primary + all 16 shards into `fullmap.tar.zst`.  Members
     //    are nested under a `bundle/` subdirectory to exercise the recursive
@@ -272,7 +272,7 @@ fn corrupt_archive_is_rejected_and_leaves_nothing() {
 #[test]
 fn archive_without_primary_is_rejected() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     let archive = fixture_dir.path().join("fullmap.tar.zst");
     package_tar_zst(
         &archive,
@@ -290,7 +290,7 @@ fn archive_without_primary_is_rejected() {
 #[test]
 fn missing_shard_is_rejected_and_named() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     let mut members = vec![("fullmap.redb".to_string(), fixture_primary.clone())];
     members.extend(shard_members(&fixture_primary, common::SHARD_COUNT - 1)); // s0..s14
     let archive = fixture_dir.path().join("fullmap.tar.zst");
@@ -311,7 +311,7 @@ fn missing_shard_is_rejected_and_named() {
 #[test]
 fn extra_shard_is_rejected_and_named() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     // No s16 exists in a real build; misuse a copy of s0's bytes as the stray.
     let stray = fixture_dir.path().join("fullmap.s16.redb");
     std::fs::copy(common::shard_path(&fixture_primary, 0), &stray).unwrap();
@@ -373,7 +373,7 @@ fn outdated_primary_copy(fixture_primary: &Path) -> PathBuf {
 #[test]
 fn outdated_schema_is_rejected_and_demands_rebuild() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     let outdated = outdated_primary_copy(&fixture_primary);
     let mut members = vec![("fullmap.redb".to_string(), outdated)];
     members.extend(shard_members(&fixture_primary, common::SHARD_COUNT));
@@ -395,7 +395,7 @@ fn outdated_schema_is_rejected_and_demands_rebuild() {
 #[test]
 fn non_redb_primary_is_rejected() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     let garbage = fixture_dir.path().join("garbage.redb");
     std::fs::write(&garbage, b"this is definitely not a redb database").unwrap();
     let mut members = vec![("fullmap.redb".to_string(), garbage)];
@@ -524,7 +524,7 @@ fn pax_sparse_archive_is_rejected() {
 #[test]
 fn multiple_unnamed_primaries_are_rejected_and_listed() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     let stray_a = fixture_dir.path().join("primary_a.redb");
     let stray_b = fixture_dir.path().join("primary_b.redb");
     std::fs::copy(&fixture_primary, &stray_a).unwrap();
@@ -558,7 +558,7 @@ fn multiple_unnamed_primaries_are_rejected_and_listed() {
 #[test]
 fn named_fullmap_primary_is_preferred_over_strays() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     let stray = fixture_dir.path().join("stray.redb");
     std::fs::copy(&fixture_primary, &stray).unwrap();
     let mut members = vec![
@@ -598,7 +598,7 @@ fn named_fullmap_primary_is_preferred_over_strays() {
 #[test]
 fn progress_callback_details_are_pinned() {
     let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture_primary = common::build_fixture(fixture_dir.path(), 1);
+    let fixture_primary = common::build_fixture(fixture_dir.path());
     let archive = fixture_dir.path().join("fullmap.tar.zst");
     let mut members = vec![("fullmap.redb".to_string(), fixture_primary.clone())];
     members.extend(shard_members(&fixture_primary, common::SHARD_COUNT));

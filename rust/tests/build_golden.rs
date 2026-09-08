@@ -100,7 +100,7 @@ t|HGNC:3
 #[test]
 fn golden_output_is_pinned() {
     let dir = tempfile::tempdir().unwrap();
-    let output = build_fixture(dir.path(), 1);
+    let output = build_fixture(dir.path());
     let map = term_curie_map(&output);
     let actual = canonical_dump(&map);
     assert!(
@@ -119,7 +119,7 @@ fn golden_output_is_pinned() {
 #[ignore]
 fn regenerate_golden() {
     let dir = tempfile::tempdir().unwrap();
-    let output = build_fixture(dir.path(), 1);
+    let output = build_fixture(dir.path());
     let map = term_curie_map(&output);
     println!("===GOLDEN-START===");
     print!("{}", canonical_dump(&map));
@@ -134,8 +134,8 @@ fn regenerate_golden() {
 fn deterministic_across_rebuilds() {
     let dir_a = tempfile::tempdir().unwrap();
     let dir_b = tempfile::tempdir().unwrap();
-    let out_a = build_fixture(dir_a.path(), 1);
-    let out_b = build_fixture(dir_b.path(), 1);
+    let out_a = build_fixture(dir_a.path());
+    let out_b = build_fixture(dir_b.path());
     let dump_a = canonical_dump(&term_curie_map(&out_a));
     let dump_b = canonical_dump(&term_curie_map(&out_b));
     assert!(!dump_a.is_empty());
@@ -146,20 +146,24 @@ fn deterministic_across_rebuilds() {
 }
 
 // ---------------------------------------------------------------------------
-// (c) THREAD INVARIANCE — threads=1 and threads=4 agree on term -> CURIE strings
-// (curie_ids are scheduling-dependent and deliberately NOT compared).
+// (c) THREAD INVARIANCE — the public build API now selects parallelism
+// automatically, so an explicit threads=1 vs threads=4 comparison can no longer
+// be driven from an integration test.  The explicit worker-count determinism
+// coverage (worker_count 1 vs 4 through `build_test` / `build_fullmap_inner`,
+// comparing term -> CURIE results and per-shard record counts) lives in the
+// in-crate unit test `parallel_writers_match_single_writer_build` in
+// src/fullmap.rs.  Here we pin the integration-level half: a build whose
+// worker count was auto-selected (parallel on any multi-core host) reproduces
+// the pinned GOLDEN — which was generated single-threaded — exactly.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn thread_count_does_not_change_results() {
-    let dir_a = tempfile::tempdir().unwrap();
-    let dir_b = tempfile::tempdir().unwrap();
-    let serial = term_curie_map(&build_fixture(dir_a.path(), 1));
-    let parallel = term_curie_map(&build_fixture(dir_b.path(), 4));
-    assert!(!serial.is_empty());
+fn automatic_parallelism_matches_golden() {
+    let dir = tempfile::tempdir().unwrap();
+    let actual = canonical_dump(&term_curie_map(&build_fixture(dir.path())));
     assert_eq!(
-        serial, parallel,
-        "thread count must not change term -> CURIE results"
+        GOLDEN, actual,
+        "auto-parallel build diverged from the pinned (serial-origin) golden"
     );
 }
 
@@ -170,7 +174,7 @@ fn thread_count_does_not_change_results() {
 #[test]
 fn dimension_tables_are_complete_and_consistent() {
     let dir = tempfile::tempdir().unwrap();
-    let output = build_fixture(dir.path(), 1);
+    let output = build_fixture(dir.path());
     let db = open_primary_copy(&output);
     let read = db.begin_read().unwrap();
 
@@ -250,7 +254,7 @@ fn dimension_tables_are_complete_and_consistent() {
 #[test]
 fn schema_and_shard_count_are_pinned() {
     let dir = tempfile::tempdir().unwrap();
-    let output = build_fixture(dir.path(), 1);
+    let output = build_fixture(dir.path());
     let db = open_primary_copy(&output);
     let read = db.begin_read().unwrap();
     let meta = read.open_table(META).unwrap();
@@ -289,7 +293,7 @@ fn schema_and_shard_count_are_pinned() {
 fn gz_input_matches_plain_input() {
     // Plain build.
     let dir_plain = tempfile::tempdir().unwrap();
-    let plain = build_fixture(dir_plain.path(), 1);
+    let plain = build_fixture(dir_plain.path());
     let plain_map = term_curie_map(&plain);
 
     // Gz build: same class + synonym content, synonym file gzipped.  The source
@@ -319,7 +323,6 @@ fn gz_input_matches_plain_input() {
             output_gz.clone(),
             vec![classes],
             vec![synonyms_gz],
-            Some(1),
             None,
         )
         .unwrap();
@@ -348,15 +351,8 @@ fn empty_synonym_file_builds_empty_db() {
     write_jsonl(&synonyms, &[]); // 0 rows
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(
-            py,
-            output.clone(),
-            vec![classes],
-            vec![synonyms],
-            Some(1),
-            None,
-        )
-        .unwrap();
+        tablassert_rs::build_fullmap_db(py, output.clone(), vec![classes], vec![synonyms], None)
+            .unwrap();
     });
 
     assert!(
@@ -387,8 +383,7 @@ fn synonym_row_with_no_names_indexes_only_curie() {
     );
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], Some(1), None)
-            .unwrap();
+        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], None).unwrap();
     });
 
     let map = term_curie_map(&output);
@@ -414,8 +409,7 @@ fn null_preferred_name_falls_back_to_curie() {
     );
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], Some(1), None)
-            .unwrap();
+        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], None).unwrap();
     });
 
     let db = open_primary_copy(&output);
@@ -450,15 +444,8 @@ fn class_row_without_equivalents_builds() {
     );
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(
-            py,
-            output.clone(),
-            vec![classes],
-            vec![synonyms],
-            Some(1),
-            None,
-        )
-        .unwrap();
+        tablassert_rs::build_fullmap_db(py, output.clone(), vec![classes], vec![synonyms], None)
+            .unwrap();
     });
 
     let map = term_curie_map(&output);

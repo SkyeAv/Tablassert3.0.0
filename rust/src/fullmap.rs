@@ -2297,13 +2297,12 @@ fn build_fullmap_inner(
 }
 
 #[pyfunction]
-#[pyo3(signature = (output, classes, synonyms, threads=None, progress=None))]
+#[pyo3(signature = (output, classes, synonyms, progress=None))]
 pub fn build_fullmap_db(
     py: Python<'_>,
     output: PathBuf,
     classes: Vec<PathBuf>,
     synonyms: Vec<PathBuf>,
-    threads: Option<usize>,
     progress: Option<Py<PyAny>>,
 ) -> PyResult<()> {
     if synonyms.is_empty() {
@@ -2319,35 +2318,34 @@ pub fn build_fullmap_db(
     // the build if this doesn't succeed.
     let _ = rlimit::increase_nofile_limit(u64::MAX);
 
-    let worker_count = threads
-        .unwrap_or_else(|| {
-            let cpus = std::thread::available_parallelism()
-                .map(std::num::NonZero::get)
-                .unwrap_or(1);
-            // Cap at available_memory_gb / 2 to prevent swap on memory-constrained
-            // machines.  Each thread uses ~400 MB of local buffers; the cap is
-            // generous (2 GB/thread) to avoid limiting CPU-bound throughput.
-            let avail_kb = std::fs::read_to_string("/proc/meminfo")
-                .ok()
-                .and_then(|s| {
-                    s.lines()
-                        .find(|l| l.starts_with("MemAvailable:"))
-                        .and_then(|l| {
-                            l.split_whitespace()
-                                .nth(1)
-                                .and_then(|v| v.parse::<usize>().ok())
-                        })
-                })
-                .unwrap_or(0);
-            if avail_kb > 0 {
-                let avail_gb = avail_kb / (1024 * 1024);
-                let mem_cap = (avail_gb / 2).max(1);
-                cpus.min(mem_cap)
-            } else {
-                cpus * 9 / 10
-            }
-        })
-        .max(1);
+    let worker_count = {
+        let cpus = std::thread::available_parallelism()
+            .map(std::num::NonZero::get)
+            .unwrap_or(1);
+        // Cap at available_memory_gb / 2 to prevent swap on memory-constrained
+        // machines.  Each thread uses ~400 MB of local buffers; the cap is
+        // generous (2 GB/thread) to avoid limiting CPU-bound throughput.
+        let avail_kb = std::fs::read_to_string("/proc/meminfo")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("MemAvailable:"))
+                    .and_then(|l| {
+                        l.split_whitespace()
+                            .nth(1)
+                            .and_then(|v| v.parse::<usize>().ok())
+                    })
+            })
+            .unwrap_or(0);
+        if avail_kb > 0 {
+            let avail_gb = avail_kb / (1024 * 1024);
+            let mem_cap = (avail_gb / 2).max(1);
+            cpus.min(mem_cap)
+        } else {
+            cpus * 9 / 10
+        }
+    }
+    .max(1);
 
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent).map_err(py_err)?;
@@ -3382,8 +3380,8 @@ fn lookup_pair_terms_db(
     Ok(tagged.into_iter().map(|(_, pairs)| pairs).collect())
 }
 
-/// Smallest batch that defaults to parallel shard fan-out when the caller passes
-/// no `threads`.  Below this, lookups stay single-threaded: a point/small lookup
+/// Smallest batch that fans out across the shards in parallel.  Below this,
+/// lookups stay single-threaded: a point/small lookup
 /// (and any cache-warm path) finishes faster serially than the cost of spawning
 /// shard-reader threads.  At/above it, the per-shard fan-out in
 /// `lookup_pair_terms_db` wins.  1024 terms ~= a few ms of serial redb point
@@ -3392,9 +3390,9 @@ fn lookup_pair_terms_db(
 /// while never penalizing small lookups.
 const LOOKUP_PARALLEL_MIN: usize = 1024;
 
-/// Default worker count for lookups when the caller passes no `threads`.
+/// Worker count for lookups, selected automatically from the batch size.
 /// The production build-kg resolve sends ONE batch of all distinct node-column
-/// terms (often huge) with `threads=None`; parallelizing that across the RECORDS
+/// terms (often huge); parallelizing that across the RECORDS
 /// shards is the win, so large batches default to `available_parallelism`.  Small
 /// batches (< `LOOKUP_PARALLEL_MIN`) stay single-threaded to avoid spawn overhead.
 /// The fan-out is already capped by the non-empty shard count inside
@@ -3409,13 +3407,8 @@ fn default_lookup_workers(terms_len: usize) -> usize {
         .unwrap_or(1)
 }
 
-fn lookup_pair_terms(
-    db: PathBuf,
-    terms: Vec<String>,
-    threads: Option<usize>,
-) -> PyResult<PairRecords> {
-    let workers = threads
-        .unwrap_or_else(|| default_lookup_workers(terms.len()))
+fn lookup_pair_terms(db: PathBuf, terms: Vec<String>) -> PyResult<PairRecords> {
+    let workers = default_lookup_workers(terms.len())
         .max(1)
         .min(terms.len().max(1));
     // Open (and schema-validate) the primary, then route pair lookups to shards.
@@ -3463,11 +3456,7 @@ fn hydrate_curie_rows(database: &ReadOnlyDatabase, curie_ids: &[u32]) -> PyResul
     Ok(out)
 }
 
-fn lookup_terms(
-    db: PathBuf,
-    terms: Vec<String>,
-    threads: Option<usize>,
-) -> PyResult<Vec<(String, Vec<FullmapRecord>)>> {
+fn lookup_terms(db: PathBuf, terms: Vec<String>) -> PyResult<Vec<(String, Vec<FullmapRecord>)>> {
     // Open the primary ONCE (the cached shared-lock handle) for dims/CURIES
     // hydration; pair lookups route to the shard files.  One handle per file is
     // a cache choice, not a lock constraint — read-only opens coexist.
@@ -3476,8 +3465,7 @@ fn lookup_terms(
     let category_map = load_string_table(&database, CATEGORIES)?;
     let source_map = load_sources(&database)?;
     let shards = open_cached_shards(&db)?;
-    let workers = threads
-        .unwrap_or_else(|| default_lookup_workers(terms.len()))
+    let workers = default_lookup_workers(terms.len())
         .max(1)
         .min(terms.len().max(1));
     let pair_rows = lookup_pair_terms_db(&shards, &terms, workers)?;
@@ -3519,26 +3507,23 @@ fn lookup_terms(
     Ok(out)
 }
 
-/// Look up fullmap records for `terms`.  `threads=None` (the production
-/// build-kg default) auto-selects the worker count via `default_lookup_workers`:
-/// batches >= `LOOKUP_PARALLEL_MIN` fan out across the RECORDS shards in
-/// parallel (up to 16 by default), smaller batches stay single-threaded.  An
-/// explicit `threads=Some(1)` always forces the serial path.  The GIL is released
-/// for the whole lookup.
+/// Look up fullmap records for `terms`.  The worker count is selected
+/// automatically via `default_lookup_workers`: batches >= `LOOKUP_PARALLEL_MIN`
+/// fan out across the RECORDS shards in parallel (up to 16 by default), smaller
+/// batches stay single-threaded.  The GIL is released for the whole lookup.
 #[pyfunction]
-#[pyo3(signature = (db, terms, threads=None, return_format="rows"))]
+#[pyo3(signature = (db, terms, return_format="rows"))]
 pub fn lookup_fullmap_terms<'py>(
     py: Python<'py>,
     db: PathBuf,
     terms: Vec<String>,
-    threads: Option<usize>,
     return_format: &str,
 ) -> PyResult<Bound<'py, PyList>> {
     if return_format == "pairs" {
         // Release the GIL for the whole lookup (pure-Rust shard reads); the
         // PyList is built only after re-acquiring it so rich's Live display
         // thread can repaint and Ctrl-C works mid-lookup.
-        let pair_rows = py.detach(move || lookup_pair_terms(db, terms, threads))?;
+        let pair_rows = py.detach(move || lookup_pair_terms(db, terms))?;
         let list = PyList::empty(py);
         for (term, pairs) in pair_rows {
             let row = PyDict::new(py);
@@ -3556,7 +3541,7 @@ pub fn lookup_fullmap_terms<'py>(
     // Release the GIL for the whole lookup (pure-Rust shard reads + CURIE/dim
     // hydration against the primary); the PyList is built only after
     // re-acquiring the GIL.
-    let rows = py.detach(move || lookup_terms(db, terms, threads))?;
+    let rows = py.detach(move || lookup_terms(db, terms))?;
     let list = PyList::empty(py);
     for (term, records) in rows {
         for record in records {
@@ -3768,12 +3753,8 @@ mod tests {
         .unwrap();
 
         build_test(output.clone(), vec![classes], vec![synonyms], 1, 4_000_000).unwrap();
-        let rows = lookup_terms(
-            output,
-            vec!["brca1".to_string(), "ncbigene672".to_string()],
-            Some(1),
-        )
-        .unwrap();
+        let rows =
+            lookup_terms(output, vec!["brca1".to_string(), "ncbigene672".to_string()]).unwrap();
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].1[0].curie, "HGNC:1100");
@@ -3836,7 +3817,7 @@ mod tests {
         }
 
         // The single indexed term still resolves (routed through its shard).
-        let rows = lookup_terms(output, vec!["brca1".to_string()], Some(1)).unwrap();
+        let rows = lookup_terms(output, vec!["brca1".to_string()]).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1[0].curie, "HGNC:1100");
     }
@@ -3979,7 +3960,7 @@ mod tests {
             .flat_map(|i| [format!("gene{i}"), format!("alias{i}")])
             .collect();
         let norm = |db: PathBuf| -> Vec<(String, Vec<String>)> {
-            let rows = lookup_terms(db, probes.clone(), Some(4)).unwrap();
+            let rows = lookup_terms(db, probes.clone()).unwrap();
             let mut out: Vec<(String, Vec<String>)> = rows
                 .into_iter()
                 .map(|(t, recs)| {
@@ -4133,7 +4114,7 @@ mod tests {
             .flat_map(|i| [format!("gene{i}"), format!("alias{i}")])
             .collect();
         let norm = |db: PathBuf| -> Vec<(String, Vec<String>)> {
-            let rows = lookup_terms(db, probes.clone(), Some(4)).unwrap();
+            let rows = lookup_terms(db, probes.clone()).unwrap();
             let mut out: Vec<(String, Vec<String>)> = rows
                 .into_iter()
                 .map(|(t, recs)| {
@@ -4215,12 +4196,19 @@ mod tests {
         let got_order: Vec<String> = parallel.iter().map(|(t, _)| t.clone()).collect();
         assert_eq!(got_order, expected_order, "merge broke input order");
 
-        // End-to-end hydration (through the primary) also agrees across thread
-        // counts and yields one row group per hit term.
-        let rows_par = lookup_terms(output.clone(), probes.clone(), Some(4)).unwrap();
-        let rows_ser = lookup_terms(output, probes, Some(1)).unwrap();
-        assert_eq!(rows_par.len(), expected_order.len());
-        assert_eq!(rows_par, rows_ser);
+        // End-to-end hydration (through the primary) agrees with the shard-level
+        // pairs and yields one row group per hit term.
+        let rows = lookup_terms(output, probes.clone()).unwrap();
+        assert_eq!(rows.len(), expected_order.len());
+        let pair_counts: Vec<(String, usize)> = parallel
+            .iter()
+            .map(|(t, pairs)| (t.clone(), pairs.len()))
+            .collect();
+        let row_counts: Vec<(String, usize)> = rows
+            .iter()
+            .map(|(t, recs)| (t.clone(), recs.len()))
+            .collect();
+        assert_eq!(pair_counts, row_counts);
     }
 
     /// `split_counts` hands surplus workers to the busiest bucket (most
@@ -4324,29 +4312,37 @@ mod tests {
             "bucket splitting broke input order"
         );
 
-        // End-to-end (through `lookup_pair_terms`, which clamps workers to the
-        // term count) and through full hydration alike.
-        let pairs_above = lookup_pair_terms(output.clone(), probes.clone(), Some(above)).unwrap();
-        let pairs_serial = lookup_pair_terms(output.clone(), probes.clone(), Some(1)).unwrap();
-        assert_eq!(pairs_above, pairs_serial);
-        let rows_above = lookup_terms(output.clone(), probes.clone(), Some(above)).unwrap();
-        let rows_serial = lookup_terms(output, probes, Some(1)).unwrap();
-        assert_eq!(rows_above, rows_serial);
+        // End-to-end (through `lookup_pair_terms` / `lookup_terms`, which clamp
+        // the auto-selected workers to the term count) matches the shard-level
+        // serial result, through full hydration alike.
+        let pairs_auto = lookup_pair_terms(output.clone(), probes.clone()).unwrap();
+        assert_eq!(pairs_auto, via_serial);
+        let rows_auto = lookup_terms(output, probes.clone()).unwrap();
+        let row_counts: Vec<(String, usize)> = rows_auto
+            .iter()
+            .map(|(t, recs)| (t.clone(), recs.len()))
+            .collect();
+        let pair_counts: Vec<(String, usize)> = via_serial
+            .iter()
+            .map(|(t, pairs)| (t.clone(), pairs.len()))
+            .collect();
+        assert_eq!(row_counts, pair_counts);
     }
 
-    /// The production build-kg resolve calls `lookup_fullmap_terms` with
-    /// `threads=None`, so the parallel shard fan-out must kick in from the Rust
-    /// DEFAULT alone — not just when a test passes `threads>=2`.  This builds a
+    /// The production build-kg resolve calls `lookup_fullmap_terms` with no
+    /// thread tuning, so the parallel shard fan-out must kick in from the Rust
+    /// DEFAULT alone.  This builds a
     /// large fixture and probes it with a batch that crosses `LOOKUP_PARALLEL_MIN`
     /// and spans every default shard, then asserts: (a) the default worker count
     /// is >1 on any multi-core host, and reaches the 16-shard fan-out cap on a
     /// host with at least 16 CPUs (so `lookup_pair_terms_db` can spawn one reader
-    /// per non-empty shard), and (b) `threads=None` returns results IDENTICAL
-    /// (content + order) to the forced-serial `threads=Some(1)`, with misses
+    /// per non-empty shard), and (b) the auto-selected parallel lookup returns
+    /// results IDENTICAL (content + order) to a forced-serial
+    /// `lookup_pair_terms_db(..., 1)`, with misses
     /// dropped.  On smaller hosts the maximum-fanout assertion is skipped but
     /// equivalence still holds.
     #[test]
-    fn threads_none_defaults_to_parallel_for_large_batch() {
+    fn large_batch_lookup_defaults_to_parallel() {
         pyo3::Python::initialize();
         let dir = tempfile::tempdir().unwrap();
         let synonyms = dir.path().join("large.ndjson");
@@ -4413,7 +4409,7 @@ mod tests {
                 "large batch should be able to fan out across all default shards"
             );
         }
-        // Explicit threads=Some(1) still forces serial regardless of batch size.
+        // Sub-threshold batches stay serial.
         assert_eq!(default_lookup_workers(0), 1, "empty batch stays serial");
         assert_eq!(
             default_lookup_workers(LOOKUP_PARALLEL_MIN - 1),
@@ -4421,13 +4417,14 @@ mod tests {
             "sub-threshold batch stays serial"
         );
 
-        // threads=None (production default) == forced-serial Some(1): identical
-        // content AND order, misses dropped.
-        let via_default = lookup_pair_terms(output.clone(), probes.clone(), None).unwrap();
-        let via_serial = lookup_pair_terms(output, probes.clone(), Some(1)).unwrap();
+        // The auto-selected lookup (production path) == forced-serial shard read:
+        // identical content AND order, misses dropped.
+        let via_default = lookup_pair_terms(output.clone(), probes.clone()).unwrap();
+        let shards = open_cached_shards(&output).unwrap();
+        let via_serial = lookup_pair_terms_db(&shards, &probes, 1).unwrap();
         assert_eq!(
             via_default, via_serial,
-            "threads=None diverged from threads=Some(1)"
+            "auto-selected workers diverged from forced-serial"
         );
         let expected_order: Vec<String> = probes
             .iter()
@@ -4461,9 +4458,9 @@ mod tests {
         let body = &tail[..end];
 
         // Rows fetch: exactly one call, and it is the detached one.
-        let rows_calls = body.matches("lookup_terms(db, terms, threads)").count();
+        let rows_calls = body.matches("lookup_terms(db, terms)").count();
         let rows_detached = body
-            .matches("py.detach(move || lookup_terms(db, terms, threads)")
+            .matches("py.detach(move || lookup_terms(db, terms)")
             .count();
         assert_eq!(rows_calls, 1, "rows fetch must be called exactly once");
         assert_eq!(
@@ -4472,11 +4469,9 @@ mod tests {
         );
 
         // Pairs fetch: exactly one call, and it is the detached one.
-        let pair_calls = body
-            .matches("lookup_pair_terms(db, terms, threads)")
-            .count();
+        let pair_calls = body.matches("lookup_pair_terms(db, terms)").count();
         let pair_detached = body
-            .matches("py.detach(move || lookup_pair_terms(db, terms, threads)")
+            .matches("py.detach(move || lookup_pair_terms(db, terms)")
             .count();
         assert_eq!(pair_calls, 1, "pairs fetch must be called exactly once");
         assert_eq!(
@@ -4562,7 +4557,7 @@ mod tests {
         let shards = open_cached_shards(&output).unwrap();
         assert_eq!(shards.len(), 2);
         let terms: Vec<String> = (0..50).map(|i| format!("gene{i}")).collect();
-        let rows = lookup_terms(output, terms, Some(4)).unwrap();
+        let rows = lookup_terms(output, terms).unwrap();
         assert_eq!(rows.len(), 50);
     }
 
@@ -4593,14 +4588,7 @@ mod tests {
 
         std::env::set_var("TABLASSERT_FULLMAP_SHARDS", "2");
         let built = Python::attach(|py| {
-            build_fullmap_db(
-                py,
-                output.clone(),
-                Vec::new(),
-                vec![synonyms],
-                Some(2),
-                None,
-            )
+            build_fullmap_db(py, output.clone(), Vec::new(), vec![synonyms], None)
         });
         std::env::remove_var("TABLASSERT_FULLMAP_SHARDS");
         built.unwrap();
@@ -4623,7 +4611,7 @@ mod tests {
 
         // Lookups still resolve across all 16 shards.
         let terms: Vec<String> = (0..50).map(|i| format!("gene{i}")).collect();
-        let rows = lookup_terms(output, terms, Some(4)).unwrap();
+        let rows = lookup_terms(output, terms).unwrap();
         assert_eq!(rows.len(), 50);
     }
 
@@ -4692,7 +4680,7 @@ mod tests {
         }
 
         let terms: Vec<String> = (0..80).map(|i| format!("gene{i}")).collect();
-        let rows = lookup_terms(output, terms, Some(SHARD_COUNT_SHARDS)).unwrap();
+        let rows = lookup_terms(output, terms).unwrap();
         assert_eq!(rows.len(), 80);
     }
 
@@ -4710,7 +4698,7 @@ mod tests {
         write.commit().unwrap();
         drop(database);
 
-        let err = lookup_terms(output, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        let err = lookup_terms(output, vec!["brca1".to_string()]).unwrap_err();
         assert!(err
             .to_string()
             .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
@@ -4733,7 +4721,7 @@ mod tests {
         write.commit().unwrap();
         drop(database);
 
-        let err = lookup_terms(output, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        let err = lookup_terms(output, vec!["brca1".to_string()]).unwrap_err();
         assert!(err
             .to_string()
             .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
@@ -5087,7 +5075,7 @@ mod tests {
         )
         .unwrap();
         build_test(output.clone(), Vec::new(), vec![synonyms1], 1, 4_000_000).unwrap();
-        let rows = lookup_terms(output.clone(), vec!["brca1".to_string()], Some(1)).unwrap();
+        let rows = lookup_terms(output.clone(), vec!["brca1".to_string()]).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1[0].curie, "HGNC:1100");
 
@@ -5105,14 +5093,14 @@ mod tests {
         swap_build_over(&built, &output);
 
         // Old-generation term must be gone (stale shards would resurrect it).
-        let rows = lookup_terms(output.clone(), vec!["brca1".to_string()], Some(1)).unwrap();
+        let rows = lookup_terms(output.clone(), vec!["brca1".to_string()]).unwrap();
         assert!(
             rows.is_empty(),
             "stale shard generation resurrected an old term: {rows:?}"
         );
         // New term resolves against the NEW primary's dims/CURIES (a stale
         // primary would hydrate the wrong curie/preferred_name).
-        let rows = lookup_terms(output, vec!["tp53".to_string()], Some(1)).unwrap();
+        let rows = lookup_terms(output, vec!["tp53".to_string()]).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1[0].curie, "NCBIGene:7157");
         assert_eq!(rows[0].1[0].preferred_name, "TP53");
@@ -5385,12 +5373,7 @@ mod tests {
         drop(database);
 
         // Every gene resolves through the streamed CURIES table.
-        let rows = lookup_terms(
-            output,
-            (0..5).map(|i| format!("gene{i}")).collect(),
-            Some(1),
-        )
-        .unwrap();
+        let rows = lookup_terms(output, (0..5).map(|i| format!("gene{i}")).collect()).unwrap();
         let mut got: Vec<String> = rows
             .iter()
             .flat_map(|(_, recs)| recs.iter().map(|r| r.curie.clone()))
@@ -5419,11 +5402,11 @@ mod tests {
 
         build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
 
-        let alive = lookup_terms(output.clone(), vec!["realname".to_string()], Some(1)).unwrap();
+        let alive = lookup_terms(output.clone(), vec!["realname".to_string()]).unwrap();
         assert_eq!(alive.len(), 1);
         assert_eq!(alive[0].1[0].curie, "HGNC:1100");
 
-        let dead = lookup_terms(output, vec!["12345".to_string()], Some(1)).unwrap();
+        let dead = lookup_terms(output, vec!["12345".to_string()]).unwrap();
         assert!(dead.is_empty() || dead[0].1.is_empty());
     }
 
@@ -5480,11 +5463,11 @@ mod tests {
         drop(read);
         drop(database);
 
-        let kept = lookup_terms(output.clone(), vec!["water".to_string()], Some(1)).unwrap();
+        let kept = lookup_terms(output.clone(), vec!["water".to_string()]).unwrap();
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].1[0].curie, "CHEBI:2");
 
-        let dropped = lookup_terms(output, vec!["genea".to_string()], Some(1)).unwrap();
+        let dropped = lookup_terms(output, vec!["genea".to_string()]).unwrap();
         assert!(dropped.is_empty() || dropped[0].1.is_empty());
     }
 
@@ -5543,7 +5526,7 @@ mod tests {
             .into_iter()
             .map(|i| format!("gene{i}"))
             .collect();
-        let rows = lookup_terms(output, terms, Some(4)).unwrap();
+        let rows = lookup_terms(output, terms).unwrap();
         let mut got: Vec<String> = rows
             .iter()
             .flat_map(|(_, recs)| recs.iter().map(|r| r.curie.clone()))
@@ -5562,7 +5545,6 @@ mod tests {
                 PathBuf::from("/tmp/should-not-exist.redb"),
                 Vec::new(),
                 Vec::new(),
-                Some(1),
                 None,
             )
             .expect_err("empty synonyms should fail");
@@ -5587,7 +5569,7 @@ mod tests {
         .unwrap();
 
         build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
-        let rows = lookup_terms(output, vec!["alias disease".to_string()], Some(1)).unwrap();
+        let rows = lookup_terms(output, vec!["alias disease".to_string()]).unwrap();
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1[0].curie, "MONDO:1");
@@ -5613,7 +5595,6 @@ mod tests {
         let rows = lookup_terms(
             output,
             vec!["hypothetical protein".to_string(), "gene1".to_string()],
-            Some(1),
         )
         .unwrap();
 
@@ -5636,7 +5617,7 @@ mod tests {
         .unwrap();
 
         build_test(output.clone(), Vec::new(), vec![synonyms], 1, 4_000_000).unwrap();
-        let rows = lookup_terms(output, vec!["quoted gene".to_string()], Some(1)).unwrap();
+        let rows = lookup_terms(output, vec!["quoted gene".to_string()]).unwrap();
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1[0].preferred_name, "Quoted Gene");
@@ -5677,8 +5658,8 @@ mod tests {
             "beta".to_string(),
             "delta".to_string(),
         ];
-        let big = lookup_terms(out_big, probes.clone(), Some(1)).unwrap();
-        let tiny = lookup_terms(out_tiny, probes, Some(1)).unwrap();
+        let big = lookup_terms(out_big, probes.clone()).unwrap();
+        let tiny = lookup_terms(out_tiny, probes).unwrap();
 
         // Same terms resolved, same hydrated records (order-independent compare).
         let norm = |v: Vec<(String, Vec<FullmapRecord>)>| -> Vec<(String, Vec<String>)> {
@@ -5727,7 +5708,7 @@ mod tests {
 
         // Several consecutive lookups (rows path) must all succeed.
         for _ in 0..3 {
-            let rows = lookup_terms(output.clone(), vec!["brca1".to_string()], Some(1)).unwrap();
+            let rows = lookup_terms(output.clone(), vec!["brca1".to_string()]).unwrap();
             assert_eq!(rows.len(), 1);
         }
         // open_cached returns the same handle across calls.
@@ -6033,7 +6014,7 @@ mod tests {
         }
         write.commit().unwrap();
         drop(database);
-        let err = lookup_terms(v2, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        let err = lookup_terms(v2, vec!["brca1".to_string()]).unwrap_err();
         assert!(err
             .to_string()
             .contains("fullmap DB is outdated; rebuild with 'tablassert build-fullmap'"));
@@ -6049,7 +6030,7 @@ mod tests {
         }
         write.commit().unwrap();
         drop(database);
-        let err = lookup_terms(missing, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        let err = lookup_terms(missing, vec!["brca1".to_string()]).unwrap_err();
         assert!(err.to_string().contains("unsupported fullmap redb schema"));
 
         // Garbage schema value => unsupported.
@@ -6062,7 +6043,7 @@ mod tests {
         }
         write.commit().unwrap();
         drop(database);
-        let err = lookup_terms(garbage, vec!["brca1".to_string()], Some(1)).unwrap_err();
+        let err = lookup_terms(garbage, vec!["brca1".to_string()]).unwrap_err();
         assert!(err.to_string().contains("unsupported fullmap redb schema"));
     }
 

@@ -415,29 +415,6 @@ def test_agent_judge_threshold_valid_is_forwarded(monkeypatch: pytest.MonkeyPatc
     assert captured["judge_threshold"] == 0.7
 
 
-@pytest.mark.parametrize("bad_threads", [0, -1, -8])
-def test_agent_gepa_threads_non_positive_exits_2(bad_threads: int, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    """CodeRabbit: a non-positive --gepa-threads fails loud (exit 2) before any model is built."""
-    monkeypatch.setenv(ENV_MODEL_ID, "m")
-    monkeypatch.setenv(ENV_API_BASE, "b")
-    monkeypatch.setenv(ENV_API_KEY, "k")
-
-    def fail_supervisor(*a: object, **k: object) -> object:
-        raise AssertionError("run_supervisor must NOT run with an invalid --gepa-threads")
-
-    def fail_model_init(*a: object, **k: object) -> object:
-        raise AssertionError("make_dspy_lm must NOT run with an invalid --gepa-threads")
-
-    monkeypatch.setattr("tablassert.agent.run_supervisor", fail_supervisor)
-    # also prove NO model construction happens before validation (not just no supervisor run)
-    monkeypatch.setattr("tablassert.agent.make_dspy_lm", fail_model_init)
-
-    with pytest.raises(SystemExit) as exc_info:
-        agent(["PMC1"], graph_configuration_file=_graph_path(), gepa_threads=bad_threads)
-    assert exc_info.value.code == 2
-    assert "gepa-threads" in capsys.readouterr().err
-
-
 @pytest.mark.parametrize("bad_spec", ["PMC1=", "=DIR", "PMC1=   "])
 def test_agent_local_rejects_empty_mapping_components(bad_spec: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     """CodeRabbit: --local PMCid=DIR with a blank PMC id or blank DIR fails loud (exit 2), not Path('.')."""

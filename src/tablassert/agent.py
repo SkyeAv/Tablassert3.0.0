@@ -4979,7 +4979,6 @@ def run_gepa(
     task_lm: object | None = None,
     gepa_cls: object | None = None,
     max_metric_calls: int | None = 8,
-    num_threads: int | None = None,
     dataset: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Optimize the agent's instructions as a BLACK BOX with dspy.GEPA (Pareto-native, textual feedback).
@@ -4994,8 +4993,7 @@ def run_gepa(
     LM split (GEPA best practice): GEPA evaluates candidate programs MANY times but reflects only a
     few times. ``task_lm`` (when given) is the FAST model configured for those many program evaluations
     (``dspy.configure``), while ``reflection_lm`` is the STRONG model GEPA uses for the few
-    instruction-proposal steps. When ``task_lm`` is None, ``reflection_lm`` is used for both. ``num_threads``
-    parallelizes GEPA's evaluation pool when set.
+    instruction-proposal steps. When ``task_lm`` is None, ``reflection_lm`` is used for both.
     """
     _require("dspy")
     import dspy as _dspy  # pyright: ignore[reportMissingImports]
@@ -5007,8 +5005,6 @@ def run_gepa(
         "reflection_lm": reflection_lm,
         "max_metric_calls": max_metric_calls,
     }
-    if num_threads is not None:
-        gepa_kwargs["num_threads"] = num_threads
     try:
         optimizer: Any = cls(**gepa_kwargs)
     except TypeError:

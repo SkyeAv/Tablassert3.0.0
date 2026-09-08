@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Removed
+- **The `--threads` / `-t` CLI options (on `build-kg` and `build-fullmap`), the `threads` parameter on the Python API (`fullmap.resolve`, etc.), and the agent command's `--gepa-threads` option (`dspy.GEPA` evaluation pool) are gone.** All parallelism is now automatic: every parallel stage uses all available CPU threads, with the fullmap build still capped on Linux by available memory (~2 GB per thread, read from `/proc/meminfo`) to avoid OOMs, and entity-resolution lookups fanning out across the fullmap shards automatically only for batches of 1024+ terms (smaller batches stay serial). GEPA now uses its library default parallelism. Results are unchanged.
+
 ## 16.7.0 - 2026-09-04
 
 ### Changed

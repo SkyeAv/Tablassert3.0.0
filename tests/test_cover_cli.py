@@ -22,7 +22,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 
 import pytest
-from cyclopts.exceptions import CoercionError, UnknownOptionError  # pyright: ignore[reportMissingImports]
+from cyclopts.exceptions import UnknownOptionError  # pyright: ignore[reportMissingImports]
 
 from tablassert import cli, extras, rs
 from tablassert.cli import build_fullmap_pipeline, build_kg, download_babel_file, download_babel_file_aria2c, validate_graph_pipeline
@@ -358,50 +358,6 @@ def test_download_babel_file_aria2c_preserves_control_file_on_failure(tmp_path: 
     assert control.read_bytes() == b"resume-state"  # failure path preserves aria2 resume metadata
 
 
-def test_build_kg_command_delegates_to_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cover cli.py:501 — the ``build-kg`` cyclopts command forwards to ``run(7, build_pipeline, ...)``.
-
-    ``cli.run`` is stubbed to a recorder so the command body executes (line 501) without a real
-    multi-hour build. Asserts the stage count (7 with ``--qc``: the study stage over the final
-    NDJSON is appended), pipeline function, config path, and every flag — including the fullmap
-    lookup ``threads`` — are threaded through unchanged.
-    """
-    config: Path = tmp_path / "graph.yaml"
-    calls: list[tuple[Any, ...]] = []
-
-    def _fake_run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
-        calls.append((stages, fn, arg, kwargs))
-
-    monkeypatch.setattr(cli, "run", _fake_run)
-    monkeypatch.setattr(extras, "missing", lambda extra: ())
-    build_kg(config, release=True, qc=True, log=True, head=True, no_original=True, threads=8)
-    assert calls == [(7, cli.build_pipeline, config, {"release": True, "qc": True, "log": True, "head": True, "no_original": True, "threads": 8})]
-    calls.clear()
-    build_kg(config)
-    assert calls == [
-        (6, cli.build_pipeline, config, {"release": False, "qc": False, "log": False, "head": False, "no_original": False, "threads": None})
-    ]
-
-
-@pytest.mark.parametrize("bad_threads", [0, -1, -8])
-def test_build_kg_non_positive_threads_exits_2(
-    bad_threads: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A non-positive ``--threads`` fails loud (exit 2) before any build work starts.
-
-    Mirrors the ``--gepa-threads`` gate: the invalid count would otherwise surface only deep
-    inside the Rust lookup, after table loading had already begun.
-    """
-    config: Path = tmp_path / "graph.yaml"
-    monkeypatch.setattr(cli, "run", lambda *args, **kwargs: pytest.fail("the build started with an invalid --threads"))
-
-    with pytest.raises(SystemExit) as exc_info:
-        build_kg(config, threads=bad_threads)
-
-    assert exc_info.value.code == 2
-    assert "--threads" in capsys.readouterr().err
-
-
 def test_build_kg_qc_without_the_extra_stops_before_the_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``--qc`` without the ``[qc]`` extra fails immediately, naming the install command.
 
@@ -452,8 +408,8 @@ def test_build_fullmap_command_force_build_passes_aria2c_flag(tmp_path: Path, mo
 
     monkeypatch.setattr(cli, "run", _fake_run)
     monkeypatch.setattr(extras, "missing", lambda extra: ())
-    cli.build_fullmap(output=output, cache=cache, version="v", threads=2, aria2c=True, force=True)
-    assert calls == [(3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "threads": 2, "aria2c": True})]
+    cli.build_fullmap(output=output, cache=cache, version="v", aria2c=True, force=True)
+    assert calls == [(3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "aria2c": True})]
 
 
 def test_build_fullmap_aria2c_without_the_extra_stops_before_downloading(
@@ -554,9 +510,9 @@ def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
     for removed in (["--table-config"], ["--fullmap", str(config)]):
         with pytest.raises(UnknownOptionError):
             parse(["build-kg", str(config), *removed])
-    # The removed ``-tc`` is likewise unusable: now that ``-t`` is the threads alias, cyclopts
-    # reads the cluster as ``-t c`` and rejects the non-integer value instead of the option.
-    with pytest.raises(CoercionError):
+    # The removed ``-tc`` is likewise unusable: with the threads option (and its ``-t`` alias)
+    # gone, cyclopts rejects the cluster's leading ``-t`` as an unknown option.
+    with pytest.raises(UnknownOptionError):
         parse(["build-kg", str(config), "-tc"])
     # --no-original / -no bind the no_original flag.
     assert parse(["build-kg", str(config), "--no-original"])["no_original"] is True
@@ -595,22 +551,22 @@ def test_build_fullmap_pipeline_reports_download_progress(tmp_path: Path, monkey
 
     built: list[tuple[Any, ...]] = []
 
-    def _fake_build(output: Path, class_files: list[Path], synonym_files: list[Path], threads: int | None = None, progress: Any = None) -> None:
-        built.append((output, class_files, synonym_files, threads))
+    def _fake_build(output: Path, class_files: list[Path], synonym_files: list[Path], progress: Any = None) -> None:
+        built.append((output, class_files, synonym_files))
 
     monkeypatch.setattr(rs, "build_fullmap_db", _fake_build)
 
     output: Path = tmp_path / "fullmap.redb"
     cache: Path = tmp_path / "downloads"
-    build_fullmap_pipeline(output, PipelineProgress(total_stages=3), cache=cache, version="v", threads=1)
+    build_fullmap_pipeline(output, PipelineProgress(total_stages=3), cache=cache, version="v")
 
     # Line 653 fired for each downloaded file (one chunk each), ending at the full payload size.
     assert detail_calls == [(len(payload), len(payload)), (len(payload), len(payload))]
     # The real downloader spooled both files to their class/synonym cache dirs.
     assert (cache / "classes" / "c.gz").read_bytes() == payload
     assert (cache / "synonyms" / "s.gz").read_bytes() == payload
-    # Stage 3 received the downloaded paths and the thread count.
-    assert built == [(output, [cache / "classes" / "c.gz"], [cache / "synonyms" / "s.gz"], 1)]
+    # Stage 3 received the downloaded paths.
+    assert built == [(output, [cache / "classes" / "c.gz"], [cache / "synonyms" / "s.gz"])]
 
 
 def test_build_fullmap_pipeline_uses_aria2c_when_opted_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -639,8 +595,8 @@ def test_build_fullmap_pipeline_uses_aria2c_when_opted_in(tmp_path: Path, monkey
     monkeypatch.setattr(cli, "download_babel_file_aria2c", _fake_aria2c)
     built: list[tuple[Any, ...]] = []
 
-    def _fake_build(output: Path, class_files: list[Path], synonym_files: list[Path], threads: int | None = None, progress: Any = None) -> None:
-        built.append((output, class_files, synonym_files, threads))
+    def _fake_build(output: Path, class_files: list[Path], synonym_files: list[Path], progress: Any = None) -> None:
+        built.append((output, class_files, synonym_files))
 
     monkeypatch.setattr(rs, "build_fullmap_db", _fake_build)
 
@@ -673,12 +629,12 @@ def test_build_fullmap_pipeline_uses_aria2c_when_opted_in(tmp_path: Path, monkey
     progress = _RecordingProgress()
     output: Path = tmp_path / "fullmap.redb"
     cache: Path = tmp_path / "downloads"
-    build_fullmap_pipeline(output, progress, cache=cache, version="v", threads=1, aria2c=True)  # type: ignore[arg-type]
+    build_fullmap_pipeline(output, progress, cache=cache, version="v", aria2c=True)  # type: ignore[arg-type]
 
     assert aria_calls == [("c.gz", "https://example.com/c.gz", cache / "classes"), ("s.gz", "https://example.com/s.gz", cache / "synonyms")]
     assert progress.sub_steps.count("aria2c downloading") == 2
     assert progress.advances == 4  # two discovery entries + two downloaded files
-    assert built == [(output, [cache / "classes" / "c.gz"], [cache / "synonyms" / "s.gz"], 1)]
+    assert built == [(output, [cache / "classes" / "c.gz"], [cache / "synonyms" / "s.gz"])]
 
 
 # --- prebuilt fullmap downloader (download-first default; --force rebuilds from BABEL) ---
@@ -1008,11 +964,11 @@ def test_build_fullmap_command_falls_back_to_build_on_prebuilt_unavailable(tmp_p
     monkeypatch.setattr(extras, "missing", lambda extra: ())  # --aria2c preflight: report [aria2] as installed
     output: Path = tmp_path / "fullmap.redb"  # absent
     cache: Path = tmp_path / "c"
-    cli.build_fullmap(output=output, cache=cache, version="v", threads=4, aria2c=True)
+    cli.build_fullmap(output=output, cache=cache, version="v", aria2c=True)
     assert len(calls) == 2
     assert calls[0][0] == 2
     assert calls[0][1] is cli.fetch_prebuilt_fullmap
-    assert calls[1] == (3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "threads": 4, "aria2c": True})
+    assert calls[1] == (3, cli.build_fullmap_pipeline, output, {"cache": cache, "version": "v", "aria2c": True})
 
 
 def test_build_fullmap_force_flag_parses() -> None:
@@ -1076,7 +1032,7 @@ def _build_real_force_fullmap(directory: Path) -> Path:
         _write_gzip_ndjson(directory / "synonyms" / "MONDO.ndjson.gz", _REAL_SYNONYM_LINES_MONDO),
     ]
     output: Path = directory / "force" / "fullmap.redb"
-    rs.build_fullmap_db(output, classes, synonyms, threads=2)
+    rs.build_fullmap_db(output, classes, synonyms)
     return output
 
 

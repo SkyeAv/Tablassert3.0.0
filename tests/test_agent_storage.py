@@ -155,7 +155,7 @@ def fullmap_db(tmp_path: Path) -> Path:
         ],
     )
     output: Path = root / "data" / "fullmap.redb"
-    rs.build_fullmap_db(output, [classes], [synonyms], threads=2)
+    rs.build_fullmap_db(output, [classes], [synonyms])
     return output
 
 
