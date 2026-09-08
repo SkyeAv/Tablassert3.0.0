@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import json
 import random
 import uuid
@@ -72,7 +73,12 @@ _NIL_NAMESPACE = uuid.UUID(int=0)
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
-    """Mirror of rust `canonical_json_bytes`: keys sorted recursively, compact bytes."""
+    """Mirror of rust `canonical_json_bytes`: keys sorted recursively, compact bytes.
+
+    ASCII-only datasets only (the sibling of `_fuzz_record`'s int-only constraint):
+    `ensure_ascii=True` orders non-ASCII list items by their `\\uXXXX` escapes while rust
+    orders by raw UTF-8 bytes, so a non-ASCII item could sort differently here.
+    """
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
@@ -281,6 +287,14 @@ def _fuzz_record(rng: random.Random, group: int, record_index: int) -> dict[str,
         record["mode"] = "solo" if rng.randrange(2) == 0 else ["solo", "extra"]  # scalar-vs-array conflict
     if record_index > 0 and (group % 3 == 0 or rng.randrange(2) == 0):
         record["late"] = f"late:{group}"  # field only later records carry
+    if group % 2 == 0 and record_index == 1:
+        # Same "only a later record carries it" shape but LIST-valued, on exactly ONE record
+        # per group: copied in, never unioned, so the write-out must NOT sort it. Items are
+        # strictly DESCENDING by canonical bytes (reversed `_TAGS`) so a stray sort is
+        # observable; the test counts the descending survivors. Mirrors the rust fuzz
+        # generator's `late_list` (US-006 Fix 4). ASCII-only, per the `_canonical_json_bytes`
+        # ordering caveat above.
+        record["late_list"] = list(reversed(_TAGS[: 2 + rng.randrange(3)]))
     if rng.randrange(2) == 0:
         case_ids = [rng.choice(_CASE_IDS) for _ in range(1 + rng.randrange(4))]
         record["supporting_case_ids"] = case_ids
@@ -314,12 +328,26 @@ def _fuzz_dataset(rng: random.Random) -> list[str]:
     return stream
 
 
+def _is_strictly_descending(items: Any) -> bool:
+    """True when a list's canonical bytes strictly decrease -- i.e. it is NOT sorted.
+
+    WHY: the fuzz datasets emit `late_list` in strictly descending order, so this predicate
+    is how the test recognizes a list that was merely COPIED into a record (never unioned)
+    and therefore must have survived the write-out in its source order.
+    """
+    if not isinstance(items, list) or len(items) < 2:
+        return False
+    keys = [_canonical_json_bytes(item) for item in items]
+    return all(left > right for left, right in itertools.pairwise(keys))
+
+
 def test_dedup_edges_merge_matches_python_reference(tmp_path: Path) -> None:
     """Merge mode must byte-match an independent Python port of its own semantics.
 
     WHY: US-002 will rewrite the rust merge fold for speed. This test pins the CURRENT
     semantics from a SECOND implementation: a seeded randomized dataset (divergent same-id
     groups, list unions over object and scalar items, key-order variants, late fields,
+    including one list a single record carries so it is copied and never unioned,
     scalar-vs-array conflicts, exact repeats, empty objects, blank lines) is deduped by
     `rs.dedup_ndjson(..., on_collision="merge")` and by the pure-Python reference above.
     The emitted bytes -- first-seen id order, folded records, `supporting_case_ids`
@@ -346,3 +374,13 @@ def test_dedup_edges_merge_matches_python_reference(tmp_path: Path) -> None:
     assert b"supporting_case_ids" not in actual
     assert actual == expected
     assert (merged, conflicts) == (expected_merged, expected_conflicts)
+
+    # The copied-never-unioned gate (US-006 Fix 4): `late_list` is generated strictly
+    # descending, so a write-out that sorted a merely COPIED list would flip it ascending
+    # and drop this count to zero. A lower bound rather than an exact count because the
+    # identity triple is drawn per RECORD, so two carriers can share a derived id -- those
+    # legitimately union and sort, and the byte comparison above already proves both
+    # implementations agree on them.
+    carriers = [row["late_list"] for row in map(json.loads, actual.decode().splitlines()) if "late_list" in row]
+    preserved = sum(1 for items in carriers if _is_strictly_descending(items))
+    assert preserved >= 3, f"expected >= 3 copied-but-never-unioned lists to keep their source order, got {preserved} of {len(carriers)}"
