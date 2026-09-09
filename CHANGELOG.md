@@ -18,6 +18,10 @@ All notable changes to this project are documented in this file.
 - **`docs/index.md` no longer omits shipped navigation surfaces.** The landing-page list now includes Fullmap, Agent, Development, and Changelog alongside the existing sections.
 - **`tests/test_docs_source_of_truth.py` now guards the corrected documentation against drift.** It derives checks from the live schemas, CLI, optional extras, source modules, workflows, MkDocs navigation, and contributor tooling instead of allowing the same mismatches to return silently.
 - **The documentation pass deliberately leaves two follow-ups rather than claiming them fixed.** The dead `errors.DOCS_URL` target and the still-undocumented coded error messages require separate remediation.
+## 17.0.1 - 2026-09-09
+
+### Fixed
+- **The fullmap resolver now retains every CURIE tied on a term's best ranking tier instead of keeping one arbitrary winner.** `distinct` sorted by `term` / `PR` / `NLP_LEVEL` (plus the `column_context` category-`FREQUENCY` tiebreaker when set) and kept only the first row per term, so distinct CURIEs tied across the entire ranking tuple were silently discarded before `resolve` ever saw them — a term matching `HGNC:1` and `HGNC:2` equally well shipped only whichever the sort happened to surface. The op now computes each term's best ranking tier, retains every row in it, and collapses duplicates only by `(term, CURIE)`; tied CURIEs propagate through `resolve`, `resolve_batch`, and `join_matches`, so a source row may expand to one output row per tied best CURIE (level-one still beats level-two, and `column_context` still prefers the more frequent category). Regression tests pin the tier retention, duplicate `(term, CURIE)` collapse, and lower-tier exclusion (`test_filter_and_rank_collapses_duplicate_curies_and_keeps_equal_best_curies`), plus end-to-end row expansion through `resolve` and `join_matches`. ([#145](https://github.com/SkyeAv/Tablassert/pull/145))
 
 ## 17.0.0 - 2026-09-08
 
