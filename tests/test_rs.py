@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import time
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
@@ -49,6 +50,29 @@ def test_xxh64_file_binary_and_chunk_boundary(tmp_path: Path) -> None:
     boundary: Path = tmp_path / "boundary.bin"
     boundary.write_bytes(b"\x5a" * (8 * 1024 * 1024 + 1))
     assert rs.xxh64_file(str(boundary)) == "1a11076e494e1d0b"
+
+
+def test_file_hash_smoke_xxh64_file(tmp_path: Path) -> None:
+    """A generated 4 MiB file hashes within the deliberately loose CI ceiling.
+
+    WHY: the opt-in GiB benchmark is skipped in normal CI, so this non-gated smoke
+    catches pathological regressions such as byte-at-a-time file reads without making
+    the default suite depend on benchmark-scale I/O.
+    """
+    from tablassert import rs
+
+    source: Path = tmp_path / "4mib.bin"
+    size = 4 * 1024 * 1024
+    pattern = b"tablassert-file-hash-smoke\n"
+    source.write_bytes(pattern * (size // len(pattern)) + pattern[: size % len(pattern)])
+    started = time.perf_counter()
+    digest = rs.xxh64_file(str(source))
+    elapsed = time.perf_counter() - started
+
+    assert source.stat().st_size == size
+    assert len(digest) == 16
+    assert all(character in "0123456789abcdef" for character in digest)
+    assert elapsed < 10, f"xxh64_file took {elapsed:.3f}s for a 4 MiB file"
 
 
 def test_xxh64_file_missing_and_directory_errors(tmp_path: Path) -> None:
