@@ -31,6 +31,10 @@ Every expectation is derived from live source rather than copied out of the docs
   ``[project.optional-dependencies]`` table -- parsed with stdlib ``tomllib``, the sole extra
   authority -- and against the live ``extras.require`` / ``extras.is_installed`` call sites under
   ``src/tablassert`` (an AST walk, never a copied list).
+* The contributor guide (``CONTRIBUTING.md``) is checked against the live ``Makefile``
+  (``.PHONY`` targets), ``.github/workflows/ci.yml`` (the no-sharding decision and ``SYNC_ARGS``),
+  ``.pre-commit-config.yaml`` (``default_install_hook_types``), ``pyproject.toml`` pytest addopts,
+  and the filesystem for the paths listed in the Project layout block, with rotting hardcoded counts banned by rule.
 """
 
 from __future__ import annotations
@@ -2132,3 +2136,270 @@ def test_agent_doc_flag_reminder_lists_every_live_agent_flag() -> None:
         f"{AGENT_DOC.relative_to(ROOT)} compact flag reminder omits live agent flags: {missing}; "
         "add them to the reminder or remove the flag from tablassert.cli.agent"
     )
+
+
+# --- Contributor-guide guards (US-007) ---------------------------- #
+# CONTRIBUTING.md drifted from the automation it describes: it claimed CI shards the test suite
+# across four runners while `.github/workflows/ci.yml` deliberately runs it as a single job, it
+# hardcoded rotting numbers (test counts, coverage percentages), its pre-commit install rationale
+# contradicted `.pre-commit-config.yaml`'s `default_install_hook_types`, and its Project layout
+# block omitted live paths. These guards derive every expectation from the live files -- the
+# Makefile's `.PHONY` line, the workflow YAML, the pre-commit config, pyproject's pytest addopts,
+# and the filesystem itself -- never from copied lists. The layout guard enforces only the
+# documented shape, real listed paths, and the three US-007 story additions; it is not exhaustive.
+
+CONTRIBUTING: Path = ROOT / "CONTRIBUTING.md"
+MAKEFILE: Path = ROOT / "Makefile"
+CI_WORKFLOW: Path = ROOT / ".github" / "workflows" / "ci.yml"
+PRE_COMMIT_CONFIG: Path = ROOT / ".pre-commit-config.yaml"
+
+FENCED_BASH: re.Pattern[str] = re.compile(r"^```(?:bash|sh)[^\S\n]*\n(.*?)^```[^\S\n]*$", re.MULTILINE | re.DOTALL)
+FENCED_TEXT: re.Pattern[str] = re.compile(r"^```text[^\S\n]*\n(.*?)^```[^\S\n]*$", re.MULTILINE | re.DOTALL)
+MAKE_TARGET: re.Pattern[str] = re.compile(r"`make ([a-z][a-z0-9-]*)`")
+SYNC_FLAG: re.Pattern[str] = re.compile(r"--no-default-groups\b|--(?:group|extra)\s+[A-Za-z0-9_.-]+")
+NEGATED_SHARD: re.Pattern[str] = re.compile(
+    r"\b(?:not|no)\s+(?:[\w'-]+\s+){0,4}shard\w*\b|\b(?:rather than|instead of|without)\s+(?:[\w'-]+\s+){0,4}shard\w*\b", re.IGNORECASE
+)
+
+
+def _sync_flags(text: str) -> set[str]:
+    """Return normalized dependency flags from a CI sync-args string or Markdown line.
+
+    Markdown punctuation and backticks are excluded from the argument token, so the same parser
+    can compare the live workflow value with an inline command in ``CONTRIBUTING.md``.
+
+    Args:
+        text: Raw workflow ``SYNC_ARGS`` or a documentation line containing it.
+
+    Returns:
+        The set of complete sync flags, including each option's argument where applicable.
+    """
+    return {match.group(0).strip("`.,;:()[]{}") for match in SYNC_FLAG.finditer(text)}
+
+
+def _ci_workflow() -> dict[str, Any]:
+    """Return the parsed live ``ci.yml`` -- the CI source of truth.
+
+    Returns:
+        The workflow configuration as a mapping.
+    """
+    parsed: Any = yaml.load(CI_WORKFLOW.read_text(encoding="utf-8"), Loader=CSafeLoader)
+    assert isinstance(parsed, dict), f"{CI_WORKFLOW.relative_to(ROOT)} did not parse to a mapping"
+    return parsed
+
+
+def _ci_sync_args() -> str:
+    """Return the live ``SYNC_ARGS`` dependency set both syncing CI jobs install.
+
+    Returns:
+        The raw ``SYNC_ARGS`` value from ``ci.yml``'s ``env``.
+    """
+    env: Any = _ci_workflow().get("env")
+    assert isinstance(env, dict), f"{CI_WORKFLOW.relative_to(ROOT)} no longer declares an env mapping; re-derive this guard"
+    assert env.get("SYNC_ARGS"), f"{CI_WORKFLOW.relative_to(ROOT)} no longer declares env.SYNC_ARGS; re-derive this guard"
+    return str(env["SYNC_ARGS"]).strip()
+
+
+def _makefile_phony_targets() -> set[str]:
+    """Return the live ``.PHONY`` target set declared by the ``Makefile``.
+
+    Returns:
+        Target names from the ``.PHONY:`` line.
+
+    Raises:
+        AssertionError: If the Makefile declares no ``.PHONY`` line -- the guard would go vacuous.
+    """
+    match: re.Match[str] | None = re.search(r"^\.PHONY:[^\S\n]*(?P<targets>.+)$", MAKEFILE.read_text(encoding="utf-8"), re.MULTILINE)
+    assert match, f"{MAKEFILE.name} has no .PHONY line; this guard went vacuous"
+    targets: set[str] = set(match.group("targets").split())
+    assert targets, f"{MAKEFILE.name} .PHONY line is empty; this guard went vacuous"
+    return targets
+
+
+def _precommit_install_command(page: Path) -> str:
+    """Return the unique ``uv run pre-commit install`` command shown on ``page``.
+
+    Args:
+        page: Markdown page to scan.
+
+    Returns:
+        The stripped command line.
+
+    Raises:
+        AssertionError: If the page shows zero or several such commands -- an ambiguous install
+            instruction cannot be checked for cross-page parity.
+    """
+    text: str = page.read_text(encoding="utf-8")
+    commands: list[str] = [
+        line.strip() for block in FENCED_BASH.findall(text) for line in block.splitlines() if line.strip().startswith("uv run pre-commit install")
+    ]
+    assert len(commands) == 1, f"{page.relative_to(ROOT)} must show exactly one `uv run pre-commit install` command; found {commands or 'none'}"
+    return commands[0]
+
+
+def test_contributing_precommit_section_agrees_with_ci_on_no_sharding() -> None:
+    """No CONTRIBUTING.md sentence may claim CI shards the test suite; the live workflow does not.
+
+    The pre-commit section once justified keeping pytest out of the hooks with \"CI shards them
+    across four runners\", while ``ci.yml`` carries a \"Deliberately NOT sharded across a matrix\"
+    comment over a single ``python-test`` job. The live side is checked first -- no ``matrix``
+    strategy on any job that runs pytest -- so a real move to sharding fails HERE with a
+    re-derive instruction rather than letting the docs ban go stale. On the docs side, every
+    occurrence of ``shard`` must sit in a negated clause (\"not sharded\", \"rather than
+    sharding\"), so an affirmative sharding claim fails regardless of its exact wording.
+    """
+    jobs: Any = _ci_workflow().get("jobs")
+    assert isinstance(jobs, dict), f"{CI_WORKFLOW.relative_to(ROOT)} has no jobs mapping; this guard went vacuous"
+    assert jobs, f"{CI_WORKFLOW.relative_to(ROOT)} has no jobs; this guard went vacuous"
+    pytest_jobs: list[str] = [name for name, job in jobs.items() if isinstance(job, dict) and "pytest" in str(job.get("steps"))]
+    assert pytest_jobs, f"{CI_WORKFLOW.relative_to(ROOT)} has no job running pytest; this guard went vacuous"
+    for name in pytest_jobs:
+        strategy: Any = jobs[name].get("strategy") or {}
+        assert "matrix" not in strategy, (
+            f"{CI_WORKFLOW.relative_to(ROOT)} job {name!r} now shards across a matrix; CONTRIBUTING.md's no-sharding claim must be re-derived"
+        )
+    text: str = CONTRIBUTING.read_text(encoding="utf-8")
+    sentences: list[str] = re.split(r"(?<=[.!?])\s+", text)
+    for sentence in sentences:
+        for match in re.finditer(r"\bshard\w*\b", sentence, re.IGNORECASE):
+            negation: re.Match[str] | None = NEGATED_SHARD.search(sentence, 0, match.end())
+            message: str = (
+                f"{CONTRIBUTING.name} makes an affirmative CI-sharding claim near {match.group(0)!r}, contradicting "
+                f"{CI_WORKFLOW.relative_to(ROOT)}'s deliberately unsharded single job"
+            )
+            assert negation is not None, message
+            assert negation.end() == match.end(), message
+    start, end = _section_range(text, "Pre-commit hooks")
+    section: str = text[start:end]
+    assert "rebuild the Rust extension" in section, (
+        f"{CONTRIBUTING.name} 'Pre-commit hooks' must state the durable reason pytest/cargo-test sit in neither hook stage: "
+        "they rebuild the Rust extension"
+    )
+    assert "single job" in section, f"{CONTRIBUTING.name} 'Pre-commit hooks' must state that CI runs the suite as a single job (not sharded)"
+
+
+def test_contributing_quality_gates_carry_durable_suite_facts() -> None:
+    """The Quality gates section carries durable suite facts and no rotting hardcoded numbers.
+
+    \"over 600 tests\", \"46 Rust unit tests\", and \"around 90% coverage\" all rot on the next
+    added test, so hardcoded counts/percentages are banned in the section BY RULE (a count of
+    tests or a coverage percentage is never durable). The durable facts that replace them are
+    pinned against live configuration: pytest-xdist parallelism (``-n auto``) and inline coverage
+    (``--cov``) are read from ``pyproject.toml``'s addopts FIRST, so a config change fails here
+    before the doc anchors are checked.
+    """
+    addopts: Any = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["tool"]["pytest"]["ini_options"]["addopts"]
+    assert "-n auto" in addopts, f"{PYPROJECT.name} addopts dropped `-n auto`; re-derive this guard"
+    assert "--cov" in addopts, f"{PYPROJECT.name} addopts dropped `--cov`; re-derive this guard"
+    text: str = CONTRIBUTING.read_text(encoding="utf-8")
+    start, end = _section_range(text, "Quality gates")
+    section: str = text[start:end]
+    for anchor in ("pytest-xdist", "-n auto", "--cov", "offline"):
+        assert anchor in section, f"{CONTRIBUTING.name} 'Quality gates' must carry the durable fact {anchor!r} (live in {PYPROJECT.name} addopts)"
+    banned: dict[str, str] = {
+        r"\b\d[\d,]*\s+(?:\w+\s+){0,2}tests\b": "a hardcoded test count",
+        r"\b\d+\s*%\s*coverage\b|\bcoverage\s+(?:of|around|about|~)?\s*~?\d+\s*%": "a hardcoded coverage percentage",
+    }
+    for pattern, what in banned.items():
+        found: re.Match[str] | None = re.search(pattern, section, re.IGNORECASE)
+        assert not found, (
+            f"{CONTRIBUTING.name} 'Quality gates' carries {what} ({found.group(0)!r}); such numbers rot -- state the durable behavior instead"
+        )
+
+
+def test_contributing_layout_block_lists_only_existing_paths() -> None:
+    """Validate the Project layout entries required by US-007.
+
+    Every listed path must exist, and every line must keep the two-column shape (path, then a
+    purpose separated by whitespace). The explicit required-path tuple captures the US-007 story
+    additions (``examples/``, ``.github/``, and ``Makefile``); this guard intentionally does not
+    require the block to enumerate every top-level repository path.
+    """
+    text: str = CONTRIBUTING.read_text(encoding="utf-8")
+    start, end = _section_range(text, "Project layout")
+    blocks: list[str] = FENCED_TEXT.findall(text[start:end])
+    assert len(blocks) == 1, f"{CONTRIBUTING.name} 'Project layout' must hold exactly one ```text block; found {len(blocks)}"
+    lines: list[str] = [line for line in blocks[0].splitlines() if line.strip()]
+    assert lines, f"{CONTRIBUTING.name} 'Project layout' block is empty; this guard went vacuous"
+    entries: list[str] = []
+    for line in lines:
+        assert re.match(r"^\S+\s{2,}\S", line), f"{CONTRIBUTING.name} layout line lacks the two-column 'path  purpose' shape: {line!r}"
+        entries.append(line.split()[0])
+    missing: list[str] = [entry for entry in entries if not (ROOT / entry).exists()]
+    assert not missing, f"{CONTRIBUTING.name} 'Project layout' lists paths that do not exist: {missing}"
+    required_paths: tuple[str, ...] = ("examples/", ".github/", "Makefile")
+    for required in required_paths:
+        assert required in entries, f"{CONTRIBUTING.name} 'Project layout' omits the required US-007 path {required!r}"
+
+
+def test_contributing_and_installation_precommit_commands_match() -> None:
+    """Both pages show the same hook-install command, and the rationale matches the live config.
+
+    The guide once claimed ``--install-hooks`` was what wires up the pre-push stage; in fact the
+    config's ``default_install_hook_types`` decides which stages a bare ``pre-commit install``
+    wires (``--install-hooks`` only pre-builds hook environments). The stage set is read from
+    ``.pre-commit-config.yaml`` at test time, and the command itself is lifted out of both pages'
+    fenced blocks, so a drift on either page -- or a config change the rationale stops matching --
+    fails here.
+    """
+    config: Any = yaml.load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"), Loader=CSafeLoader)
+    hook_types: Any = config.get("default_install_hook_types") if isinstance(config, dict) else None
+    assert hook_types, f"{PRE_COMMIT_CONFIG.name} no longer declares default_install_hook_types; re-derive this guard"
+    assert set(hook_types) == {"pre-commit", "pre-push"}, (
+        f"{PRE_COMMIT_CONFIG.name} default_install_hook_types is now {hook_types}; the docs' install rationale must be re-derived"
+    )
+    contributing_command: str = _precommit_install_command(CONTRIBUTING)
+    installation_command: str = _precommit_install_command(INSTALLATION)
+    assert contributing_command == installation_command, (
+        f"hook-install command drifted: {CONTRIBUTING.name} shows {contributing_command!r}, "
+        f"{INSTALLATION.relative_to(ROOT)} shows {installation_command!r}"
+    )
+    assert "--hook-type" not in contributing_command, (
+        f"{CONTRIBUTING.name} passes explicit --hook-type flags, but a bare install already wires {sorted(hook_types)} via default_install_hook_types"
+    )
+    text: str = CONTRIBUTING.read_text(encoding="utf-8")
+    start, end = _section_range(text, "Pre-commit hooks")
+    assert "default_install_hook_types" in text[start:end], (
+        f"{CONTRIBUTING.name} 'Pre-commit hooks' must explain the bare install via the config's default_install_hook_types"
+    )
+
+
+def test_contributing_ci_dependency_set_matches_workflow_sync_args() -> None:
+    """Every CONTRIBUTING.md mention of the CI dependency set quotes the live ``SYNC_ARGS``.
+
+    CI installs exactly ``--no-default-groups --group ci --extra qc --extra log`` (``ci.yml``
+    ``env.SYNC_ARGS``, shared so both syncing jobs hit one warm uv cache); the guide once
+    described the CI environment as just ``--extra qc``. Only lines that mention CI AND carry
+    sync flags are checked, so the local ``uv sync --group dev ...`` setup command is out of
+    scope; the expected string is lifted from the workflow on every run.
+    """
+    expected: set[str] = _sync_flags(_ci_sync_args())
+    assert expected, f"{CI_WORKFLOW.relative_to(ROOT)} SYNC_ARGS contains no recognized dependency flags; this guard went vacuous"
+    text: str = CONTRIBUTING.read_text(encoding="utf-8")
+    mentions: list[str] = [line.strip() for line in text.splitlines() if re.search(r"\bCI\b", line) and SYNC_FLAG.search(line)]
+    assert mentions, f"{CONTRIBUTING.name} never documents the CI dependency set; this guard went vacuous"
+    for line in mentions:
+        documented: set[str] = _sync_flags(line)
+        assert documented == expected, (
+            f"{CONTRIBUTING.name} documents CI dependency flags {sorted(documented)}, but "
+            f"{CI_WORKFLOW.relative_to(ROOT)} SYNC_ARGS has {sorted(expected)}: {line!r}"
+        )
+
+
+def test_contributing_makefile_targets_are_real_phony_targets() -> None:
+    """Every ``make <target>`` in the Task runner table is a live ``.PHONY`` target, and vice versa.
+
+    The target set is parsed from the Makefile's ``.PHONY:`` line at test time -- never copied --
+    so a renamed or added target fails here until the table is re-synced. Both directions are
+    checked: a documented target that does not exist fails at a contributor's shell, and a live
+    target the table omits is a workflow readers cannot discover.
+    """
+    phony: set[str] = _makefile_phony_targets()
+    text: str = CONTRIBUTING.read_text(encoding="utf-8")
+    start, end = _section_range(text, "Task runner")
+    documented: set[str] = set(MAKE_TARGET.findall(text[start:end]))
+    assert documented, f"{CONTRIBUTING.name} 'Task runner' documents no `make <target>` commands; this guard went vacuous"
+    unknown: list[str] = sorted(documented - phony)
+    assert not unknown, f"{CONTRIBUTING.name} 'Task runner' documents {unknown}, which are not .PHONY targets in {MAKEFILE.name}"
+    undocumented: list[str] = sorted(phony - documented)
+    assert not undocumented, f"{MAKEFILE.name} .PHONY targets {undocumented} are missing from {CONTRIBUTING.name} 'Task runner' table"
