@@ -1,7 +1,7 @@
 # Installation
 
-Get a working `tablassert` install, then pick the `rt` / `aria2` / `qc` / `agent` / `optimize` / `log` extras that match how you will
-use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, GEPA prompt optimization, or loguru-backed logging).
+Get a working `tablassert` install, then pick the `rt` / `aria2` / `qc` / `agent` / `optimize` / `distill` / `log` extras that match how you will
+use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, GEPA prompt optimization, distillation dataset export, or loguru-backed logging).
 
 ## Prerequisites
 
@@ -65,6 +65,7 @@ pip install tablassert
 | `qc` | QC runtime (exact → fuzzy → abbreviation → SapBERT audit) | `scikit-learn`, `sentence-transformers` (`torch` + `numpy` arrive transitively; `rapidfuzz` is a core dependency) |
 | `agent` | Autonomous PMC → KG agent (`tablassert agent`) | `smolagents`, `litellm` |
 | `optimize` | GEPA prompt optimization (`tablassert agent --optimize`) | `dspy` |
+| `distill` | Distillation dataset export (`tablassert distill-export` → on-disk Hugging Face dataset) | `datasets>=3.0.0` |
 | `log` | loguru-backed file/progress logging (rotation, enqueue) | `loguru` |
 
 ```bash
@@ -115,11 +116,16 @@ Where the gap is knowable up front, it is reported up front rather than mid-run:
 | `build-kg --qc` | `[qc]` | Before the build starts: the QC audit runs at the very end of the build, so a late failure would cost the entire entity-resolution pass |
 | `tablassert agent` | `[agent]` | After flag validation, before any model is built or any article fetched |
 | `tablassert agent --optimize` | `[agent]` + `[optimize]` | Same point; both are reported at once |
+| `tablassert distill-export` | `[distill]` | After the recorded-NDJSON input check (an empty `--distill-dir` is reported first, since that typo is the faster loop to close) and before `datasets` is imported |
 | `build-fullmap --aria2c` | `[aria2]` | Before any download starts |
 
 A partially installed extra names every package it is still missing, so installing them is one step
 rather than a retry loop. Library calls that reach an optional import directly (for example
 `fullmap_audit()` or the agent's lazy `dspy` import) raise the same message at that point.
+
+Recording needs no extra beyond `[agent]` itself: `tablassert agent --distill` writes ChatML
+NDJSON with zero additional extra dependencies, while only the export step (`tablassert
+distill-export`) additionally requires the `distill` extra.
 
 The `rt` extra is the exception: it installs `polars[rtcompat]`, which imports as plain `polars`, so
 it cannot be detected by inspection. It is suggested when polars itself fails to import; the usual

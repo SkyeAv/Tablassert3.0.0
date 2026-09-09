@@ -121,6 +121,7 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | `qc` | four-stage QC audit (exact → fuzzy → abbreviation → SapBERT embeddings) | `pip install "tablassert[qc]"` |
 | `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
 | `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |
+| `distill` | distillation dataset export (`tablassert distill-export`, HF `datasets`) | `pip install "tablassert[distill]"` |
 | `log` | loguru-backed file/progress logging (rotation, enqueue) | `pip install "tablassert[log]"` |
 
 QC is opt-in at build time (`build-kg --qc`). Reaching a feature whose extra is not installed never

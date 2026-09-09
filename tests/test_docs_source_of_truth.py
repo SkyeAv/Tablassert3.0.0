@@ -26,6 +26,11 @@ Every expectation is derived from live source rather than copied out of the docs
   (``inspect.signature``), or against ``src/tablassert/rs.pyi`` for the Rust extension: parameter
   names, order, positional-only/keyword-only kind, and defaults (annotations are NOT compared;
   the docs spell optionality ``Optional[...]`` where the source uses ``X | None``).
+* The optional-extra enumerations (the README extras table, the installation guide's Optional
+  Extras table and preflight section, and both ``llms.txt`` lists) are checked against the live
+  ``[project.optional-dependencies]`` table -- parsed with stdlib ``tomllib``, the sole extra
+  authority -- and against the live ``extras.require`` / ``extras.is_installed`` call sites under
+  ``src/tablassert`` (an AST walk, never a copied list).
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ from __future__ import annotations
 import ast
 import inspect
 import re
+import tomllib
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -1485,3 +1491,257 @@ def test_api_utils_paths_distinguish_log_directory_from_log_file() -> None:
                 f"{page.relative_to(ROOT)} names the log file `{log_file}` and log.LOGASSERT together without calling LOGASSERT a "
                 f"directory; that conflates the directory with the file inside it: {paragraph!r}"
             )
+
+
+# --- Optional-extra enumerations (US-004) ---------------------------- #
+# The `distill` extra shipped in pyproject.toml with the `tablassert distill-export` command
+# while the README extras table, the installation guide, and both llms.txt enumerations still
+# listed five extras -- and nothing failed. These guards derive the extra set from the live
+# `[project.optional-dependencies]` table (parsed with stdlib tomllib; the sole extra authority)
+# and the preflight set from live `extras.require(...)` / `extras.is_installed(...)` call sites
+# under src/tablassert (an AST walk, never a copied list), so the next extra fails here the
+# moment it is declared or preflighted without documentation.
+
+PYPROJECT: Path = ROOT / "pyproject.toml"
+LLMS_TXT: Path = ROOT / "llms.txt"
+INSTALLATION: Path = DOCS / "installation.md"
+SRC_TABLASSERT: Path = ROOT / "src" / "tablassert"
+
+# Every surface that enumerates the optional extras for a reader deciding what to install --
+# except llms.txt, which enumerates them TWICE (the Quickstart "Installation Guide" item and the
+# Contributor Development "Project Metadata" item) and so gets its own scoped guard below:
+# checking the whole file would let one enumeration silently drop an extra the other still named.
+EXTRAS_SURFACES: tuple[Path, ...] = (README, INSTALLATION)
+
+REQUIREMENT_NAME: re.Pattern[str] = re.compile(r"[<>=!~\[;\s]")
+REQUIREMENT_SPECIFIER: re.Pattern[str] = re.compile(r"[<>=!~]")
+EXTRA_TABLE_ROW: re.Pattern[str] = re.compile(r"^\|\s*`(?P<extra>[A-Za-z0-9_-]+)`\s*\|")
+BACKTICKED_TOKEN: re.Pattern[str] = re.compile(r"`([^`]+)`")
+LLMS_LIST_ITEM: re.Pattern[str] = re.compile(r"^-\s*\[(?P<label>[^\]]+)\]\([^)]*\):\s*(?P<body>.*)$")
+LLMS_EXTRAS_ITEMS: tuple[str, str] = ("Installation Guide", "Project Metadata")
+PREFLIGHT_FUNCTIONS: frozenset[str] = frozenset({"require", "is_installed"})
+
+
+def _declared_extras() -> dict[str, list[str]]:
+    """Return the live ``[project.optional-dependencies]`` table -- the sole extra authority.
+
+    Returns:
+        Extra name -> PEP 508 requirement strings, in pyproject declaration order.
+
+    Raises:
+        AssertionError: If pyproject declares no optional dependencies -- an empty set would
+            make every parametrized guard below pass on zero cases.
+    """
+    parsed: dict[str, Any] = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    declared: Any = parsed["project"]["optional-dependencies"]
+    assert isinstance(declared, dict), f"{PYPROJECT.name} [project.optional-dependencies] is not a table"
+    assert declared, f"{PYPROJECT.name} declares no optional-dependencies; every extras guard below went vacuous"
+    return {str(extra): [str(requirement) for requirement in requirements] for extra, requirements in declared.items()}
+
+
+def _requirement_name(requirement: str) -> str:
+    """Return the bare distribution name of one PEP 508 requirement string.
+
+    Args:
+        requirement: A requirement such as ``polars[rtcompat]>=1.40.1`` or ``datasets>=3.0.0``.
+
+    Returns:
+        The distribution name with any extras marker, specifier, and environment marker stripped
+        (``polars``, ``datasets``).
+    """
+    return REQUIREMENT_NAME.split(requirement, maxsplit=1)[0]
+
+
+def _preflight_call_sites() -> dict[str, list[str]]:
+    """Return the extras every live ``extras.require`` / ``extras.is_installed`` call site guards.
+
+    Walks the AST of every module under ``src/tablassert`` matching the ``extras.<fn>(...)``
+    call shape (the definitions inside ``extras.py`` itself do not match it), so a command that
+    gains a preflight is picked up the moment it lands -- never from a copied list.
+
+    Returns:
+        Extra name -> sorted ``path:line`` locations of its call sites.
+
+    Raises:
+        AssertionError: If a matched call passes a non-literal extra name, which this guard
+            cannot derive.
+    """
+    sites: dict[str, list[str]] = {}
+    for path in sorted(SRC_TABLASSERT.rglob("*.py")):
+        tree: ast.Module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func: ast.expr = node.func
+            if not (
+                isinstance(func, ast.Attribute)
+                and func.attr in {"require", "is_installed"}
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "extras"
+            ):
+                continue
+            assert node.args, f"{path.relative_to(ROOT)}:{node.lineno} calls extras.{func.attr} with no positional extra; this guard cannot derive it"
+            first: ast.expr = node.args[0]
+            assert isinstance(first, ast.Constant), (
+                f"{path.relative_to(ROOT)}:{node.lineno} calls extras.{func.attr} without a literal extra; this guard cannot derive it"
+            )
+            assert isinstance(first.value, str), (
+                f"{path.relative_to(ROOT)}:{node.lineno} calls extras.{func.attr} with a non-string extra; this guard cannot derive it"
+            )
+            sites.setdefault(first.value, []).append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    return {extra: sorted(locations) for extra, locations in sites.items()}
+
+
+def _optional_extras_table() -> dict[str, str]:
+    """Return ``{extra: Includes cell}`` parsed from the installation guide's Optional Extras table.
+
+    Returns:
+        Documented extra -> raw ``Includes`` cell text, in table order.
+
+    Raises:
+        AssertionError: If a row lacks the Extra | Description | Includes shape, or no backticked
+            extra row is found at all -- a table the guard cannot read would silently stop
+            guarding.
+    """
+    text: str = INSTALLATION.read_text(encoding="utf-8")
+    start, end = _section_range(text, "Optional Extras")
+    rows: dict[str, str] = {}
+    for line in text[start:end].splitlines():
+        if not EXTRA_TABLE_ROW.match(line.strip()):
+            continue
+        cells: list[str] = _row_cells(line.strip())
+        assert len(cells) == 3, f"{INSTALLATION.relative_to(ROOT)} Optional Extras row must be Extra | Description | Includes: {line.strip()!r}"
+        rows[cells[0].strip("`")] = cells[2]
+    assert rows, f"{INSTALLATION.relative_to(ROOT)} 'Optional Extras' anchors no backticked extra rows; the table parser broke"
+    return rows
+
+
+def test_declared_extras_guard_is_not_vacuous() -> None:
+    """The pyproject-derived extra set exists, so the parametrized extras guards cannot pass on zero cases."""
+    assert _declared_extras(), f"{PYPROJECT.name} declares no optional extras; every extras guard in this module went vacuous"
+
+
+@pytest.mark.parametrize("extra", sorted(_declared_extras()))
+@pytest.mark.parametrize("page", EXTRAS_SURFACES, ids=lambda page: str(page.relative_to(ROOT)))
+def test_declared_extras_documented_on_every_extras_surface(page: Path, extra: str) -> None:
+    """Every extra declared in pyproject.toml is named (backticked) on each extras enumeration surface.
+
+    US-004: ``distill`` shipped in ``[project.optional-dependencies]`` while the README extras
+    table, the installation guide, and both ``llms.txt`` enumerations still listed five extras.
+    The set under test is parsed from the live pyproject, so the NEXT extra fails here the moment
+    it is declared.
+
+    Args:
+        page: One surface that enumerates the extras (README, installation guide, llms.txt).
+        extra: One extra declared in the live ``[project.optional-dependencies]``.
+    """
+    text: str = page.read_text(encoding="utf-8")
+    assert f"`{extra}`" in text, (
+        f"{page.relative_to(ROOT)} never names the `{extra}` extra declared in {PYPROJECT.name} [project.optional-dependencies]; "
+        "add it to every extras enumeration (table row, opening gloss, or list)"
+    )
+
+
+def _llms_extras_enumerations() -> dict[str, str]:
+    """Return the bodies of both labeled optional-extra enumerations in ``llms.txt``.
+
+    Returns:
+        Mapping from the live list-item label to its extras-enumeration body.
+
+    Raises:
+        AssertionError: If either expected list item is missing or duplicated, which would make
+            the per-extra checks below silently inspect the wrong surface.
+    """
+    text: str = LLMS_TXT.read_text(encoding="utf-8")
+    matches: list[re.Match[str]] = [
+        match for line in text.splitlines() if (match := LLMS_LIST_ITEM.match(line)) and match.group("label") in LLMS_EXTRAS_ITEMS
+    ]
+    enumerations: dict[str, str] = {match.group("label"): match.group("body") for match in matches}
+    assert set(enumerations) == set(LLMS_EXTRAS_ITEMS), (
+        f"{LLMS_TXT.name} is missing one of the expected extras enumerations {LLMS_EXTRAS_ITEMS}; found {tuple(enumerations)}"
+    )
+    assert len(matches) == len(enumerations), f"{LLMS_TXT.name} contains a duplicate extras enumeration label"
+    return enumerations
+
+
+@pytest.mark.parametrize("extra", sorted(_declared_extras()))
+def test_declared_extras_documented_in_both_llms_enumerations(extra: str) -> None:
+    """Every pyproject extra is named in both extras lists in ``llms.txt``."""
+    for label, body in _llms_extras_enumerations().items():
+        assert f"`{extra}`" in body, f"{LLMS_TXT.name} {label!r} enumeration is missing `{extra}`"
+
+
+def test_installation_preflight_docs_cover_source_preflight_calls() -> None:
+    """The installation guide's preflight section covers every extra the SOURCE preflights.
+
+    The extras under test come from walking ``extras.require(...)`` / ``extras.is_installed(...)``
+    call sites under ``src/tablassert`` (AST, not a copied list), so a new preflighted command
+    fails here until the "When an extra is missing" section names its extra. The two documented
+    exceptions are pinned from the same section: ``rt`` installs ``polars[rtcompat]``, which
+    imports as plain ``polars`` and so cannot be detected by inspection, and ``log`` degrades to
+    a stdlib fallback instead of failing.
+    """
+    sites: dict[str, list[str]] = _preflight_call_sites()
+    assert sites, "no extras.require/extras.is_installed call sites found under src/tablassert; this guard went vacuous"
+    unknown: list[str] = sorted(set(sites) - set(_declared_extras()))
+    assert not unknown, f"source preflights {unknown}, which {PYPROJECT.name} does not declare; the install hint would be a dead end"
+    text: str = INSTALLATION.read_text(encoding="utf-8")
+    start, end = _section_range(text, "When an extra is missing")
+    section: str = text[start:end]
+    for extra, locations in sorted(sites.items()):
+        assert f"`[{extra}]`" in section, (
+            f"{INSTALLATION.relative_to(ROOT)} 'When an extra is missing' never names `[{extra}]`, but the source preflights it at "
+            f"{locations}; document where the check fires"
+        )
+    assert "polars[rtcompat]" in section, (
+        f"{INSTALLATION.relative_to(ROOT)} must keep the `rt` exception: polars[rtcompat] imports as plain polars and cannot be detected"
+    )
+    assert "stdlib" in section, (
+        f"{INSTALLATION.relative_to(ROOT)} must keep the `log` fallback: without loguru, Tablassert logs through a stdlib fallback"
+    )
+    if "distill" in sites:
+        # Live: the agent command's `--distill` flag records ChatML NDJSON with zero extra
+        # dependencies (cli.py), so the section must not imply RECORDING needs the extra --
+        # only the `distill-export` step does.
+        assert "agent --distill" in section, (
+            f"{INSTALLATION.relative_to(ROOT)} must state that recording via `agent --distill` is zero-dependency while exporting needs the extra"
+        )
+        assert "zero" in section.lower(), (
+            f"{INSTALLATION.relative_to(ROOT)} must state that recording via `agent --distill` is zero-dependency while exporting needs the extra"
+        )
+
+
+def test_installation_extra_package_sets_match_pyproject_requirements() -> None:
+    """The Optional Extras table's ``Includes`` cells match the live pyproject requirements.
+
+    Both directions, both live-derived: the table must carry a row for every declared extra (and
+    no row for a dropped one), each row must name every distribution its extra installs (and no
+    distribution it does not), and a documented version specifier must be the one pyproject
+    declares -- a stale ``aria2==...`` or ``datasets>=...`` is install advice that has drifted.
+    Parenthesized asides (``torch`` / ``numpy`` arriving transitively, the ``aria2c`` import
+    name) are not part of the Includes claim and are excluded by cutting the cell at the first
+    ``(``.
+    """
+    declared: dict[str, list[str]] = _declared_extras()
+    documented: dict[str, str] = _optional_extras_table()
+    missing: list[str] = sorted(set(declared) - set(documented))
+    assert not missing, (
+        f"{INSTALLATION.relative_to(ROOT)} Optional Extras table has no row for {missing}, declared in {PYPROJECT.name}; add the row(s)"
+    )
+    stale: list[str] = sorted(set(documented) - set(declared))
+    assert not stale, f"{INSTALLATION.relative_to(ROOT)} Optional Extras table documents {stale}, no longer declared in {PYPROJECT.name}"
+    for extra, requirements in declared.items():
+        includes: str = documented[extra].split("(", 1)[0]
+        tokens: list[str] = BACKTICKED_TOKEN.findall(includes)
+        live_names: list[str] = sorted(_requirement_name(requirement) for requirement in requirements)
+        documented_names: list[str] = sorted(_requirement_name(token) for token in tokens)
+        assert documented_names == live_names, (
+            f"{INSTALLATION.relative_to(ROOT)} `[{extra}]` Includes {tokens or 'nothing'}, but {PYPROJECT.name} declares {requirements}; "
+            "the row must name every distribution the extra installs, and no others"
+        )
+        for token in tokens:
+            if REQUIREMENT_SPECIFIER.search(token):
+                assert token in requirements, (
+                    f"{INSTALLATION.relative_to(ROOT)} `[{extra}]` documents requirement `{token}`, but {PYPROJECT.name} declares "
+                    f"{requirements}; re-sync the version specifier"
+                )
