@@ -1544,7 +1544,8 @@
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  <span class="n">out</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;passed&quot;</span><span class="p">,</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  <span class="n">log</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  <span class="n">on_phase</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
 </code></pre></div>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
 <p><strong><code>lf: pl.LazyFrame</code></strong></p>
@@ -1564,6 +1565,8 @@
 <p>Rows with <code>out=True</code> passed QC, <code>out=False</code> failed.</p>
 <p><strong><code>log: bool</code> (default: <code>True</code>)</strong></p>
 <p>Controls whether failed QC rows are logged.</p>
+<p><strong><code>on_phase: Optional[Callable[[str], None]]</code></strong></p>
+<p>Optional callback fired at the start of each QC cascade stage with exactly one of the phase labels <code>qc:exact</code>, <code>qc:fuzzy</code>, <code>qc:abbrev</code>, or <code>qc:sapbert</code> (<code>qc:abbrev</code> fires only when Stage 3 runs, and <code>qc:sapbert</code> only when Stage 4 does). <code>build-kg</code> passes one to drive per-section QC progress; <code>None</code> disables phase reporting.</p>
 <p><strong><code>section_hash: str</code> / <code>config_file: str</code></strong></p>
 <p>Context fields used in QC failure logs for traceability.</p>
 <h3 id="return-value">Return Value<a class="headerlink" href="#return-value" title="Permanent link">&para;</a></h3>

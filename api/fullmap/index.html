@@ -1398,12 +1398,14 @@
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  <span class="n">taxon</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  <span class="n">prioritize</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">Categories</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  <span class="n">avoid</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">Categories</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  <span class="n">log</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  <span class="n">section_hash</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  <span class="n">config_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  <span class="n">column_context</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="n">tag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;_two&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  <span class="n">exclude_prefixes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  <span class="n">exclude_regex</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  <span class="n">log</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  <span class="n">section_hash</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="n">config_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  <span class="n">column_context</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  <span class="n">tag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;_two&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
 </code></pre></div>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
 <p><strong><code>lf: pl.LazyFrame</code></strong></p>
@@ -1421,6 +1423,12 @@
 <p><strong><code>avoid: Optional[list[Categories]]</code></strong></p>
 <p>Optional list of Biolink categories to exclude from results.</p>
 <p>Example: <code>[Categories.GENE]</code> prevents gene mappings.</p>
+<p><strong><code>exclude_prefixes: Optional[list[str]]</code></strong></p>
+<p>Optional list of CURIE namespace prefixes to drop from the results, mirroring the <code>NodeEncoding.exclude_prefixes</code> config field. A prefix is the text before the first <code>:</code> of a resolved CURIE (e.g., <code>"OMIM"</code> for <code>"OMIM:100100"</code>); every candidate whose prefix is listed is dropped. Matching is exact and case-sensitive.</p>
+<p>Example: <code>["OMIM", "MONDO"]</code> drops all OMIM- and MONDO-namespaced candidates.</p>
+<p><strong><code>exclude_regex: Optional[list[str]]</code></strong></p>
+<p>Optional list of case-sensitive regex patterns (Polars/Rust dialect), mirroring the <code>NodeEncoding.exclude_regex</code> config field; any resolved CURIE matching one of the patterns is dropped. An empty or whitespace-only pattern is rejected at config-validation time because it would match every CURIE.</p>
+<p>Example: <code>["^CHEBI:"]</code> drops all CHEBI candidates.</p>
 <p><strong><code>log: bool</code> (default: <code>True</code>)</strong></p>
 <p>Controls unmatched-value logging. When enabled, unresolved terms are logged with section/config/column context.</p>
 <p><strong><code>section_hash: Optional[str]</code> / <code>config_file: Optional[str]</code></strong></p>
@@ -1499,9 +1507,11 @@
 <li>
 <p><strong>Filters by:</strong></p>
 </li>
-<li>Taxon ID (if specified)</li>
+<li>Taxon ID (if <code>taxon</code> specified)</li>
+<li>Category avoidance (if <code>avoid</code> specified)</li>
+<li>Excluded CURIE prefixes (if <code>exclude_prefixes</code> specified)</li>
 <li>
-<p>Category avoidance (if specified)</p>
+<p>Excluded CURIE regex patterns (if <code>exclude_regex</code> specified)</p>
 </li>
 <li>
 <p><strong>Retains the best ranking tier</strong> per input string: duplicate rows for the same CURIE collapse, while distinct CURIEs tied across every ranking heuristic are returned as separate rows</p>

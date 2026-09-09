@@ -1506,8 +1506,8 @@
 
 
 <h1 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h1>
-<p>Get a working <code>tablassert</code> install, then pick the <code>rt</code> / <code>aria2</code> / <code>qc</code> / <code>agent</code> / <code>optimize</code> / <code>log</code> extras that match how you will
-use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, GEPA prompt optimization, or loguru-backed logging).</p>
+<p>Get a working <code>tablassert</code> install, then pick the <code>rt</code> / <code>aria2</code> / <code>qc</code> / <code>agent</code> / <code>optimize</code> / <code>distill</code> / <code>log</code> extras that match how you will
+use it (runtime compatibility, accelerated fullmap downloads, auditing mappings, running the autonomous agent, GEPA prompt optimization, distillation dataset export, or loguru-backed logging).</p>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Python 3.11 or higher</strong>: Tablassert requires Python 3.11+ for compatibility with modern tooling</li>
@@ -1583,6 +1583,11 @@ extras are opt-in.</p>
 <td><code>dspy</code></td>
 </tr>
 <tr>
+<td><code>distill</code></td>
+<td>Distillation dataset export (<code>tablassert distill-export</code> → on-disk Hugging Face dataset)</td>
+<td><code>datasets&gt;=3.0.0</code></td>
+</tr>
+<tr>
 <td><code>log</code></td>
 <td>loguru-backed file/progress logging (rotation, enqueue)</td>
 <td><code>loguru</code></td>
@@ -1649,6 +1654,11 @@ distribution <strong>and</strong> the command that fixes it:</p>
 <td>Same point; both are reported at once</td>
 </tr>
 <tr>
+<td><code>tablassert distill-export</code></td>
+<td><code>[distill]</code></td>
+<td>After the recorded-NDJSON input check (an empty <code>--distill-dir</code> is reported first, since that typo is the faster loop to close) and before <code>datasets</code> is imported</td>
+</tr>
+<tr>
 <td><code>build-fullmap --aria2c</code></td>
 <td><code>[aria2]</code></td>
 <td>Before any download starts</td>
@@ -1658,6 +1668,9 @@ distribution <strong>and</strong> the command that fixes it:</p>
 <p>A partially installed extra names every package it is still missing, so installing them is one step
 rather than a retry loop. Library calls that reach an optional import directly (for example
 <code>fullmap_audit()</code> or the agent's lazy <code>dspy</code> import) raise the same message at that point.</p>
+<p>Recording needs no extra beyond <code>[agent]</code> itself: <code>tablassert agent --distill</code> writes ChatML
+NDJSON with zero additional extra dependencies, while only the export step (<code>tablassert
+distill-export</code>) additionally requires the <code>distill</code> extra.</p>
 <p>The <code>rt</code> extra is the exception: it installs <code>polars[rtcompat]</code>, which imports as plain <code>polars</code>, so
 it cannot be detected by inspection. It is suggested when polars itself fails to import; the usual
 cause is a CPU that lacks the instructions the default polars wheel requires.</p>

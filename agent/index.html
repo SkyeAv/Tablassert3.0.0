@@ -1661,41 +1661,41 @@ the <code>[optimize]</code> extra (<code>dspy</code>): <code>pip install "tablas
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># GEPA prompt optimization (--optimize) additionally needs dspy:</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;tablassert[agent,optimize]&quot;</span>
 </code></pre></div>
-<p>The extra pins:</p>
+<p>The extra requires (lower bounds, so any newer version satisfies it):</p>
 <table>
 <thead>
 <tr>
 <th>Package</th>
-<th>Version</th>
+<th>Requirement</th>
 <th>Role</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>smolagents</code></td>
-<td><code>==1.26.0</code></td>
+<td><code>smolagents&gt;=1.26.0</code></td>
 <td><code>CodeAgent</code> ReAct loop, <code>OpenAIModel</code>/<code>LiteLLMModel</code>, tools</td>
 </tr>
 <tr>
 <td><code>litellm</code></td>
-<td>(any)</td>
+<td><code>litellm&gt;=1.93.0</code></td>
 <td>optional fallback / rate-limiting model backend</td>
 </tr>
 </tbody>
 </table>
-<p>The <code>[optimize]</code> extra (only needed for <code>agent --optimize</code>) pins:</p>
+<p>The <code>[optimize]</code> extra (only needed for <code>agent --optimize</code>) requires (a lower bound):</p>
 <table>
 <thead>
 <tr>
 <th>Package</th>
-<th>Version</th>
+<th>Requirement</th>
 <th>Role</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>dspy</code></td>
-<td><code>==3.2.1</code></td>
+<td><code>dspy&gt;=3.2.1</code></td>
 <td><code>dspy.GEPA</code> black-box prompt optimization</td>
 </tr>
 </tbody>
@@ -1836,8 +1836,8 @@ non-zero <strong>before</strong> any model call.</p>
 <p>The required target is <code>--configuration-file</code>/<code>-f</code>; it supplies the fullmap, graph identity, RIG,
 artifact metadata, and existing table list. Flags: <code>--max-steps</code>/<code>-ms</code>, <code>--min-rows</code>/<code>-mr</code>,
 <code>--map-threshold</code>/<code>-mt</code>, <code>--max-improve-iters</code>/<code>-mi</code>, <code>--state-dir</code>/<code>-sd</code>, <code>--backend {openai,litellm}</code>/<code>-b</code>, plus <code>--local</code>/<code>-l</code>, <code>--reflexion</code>,
-<code>--judge-model</code>, <code>--judge-threshold</code>, <code>--biolink-threshold</code>, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
-(<code>--instructions-file</code>, <code>--instructions-out</code>, <code>--max-metric-calls</code>, <code>--dataset</code>).
+<code>--judge-model</code>, <code>--judge-threshold</code>, <code>--biolink-threshold</code>, the <code>--distill</code>/<code>-d</code>/<code>-dt</code> recording flag, and the <code>--optimize</code>/<code>-o</code> prompt-optimization flags
+(<code>--instructions-file</code>, <code>--instructions-out</code>, <code>--max-metric-calls</code>, <code>--dataset</code>, <code>--task-model</code>).
 The <a href="../cli/#agent">CLI reference: <code>agent</code></a> is the authoritative flag table; the list here is a compact
 reminder.</p>
 <h3 id="small-table-guard">Small-table guard<a class="headerlink" href="#small-table-guard" title="Permanent link">&para;</a></h3>
