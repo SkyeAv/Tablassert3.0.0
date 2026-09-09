@@ -21,12 +21,20 @@ Every expectation is derived from live source rather than copied out of the docs
   exist on its bound model (``extra="forbid"`` makes a phantom row a config-time error the docs
   would wrongly bless), and every live field must be documented. Field sets come from
   ``model.model_fields`` and from the parsed tables at test time -- never from copied lists.
+* The API references (``docs/api/*.md``) have the first ```python block under every
+  ``### Function Signature`` heading checked parameter-by-parameter against the live callable
+  (``inspect.signature``), or against ``src/tablassert/rs.pyi`` for the Rust extension: parameter
+  names, order, positional-only/keyword-only kind, and defaults (annotations are NOT compared;
+  the docs spell optionality ``Optional[...]`` where the source uses ``X | None``).
 """
 
 from __future__ import annotations
 
+import ast
+import inspect
 import re
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -38,7 +46,12 @@ from pydantic import ValidationError
 from pydantic.fields import FieldInfo
 from yaml import CSafeLoader
 
+import tablassert.fullmap as fullmap_api
+import tablassert.lib as lib_api
+import tablassert.log as log_module
 import tablassert.models as config_models
+import tablassert.qc as qc_api
+import tablassert.utils as utils_module
 from tablassert.errors import BiolinkRelocationWarning, UnpairedEffectAnnotationWarning
 from tablassert.fullmap import filter_and_rank, join_matches
 from tablassert.ingests import to_sections
@@ -1136,4 +1149,339 @@ def test_exclude_filters_docs_match_live_semantics() -> None:
             assert not any("drops the row" in clause for clause in nullable_clauses), (
                 f"{where} attaches 'drops the row' to {nullable_claim!r}, but the live join KEEPS that row (the qualifier key is omitted "
                 f"instead); paragraph: {para!r}"
+            )
+
+
+# --- API-reference signature blocks (US-003) ---------------------------- #
+# The API pages drifted the same way the configuration reference did: `fullmap.resolve`
+# grew `exclude_prefixes` / `exclude_regex`, `qc.fullmap_audit` grew `on_phase`, and
+# `utils.md` presented the log FILE path as `log.LOGASSERT` (a DIRECTORY) -- and nothing
+# failed. These guards lift the first ```python block under every `### Function Signature`
+# heading in docs/api/*.md and compare parameter names, order, positional-only/
+# keyword-only kind, and defaults (repr) against the live authority: `inspect.signature`
+# for Python callables, `src/tablassert/rs.pyi` for the Rust extension (compiled Rust
+# functions expose no defaults to `inspect`, so the stub is the declared-signature
+# authority). Annotations are deliberately NOT compared: the docs spell optionality
+# `Optional[...]` where the source uses `X | None`.
+
+API_DOCS: Path = DOCS / "api"
+RS_STUB: Path = ROOT / "src" / "tablassert" / "rs.pyi"
+
+FENCED_PYTHON: re.Pattern[str] = re.compile(r"^```python[^\S\n]*\n(.*?)^```[^\S\n]*$", re.MULTILINE | re.DOTALL)
+
+
+@dataclass(frozen=True)
+class SignatureParam:
+    """One normalized signature parameter from a docs block or a live authority.
+
+    Attributes:
+        name: Parameter name.
+        kind: ``"positional-only"``, ``"positional-or-keyword"``, or ``"keyword-only"``.
+        default_repr: ``repr`` of the default value, or ``None`` when the parameter has none
+            (the docs' "no ``= ...``" and the live ``inspect.Parameter.empty`` both map here).
+    """
+
+    name: str
+    kind: str
+    default_repr: str | None
+
+
+@dataclass(frozen=True)
+class ApiSignatureBinding:
+    """One documented ``### Function Signature`` block bound to the live authority it must match.
+
+    Attributes:
+        page: ``docs/api/`` page holding the block.
+        function: Name the block's ``def`` must declare.
+        live: Live Python callable whose ``inspect.signature`` is the authority, or ``None``
+            for a Rust extension function.
+        stub: Function name in ``src/tablassert/rs.pyi`` used as the authority when ``live``
+            is None.
+    """
+
+    page: Path
+    function: str
+    live: Callable[..., Any] | None = None
+    stub: str | None = None
+
+    @property
+    def location(self) -> str:
+        """Return a ``page#function`` pointer for test ids and failure messages.
+
+        Returns:
+            The binding's page relative to the repository root, plus the function name.
+        """
+        return f"{self.page.relative_to(ROOT)}#{self.function}"
+
+
+@dataclass(frozen=True)
+class ApiSignatureBlock:
+    """One parsed ``### Function Signature`` block from a ``docs/api`` page.
+
+    Attributes:
+        page: Page holding the block.
+        line: 1-based line of the heading the block sits under.
+        function: Name of the ``def`` the block declares.
+        params: The block's parameters, normalized, in declaration order.
+    """
+
+    page: Path
+    line: int
+    function: str
+    params: tuple[SignatureParam, ...]
+
+    @property
+    def location(self) -> str:
+        """Return a ``path:line`` pointer for test ids and failure messages.
+
+        Returns:
+            The heading location relative to the repository root.
+        """
+        return f"{self.page.relative_to(ROOT)}:{self.line}"
+
+
+API_SIGNATURE_BINDINGS: tuple[ApiSignatureBinding, ...] = (
+    ApiSignatureBinding(API_DOCS / "fullmap.md", "resolve", live=fullmap_api.resolve),
+    ApiSignatureBinding(API_DOCS / "lib.md", "resolve_many", live=lib_api.resolve_many),
+    ApiSignatureBinding(API_DOCS / "qc.md", "fullmap_audit", live=qc_api.fullmap_audit),
+    ApiSignatureBinding(API_DOCS / "utils.md", "namespace_uuid", stub="namespace_uuid"),
+)
+
+API_BINDINGS_BY_KEY: dict[tuple[str, str], ApiSignatureBinding] = {
+    (binding.page.name, binding.function): binding for binding in API_SIGNATURE_BINDINGS
+}
+
+# Kind labels shared by the ast-parsed docs blocks and the `inspect` live signatures, so a
+# positional-only (`/`) or keyword-only (`*`) marker drift fails with a readable message.
+_LIVE_PARAMETER_KINDS: dict[Any, str] = {
+    inspect.Parameter.POSITIONAL_ONLY: "positional-only",
+    inspect.Parameter.POSITIONAL_OR_KEYWORD: "positional-or-keyword",
+    inspect.Parameter.KEYWORD_ONLY: "keyword-only",
+}
+
+
+def _ast_default_repr(default: ast.expr | None, where: str) -> str | None:
+    """Return the ``repr`` of a literal default expression, or ``None`` for no default.
+
+    Args:
+        default: The ``ast`` default node aligned to a parameter (``None`` when it has none).
+        where: Location pointer for failure messages.
+
+    Returns:
+        ``repr`` of the literal default, or ``None``.
+    """
+    if default is None:
+        return None
+    try:
+        value: Any = ast.literal_eval(default)
+    except ValueError:
+        pytest.fail(f"{where} default {ast.unparse(default)!r} is not a literal; this guard only compares literal defaults")
+    return repr(value)
+
+
+def _ast_signature_params(source: str, where: str, wanted: str | None = None) -> tuple[str, list[SignatureParam]]:
+    """Parse a ``def`` signature out of Python source into normalized parameters.
+
+    Args:
+        source: Python source holding the function definition (a fenced docs block, or the
+            ``rs.pyi`` stub).
+        where: Location pointer for failure messages.
+        wanted: Required function name, used when the source holds several definitions.
+
+    Returns:
+        The function name and its parameters in declaration order, with positional-only and
+        keyword-only markers folded into each parameter's ``kind``.
+
+    Raises:
+        AssertionError: If the source declares no matching ``def``, or uses ``*args`` /
+            ``**kwargs``, which the docs never show and this guard does not model.
+    """
+    # The docs present signatures without the trailing colon/body (`) -> pl.LazyFrame`),
+    # which is not parseable Python; the rs.pyi stub ends each def with `: ...` already.
+    source = source.rstrip()
+    if source.endswith(":"):
+        source += "\n    ..."
+    elif not source.endswith("..."):
+        source += ":\n    ..."
+    all_defs: list[ast.FunctionDef | ast.AsyncFunctionDef] = [
+        node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    definitions: list[ast.FunctionDef | ast.AsyncFunctionDef] = [node for node in all_defs if wanted is None or node.name == wanted]
+    assert definitions, (
+        f"{where} declares no def{f' named {wanted!r}' if wanted is not None else ''}; found {[node.name for node in all_defs] or 'none'}"
+    )
+    fn: ast.FunctionDef | ast.AsyncFunctionDef = definitions[0]
+    args: ast.arguments = fn.args
+    assert args.vararg is None, f"{where} `def {fn.name}` uses *args, which this guard does not model"
+    assert args.kwarg is None, f"{where} `def {fn.name}` uses **kwargs, which this guard does not model"
+    params: list[SignatureParam] = []
+    positional: list[ast.arg] = [*args.posonlyargs, *args.args]
+    kinds: list[str] = ["positional-only"] * len(args.posonlyargs) + ["positional-or-keyword"] * len(args.args)
+    defaults: list[ast.expr | None] = [None] * (len(positional) - len(args.defaults)) + list(args.defaults)
+    for argument, kind, default in zip(positional, kinds, defaults, strict=True):
+        params.append(SignatureParam(argument.arg, kind, _ast_default_repr(default, where)))
+    for argument, default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
+        params.append(SignatureParam(argument.arg, "keyword-only", _ast_default_repr(default, where)))
+    return fn.name, params
+
+
+def _api_signature_blocks() -> list[ApiSignatureBlock]:
+    """Extract and parse the first ```python block under each ``### Function Signature`` heading.
+
+    Returns:
+        Parsed blocks in page order (``docs/api/*.md`` sorted), each bound to the function its
+        ``def`` declares.
+
+    Raises:
+        AssertionError: If a ``### Function Signature`` heading anchors no ```python block --
+            a heading without a block would silently stop guarding its function.
+    """
+    blocks: list[ApiSignatureBlock] = []
+    for page in sorted(API_DOCS.glob("*.md")):
+        text: str = page.read_text(encoding="utf-8")
+        headings: list[re.Match[str]] = list(HEADING.finditer(text))
+        for index, heading in enumerate(headings):
+            if heading.group(2) != "Function Signature" or len(heading.group(1)) != 3:
+                continue
+            end: int = len(text)
+            for later in headings[index + 1 :]:
+                if len(later.group(1)) <= len(heading.group(1)):
+                    end = later.start()
+                    break
+            line: int = text.count("\n", 0, heading.start()) + 1
+            where: str = f"{page.relative_to(ROOT)}:{line}"
+            fence: re.Match[str] | None = FENCED_PYTHON.search(text, heading.end(), end)
+            assert fence is not None, f"{where} '### Function Signature' anchors no ```python block; the signature guard would go vacuous"
+            function, params = _ast_signature_params(fence.group(1), where)
+            blocks.append(ApiSignatureBlock(page=page, line=line, function=function, params=tuple(params)))
+    return blocks
+
+
+def _live_signature_params(binding: ApiSignatureBinding) -> list[SignatureParam]:
+    """Return one binding's normalized live parameters, from ``inspect`` or the ``rs.pyi`` stub.
+
+    Args:
+        binding: Binding whose live authority is read.
+
+    Returns:
+        Live parameters in declaration order.
+
+    Raises:
+        AssertionError: If the live callable uses var-positional/var-keyword parameters, which
+            this guard does not model.
+    """
+    if binding.live is None:
+        _, params = _ast_signature_params(RS_STUB.read_text(encoding="utf-8"), str(RS_STUB.relative_to(ROOT)), wanted=binding.stub)
+        return params
+    live: list[SignatureParam] = []
+    for parameter in inspect.signature(binding.live).parameters.values():
+        kind: str | None = _LIVE_PARAMETER_KINDS.get(parameter.kind)
+        assert kind is not None, (
+            f"live `{binding.function}` parameter `{parameter.name}` is {parameter.kind}; this guard does not model var-positional/var-keyword"
+        )
+        default_repr: str | None = None if parameter.default is inspect.Parameter.empty else repr(parameter.default)
+        live.append(SignatureParam(parameter.name, kind, default_repr))
+    return live
+
+
+def test_api_signatures_cover_all_documented_blocks() -> None:
+    """Every documented ``### Function Signature`` block is bound to a live authority, and vice versa.
+
+    ``API_SIGNATURE_BINDINGS`` is hand-written, so without this guard a NEW API signature block
+    could ship unguarded while every parametrized case below still passed -- and a renamed page
+    or function would leave a stale binding that silently stops guarding.
+    """
+    blocks: list[ApiSignatureBlock] = _api_signature_blocks()
+    assert blocks, "no `### Function Signature` blocks found in docs/api; this guard went vacuous"
+    discovered: set[tuple[str, str]] = {(block.page.name, block.function) for block in blocks}
+    bound: set[tuple[str, str]] = set(API_BINDINGS_BY_KEY)
+    assert len(bound) == len(API_SIGNATURE_BINDINGS), f"API_SIGNATURE_BINDINGS binds the same (page, function) twice: {sorted(bound)}"
+    unbound: list[str] = sorted(f"{page}#{function}" for page, function in discovered - bound)
+    assert not unbound, f"documented API signature blocks {unbound} have no ApiSignatureBinding; bind each to its live callable (or its rs.pyi stub)"
+    stale: list[str] = sorted(f"{page}#{function}" for page, function in bound - discovered)
+    assert not stale, f"API_SIGNATURE_BINDINGS name {stale}, but docs/api has no such `### Function Signature` block; fix or remove the binding(s)"
+
+
+@pytest.mark.parametrize("binding", API_SIGNATURE_BINDINGS, ids=lambda binding: binding.location)
+def test_api_signatures_match_live_authority(binding: ApiSignatureBinding) -> None:
+    """A documented ``### Function Signature`` block matches its live authority parameter-for-parameter.
+
+    US-003: ``fullmap.resolve`` shipped ``exclude_prefixes`` / ``exclude_regex`` and
+    ``qc.fullmap_audit`` shipped ``on_phase`` with the API reference still showing the old
+    parameter lists, and nothing failed. Names, order, positional-only/keyword-only kind, and
+    defaults (``repr``) are compared; annotations are not, because the docs use ``Optional[...]``
+    spelling where the source uses ``X | None``.
+
+    Args:
+        binding: One documented signature block bound to its live callable (or rs.pyi stub).
+    """
+    blocks: list[ApiSignatureBlock] = [
+        block for block in _api_signature_blocks() if block.page == binding.page and block.function == binding.function
+    ]
+    assert blocks, f"{binding.location}: no `### Function Signature` block declares `def {binding.function}`; the docs dropped or renamed it"
+    block: ApiSignatureBlock = blocks[0]
+    live: list[SignatureParam] = _live_signature_params(binding)
+    authority: str = "inspect.signature of the live callable" if binding.live is not None else f"the {RS_STUB.relative_to(ROOT)} stub"
+    documented_shape: list[tuple[str, str]] = [(param.name, param.kind) for param in block.params]
+    live_shape: list[tuple[str, str]] = [(param.name, param.kind) for param in live]
+    assert documented_shape == live_shape, (
+        f"{block.location} `def {binding.function}` parameter names/order/kinds drifted from {authority}\n"
+        f"  documented: {documented_shape}\n"
+        f"  live:       {live_shape}"
+    )
+    for documented_param, live_param in zip(block.params, live, strict=True):
+        assert documented_param.default_repr == live_param.default_repr, (
+            f"{block.location} `def {binding.function}` parameter `{documented_param.name}` documents default "
+            f"{documented_param.default_repr}, but {authority} has {live_param.default_repr}"
+        )
+
+
+def test_api_utils_paths_distinguish_log_directory_from_log_file() -> None:
+    """``docs/api/utils.md`` must not conflate ``log.LOGASSERT`` (the log DIRECTORY) with the log FILE inside it.
+
+    Live: ``log.LOGASSERT`` is ``utils.BASE / "log"`` -- the ``.tablassert/log`` directory,
+    created with ``mkdir`` at import -- while the loguru sink file is the private
+    ``log._LOG_FILE`` at ``.tablassert/log/tablassert.log``. The reference once presented the
+    file path AS ``log.LOGASSERT``, sending a reader who wanted the directory to a file.
+    """
+    # Live facts first, so a path change fails HERE rather than in the prose pins below.
+    assert log_module.LOGASSERT == utils_module.BASE / "log", (
+        f"live log.LOGASSERT is {log_module.LOGASSERT!r}, not utils.BASE / 'log'; re-derive this guard"
+    )
+    assert log_module.LOGASSERT.is_dir(), f"live log.LOGASSERT ({log_module.LOGASSERT}) is no longer a directory; re-derive this guard"
+    assert log_module._LOG_FILE == log_module.LOGASSERT / "tablassert.log", (
+        f"live log file is {log_module._LOG_FILE!r}, not LOGASSERT / 'tablassert.log'; re-derive this guard"
+    )
+
+    page: Path = API_DOCS / "utils.md"
+    text: str = page.read_text(encoding="utf-8")
+    start, end = _section_range(text, "Constants")
+    paragraphs: list[str] = _paragraphs(text[start:end])
+
+    # The directory: any paragraph naming LOGASSERT must call it a directory and give the
+    # directory path, so a reader cannot mistake the constant for the file it holds.
+    directory: str = str(log_module.LOGASSERT)
+    logassert_paragraphs: list[str] = [paragraph for paragraph in paragraphs if "LOGASSERT" in paragraph]
+    assert logassert_paragraphs, f"{page.relative_to(ROOT)} 'Constants' never names log.LOGASSERT"
+    for paragraph in logassert_paragraphs:
+        assert "directory" in paragraph.lower(), (
+            f"{page.relative_to(ROOT)} must describe log.LOGASSERT as a directory (live: {log_module.LOGASSERT!r}); paragraph: {paragraph!r}"
+        )
+        assert f"`{directory}`" in paragraph or f"`{directory}/`" in paragraph, (
+            f"{page.relative_to(ROOT)} must give log.LOGASSERT's directory path `{directory}`; paragraph: {paragraph!r}"
+        )
+
+    # The file: the page must name the log file path, and no paragraph may present that file
+    # path AS log.LOGASSERT -- a paragraph naming both must keep the directory label on
+    # LOGASSERT so the reader can tell them apart.
+    log_file: str = str(log_module._LOG_FILE)
+    file_paragraphs: list[str] = [paragraph for paragraph in paragraphs if "tablassert.log" in paragraph]
+    assert any(f"`{log_file}`" in paragraph for paragraph in file_paragraphs), (
+        f"{page.relative_to(ROOT)} 'Constants' must name the log file `{log_file}`"
+    )
+    for paragraph in file_paragraphs:
+        if "LOGASSERT" in paragraph:
+            assert "directory" in paragraph.lower(), (
+                f"{page.relative_to(ROOT)} names the log file `{log_file}` and log.LOGASSERT together without calling LOGASSERT a "
+                f"directory; that conflates the directory with the file inside it: {paragraph!r}"
             )

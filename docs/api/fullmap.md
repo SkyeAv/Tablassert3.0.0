@@ -16,6 +16,8 @@ def resolve(
   taxon: Optional[str] = None,
   prioritize: Optional[list[Categories]] = None,
   avoid: Optional[list[Categories]] = None,
+  exclude_prefixes: Optional[list[str]] = None,
+  exclude_regex: Optional[list[str]] = None,
   log: bool = True,
   section_hash: Optional[str] = None,
   config_file: Optional[str] = None,
@@ -55,6 +57,18 @@ Example: `[Categories.GENE, Categories.PROTEIN]` prefers gene/protein mappings.
 Optional list of Biolink categories to exclude from results.
 
 Example: `[Categories.GENE]` prevents gene mappings.
+
+**`exclude_prefixes: Optional[list[str]]`**
+
+Optional list of CURIE namespace prefixes to drop from the results, mirroring the `NodeEncoding.exclude_prefixes` config field. A prefix is the text before the first `:` of a resolved CURIE (e.g., `"OMIM"` for `"OMIM:100100"`); every candidate whose prefix is listed is dropped. Matching is exact and case-sensitive.
+
+Example: `["OMIM", "MONDO"]` drops all OMIM- and MONDO-namespaced candidates.
+
+**`exclude_regex: Optional[list[str]]`**
+
+Optional list of case-sensitive regex patterns (Polars/Rust dialect), mirroring the `NodeEncoding.exclude_regex` config field; any resolved CURIE matching one of the patterns is dropped. An empty or whitespace-only pattern is rejected at config-validation time because it would match every CURIE.
+
+Example: `["^CHEBI:"]` drops all CHEBI candidates.
 
 **`log: bool` (default: `True`)**
 
@@ -105,8 +119,10 @@ The function:
    - Category frequency (if `column_context=True`)
 
 3. **Filters by:**
-   - Taxon ID (if specified)
-   - Category avoidance (if specified)
+   - Taxon ID (if `taxon` specified)
+   - Category avoidance (if `avoid` specified)
+   - Excluded CURIE prefixes (if `exclude_prefixes` specified)
+   - Excluded CURIE regex patterns (if `exclude_regex` specified)
 
 4. **Retains the best ranking tier** per input string: duplicate rows for the same CURIE collapse, while distinct CURIEs tied across every ranking heuristic are returned as separate rows
 

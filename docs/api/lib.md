@@ -149,7 +149,7 @@ for row in result:
 | **Path resolution** | Resolved internally via `fullmap_db_path()` | Caller must pass the resolved redb path |
 | **Output** | `list[dict[str, Any]]` | `pl.LazyFrame` |
 | **Logging** | Uses default (`log=True`) | Configurable |
-| **Context params** | `column_context` exposed; `section_hash`, `config_file`, `tag` not exposed | Fully configurable |
+| **Context params** | `column_context` exposed; `section_hash`, `config_file`, `tag`, `exclude_prefixes`, `exclude_regex` not exposed | Fully configurable |
 | **Use case** | Standalone batch lookups, scripting, notebooks | Internal pipeline integration |
 
 `resolve_many()` is designed for ad-hoc and programmatic use: scripts, notebooks, and one-off lookups. For pipeline integration where you need full control over logging, context metadata, and lazy evaluation, use `resolve()` directly.
