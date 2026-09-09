@@ -9,6 +9,65 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import pytest
+
+
+def test_xxh64_file_matches_known_digests(tmp_path: Path) -> None:
+    """xxh64_file returns the same seed-0 digest as the in-memory primitive.
+
+    WHY: the streaming file primitive is a drop-in byte equivalent of the string
+    hash, so the pinned hello/empty digests catch any regression in seed, chunking,
+    or formatting.
+    """
+    from tablassert import rs
+
+    hello: Path = tmp_path / "hello.txt"
+    hello.write_bytes(b"hello")
+    assert rs.xxh64_file(str(hello)) == "26c7827d889f6da3"
+
+    empty: Path = tmp_path / "empty.bin"
+    empty.write_bytes(b"")
+    assert rs.xxh64_file(str(empty)) == "ef46db3751d8e999"
+
+
+def test_xxh64_file_binary_and_chunk_boundary(tmp_path: Path) -> None:
+    """Binary content and multi-chunk reads hash exactly.
+
+    WHY: chunking must preserve byte order and content (including NUL bytes and
+    non-text data), and the 8 MiB + 1 boundary exercises the streaming loop across
+    multiple reads instead of only small files. Expected digests are pinned from
+    the Python `xxhash` library (the independent oracle the Rust primitive
+    replaced, not installed in the dev env): binary=0915d8f748ad915d,
+    boundary=1a11076e494e1d0b.
+    """
+    from tablassert import rs
+
+    binary: Path = tmp_path / "binary.bin"
+    binary.write_bytes(b"\x00\xffbinary\n")
+    assert rs.xxh64_file(str(binary)) == "0915d8f748ad915d"
+
+    boundary: Path = tmp_path / "boundary.bin"
+    boundary.write_bytes(b"\x5a" * (8 * 1024 * 1024 + 1))
+    assert rs.xxh64_file(str(boundary)) == "1a11076e494e1d0b"
+
+
+def test_xxh64_file_missing_and_directory_errors(tmp_path: Path) -> None:
+    """Missing files and directories raise OSError naming the path.
+
+    WHY: the API has no sentinel digest; every I/O failure must be loud and
+    traceable to the caller-provided path.
+    """
+    from tablassert import rs
+
+    missing: Path = tmp_path / "missing.bin"
+    with pytest.raises(OSError, match=str(missing)):
+        rs.xxh64_file(str(missing))
+
+    directory: Path = tmp_path / "dir"
+    directory.mkdir()
+    with pytest.raises(OSError, match=str(directory)):
+        rs.xxh64_file(str(directory))
+
 
 def test_namespace_uuid_returns_uuid() -> None:
     """namespace_uuid returns a UUID shaped string."""
