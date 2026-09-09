@@ -289,31 +289,37 @@ def distinct(lf: pl.LazyFrame, l1: str, l2: str, col: str = "term") -> pl.LazyFr
 
 
 def deduplicate_result(result: pl.DataFrame, column_context: bool) -> pl.DataFrame:
-    """Sort and de-duplicate fullmap matches so each term keeps its best row.
+    """Sort and de-duplicate fullmap matches while retaining tied best candidates.
 
     When ``column_context`` is set, a per-category ``FREQUENCY`` column is
     attached and used as a high-priority tiebreaker (more common categories
-    first).
+    first). Lower-ranked rows are removed, but every distinct CURIE sharing a
+    term's complete best ranking tuple is retained. Repeated rows for the same
+    ``(term, CURIE)`` pair collapse to one row.
 
     Args:
         result: Joined matches with a ``CATEGORY_NAME`` column.
         column_context: Whether to compute/use the frequency tiebreaker.
 
     Returns:
-        DataFrame with one row per ``term``.
+        DataFrame with one or more best-ranked rows per ``term``, unique by
+        ``(term, CURIE)``.
     """
-    sort_by: list[str] = ["term", "PR", "NLP_LEVEL"]
+    ranking_columns: list[str] = ["term", "PR", "NLP_LEVEL"]
     descending: list[bool] = [False, False, False]
 
     if column_context:
         frequency: pl.DataFrame = result.group_by("CATEGORY_NAME").agg(pl.len().alias("FREQUENCY"))
         result = result.join(frequency, on="CATEGORY_NAME", how="left")
 
-        sort_by += ["FREQUENCY"]
+        ranking_columns += ["FREQUENCY"]
         descending += [True]
 
-    result = result.sort(sort_by, descending=descending)
-    return result.unique(subset=["term"], keep="first")
+    result = result.sort(ranking_columns, descending=descending)
+    best_tiers: pl.DataFrame = result.select(ranking_columns).unique(subset=["term"], keep="first")
+    result = result.join(best_tiers, on=ranking_columns, how="inner")
+    result = result.unique(subset=["term", "CURIE"], keep="first")
+    return result.sort([*ranking_columns, "CURIE"], descending=[*descending, False])
 
 
 def _category_values(categories: list[Any]) -> list[str]:
@@ -357,7 +363,9 @@ def filter_and_rank(
         exclude_regex: Regex patterns; any CURIE matching one is dropped.
 
     Returns:
-        Ranked matches DataFrame with one row per term.
+        Ranked matches DataFrame with one or more best-ranked rows per term,
+        retaining distinct tied CURIEs and collapsing duplicate ``(term, CURIE)``
+        rows.
     """
     # Resolve_batch reuses one shared redb fetch per column.
     if raw.height == 0:
@@ -476,8 +484,10 @@ def _coalesce_expr(col: str, suffix: str, base: str, prefix: str, cast_str: bool
 def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "_two", drop_unresolved: bool = True) -> pl.LazyFrame:
     """Join ranked fullmap matches back into ``lf`` for one column.
 
-    Coalesces level-one and level-two hits per row (level one wins when
-    present) and emits derived ``<col>_name``, ``<col>_category``,
+    A source row may expand to one output row per distinct best-ranked CURIE
+    when the fullmap ranking heuristics tie. Coalesces level-one and level-two
+    hits per row (level one wins when present) and emits derived
+    ``<col>_name``, ``<col>_category``,
     ``<col>_taxon``, ``<col>_source``, ``<col>_source_version`` and
     ``<col>_nlp_level`` columns.
 
@@ -493,8 +503,9 @@ def join_matches(lf: pl.LazyFrame, col: str, matches: pl.DataFrame, tag: str = "
             edge and the null-stripper omits the qualifier key.
 
     Returns:
-        New LazyFrame with resolved columns; rows whose ``col`` did not match
-        are dropped unless ``drop_unresolved`` is False.
+        New LazyFrame with resolved columns. Tied best-ranked CURIEs are
+        returned as separate rows; rows whose ``col`` did not match are dropped
+        unless ``drop_unresolved`` is False.
 
     Notes:
         Split out of ``resolve`` so ``resolve_batch`` can apply per-column
@@ -517,8 +528,9 @@ def _join_matches_eager(df: pl.DataFrame, col: str, matches: pl.DataFrame, tag: 
             when False the row is kept and the resolved columns stay null.
 
     Returns:
-        DataFrame with resolved columns; rows whose ``col`` did not match are
-        dropped unless ``drop_unresolved`` is False.
+        DataFrame with resolved columns. Tied best-ranked CURIEs are returned as
+        separate rows; rows whose ``col`` did not match are dropped unless
+        ``drop_unresolved`` is False.
     """
     l1: str = col
     l2: str = l1 + tag
@@ -573,8 +585,10 @@ def resolve_batch(
 
     Each column still gets its own taxon/prioritize/avoid filtering and its own
     join back into ``lf``. Taxon constraints apply to every taxon-bearing
-    match while retaining rows with no taxon metadata (TAXON_ID 0); only the
-    redb round trip itself (``rs.lookup_fullmap_terms``) is pooled across columns.
+    match while retaining rows with no taxon metadata (TAXON_ID 0); distinct
+    best-ranked CURIEs tied by all heuristics are retained as separate output
+    rows. Only the redb round trip itself (``rs.lookup_fullmap_terms``) is pooled
+    across columns.
 
     Args:
         lf: Source LazyFrame.
@@ -589,7 +603,8 @@ def resolve_batch(
             column is processed, used to drive fine-grained progress UX.
 
     Returns:
-        LazyFrame with resolved columns added.
+        LazyFrame with resolved columns added. A source row may produce one row
+        per distinct CURIE when the best ranking tier is tied.
 
     Raises:
         TablassertError: ``resolve-bad-specs`` when two specs share a column, or a
@@ -694,7 +709,8 @@ def resolve(
         tag: Suffix used to derive the level-two column name.
 
     Returns:
-        LazyFrame with resolved columns added.
+        LazyFrame with resolved columns added. A source row may produce one row
+        per distinct CURIE when the best ranking tier is tied.
     """
     return resolve_batch(
         lf,

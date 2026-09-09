@@ -66,7 +66,7 @@ Optional context fields used for operational logging when unmatched values are e
 
 **`column_context: bool` (default: `True`)**
 
-Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the query result adds a category frequency score and prefers more frequent category hits.
+Controls category-frequency tie-breaking when multiple matches exist for a term. When `True`, the query result adds a category frequency score and prefers more frequent category hits; distinct CURIEs that remain tied are all returned.
 
 **`tag: str` (default: `"_two"`)**
 
@@ -108,7 +108,7 @@ The function:
    - Taxon ID (if specified)
    - Category avoidance (if specified)
 
-4. **Deduplicates** to one CURIE per input string
+4. **Retains the best ranking tier** per input string: duplicate rows for the same CURIE collapse, while distinct CURIEs tied across every ranking heuristic are returned as separate rows
 
 ### Example Usage
 

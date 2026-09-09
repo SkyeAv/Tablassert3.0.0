@@ -225,6 +225,29 @@ def test_pr_case_insensitive_preferred() -> None:
     assert matches["PR"].to_list() == [250]
 
 
+def test_filter_and_rank_collapses_duplicate_curies_and_keeps_equal_best_curies() -> None:
+    """Only the best ranking tier survives, with one row per distinct CURIE."""
+    terms: pl.DataFrame = pl.DataFrame({"term": ["tie"], "nlp_level": [1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["tie", "tie", "tie", "tie"],
+            "CURIE": ["HGNC:1", "HGNC:1", "HGNC:2", "MONDO:1"],
+            "PREFERRED_NAME": ["Gene A", "Gene A", "Gene B", "tie"],
+            "CATEGORY_NAME": ["Gene", "Gene", "Gene", "Disease"],
+            "TAXON_ID": [9606, 9606, 9606, 0],
+            "SOURCE_NAME": ["HGNC", "HGNC", "HGNC", "MONDO"],
+            "SOURCE_VERSION": [rs.fullmap_source_version()] * 4,
+        }
+    )
+
+    matches: pl.DataFrame = filter_and_rank(raw, terms, taxon=None, prioritize=[Categories.GENE], avoid=None, column_context=False)
+
+    assert matches.height == 2
+    assert set(matches["CURIE"].to_list()) == {"HGNC:1", "HGNC:2"}
+    assert matches["PR"].to_list() == [10, 10]
+    assert "MONDO:1" not in matches["CURIE"].to_list()
+
+
 def test_resolve_level_two_fallback(fullmap_db: Path) -> None:
     """resolve falls back to NLP level two matches."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["brca 1"], "subject_two": ["brca1"]})
@@ -236,12 +259,14 @@ def test_resolve_level_two_fallback(fullmap_db: Path) -> None:
 
 
 def test_resolve_column_context_frequency(fullmap_db: Path) -> None:
-    """resolve uses column context frequency as final tie breaker."""
+    """resolve prefers the frequent category and retains its equally-ranked CURIEs."""
     source: pl.DataFrame = pl.DataFrame({"subject": ["contextual"], "subject_two": ["contextual"]})
 
-    result: dict[str, Any] = resolve(source.lazy(), "subject", fullmap_db, log=False).collect().to_dicts()[0]
+    results: list[dict[str, Any]] = resolve(source.lazy(), "subject", fullmap_db, log=False).collect().to_dicts()
 
-    assert result["subject_category"] == "biolink:Gene"
+    assert len(results) == 2
+    assert {result["subject"] for result in results} == {"HGNC:9", "HGNC:10"}
+    assert {result["subject_category"] for result in results} == {"biolink:Gene"}
 
 
 def test_resolve_converts_zero_taxon_to_null(fullmap_db: Path) -> None:
@@ -471,6 +496,29 @@ def test_join_matches_coalesces_level_one_hit(fullmap_db: Path) -> None:
     assert result["subject_name"] == "BRCA1"
     assert result["subject_category"] == "biolink:Gene"
     assert "subject_two" not in result
+
+
+def test_join_matches_retains_equal_best_curies(fullmap_db: Path) -> None:
+    """join_matches expands one source row into separate rows for tied CURIEs."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["contextual"], "subject_two": ["contextual"]}).lazy()
+    terms: pl.DataFrame = pl.DataFrame({"term": ["contextual"], "nlp_level": [1]})
+    raw: pl.DataFrame = pl.DataFrame(rs.lookup_fullmap_terms(fullmap_db, ["contextual"]))
+    matches: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, True)
+
+    results: list[dict[str, Any]] = join_matches(lf, "subject", matches).collect().to_dicts()
+
+    assert len(results) == 2
+    assert {result["subject"] for result in results} == {"HGNC:9", "HGNC:10"}
+
+
+def test_resolve_batch_retains_equal_best_curies(fullmap_db: Path) -> None:
+    """resolve_batch preserves tied CURIEs through its shared join path."""
+    lf: pl.LazyFrame = pl.DataFrame({"subject": ["contextual"], "subject_two": ["contextual"]}).lazy()
+
+    results: list[dict[str, Any]] = resolve_batch(lf, [ResolveSpec("subject")], fullmap_db, log=False).collect().to_dicts()
+
+    assert len(results) == 2
+    assert {result["subject"] for result in results} == {"HGNC:9", "HGNC:10"}
 
 
 def test_resolve_batch_matches_sequential_resolve_per_column(fullmap_db: Path) -> None:
