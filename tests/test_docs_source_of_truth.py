@@ -1924,14 +1924,22 @@ def test_llms_workflow_entry_matches_live_workflows_and_purposes() -> None:
         assert len(matches) == 1, f"GitHub Workflows entry must describe {name} exactly once; found {len(matches)}"
     extra_names: set[str] = {name for name, _ in descriptions} - live_names
     assert not extra_names, f"GitHub Workflows entry has non-live workflows: {sorted(extra_names)}"
+    live_purpose_terms: dict[str, set[str]] = {path.name: _workflow_purpose_terms(path) for path in workflows}
+    assert all(live_purpose_terms.values()), "a workflow yielded no workflow purpose terms; this guard went vacuous"
+    all_purpose_terms: set[str] = set().union(*live_purpose_terms.values())
     for path in workflows:
-        purpose_terms: set[str] = _workflow_purpose_terms(path)
-        assert purpose_terms, f"{path.name} yielded no workflow purpose terms; this guard went vacuous"
+        purpose_terms: set[str] = live_purpose_terms[path.name]
         description: str = next(purpose for name, purpose in descriptions if name == path.name)
+        description_lower: str = description.lower()
         missing: set[str] = {
-            term for term in purpose_terms if not re.search(rf"(?<![\w-]){re.escape(term)}(?:s|ed|ing)?(?![\w-])", description.lower())
+            term for term in purpose_terms if not re.search(rf"(?<![\w-]){re.escape(term)}(?:s|ed|ing)?(?![\w-])", description_lower)
         }
         assert not missing, f"GitHub Workflows entry gives {path.name} the wrong or incomplete purpose; missing {sorted(missing)}"
+        claimed: set[str] = {
+            term for term in all_purpose_terms if re.search(rf"(?<![\w-]){re.escape(term)}(?:s|ed|ing)?(?![\w-])", description_lower)
+        }
+        extra: set[str] = claimed - purpose_terms
+        assert not extra, f"GitHub Workflows entry gives {path.name} unsupported purposes; extra {sorted(extra)}"
 
 
 def _all_nav_leaf_pages(target: Any) -> list[str]:

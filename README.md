@@ -119,7 +119,7 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | `rt` | CPU-compatible Polars runtime | `pip install "tablassert[rt]"` |
 | `aria2` | bundled aria2c downloader for `build-fullmap --aria2c` (Linux/Windows wheels only) | `pip install "tablassert[aria2]"` |
 | `qc` | four-stage QC audit (exact → fuzzy → abbreviation → SapBERT embeddings) | `pip install "tablassert[qc]"` |
-| `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
+| `agent` | autonomous agent (smolagents, litellm, article/table context) | `pip install "tablassert[agent]"` |
 | `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |
 | `distill` | distillation dataset export (`tablassert distill-export`, HF `datasets`) | `pip install "tablassert[distill]"` |
 | `log` | loguru-backed file/progress logging (rotation, enqueue) | `pip install "tablassert[log]"` |
