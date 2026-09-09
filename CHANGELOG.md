@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Documentation
+- **`README.md` no longer presents a scalar `source.url` where the live schema requires a list, and its documentation index now includes the shipped Fullmap, Development, and Changelog pages.** The quick-start configuration uses the valid list form, and the navigation links now cover the corresponding site surfaces.
+- **`docs/installation.md` no longer omits the `distill` extra or blur the distinction between recording and exporting distillation data.** The extras table and preflight guidance now document `distill`, while `agent --distill` is identified as zero-additional-dependency recording and `distill-export` as the step requiring the extra.
+- **`docs/configuration/table.md` no longer omits the `exclude_prefixes` and `exclude_regex` resolution filters.** Their exact, case-sensitive matching, regex constraints, and unresolved-row behavior are now documented for subject, object, and qualifiers.
+- **`docs/api/fullmap.md` no longer omits the `exclude_prefixes` and `exclude_regex` parameters or their position in resolution.** The signatures, filtering semantics, and examples now match the live `resolve()` API.
+- **`docs/api/qc.md` no longer omits `fullmap_audit()`'s phase callback.** The `on_phase` signature, emitted phase labels, and build-progress use are now documented.
+- **`docs/api/lib.md` no longer implies that `resolve_many()` exposes the full resolution context.** Its comparison now names `exclude_prefixes` and `exclude_regex` among the parameters unavailable to the convenience API.
+- **`docs/api/utils.md` no longer calls the whole log directory a loguru sink.** It now distinguishes `log.LOGASSERT` and `.tablassert/log/` from the loguru sink file stored within that directory.
+- **`llms.txt` no longer carries stale extras, CLI, graph-field, module, workflow, or documentation indexes.** Its entries now enumerate the live commands and optional extras, current implementation surface, MkDocs pages, and the root `CHANGELOG.md` pointer.
+- **`docs/agent.md` no longer describes lower-bound dependencies as exact pins or omits the latest agent flags.** The dependency tables now quote the live requirements, and the compact reminder includes `--distill` and `--task-model` while keeping `docs/cli.md#agent` authoritative.
+- **`CONTRIBUTING.md` no longer describes stale test counts, CI sharding, hook-install behavior, or an incomplete project layout.** Its quality gates, pre-commit instructions, CI dependency set, and layout now match the live configuration and workflows.
+- **`docs/index.md` no longer omits shipped navigation surfaces.** The landing-page list now includes Fullmap, Agent, Development, and Changelog alongside the existing sections.
+- **`tests/test_docs_source_of_truth.py` now guards the corrected documentation against drift.** It derives checks from the live schemas, CLI, optional extras, source modules, workflows, MkDocs navigation, and contributor tooling instead of allowing the same mismatches to return silently.
+- **The documentation pass deliberately leaves two follow-ups rather than claiming them fixed.** The dead `errors.DOCS_URL` target and the still-undocumented coded error messages require separate remediation.
 ## 17.0.1 - 2026-09-09
 
 ### Fixed

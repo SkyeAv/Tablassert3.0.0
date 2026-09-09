@@ -68,6 +68,9 @@ src/tablassert/       Python package and CLI
 rust/src/             PyO3 Rust extension exposed as tablassert.rs
 tests/                Python tests and fixtures
 docs/                 MkDocs site
+examples/             Runnable examples (autonomous agent walkthrough)
+.github/              CI and docs workflows, issue and PR templates
+Makefile              Local task runner mirroring the stable commands
 mkdocs.yml            Documentation navigation and theme settings
 pyproject.toml        Python metadata, dependencies, pytest/ruff settings
 rust/Cargo.toml       Rust crate metadata and dependencies
@@ -100,16 +103,16 @@ What the gates cover:
 
 - **Ruff linting and formatting.** The current tree enforces core pycodestyle/pyflakes safety checks plus stale-suppression detection. It also enforces an expanded rule set covering common bug patterns (bugbear), simplifications, Python-version upgrades, pytest style, import order, and comprehensions. Treat `uv run ruff check .` and `uv run ruff format --check .` as the stable interface rather than relying on individual rule codes.
 - **Pyright.** Type checking runs through `uv run pyright`; the project is tightening this as a strict-inference ratchet over time.
-- **Python tests.** The suite is offline and runs in parallel by default via [pytest-xdist](https://pypi.org/project/pytest-xdist/) (`-n auto` in `pyproject.toml`): over 600 tests in ~20-30 seconds, reporting around 90% coverage in the default CI environment (`--extra qc`). Disable parallelism for a single serial run with `pytest -n 0`. CI runs the suite as a single job rather than sharding it across runners: roughly 21 of every 36 seconds is fixed overhead (interpreter start, imports, xdist worker spin-up, coverage init) rather than test execution, so splitting the suite costs more in per-runner setup than it recovers.
-- **Rust tests.** `cargo test --manifest-path rust/Cargo.toml` currently runs 46 Rust unit tests for the extension.
+- **Python tests.** The suite is offline and runs in parallel by default via [pytest-xdist](https://pypi.org/project/pytest-xdist/) (`-n auto` in `pyproject.toml`'s addopts, which also enable `--cov` so coverage is reported inline); expect roughly 20-30 seconds for a full local run. Disable parallelism for a single serial run with `pytest -n 0`. CI installs the `ci` dependency group with the `qc` and `log` extras (`--no-default-groups --group ci --extra qc --extra log`) and runs the suite as a single job rather than sharding it across a matrix of runners: most of a run is fixed overhead (interpreter start, imports, xdist worker spin-up, coverage init) rather than test execution, so splitting the suite would cost more in per-runner setup than it recovers.
+- **Rust tests.** `cargo test --manifest-path rust/Cargo.toml` runs the extension's Rust unit tests.
 - **Rust style and lints.** `cargo fmt --check` enforces formatting; clippy runs all targets with warnings denied.
 
 ## Pre-commit hooks
 
-Install hooks after setup. The `--install-hooks` flag matters: the config registers a **pre-push** stage as well as pre-commit, and without it only the pre-commit hooks are wired up.
+Install hooks after setup. A bare `pre-commit install` wires up both stages: the config declares `default_install_hook_types: [pre-commit, pre-push]`, so no `--hook-type` flags are needed.
 
 ```bash
-uv run pre-commit install --install-hooks
+uv run pre-commit install
 ```
 
 Hooks are split across two stages so that committing stays cheap while the checks that most often break CI still run before anything leaves your machine.
@@ -128,7 +131,7 @@ On every **push**, the whole-repo gates:
 
 The ruff hooks cover the **whole tree**, matching CI's `ruff check .`. They used to be scoped to `src/` and `tests/`, which meant `examples/` could only ever fail in CI.
 
-The full pytest suite and `cargo test` are deliberately in neither stage; they rebuild the Rust extension, and CI shards them across four runners far faster than a local serial run. Use `make check` when you want everything locally.
+The full pytest suite and `cargo test` are deliberately in neither stage: they rebuild the Rust extension, which is too slow and too stateful for a commit/push hook, and CI already runs them on every pull request -- the Python suite as a single job, deliberately not sharded across a matrix. Use `make check` when you want everything locally.
 
 ## Running subsets
 

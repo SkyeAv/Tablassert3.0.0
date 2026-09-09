@@ -20,6 +20,7 @@ def fullmap_audit(
   config_file: str,
   out: str = "passed",
   log: bool = True,
+  on_phase: Optional[Callable[[str], None]] = None,
 ) -> pl.LazyFrame
 ```
 
@@ -52,6 +53,10 @@ Rows with `out=True` passed QC, `out=False` failed.
 **`log: bool` (default: `True`)**
 
 Controls whether failed QC rows are logged.
+
+**`on_phase: Optional[Callable[[str], None]]`**
+
+Optional callback fired at the start of each QC cascade stage with exactly one of the phase labels `qc:exact`, `qc:fuzzy`, `qc:abbrev`, or `qc:sapbert` (`qc:abbrev` fires only when Stage 3 runs, and `qc:sapbert` only when Stage 4 does). `build-kg` passes one to drive per-section QC progress; `None` disables phase reporting.
 
 **`section_hash: str` / `config_file: str`**
 

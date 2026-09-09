@@ -12,7 +12,7 @@ The single parent working directory. All runtime artifacts live beneath it.
 
 Intermediate parquet storage for compiled subgraphs (`.tablassert/store/`). Created on import.
 
-The loguru sink (`.tablassert/log/tablassert.log`, `log.LOGASSERT`) and the cached SapBERT model (`.tablassert/sapbert/`, `qc.MODEL`) are likewise derived from `BASE`.
+The log directory (`log.LOGASSERT`, `.tablassert/log/`) holding the loguru sink file `.tablassert/log/tablassert.log`, and the cached SapBERT model (`.tablassert/sapbert/`, `qc.MODEL`) are likewise derived from `BASE`.
 
 ## mkhash()
 

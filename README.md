@@ -33,7 +33,7 @@ template:
   source:
     kind: text
     local: ./gene-disease.csv
-    url: https://example.com/data.csv
+    url: [https://example.com/data.csv]
     row_slice: [1, auto]
     delimiter: ","
   statement:
@@ -119,8 +119,9 @@ CSV/TSV/Excel sources; optional extras add runtime and pipeline capabilities:
 | `rt` | CPU-compatible Polars runtime | `pip install "tablassert[rt]"` |
 | `aria2` | bundled aria2c downloader for `build-fullmap --aria2c` (Linux/Windows wheels only) | `pip install "tablassert[aria2]"` |
 | `qc` | four-stage QC audit (exact → fuzzy → abbreviation → SapBERT embeddings) | `pip install "tablassert[qc]"` |
-| `agent` | autonomous agent (smolagents, litellm, PDF context) | `pip install "tablassert[agent]"` |
+| `agent` | autonomous agent (smolagents, litellm, article/table context) | `pip install "tablassert[agent]"` |
 | `optimize` | GEPA prompt optimization for `agent --optimize` (dspy) | `pip install "tablassert[optimize]"` |
+| `distill` | distillation dataset export (`tablassert distill-export`, HF `datasets`) | `pip install "tablassert[distill]"` |
 | `log` | loguru-backed file/progress logging (rotation, enqueue) | `pip install "tablassert[log]"` |
 
 QC is opt-in at build time (`build-kg --qc`). Reaching a feature whose extra is not installed never
@@ -156,9 +157,12 @@ no LazyFrame setup or NLP preprocessing required. See the
 - **[Tutorial](https://skyeav.github.io/Tablassert/tutorial/)**: step-by-step example with synthetic data
 - **[CLI Reference](https://skyeav.github.io/Tablassert/cli/)**: complete command-line flag reference
 - **[Use Case Gallery](https://skyeav.github.io/Tablassert/examples/)**: real-world configuration patterns
+- **[Fullmap](https://skyeav.github.io/Tablassert/fullmap/)**: building and querying the entity-resolution database
 - **[Configuration](https://skyeav.github.io/Tablassert/configuration/graph/)**: graph and table configuration reference
 - **[Agent](https://skyeav.github.io/Tablassert/agent/)**: the autonomous agent pipeline
 - **[API Reference](https://skyeav.github.io/Tablassert/api/fullmap/)**: core functions documentation
+- **[Development](https://skyeav.github.io/Tablassert/development/)**: dev environment setup and contributor workflow
+- **[Changelog](https://skyeav.github.io/Tablassert/changelog/)**: release history
 
 ## Developing
 

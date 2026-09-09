@@ -201,6 +201,8 @@ Defines how to extract and resolve entities.
 | `taxon` | PositiveInt | No | NCBI Taxon ID for filtering (e.g., `9606` for human) |
 | `prioritize` | List[String] | No | Preferred Biolink categories (must be valid `Categories` enum values such as `Gene`, `Protein`) |
 | `avoid` | List[String] | No | Excluded Biolink categories (must be valid `Categories` enum values) |
+| `exclude_prefixes` | List[String] | No | CURIE namespace prefixes excluded during entity resolution: the prefix is the text before the first `:` of a resolved CURIE, and every candidate whose prefix is listed is dropped. Matching is exact and case-sensitive (`OMIM` drops `OMIM:100100` but not `OMIMPS:100` or `omim:100100`). Optional; defaults to null (no prefix filtering). See [Resolution Filters](#resolution-filters). |
+| `exclude_regex` | List[String] | No | Case-sensitive regex patterns; any resolved CURIE matching one is dropped during entity resolution. Polars-compatible patterns only (no backreferences or lookarounds); an empty or whitespace-only pattern is rejected at config time (`regex-bad-pattern`) because an empty pattern would match every CURIE and silently drop all candidates. Optional; defaults to null (no regex filtering). See [Resolution Filters](#resolution-filters). |
 | `regex` | List[Regex] | No | Pattern replacements |
 | `fill` | String | No | Null-filling strategy: `"forward"`, `"backward"`, `"min"`, `"max"`, `"mean"`, `"zero"`, `"one"` |
 | `remove` | List[Int\|Float\|String] | No | Regex patterns to remove (replaced with empty string) |
@@ -297,6 +299,22 @@ subject:
 ```
 
 Prevents misclassifying organism names as genes.
+
+#### Resolution Filters
+
+**`exclude_prefixes` / `exclude_regex`** - Drop resolved CURIEs after lookup
+
+```yaml
+subject:
+  method: column
+  encoding: A
+  exclude_prefixes: [OMIM]          # Drop candidates resolving into the OMIM namespace
+  exclude_regex: ["^OMIM:\\d+$"]    # Drop resolved CURIEs matching the pattern
+```
+
+Unlike `regex` and `remove`, which rewrite the cell text before resolution, `exclude_prefixes` and `exclude_regex` filter resolved CURIEs after the lookup has run: they shrink the candidate set during entity resolution, and a cell whose candidates are all dropped is left unresolved. What an unresolved cell costs depends on the node it belongs to: an unresolved subject, object, or strict qualifier (`nullable: false`, the default) drops the row, exactly like any other resolution failure, whereas a qualifier declared `nullable: true` keeps the edge and omits the qualifier key for the row (see [Qualifiers](#qualifiers)).
+
+`exclude_prefixes` matches on the namespace prefix — the text before the first `:` of a resolved CURIE (a prefix-less CURIE counts as its own prefix) — and drops every candidate whose prefix is listed. The comparison is a membership test against the listed strings, so matching is **exact and case-sensitive**: `OMIM` drops `OMIM:100100`, but leaves both `OMIMPS:100` (a different prefix, not a prefix match) and `omim:100100` (different case) in the candidate set. `exclude_regex` drops every candidate whose CURIE matches any pattern; matching is likewise case-sensitive and unanchored (Polars `str.contains`), so `^omim:` matches nothing in `OMIM:100100` — use the casing the CURIEs actually carry, and anchor with `^`/`$` to pin a whole CURIE. The Polars/Rust regex dialect constraints documented for `regex` apply to `exclude_regex` too, and an empty or whitespace-only `exclude_regex` entry is rejected at config time with `regex-bad-pattern` because an empty pattern would match every CURIE and silently drop all candidates.
 
 #### Text Transformations
 
@@ -398,6 +416,8 @@ still emitted on resolved nodes.
 | `qualifier` | String | Yes | Biolink qualifier from the `Qualifiers` enum (e.g., `"anatomical_context_qualifier"`). Each qualifier key may be declared at most once per statement (`qualifier-duplicated`). |
 | `nullable` | Boolean | No | Default `false`. When `true`, a blank or unresolvable `method: column` cell **keeps the edge** and omits the qualifier for that row; when `false` (the default) such a row is dropped, exactly like an unresolved subject/object. Only valid with `method: column`; a literal qualifier can never be null (`qualifier-nullable-literal`). |
 | (inherits NodeEncoding) | | | All NodeEncoding fields available |
+
+A qualifier inherits the full NodeEncoding surface, so it accepts the resolution filters `exclude_prefixes` and `exclude_regex` with the same matching rules subject/object encodings use: they filter the resolved CURIEs of the qualifiers that go through entity resolution (CURIE-ranged qualifiers; enum-ranged ones pass through verbatim). What differs is the consequence when filtering removes every candidate. A strict qualifier (`nullable: false`, the default) drops the row like an unresolved subject/object, while a `nullable: true` qualifier keeps the edge and omits the qualifier key for that row. See [Resolution Filters](#resolution-filters).
 
 **Example: required qualifier (dense column, default)**
 ```yaml

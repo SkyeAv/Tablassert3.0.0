@@ -33,8 +33,12 @@ the full install matrix, extras, and development setup.
 - **[CLI Reference](cli.md)**: complete command-line flag reference
 - **[Tutorial](tutorial.md)**: step-by-step example with synthetic data
 - **[Use Case Gallery](examples.md)**: real-world configuration patterns
+- **[Fullmap](fullmap.md)**: building and querying the entity-resolution database
 - **[Configuration](configuration/graph.md)**: graph and table configuration reference
+- **[Agent](agent.md)**: the autonomous agent pipeline
 - **[API Reference](api/fullmap.md)**: core functions documentation
+- **[Development](development.md)**: dev environment setup and contributor workflow
+- **[Changelog](changelog.md)**: release history
 
 ## Authors
 
