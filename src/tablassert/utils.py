@@ -37,13 +37,17 @@ def file_content_hash(path: Path, *, config: Path | None = None, section_label: 
         raise SourceFileError(resolved, str(e), config=config, section_label=section_label) from e
 
 
-def section_store_key(section: Any, local: Path | None = None) -> str:
+def section_store_key(section: Any, local: Path | None = None, *, content_digest: str | None = None) -> str:
     """Content-addressed identity for a section's cached parquet store.
 
-    With a ``local`` source file the key mixes the section config hash with the file's
-    content digest, so editing the source file invalidates the cache; without one the
-    key is the plain section hash. Always a single 16-hex xxh64 digest.
+    With a ``local`` source file or a precomputed ``content_digest`` the key mixes the
+    section config hash with the file's content digest, so editing the source file
+    invalidates the cache; without one the key is the plain section hash. Always a
+    single 16-hex xxh64 digest. ``content_digest`` lets a caller memoize file reads
+    without changing the key formula.
     """
-    if local is None:
-        return mkhash(section)
-    return mkhash(f"{mkhash(section)}:{file_content_hash(local)}")
+    if content_digest is None:
+        if local is None:
+            return mkhash(section)
+        content_digest = file_content_hash(local)
+    return mkhash(f"{mkhash(section)}:{content_digest}")

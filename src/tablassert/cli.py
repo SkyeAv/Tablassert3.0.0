@@ -75,6 +75,44 @@ def _section_store_path(h: str, head: bool = False, release: bool = False, qc: b
     return STORE / f"{h}{suffix}.parquet"
 
 
+def _section_store_key_for_build(
+    section: dict[str, Any], configuration_file: Path, content_hashes: dict[tuple[Path, int, int], str]
+) -> tuple[str, str]:
+    """Return a section's content-aware store key and config-only fallback label.
+
+    The memo belongs to one ``build_graph_pipeline`` call and is invalidated by any
+    ``(resolved path, mtime_ns, size)`` change. Progress and validation errors use the
+    content-aware key; the returned config-only hash labels ``SourceFileError`` when
+    hashing fails before a content-aware key can exist.
+    """
+    from tablassert.utils import file_content_hash, mkhash, section_store_key
+
+    config_hash: str = mkhash(section)
+    source: object = section.get("source")
+    local: object = source.get("local") if isinstance(source, dict) else None
+    if local is None:
+        return section_store_key(section), config_hash
+
+    resolved: Path = Path(str(local)).resolve()
+    config_value: object = section.get("config", "section")
+    section_label: str = f"{Path(str(config_value)).stem} · {config_hash[:8]}"
+    digest: str | None = None
+    try:
+        stat = resolved.stat()
+    except OSError:
+        # Reuse the contextual helper so missing/unreadable paths never leak a raw OS error.
+        digest = file_content_hash(resolved, config=configuration_file, section_label=section_label)
+        return section_store_key(section, content_digest=digest), config_hash
+
+    signature: tuple[Path, int, int] = (resolved, stat.st_mtime_ns, stat.st_size)
+    if digest is None:
+        digest = content_hashes.get(signature)
+    if digest is None:
+        digest = file_content_hash(resolved, config=configuration_file, section_label=section_label)
+        content_hashes[signature] = digest
+    return section_store_key(section, content_digest=digest), config_hash
+
+
 def _load_table_indexed(args: tuple[int, Path]) -> tuple[int, object]:
     """Load one table, tagged with its input index (multiprocessing worker).
 
@@ -184,7 +222,6 @@ def build_graph_pipeline(
     from tablassert.fullmap import fullmap_db_path
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
     from tablassert.progress import flatten_pydantic_error, format_section_compact
-    from tablassert.utils import mkhash
 
     # Stage 1/6: load tables.
     progress.stage("Loading Tables")
@@ -223,8 +260,11 @@ def build_graph_pipeline(
     progress.stage("Building TCode")
     start, advance, _ = progress.section_loop(n, "TCode")
     tcode: list[Tcode] = []
+    # This memo is intentionally scoped to one build: a changed stat signature re-hashes,
+    # while repeated sections pointing to the same unchanged file hash only once.
+    content_hashes: dict[tuple[Path, int, int], str] = {}
     for s in sections:
-        h: str = mkhash(s)
+        h, _ = _section_store_key_for_build(s, configuration_file, content_hashes)
         start(f"{Path(str(s['config'])).stem} · {h[:8]}")
         # Mode flags change the cached parquet's content, so each combination caches
         # to a distinct file and can never quick-exit another mode's build.
