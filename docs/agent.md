@@ -27,18 +27,18 @@ pip install "tablassert[agent]"
 pip install "tablassert[agent,optimize]"
 ```
 
-The extra pins:
+The extra requires (lower bounds, so any newer version satisfies it):
 
-| Package | Version | Role |
+| Package | Requirement | Role |
 | --- | --- | --- |
-| `smolagents` | `==1.26.0` | `CodeAgent` ReAct loop, `OpenAIModel`/`LiteLLMModel`, tools |
-| `litellm` | (any) | optional fallback / rate-limiting model backend |
+| `smolagents` | `smolagents>=1.26.0` | `CodeAgent` ReAct loop, `OpenAIModel`/`LiteLLMModel`, tools |
+| `litellm` | `litellm>=1.93.0` | optional fallback / rate-limiting model backend |
 
-The `[optimize]` extra (only needed for `agent --optimize`) pins:
+The `[optimize]` extra (only needed for `agent --optimize`) requires (a lower bound):
 
-| Package | Version | Role |
+| Package | Requirement | Role |
 | --- | --- | --- |
-| `dspy` | `==3.2.1` | `dspy.GEPA` black-box prompt optimization |
+| `dspy` | `dspy>=3.2.1` | `dspy.GEPA` black-box prompt optimization |
 
 ## PMC-AWS data source
 
@@ -148,8 +148,8 @@ tablassert agent PMC11708054 PMC12345678 \
 The required target is `--configuration-file`/`-f`; it supplies the fullmap, graph identity, RIG,
 artifact metadata, and existing table list. Flags: `--max-steps`/`-ms`, `--min-rows`/`-mr`,
 `--map-threshold`/`-mt`, `--max-improve-iters`/`-mi`, `--state-dir`/`-sd`, `--backend {openai,litellm}`/`-b`, plus `--local`/`-l`, `--reflexion`,
-`--judge-model`, `--judge-threshold`, `--biolink-threshold`, and the `--optimize`/`-o` prompt-optimization flags
-(`--instructions-file`, `--instructions-out`, `--max-metric-calls`, `--dataset`).
+`--judge-model`, `--judge-threshold`, `--biolink-threshold`, the `--distill`/`-d`/`-dt` recording flag, and the `--optimize`/`-o` prompt-optimization flags
+(`--instructions-file`, `--instructions-out`, `--max-metric-calls`, `--dataset`, `--task-model`).
 The [CLI reference: `agent`](cli.md#agent) is the authoritative flag table; the list here is a compact
 reminder.
 
