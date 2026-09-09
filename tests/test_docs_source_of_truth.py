@@ -16,6 +16,11 @@ Every expectation is derived from live source rather than copied out of the docs
   for a table (what ``tablassert validate --schema table`` does) and ``models.Graph.model_validate``
   for a graph (what ``--schema graph`` does first).
 * The index lists are checked against the live ``mkdocs.yml`` nav and ``site_url``.
+* The configuration references (``docs/configuration/table.md`` / ``graph.md``) are checked
+  bidirectionally against the live Pydantic config models: every field row in a docs table must
+  exist on its bound model (``extra="forbid"`` makes a phantom row a config-time error the docs
+  would wrongly bless), and every live field must be documented. Field sets come from
+  ``model.model_fields`` and from the parsed tables at test time -- never from copied lists.
 """
 
 from __future__ import annotations
@@ -26,14 +31,37 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import polars as pl
 import pytest
 import yaml
+from pydantic import ValidationError
+from pydantic.fields import FieldInfo
 from yaml import CSafeLoader
 
+import tablassert.models as config_models
 from tablassert.errors import BiolinkRelocationWarning, UnpairedEffectAnnotationWarning
+from tablassert.fullmap import filter_and_rank, join_matches
 from tablassert.ingests import to_sections
 from tablassert.lib import Tcode
-from tablassert.models import Graph
+from tablassert.models import (
+    Annotation,
+    Encoding,
+    Excel,
+    Graph,
+    ManualProvenance,
+    NodeEncoding,
+    Provenance,
+    Qualifier,
+    Reindex,
+    RIGConfig,
+    RIGIngestInfo,
+    RIGProvenanceInfo,
+    RIGSourceInfo,
+    SourceOverride,
+    Statement,
+    TablaBase,
+    Text,
+)
 
 # Repository root (parent of tests/).
 ROOT: Path = Path(__file__).resolve().parent.parent
@@ -482,3 +510,630 @@ def test_readme_documentation_links_use_published_site_urls() -> None:
     assert links, "README '## Documentation' list is empty"
     broken: list[str] = [f"{text} -> {target}" for text, target in links.items() if not target.startswith(base)]
     assert not broken, f"README documentation links must be published-site URLs under {base}: {broken}"
+
+
+# --- Configuration-reference field tables (US-002) ---------------------------- #
+# The configuration references drifted once already: `NodeEncoding.exclude_prefixes` /
+# `exclude_regex` shipped in `src/tablassert/models.py` with no row in
+# `docs/configuration/table.md`, and nothing failed. These guards bind each live config model
+# to the Markdown field table(s) that document it and check BOTH directions from live source:
+# field sets are read from `model.model_fields` and parsed out of the docs tables on every
+# run, never copied, so a new model field or a new table row immediately exercises the guard.
+
+TABLE_CONFIGURATION: Path = DOCS / "configuration" / "table.md"
+GRAPH_CONFIGURATION: Path = DOCS / "configuration" / "graph.md"
+
+
+@dataclass(frozen=True)
+class ModelTableBinding:
+    """One live configuration model bound to the Markdown field table(s) that must document it.
+
+    Attributes:
+        model: Live Pydantic model from ``tablassert.models`` -- the field source of truth.
+        page: Markdown page holding the model's field table(s).
+        headings: Exact heading texts, each anchoring the FIRST Markdown table beneath it; several
+            when the reference splits a model across tables (Graph's required/optional split).
+        token_prefix: Dotted prefix the reference puts on this model's rows (``rig.`` for the RIG
+            section table), stripped before comparing against live field names.
+    """
+
+    model: type[TablaBase]
+    page: Path
+    headings: tuple[str, ...]
+    token_prefix: str = ""
+
+    @property
+    def location(self) -> str:
+        """Return a ``path#heading`` pointer for test ids and failure messages.
+
+        Returns:
+            The binding's first table location relative to the repository root.
+        """
+        return f"{self.page.relative_to(ROOT)}#{self.headings[0]}"
+
+
+CONFIG_MODEL_BINDINGS: tuple[ModelTableBinding, ...] = (
+    ModelTableBinding(Excel, TABLE_CONFIGURATION, ("Excel Source",)),
+    ModelTableBinding(Text, TABLE_CONFIGURATION, ("Text Source (CSV/TSV)",)),
+    ModelTableBinding(Reindex, TABLE_CONFIGURATION, ("Reindexing (Conditional Filtering)",)),
+    ModelTableBinding(Statement, TABLE_CONFIGURATION, ("Statement (Triple Definition)",)),
+    ModelTableBinding(NodeEncoding, TABLE_CONFIGURATION, ("NodeEncoding",)),
+    ModelTableBinding(Qualifier, TABLE_CONFIGURATION, ("Qualifiers",)),
+    ModelTableBinding(Provenance, TABLE_CONFIGURATION, ("Provenance",)),
+    ModelTableBinding(ManualProvenance, TABLE_CONFIGURATION, ("Manual provenance override",)),
+    ModelTableBinding(SourceOverride, TABLE_CONFIGURATION, ("Explicit sources template",)),
+    ModelTableBinding(Annotation, TABLE_CONFIGURATION, ("Annotations",)),
+    ModelTableBinding(Graph, GRAPH_CONFIGURATION, ("Required Fields", "Optional Fields")),
+    ModelTableBinding(RIGConfig, GRAPH_CONFIGURATION, ("The `rig:` section",), token_prefix="rig."),
+    ModelTableBinding(RIGSourceInfo, GRAPH_CONFIGURATION, ("`rig.source_info`",)),
+    ModelTableBinding(RIGIngestInfo, GRAPH_CONFIGURATION, ("`rig.ingest_info`",)),
+    ModelTableBinding(RIGProvenanceInfo, GRAPH_CONFIGURATION, ("`rig.provenance_info`",)),
+)
+# Deliberately unbound live models: every `TablaBase` subclass the reference does NOT give its own
+# field table. `TablaBase` / `BaseSource` / `Encoding` are shared bases whose fields are flattened
+# into their concrete subclasses' tables; `Regex` / `Math` / `Section` are structural shells
+# documented inline in prose; the RIG entry models are documented inside their parent table's row
+# descriptions. `test_config_model_bindings_cover_live_models` asserts this set plus the bound
+# models equals the live subclass set, so a new model forces an explicit decision: add a
+# `ModelTableBinding` above, or add its name here.
+UNBOUND_MODELS: frozenset[str] = frozenset(
+    {
+        "TablaBase",
+        "BaseSource",
+        "Encoding",
+        "Regex",
+        "Math",
+        "Section",
+        "RIGTermsOfUseInfo",
+        "RIGRelevantFile",
+        "RIGIncludedContent",
+        "RIGFilteredContent",
+        "RIGFutureContentConsideration",
+        "RIGFutureModelingConsideration",
+        "RIGSupportingDataSourceInfo",
+        "RIGTargetInfoExtras",
+    }
+)
+
+BINDINGS_BY_MODEL: dict[type[TablaBase], ModelTableBinding] = {binding.model: binding for binding in CONFIG_MODEL_BINDINGS}
+
+# Ancestors the reference deliberately flattens into ONE descendant's table instead of giving them
+# their own: `Encoding`'s fields are listed in the `NodeEncoding` table, which `Annotation`'s
+# `(inherits Encoding)` row points readers at. Coverage for such an ancestor is looked up in that
+# host table only -- never across every table -- so an inherited field can never be counted as
+# documented because an unrelated model happens to declare a field of the same name.
+FLATTENED_ANCESTOR_HOSTS: dict[type[TablaBase], type[TablaBase]] = {Encoding: NodeEncoding}
+
+# Prose splitters used by the semantics pins below. Paragraphs are separated by a blank line that may
+# carry stray whitespace, and each paragraph's own newlines are collapsed, so re-wrapping a sentence
+# cannot fail a guard. Clauses split on sentence ends and the contrastive conjunctions the reference
+# uses, which is what lets a claim be pinned to the SIDE of a contrast it belongs to (`nullable: true`
+# keeps the edge / `nullable: false` drops the row) instead of to the paragraph as a whole. `:` is
+# deliberately not a clause end -- it would split `nullable: false` itself.
+PARAGRAPH_SPLIT: re.Pattern[str] = re.compile(r"\n[^\S\n]*\n")
+CLAUSE_SPLIT: re.Pattern[str] = re.compile(r"(?<=[.;])\s+|\s+(?:whereas|while|but)\s+")
+
+FIRST_TABLE_CELL_TOKEN: re.Pattern[str] = re.compile(r"^`(?P<token>[^`]+)`")
+INHERITS_CELL: re.Pattern[str] = re.compile(r"^\(inherits\s+(?P<anchor>[A-Za-z]+)\)")
+TABLE_DIVIDER: re.Pattern[str] = re.compile(r"^\|[\s:|-]+\|$")
+
+
+@dataclass(frozen=True)
+class FieldTable:
+    """One parsed documentation field table.
+
+    Attributes:
+        header: The table's column names, in order (used to locate the ``Required`` column).
+        rows: Documented field token -> the raw Markdown table row documenting it, in table order.
+        inherits: Model names from ``(inherits X)`` rows (fields documented via the parent table).
+    """
+
+    header: tuple[str, ...]
+    rows: dict[str, str]
+    inherits: tuple[str, ...]
+
+    def cell(self: FieldTable, field: str, column: str) -> str:
+        """Return one documented field's cell under ``column``.
+
+        Args:
+            field: Documented field token.
+            column: Header column name.
+
+        Returns:
+            The stripped cell text.
+
+        Raises:
+            AssertionError: If the table has no such column or the row is too short to hold it.
+        """
+        assert column in self.header, f"table header {list(self.header)} has no {column!r} column"
+        index: int = self.header.index(column)
+        cells: list[str] = _row_cells(self.rows[field])
+        assert index < len(cells), f"row for `{field}` has no {column!r} cell: {self.rows[field]!r}"
+        return cells[index]
+
+
+def _first_table_lines(text: str, start: int, end: int) -> list[str]:
+    """Return the raw lines of the FIRST Markdown table inside ``text[start:end]``.
+
+    Args:
+        text: Full Markdown source.
+        start: Section body start offset.
+        end: Section body end offset.
+
+    Returns:
+        The table's stripped lines (header, divider, body rows); empty when the span holds none.
+    """
+    lines: list[str] = []
+    for line in text[start:end].splitlines():
+        if line.lstrip().startswith("|"):
+            lines.append(line.strip())
+        elif lines:
+            break
+    return lines
+
+
+def _row_cells(row: str) -> list[str]:
+    """Split one Markdown table row into its stripped cells.
+
+    Args:
+        row: Raw table row, leading and trailing pipes included.
+
+    Returns:
+        The cell texts between the pipes.
+    """
+    return [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+
+def _field_table(binding: ModelTableBinding, heading: str) -> FieldTable:
+    """Parse the first field table under ``heading`` into documented tokens and inherit anchors.
+
+    Args:
+        binding: Model/table binding supplying the page and any dotted token prefix.
+        heading: Exact heading text anchoring the table.
+
+    Returns:
+        The parsed table.
+
+    Raises:
+        AssertionError: If the heading anchors no table, the table is malformed, or a row's first
+            cell is neither a backticked field token nor an ``(inherits X)`` marker -- a table the
+            guard cannot read would silently stop guarding.
+    """
+    text: str = binding.page.read_text(encoding="utf-8")
+    start, end = _section_range(text, heading)
+    lines: list[str] = _first_table_lines(text, start, end)
+    where: str = f"{binding.page.relative_to(ROOT)} '{heading}'"
+    assert len(lines) >= 2, f"{where} anchors no Markdown table"
+    assert "Field" in lines[0], f"{where} table header does not name a Field column: {lines[0]!r}"
+    assert TABLE_DIVIDER.match(lines[1]), f"{where} table divider is malformed: {lines[1]!r}"
+    rows: dict[str, str] = {}
+    inherits: list[str] = []
+    for line in lines[2:]:
+        cell: str = line.split("|")[1].strip()
+        inherit: re.Match[str] | None = INHERITS_CELL.match(cell)
+        if inherit:
+            inherits.append(inherit.group("anchor"))
+            continue
+        token: re.Match[str] | None = FIRST_TABLE_CELL_TOKEN.match(cell)
+        assert token, f"{where} table row has an unreadable first cell: {cell!r}"
+        name: str = token.group("token")
+        if binding.token_prefix:
+            assert name.startswith(binding.token_prefix), f"{where} row {name!r} lacks the {binding.token_prefix!r} prefix the rest of the table uses"
+            name = name.removeprefix(binding.token_prefix)
+        rows[name] = line
+    assert rows or inherits, f"{where} table declares no fields"
+    return FieldTable(header=tuple(_row_cells(lines[0])), rows=rows, inherits=tuple(inherits))
+
+
+def _own_fields(binding: ModelTableBinding) -> tuple[dict[str, str], tuple[str, ...]]:
+    """Return the merged ``(rows, inherit anchors)`` across all of a binding's tables.
+
+    Args:
+        binding: Binding whose headings each anchor one field table.
+
+    Returns:
+        Field token -> documenting row, merged in heading order, plus the inherit anchors.
+    """
+    rows: dict[str, str] = {}
+    inherits: list[str] = []
+    for heading in binding.headings:
+        table: FieldTable = _field_table(binding, heading)
+        rows.update(table.rows)
+        inherits.extend(table.inherits)
+    return rows, tuple(inherits)
+
+
+def _live_ancestor(anchor: str, binding: ModelTableBinding) -> type[TablaBase]:
+    """Resolve an ``(inherits X)`` docs anchor to a live ancestor of the bound model.
+
+    The anchor is checked against the live MRO, so a docs table cannot claim an inheritance the
+    models do not have -- and a refactor that breaks the inheritance fails here, not silently.
+
+    Args:
+        anchor: Model name from the docs row.
+        binding: Binding whose table carries the row.
+
+    Returns:
+        The live ancestor class.
+
+    Raises:
+        AssertionError: If the anchor names no live config model or is not a live ancestor.
+    """
+    candidate: Any = getattr(config_models, anchor, None)
+    not_a_model: str = f"{binding.location} claims `(inherits {anchor})`, but {anchor!r} is not a live config model in tablassert.models"
+    assert isinstance(candidate, type), not_a_model
+    assert issubclass(candidate, TablaBase), not_a_model
+    not_an_ancestor: str = f"{binding.location} claims {binding.model.__name__} inherits {anchor}, but the live MRO disagrees"
+    assert candidate is not binding.model, not_an_ancestor
+    assert issubclass(binding.model, candidate), not_an_ancestor
+    return candidate
+
+
+def _documented_fields(binding: ModelTableBinding) -> set[str]:
+    """Return every field name the documentation covers for ``binding``'s model.
+
+    Coverage is the binding's own table rows plus, for each ``(inherits X)`` row, the ancestor's
+    documented fields: the bound ancestor's table recursively, or -- for an ancestor the reference
+    deliberately flattens into ONE host table (``Encoding`` is documented inside the ``NodeEncoding``
+    table, which ``Annotation``'s ``(inherits Encoding)`` row points readers at) -- the ancestor's
+    live fields documented in THAT host table. Coverage is never drawn from the union of every
+    table, so an inherited field cannot count as documented merely because an unrelated model's
+    table carries a row of the same name. Both sides stay live-derived: dropping a row shrinks
+    coverage and fails the inheriting model's check.
+
+    Args:
+        binding: Binding whose documented coverage is computed.
+
+    Returns:
+        Field names documented for the bound model.
+
+    Raises:
+        AssertionError: If an ``(inherits X)`` anchor resolves to an ancestor that is neither bound
+            to its own table nor registered in ``FLATTENED_ANCESTOR_HOSTS`` -- its coverage would
+            otherwise be unverifiable.
+    """
+    rows, anchors = _own_fields(binding)
+    documented: set[str] = set(rows)
+    for anchor in anchors:
+        ancestor: type[TablaBase] = _live_ancestor(anchor, binding)
+        host: type[TablaBase] = FLATTENED_ANCESTOR_HOSTS.get(ancestor, ancestor)
+        parent: ModelTableBinding | None = BINDINGS_BY_MODEL.get(host)
+        assert parent is not None, (
+            f"{binding.location} points at `(inherits {anchor})`, but {anchor} has neither its own documentation table nor an entry in "
+            "FLATTENED_ANCESTOR_HOSTS naming the table that documents its fields"
+        )
+        if parent.model is ancestor:
+            documented |= _documented_fields(parent)
+        else:
+            # Flattened ancestor: only the host table's rows count, so a same-named field
+            # elsewhere in the reference can never stand in for the missing row.
+            documented |= set(ancestor.model_fields) & set(_own_fields(parent)[0])
+    return documented
+
+
+def _paragraphs(body: str) -> list[str]:
+    """Return ``body``'s non-empty paragraphs, each with its internal whitespace collapsed.
+
+    Args:
+        body: Markdown section body.
+
+    Returns:
+        One whitespace-normalized string per paragraph, so the pins below are insensitive to how the
+        prose happens to be line-wrapped.
+    """
+    return [" ".join(block.split()) for block in PARAGRAPH_SPLIT.split(body) if block.strip()]
+
+
+def _clauses(paragraph: str) -> list[str]:
+    """Split one normalized paragraph into the clauses a claim can be attributed to.
+
+    Args:
+        paragraph: A whitespace-normalized paragraph from :func:`_paragraphs`.
+
+    Returns:
+        Sentence/contrast clauses, empties dropped.
+    """
+    return [clause.strip() for clause in CLAUSE_SPLIT.split(paragraph) if clause.strip()]
+
+
+def _nullable_join_curies(drop_unresolved: bool) -> list[str | None]:
+    """Return the resolved column the LIVE join produces for one resolvable and one unresolvable cell.
+
+    ``fullmap.join_matches``'s ``drop_unresolved`` is the single switch ``lib`` flips from
+    ``Qualifier.nullable`` (``drop_unresolved=not spec.nullable``), so running it both ways reads the
+    documented consequence -- drop the row vs keep the edge with a null qualifier column -- off the
+    shipped code instead of restating it.
+
+    Args:
+        drop_unresolved: ``True`` for strict resolution (subject/object and ``nullable: false``
+            qualifiers), ``False`` for a ``nullable: true`` qualifier.
+
+    Returns:
+        The ``subject`` column after the join, in row order.
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["resolvable", "unresolvable"], "nlp_level": [1, 1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["resolvable"],
+            "CURIE": ["HGNC:1100"],
+            "PREFERRED_NAME": ["resolvable"],
+            "CATEGORY_NAME": ["Gene"],
+            "TAXON_ID": [9606],
+            "SOURCE_NAME": ["SOURCE"],
+            "SOURCE_VERSION": ["1"],
+        }
+    )
+    matches: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, False)
+    frame: pl.DataFrame = pl.DataFrame(
+        {"subject": ["resolvable", "unresolvable"], "subject_two": [None, None]}, schema={"subject": pl.String, "subject_two": pl.String}
+    )
+    joined: pl.DataFrame = join_matches(frame.lazy(), "subject", matches, drop_unresolved=drop_unresolved).collect()
+    return joined["subject"].to_list()
+
+
+def _prefix_filtered_curies(curies: list[str], exclude_prefixes: list[str]) -> list[str]:
+    """Return the CURIEs that survive the LIVE ``exclude_prefixes`` filter, sorted.
+
+    Runs ``fullmap.filter_and_rank`` -- the one place ``exclude_prefixes`` is applied during entity
+    resolution -- over a synthetic single-term candidate set, so the documented matching semantics
+    are read off the shipped filter instead of restated.
+
+    Args:
+        curies: Candidate CURIEs for one term, all equally ranked.
+        exclude_prefixes: Prefixes to exclude, exactly as a config would declare them.
+
+    Returns:
+        Sorted surviving CURIEs.
+    """
+    terms: pl.DataFrame = pl.DataFrame({"term": ["term"], "nlp_level": [1]})
+    raw: pl.DataFrame = pl.DataFrame(
+        {
+            "term": ["term"] * len(curies),
+            "CURIE": curies,
+            "PREFERRED_NAME": ["term"] * len(curies),
+            "CATEGORY_NAME": ["Gene"] * len(curies),
+            "TAXON_ID": [9606] * len(curies),
+            "SOURCE_NAME": ["SOURCE"] * len(curies),
+            "SOURCE_VERSION": ["1"] * len(curies),
+        }
+    )
+    matches: pl.DataFrame = filter_and_rank(raw, terms, None, None, None, False, exclude_prefixes=exclude_prefixes)
+    return sorted(matches["CURIE"].to_list())
+
+
+def test_config_model_bindings_cover_live_models() -> None:
+    """Every live ``TablaBase`` subclass is either bound to a docs table or explicitly unbound.
+
+    ``CONFIG_MODEL_BINDINGS`` is hand-written, so without this guard a NEW config model could ship
+    entirely undocumented while every parametrized case below still passed -- the same silent drift
+    US-002 fixes, one level up. Live subclasses are read from ``vars(tablassert.models)`` at test
+    time, so adding a model forces an explicit decision: bind it to the table that documents it, or
+    list it in ``UNBOUND_MODELS`` with the reason it has none.
+    """
+    live: set[str] = {
+        name
+        for name, obj in vars(config_models).items()
+        if isinstance(obj, type) and issubclass(obj, TablaBase) and obj.__module__ == config_models.__name__
+    }
+    assert live, "tablassert.models exposes no TablaBase subclasses; this guard went vacuous"
+    bound: set[str] = {binding.model.__name__ for binding in CONFIG_MODEL_BINDINGS}
+    assert len(bound) == len(CONFIG_MODEL_BINDINGS), f"CONFIG_MODEL_BINDINGS binds the same model twice: {sorted(bound)}"
+    overlap: list[str] = sorted(bound & UNBOUND_MODELS)
+    assert not overlap, f"models {overlap} are both bound to a documentation table and listed in UNBOUND_MODELS; keep exactly one claim"
+    undecided: list[str] = sorted(live - bound - UNBOUND_MODELS)
+    assert not undecided, (
+        f"live config models {undecided} in src/tablassert/models.py are neither bound to a documentation field table nor listed in "
+        "UNBOUND_MODELS; add a ModelTableBinding for the table documenting each, or record there why it has none"
+    )
+    stale: list[str] = sorted((bound | UNBOUND_MODELS) - live)
+    assert not stale, f"CONFIG_MODEL_BINDINGS/UNBOUND_MODELS still name {stale}, which are no longer live in src/tablassert/models.py"
+
+
+@pytest.mark.parametrize("binding", CONFIG_MODEL_BINDINGS, ids=lambda binding: binding.model.__name__)
+def test_config_model_fields_match_live_models(binding: ModelTableBinding) -> None:
+    """Every documented field of a config model exists on the live model, and vice versa.
+
+    US-002: ``exclude_prefixes`` / ``exclude_regex`` shipped on ``NodeEncoding`` (and, by
+    inheritance, ``Qualifier``) with no row in the table configuration reference, and nothing
+    failed. Both directions matter: a documented-but-dead field is a config-time error
+    (``extra="forbid"``) the docs would bless, and a live-but-undocumented field is a feature
+    readers cannot discover. Graph-side models are bound too, so the graph reference is pinned
+    against the same drift even though it is currently green.
+
+    Args:
+        binding: One live config model bound to its documentation field table(s).
+    """
+    rows, _ = _own_fields(binding)
+    live: set[str] = set(binding.model.model_fields)
+    phantom: list[str] = sorted(set(rows) - live)
+    assert not phantom, (
+        f"{binding.location} documents {phantom} for {binding.model.__name__}, but the live model has no such field "
+        '(extra="forbid" rejects it at config time); remove the row(s) or restore the field(s)'
+    )
+    undocumented: list[str] = sorted(live - _documented_fields(binding))
+    assert not undocumented, (
+        f"{binding.model.__name__} fields {undocumented} are live in src/tablassert/models.py but undocumented in "
+        f"{binding.location}; add a row (or an `(inherits ...)` marker for inherited fields)"
+    )
+
+
+def test_exclude_filters_docs_match_live_semantics() -> None:
+    """The exclude-filter documentation carries the live models' semantics, not just the names.
+
+    A row that names ``exclude_regex`` but misstates its behavior is the same drift class as the
+    missing rows US-002 fixes, so the distinguishing claims are pinned against LIVE facts: the
+    field descriptions on ``NodeEncoding.model_fields``, the error code and rationale the live
+    validator actually raises for an empty or invalid pattern (reproduced here by triggering
+    them, not copied), and the live ``Qualifier`` -> ``NodeEncoding`` inheritance.
+    """
+    binding: ModelTableBinding = BINDINGS_BY_MODEL[NodeEncoding]
+    table: FieldTable = _field_table(binding, "NodeEncoding")
+    rows: dict[str, str] = table.rows
+    text: str = binding.page.read_text(encoding="utf-8")
+    start, end = _section_range(text, "NodeEncoding")
+    section: str = text[start:end]
+    # The prose subsection, scoped WITHOUT the field table above it, so a claim required of the
+    # narrative cannot be satisfied by the same words sitting in a table row (and vice versa).
+    fstart, fend = _section_range(text, "Resolution Filters")
+    filters_section: str = text[fstart:fend]
+    assert "| `exclude_prefixes`" not in filters_section, (
+        f"{binding.location} 'Resolution Filters' scope now contains the NodeEncoding field table; the prose pins below would go vacuous"
+    )
+
+    # The guarded field set itself is discovered from the live model, so a third `exclude_*`
+    # field would extend this guard automatically (and an empty set fails loudly below).
+    exclude_fields: list[str] = [name for name in NodeEncoding.model_fields if name.startswith("exclude_")]
+    assert exclude_fields, "NodeEncoding no longer declares any `exclude_*` field; this guard went vacuous"
+
+    # Every live exclude field has a row, and `avoid` plus the exclude filters appear in the same
+    # relative order the model declares them -- the reference lists the resolution filters where
+    # the models declare them, immediately after `avoid`.
+    expected_order: list[str] = [name for name in NodeEncoding.model_fields if name == "avoid" or name in exclude_fields]
+    documented_order: list[str] = [token for token in rows if token in expected_order]
+    assert documented_order == expected_order, (
+        f"{binding.location} must carry a row for each of {expected_order}, in that relative order (the live declaration order of "
+        f"`avoid` and the exclude filters); found {documented_order}"
+    )
+
+    # Optionality is read off the live model, not the prose: every exclude filter is optional with
+    # default None, so its `Required` cell must say No and its row must state the null default.
+    for field in expected_order:
+        live_field: FieldInfo = NodeEncoding.model_fields[field]
+        assert not live_field.is_required(), f"live `{field}` is now required; the {binding.location} `Required` column must be re-derived"
+        assert live_field.default is None, f"live `{field}` default is {live_field.default!r}, not None; re-derive this guard's default claim"
+        required_cell: str = table.cell(field, "Required")
+        assert required_cell == "No", f"{binding.location} `{field}` row marks Required={required_cell!r}, but the live field is optional"
+    for field in exclude_fields:
+        assert "defaults to null" in rows[field].lower(), (
+            f"{binding.location} `{field}` row must state that it is optional and defaults to null (live default None); row: {rows[field]!r}"
+        )
+
+    # The rows carry the same semantics the live field descriptions carry; each anchor phrase is
+    # checked against the live description FIRST, so a live semantics change fails here too.
+    semantic_anchors: dict[str, str] = {"exclude_prefixes": "before the first", "exclude_regex": "case-sensitive"}
+    assert set(semantic_anchors) <= set(exclude_fields), (
+        f"live exclude fields {exclude_fields} no longer include {sorted(semantic_anchors)}; re-derive this guard's anchors"
+    )
+    for field, anchor in semantic_anchors.items():
+        description: str = str(NodeEncoding.model_fields[field].description).lower()
+        assert anchor in description, f"live `{field}` description no longer carries {anchor!r}; re-derive this guard's anchors"
+        assert anchor in rows[field].lower(), f"{binding.location} `{field}` row must carry the live semantics ({anchor!r}); row: {rows[field]!r}"
+
+    # Empty-pattern rejection: the docs must cite the same code and rationale the live validator
+    # raises (reproduced live: a whitespace-only pattern would match EVERY CURIE and silently
+    # drop all resolution candidates -- data loss discovered hours into a build).
+    with pytest.raises(ValidationError) as exc_info:
+        NodeEncoding(encoding="x", exclude_regex=["  "])  # pyright: ignore[reportCallIssue]
+    live_message: str = str(exc_info.value)
+    assert "regex-bad-pattern" in live_message, f"live whitespace-only `exclude_regex` no longer raises `regex-bad-pattern`: {live_message}"
+    assert "regex-bad-pattern" in section, f"{binding.location} must name the `regex-bad-pattern` code the live validator raises"
+    for phrase in ("empty pattern", "every CURIE"):
+        assert phrase in live_message, f"live empty-pattern error no longer explains {phrase!r}; re-derive this guard"
+        assert phrase in section, f"{binding.location} must explain the empty-pattern rejection ({phrase!r})"
+
+    # The Polars/Rust regex dialect caveat that holds for `regex` holds for `exclude_regex` too:
+    # the live validator probes patterns through polars, and the docs row must say so.
+    with pytest.raises(ValidationError) as exc_info_bad:
+        NodeEncoding(encoding="x", exclude_regex=["("])  # pyright: ignore[reportCallIssue]
+    bad_pattern_message: str = str(exc_info_bad.value)
+    assert "polars-compatible" in bad_pattern_message, (
+        f"live `exclude_regex` no longer rejects an uncompilable pattern as polars-compatible-only: {bad_pattern_message}"
+    )
+    assert "polars" in rows["exclude_regex"].lower(), f"{binding.location} `exclude_regex` row must carry the Polars/Rust dialect caveat"
+
+    # Prefix matching is a membership test against the listed strings (`fullmap.filter_and_rank`
+    # uses `is_in`), so it is exact and case-sensitive -- neither a longer prefix nor a differently
+    # cased one is dropped. Pinned by running the live filter, then requiring the prose to say so.
+    surviving: list[str] = _prefix_filtered_curies(["OMIM:100100", "OMIMPS:100", "omim:100100", "HGNC:1100"], ["OMIM"])
+    assert surviving == ["HGNC:1100", "OMIMPS:100", "omim:100100"], (
+        f"live `exclude_prefixes` matching is no longer exact and case-sensitive (survivors: {surviving}); re-derive this guard"
+    )
+    # Required INDEPENDENTLY in both places a reader can land: the field-table row (what a reader
+    # scanning the reference sees) and the Resolution Filters prose (scoped above to exclude that
+    # table). Deleting the claim from either location fails.
+    case_claim: str = "exact and case-sensitive"
+    assert case_claim in rows["exclude_prefixes"].lower(), (
+        f"{binding.location} `exclude_prefixes` row must state that matching is {case_claim} (live `is_in` on the prefix string); "
+        f"row: {rows['exclude_prefixes']!r}"
+    )
+    assert case_claim in filters_section.lower(), (
+        f"{binding.location} 'Resolution Filters' prose must state that `exclude_prefixes` matching is {case_claim} "
+        "(live `is_in` on the prefix string); the field-table row alone does not satisfy this"
+    )
+
+    # The contrast with the pre-resolution rewrites is what makes the fields discoverable as
+    # resolution filters rather than text transformations.
+    for phrase in ("rewrite the cell text before resolution", "filter resolved curies after"):
+        assert phrase in section.lower(), f"{binding.location} must state the contrast ({phrase!r})"
+
+    # Qualifiers inherit NodeEncoding live, so they expose both filters; the Qualifiers section
+    # must say so explicitly.
+    assert issubclass(Qualifier, NodeEncoding), "Qualifier no longer inherits NodeEncoding; re-derive this guard"
+    qstart, qend = _section_range(text, "Qualifiers")
+    qualifier_section: str = text[qstart:qend]
+    for field in exclude_fields:
+        assert f"`{field}`" in qualifier_section, (
+            f"{TABLE_CONFIGURATION.relative_to(ROOT)} 'Qualifiers' must state that qualifiers inherit NodeEncoding and expose `{field}`"
+        )
+
+    # A qualifier does NOT behave exactly like subject/object: `nullable` is a live Qualifier-only
+    # field, and `lib._node_ops` forwards it into the ResolveSpec that keeps the edge instead of
+    # dropping the row. Both sections must carry that exception with each half of the contrast
+    # attached to the right side of it -- merely mentioning the word `nullable` in the paragraph
+    # would bless a claim as wrong as "`nullable: true` drops the row".
+    stale_nullable: str = "`nullable` is no longer the Qualifier-only field that makes filtered-away qualifiers keep the edge; re-derive this guard"
+    assert "nullable" in Qualifier.model_fields, stale_nullable
+    assert "nullable" not in NodeEncoding.model_fields, stale_nullable
+    live_default: Any = Qualifier.model_fields["nullable"].default
+    assert live_default is False, (
+        f"live `Qualifier.nullable` default is {live_default!r}, not False; the docs' `nullable: false` default claim must be re-derived"
+    )
+    live_nullable_description: str = str(Qualifier.model_fields["nullable"].description).lower()
+    for phrase in ("keeps the edge", "omits the qualifier"):
+        assert phrase in live_nullable_description, f"live `Qualifier.nullable` description no longer says {phrase!r}; re-derive this guard's anchors"
+
+    # The consequence itself is read off the live join rather than the description: `lib` passes
+    # `drop_unresolved=not spec.nullable`, so strict resolution drops the unresolvable row while a
+    # nullable one keeps it with a null column (which the null-stripper turns into an omitted key).
+    strict_rows: list[str | None] = _nullable_join_curies(drop_unresolved=True)
+    nullable_rows: list[str | None] = _nullable_join_curies(drop_unresolved=False)
+    assert strict_rows == ["HGNC:1100"], f"live strict resolution no longer drops the unresolvable row (got {strict_rows}); re-derive this guard"
+    assert nullable_rows == ["HGNC:1100", None], (
+        f"live `nullable` resolution no longer keeps the unresolvable row with a null value (got {nullable_rows}); re-derive this guard"
+    )
+
+    strict_claim: str = "nullable: false"
+    nullable_claim: str = "nullable: true"
+    for scope, body in (("Resolution Filters", filters_section), ("Qualifiers", qualifier_section)):
+        # Scoped to the paragraph that actually states the drop-the-row consequence AND names both
+        # sides of the `nullable` contrast; an unrelated `nullable` mention must not satisfy this.
+        consequence: list[str] = [
+            para for para in _paragraphs(body) if "drops the row" in para.lower() and strict_claim in para.lower() and nullable_claim in para.lower()
+        ]
+        assert consequence, (
+            f"{TABLE_CONFIGURATION.relative_to(ROOT)} {scope!r} must state what a fully filtered-away candidate set costs in one paragraph that "
+            f"names both sides of the live contrast: a strict qualifier ({strict_claim!r}, the live default) 'drops the row', while a "
+            f"{nullable_claim!r} qualifier 'keeps the edge' and 'omits the qualifier key'"
+        )
+        for para in consequence:
+            clauses: list[str] = _clauses(para.lower())
+            strict_clauses: list[str] = [clause for clause in clauses if strict_claim in clause]
+            nullable_clauses: list[str] = [clause for clause in clauses if nullable_claim in clause]
+            where: str = f"{TABLE_CONFIGURATION.relative_to(ROOT)} {scope!r}"
+            assert any("drops the row" in clause for clause in strict_clauses), (
+                f"{where} must say that a strict qualifier ({strict_claim!r}, the live default) 'drops the row', like an unresolved "
+                f"subject/object; no such clause found in: {para!r}"
+            )
+            assert not any("keeps the edge" in clause for clause in strict_clauses), (
+                f"{where} attaches 'keeps the edge' to {strict_claim!r}, but the live join drops the unresolved row when nullable is False; "
+                f"paragraph: {para!r}"
+            )
+            for anchor in ("keeps the edge", "omits the qualifier key"):
+                assert any(anchor in clause for clause in nullable_clauses), (
+                    f"{where} must say that a {nullable_claim!r} qualifier {anchor!r} (live: the row survives with a null qualifier column); "
+                    f"no such clause found in: {para!r}"
+                )
+            assert not any("drops the row" in clause for clause in nullable_clauses), (
+                f"{where} attaches 'drops the row' to {nullable_claim!r}, but the live join KEEPS that row (the qualifier key is omitted "
+                f"instead); paragraph: {para!r}"
+            )
