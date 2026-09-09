@@ -1039,6 +1039,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#file_content_hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        file_content_hash()
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#section_store_key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        section_store_key()
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#namespace_uuid-rust-extension-tablassertrs" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1312,6 +1334,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#file_content_hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        file_content_hash()
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#section_store_key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        section_store_key()
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#namespace_uuid-rust-extension-tablassertrs" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1498,18 +1542,39 @@
 <p>Generates an <strong>xxh64</strong> digest (hex string, 16 characters) for arbitrary input, computed by the Rust extension (<code>tablassert.rs.xxh64</code>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">mkhash</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span>
 </code></pre></div>
-<p>The input is converted to a string and UTF-8 encoded before hashing. The digest is the content-addressed identity for sections: the per-section parquet store filename (<code>{hash}.parquet</code> in <code>.tablassert/store/</code>) and the section label in validation errors derive from it. User-facing progress labels truncate it to 8 characters for display.</p>
+<p>The input is converted to a string and UTF-8 encoded before hashing. <code>mkhash</code> is a general-purpose digest for arbitrary values, including section configuration; it is not itself a source-file hash. The build pipeline uses the section's <code>mkhash</code> value as one component of the build-time store key described below. Configuration-only validation uses this digest without reading source files; build-time progress and section-validation errors use the content-aware key, while source-file hashing errors retain the configuration digest as a fallback label. User-facing progress labels truncate the relevant key to 8 characters for display.</p>
 <p>The full 64-bit digest is used deliberately: a 32-bit hash would invite birthday collisions (~50% at ~77k sections) that could silently reuse another section's cached subgraph.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tablassert.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">mkhash</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">mkhash</span><span class="p">(</span><span class="s2">&quot;hello&quot;</span><span class="p">)</span>  <span class="c1"># &quot;26c7827d889f6da3&quot;</span>
 </code></pre></div>
 <p><strong>Deterministic:</strong> the same input always produces the same digest.</p>
+<h2 id="file_content_hash">file_content_hash()<a class="headerlink" href="#file_content_hash" title="Permanent link">&para;</a></h2>
+<p>Generates an <strong>xxh64</strong> digest of a local source file's raw bytes. It resolves the path and raises <code>SourceFileError</code> if the path does not exist, is not a regular file, or cannot be read.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">file_content_hash</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">config</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">section_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span>
+</code></pre></div>
+<p>This helper does not cache the digest. An edited source file therefore produces a different digest and, in a build, a different section store key. <code>config</code> and <code>section_label</code> are optional context included in a source-file error when available.</p>
+<h2 id="section_store_key">section_store_key()<a class="headerlink" href="#section_store_key" title="Permanent link">&para;</a></h2>
+<p>Returns the build-time content-aware store key for a section's cached parquet.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">section_store_key</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">section</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">local</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">content_digest</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span>
+</code></pre></div>
+<p>For a section with a local source, the key combines the section configuration digest with the source content digest and hashes the result into one 16-character xxh64 value. Callers may provide a precomputed <code>content_digest</code> to avoid rereading the file; otherwise <code>local</code> is passed to <code>file_content_hash</code>. If neither is provided, the function returns the section's plain <code>mkhash</code> value. The build pipeline uses the content-aware form for local sources, so changing one source invalidates the cached parquet for each section that reads it without invalidating sections backed by unchanged sources.</p>
+<p>The key formula is <code>mkhash(f"{mkhash(section)}:{content_digest}")</code>. Build-mode flags add their own filename suffixes (<code>.head</code>, <code>.release</code>, or <code>.qc</code>) after the key; they do not change the digest formula.</p>
 <hr />
 <h2 id="namespace_uuid-rust-extension-tablassertrs">namespace_uuid()  <em>(Rust extension: <code>tablassert.rs</code>)</em><a class="headerlink" href="#namespace_uuid-rust-extension-tablassertrs" title="Permanent link">&para;</a></h2>
 <p>Generates deterministic UUIDs for KGX edge identifiers using UUID v3 (MD5-based namespacing). Provided by the Rust extension, not <code>tablassert.utils</code>.</p>
 <h3 id="function-signature">Function Signature<a class="headerlink" href="#function-signature" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">namespace_uuid</span><span class="p">(</span><span class="n">domain</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">namespace_uuid</span><span class="p">(</span><span class="n">domain</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span>
 </code></pre></div>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
 <p><strong><code>domain: str</code></strong></p>
@@ -1520,11 +1585,11 @@
 <p>Returns a string representation of a UUID v3: <code>"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"</code>.</p>
 <h3 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
 <p><strong>Step 1:</strong> Create the domain namespace from the nil UUID:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">domain_uuid</span> <span class="o">=</span> <span class="n">uuid3</span><span class="p">(</span><span class="n">UUID</span><span class="p">(</span><span class="s2">&quot;00000000-0000-0000-0000-000000000000&quot;</span><span class="p">),</span> <span class="n">domain</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">domain_uuid</span> <span class="o">=</span> <span class="n">uuid3</span><span class="p">(</span><span class="n">UUID</span><span class="p">(</span><span class="s2">&quot;00000000-0000-0000-0000-000000000000&quot;</span><span class="p">),</span> <span class="n">domain</span><span class="p">)</span>
 </code></pre></div>
 <p><strong>Step 2:</strong> Length-prefix each value and hash the concatenation within that namespace:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">joined</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">values</span><span class="p">)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid3</span><span class="p">(</span><span class="n">domain_uuid</span><span class="p">,</span> <span class="n">joined</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">joined</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">values</span><span class="p">)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid3</span><span class="p">(</span><span class="n">domain_uuid</span><span class="p">,</span> <span class="n">joined</span><span class="p">))</span>
 </code></pre></div>
 <p>The length prefix is what makes the encoding <strong>injective</strong>. A plain separator join is ambiguous
 whenever a value contains the separator: <code>["a", "x\tb", "y"]</code> and <code>["a", "x", "b", "y"]</code> both join
@@ -1539,8 +1604,8 @@ Rust deduper (<code>dedup_ndjson</code>) as each edge is written, from the recor
 <code>p_value</code>, a new <code>supporting_text</code> entry, a reordered source row, or a Biolink release that renames
 a slot all mint a brand-new id, and downstream consumers see a new edge rather than an updated one.</p>
 <p>A graph config can instead declare which fields constitute edge <em>identity</em>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># graph.yaml</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">uuid_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">subject</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">predicate</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">object</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">publications</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">has_supporting_studies</span><span class="p p-Indicator">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># graph.yaml</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nt">uuid_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">subject</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">predicate</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">object</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">publications</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">has_supporting_studies</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>Only those fields then feed the hash, so attribute-only changes leave the id alone. See
 <a href="../../configuration/graph/#stable-edge-ids">Graph Configuration</a> for how to choose a field set.</p>

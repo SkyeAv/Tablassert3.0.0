@@ -1793,8 +1793,11 @@ so they never contend), while smaller batches stay serial. There is no flag to t
 identical at any worker count.</p>
 <p>Output is written to <code>rig.artifact_base_path</code> (created when missing) as <code>{name}_{version}.nodes.ndjson</code>,
 <code>{name}_{version}.edges.ndjson</code>, and <code>{name}_{version}.RIG.yaml</code>; intermediate parquet lands in
-<code>.tablassert/store/</code>. The RIG document is audited in memory before it is written: an invalid
-or incomplete RIG fails the build with <code>[rig-validation-failed]</code> and nothing is emitted. See
+<code>.tablassert/store/</code>. Build-time store keys incorporate the source-file content, so editing a source
+file rebuilds exactly the sections that read the changed content. The first build after this key-format
+upgrade rebuilds every section once because the keys have changed; orphaned old parquet files are not
+automatically deleted. The RIG document is audited in memory before it is written: an invalid or
+incomplete RIG fails the build with <code>[rig-validation-failed]</code> and nothing is emitted. See
 <a href="../configuration/graph/">Graph Configuration</a>.</p>
 <details class="info">
 <summary>Build progress &amp; stages</summary>
