@@ -42,6 +42,7 @@ import tomllib
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -52,12 +53,15 @@ from pydantic import ValidationError
 from pydantic.fields import FieldInfo
 from yaml import CSafeLoader
 
+import tablassert.biolink as biolink_api
+import tablassert.enums as enums_api
 import tablassert.fullmap as fullmap_api
 import tablassert.lib as lib_api
 import tablassert.log as log_module
 import tablassert.models as config_models
 import tablassert.qc as qc_api
 import tablassert.utils as utils_module
+from tablassert.cli import APP
 from tablassert.errors import BiolinkRelocationWarning, UnpairedEffectAnnotationWarning
 from tablassert.fullmap import filter_and_rank, join_matches
 from tablassert.ingests import to_sections
@@ -1745,3 +1749,227 @@ def test_installation_extra_package_sets_match_pyproject_requirements() -> None:
                     f"{INSTALLATION.relative_to(ROOT)} `[{extra}]` documents requirement `{token}`, but {PYPROJECT.name} declares "
                     f"{requirements}; re-sync the version specifier"
                 )
+
+
+# --- LLM index source-of-truth guards (US-005) ------------------------ #
+# llms.txt is intentionally terse, but it is still an index of shipped surfaces. These guards
+# derive the expected module, command, workflow, Graph-field, Biolink, and MkDocs-nav sets from
+# live files at test time so a new surface cannot silently disappear from the index.
+
+
+def _llms_text() -> str:
+    """Return the generated-model index source."""
+    return LLMS_TXT.read_text(encoding="utf-8")
+
+
+def _llms_links() -> list[tuple[str, str]]:
+    """Return every Markdown link in llms.txt as ``(label, target)`` pairs."""
+    return [(match.group(1), match.group(2)) for match in MARKDOWN_LINK.finditer(_llms_text())]
+
+
+def _llms_targets() -> set[str]:
+    """Return link targets in llms.txt, preserving relative paths and dropping URL fragments."""
+    return {target.split("#", 1)[0] for _, target in _llms_links()}
+
+
+def test_llms_relative_link_targets_exist() -> None:
+    """Every relative llms.txt link resolves to a checked-in file or directory."""
+    missing: list[str] = []
+    for _, target in _llms_links():
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        path = ROOT / target.split("#", 1)[0]
+        if not path.exists():
+            missing.append(target)
+    assert not missing, f"llms.txt has missing relative link targets: {missing}"
+
+
+def test_llms_indexes_every_live_python_module_and_rust_extension() -> None:
+    """Every public Python module and the canonical compiled Rust stub are indexed by path."""
+    targets: set[str] = _llms_targets()
+    modules: list[Path] = sorted(path for path in SRC_TABLASSERT.rglob("*.py") if path.name == "__init__.py" or not path.stem.startswith("_"))
+    assert modules, f"{SRC_TABLASSERT} contains no public Python modules; this guard went vacuous"
+    missing: list[str] = [str(path.relative_to(ROOT)) for path in modules if str(path.relative_to(ROOT)) not in targets]
+    assert not missing, f"llms.txt omits live Python modules: {missing}"
+    rust_stub: str = str(RS_STUB.relative_to(ROOT))
+    assert rust_stub in targets, f"llms.txt must reference the canonical Rust extension stub {rust_stub}"
+
+
+def _llms_entry_body(label: str) -> str:
+    """Return the body of the unique root-relative index entry with ``label``."""
+    pattern = re.compile(rf"^-\s*\[{re.escape(label)}\]\([^)]*\):\s*(?P<body>.*)$", re.MULTILINE)
+    found: list[str] = [match.group("body") for match in pattern.finditer(_llms_text())]
+    assert len(found) == 1, f"llms.txt must contain exactly one [{label}] entry; found {len(found)}"
+    return found[0]
+
+
+def _llms_unique_entry_body(label: str, target: str) -> str:
+    """Return the body of the unique index entry identified by label and target."""
+    pattern = re.compile(rf"^-\s*\[{re.escape(label)}\]\({re.escape(target)}\):\s*(?P<body>.*)$", re.MULTILINE)
+    found: list[str] = [match.group("body") for match in pattern.finditer(_llms_text())]
+    assert len(found) == 1, f"llms.txt must contain exactly one [{label}] entry for {target}; found {len(found)}"
+    return found[0]
+
+
+def test_llms_enums_and_biolink_entries_follow_live_symbols() -> None:
+    """The enum entries distinguish Tablassert-owned and Biolink-derived vocabularies."""
+    enum_entry: str = _llms_entry_body("Enums Catalog")
+    live_enums: set[str] = {
+        name for name, obj in vars(enums_api).items() if inspect.isclass(obj) and issubclass(obj, Enum) and obj.__module__ == enums_api.__name__
+    }
+    assert live_enums, "tablassert.enums exposes no live Enum classes; this guard went vacuous"
+    documented_enums: set[str] = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", enum_entry))
+    assert documented_enums == live_enums, f"Enums Catalog symbols {sorted(documented_enums)} differ from live vocabularies {sorted(live_enums)}"
+    live_biolink_enums: set[str] = {
+        name for name, obj in vars(biolink_api).items() if inspect.isclass(obj) and issubclass(obj, Enum) and name in biolink_api.__all__
+    }
+    biolink_surface: set[str] = live_biolink_enums | {"ALLOWED_EDGE_FIELDS", "validate_kgx"}
+    biolink_entry: str = _llms_entry_body("Biolink Vocabulary")
+    documented_biolink: set[str] = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", biolink_entry))
+    assert documented_biolink == biolink_surface, (
+        f"Biolink Vocabulary symbols {sorted(documented_biolink)} differ from live surface {sorted(biolink_surface)}"
+    )
+    biolink_in_enums: set[str] = live_biolink_enums & documented_enums
+    assert not biolink_in_enums, "Enums Catalog names Biolink-owned vocabularies"
+
+
+def test_llms_graph_entry_matches_live_fields() -> None:
+    """The Graph entry names only the live required/optional fields, never retired description."""
+    entry: str = _llms_entry_body("Graph Configuration Reference")
+    required: set[str] = {name for name, field in Graph.model_fields.items() if field.is_required()}
+    optional: set[str] = set(Graph.model_fields) - required
+    assert required
+    assert optional
+    documented: set[str] = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", entry))
+    assert documented == required | optional, f"Graph entry fields {sorted(documented)} differ from live fields {sorted(required | optional)}"
+    assert "description" not in documented, "Graph entry still presents retired description as a graph field"
+
+
+def test_llms_cli_entry_matches_live_commands() -> None:
+    """The CLI index lists exactly the live commands and app-level version flags."""
+    entry: str = _llms_unique_entry_body("CLI Reference", "docs/cli.md")
+    commands: set[str] = {name for name in APP.resolved_commands() if not name.startswith("-")}
+    assert commands, "live CLI exposes no commands; this guard went vacuous"
+    assert all(re.search(rf"(?<![\w-]){re.escape(command)}(?![\w-])", entry) for command in commands), (
+        f"CLI entry omits live commands: {sorted(commands)}"
+    )
+    version_flags: tuple[str, ...] = tuple(APP.version_flags)
+    assert version_flags, "live CLI exposes no app-level version flags; this guard went vacuous"
+    assert all(re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", entry) for flag in version_flags), (
+        f"CLI entry omits app-level version flags: {sorted(version_flags)}"
+    )
+    documented: list[str] = re.findall(r"`([^`]+)`", entry)
+    assert len(documented) == len(commands) + len(version_flags), "CLI entry has stale or duplicate command/version tokens"
+    assert set(documented) == commands | set(version_flags), f"CLI entry tokens {sorted(documented)} differ from live CLI surface"
+
+
+def _workflow_purpose_terms(path: Path) -> set[str]:
+    """Derive reader-facing purpose terms from one workflow's jobs, steps, and actions."""
+    workflow: Any = yaml.load(path.read_text(encoding="utf-8"), Loader=CSafeLoader)
+    assert isinstance(workflow, dict), f"{path.name} has no parseable workflow"
+    jobs: Any = workflow.get("jobs")
+    assert isinstance(jobs, dict), f"{path.name} has no parseable jobs"
+    job_text: str = " ".join(
+        str(value)
+        for job in jobs.values()
+        if isinstance(job, dict)
+        for value in [
+            job.get("name", ""),
+            job.get("run", ""),
+            job.get("uses", ""),
+            *[
+                field
+                for step in job.get("steps", [])
+                if isinstance(step, dict)
+                for field in (step.get("name", ""), step.get("run", ""), step.get("uses", ""))
+            ],
+        ]
+    ).lower()
+    signals: dict[str, tuple[str, ...]] = {
+        "lint": ("lint", "ruff"),
+        "format": ("format",),
+        "type": ("type", "pyright"),
+        "test": ("test", "pytest"),
+        "rust": ("rust", "cargo"),
+        "mkdocs": ("mkdocs",),
+        "deploy": ("deploy", "gh-pages"),
+        "pypi": ("pypi",),
+        "sdist": ("sdist",),
+        "wheel": ("wheel",),
+        "tag": ("tag", "git tag"),
+        "version": ("version",),
+    }
+    return {term for term, markers in signals.items() if any(marker in job_text for marker in markers)}
+
+
+def test_llms_workflow_entry_matches_live_workflows_and_purposes() -> None:
+    """Each workflow filename is paired with purpose terms derived from its own jobs and steps."""
+    entry: str = _llms_entry_body("GitHub Workflows")
+    workflow_dir: Path = ROOT / ".github" / "workflows"
+    workflows: list[Path] = sorted(path for path in workflow_dir.iterdir() if path.is_file() and path.suffix in {".yml", ".yaml"})
+    assert workflows, "no GitHub workflows found; this guard went vacuous"
+    assert "docker" not in entry.lower(), "GitHub Workflows entry mentions retired Docker automation"
+    descriptions: list[tuple[str, str]] = [
+        (match.group("name"), match.group("purpose")) for match in re.finditer(r"`(?P<name>[^`]+\.ya?ml)`\s+(?P<purpose>.*?)(?=;\s*`|$)", entry)
+    ]
+    live_names: set[str] = {path.name for path in workflows}
+    for name in sorted(live_names):
+        matches: list[str] = [purpose for description_name, purpose in descriptions if description_name == name]
+        assert len(matches) == 1, f"GitHub Workflows entry must describe {name} exactly once; found {len(matches)}"
+    extra_names: set[str] = {name for name, _ in descriptions} - live_names
+    assert not extra_names, f"GitHub Workflows entry has non-live workflows: {sorted(extra_names)}"
+    for path in workflows:
+        purpose_terms: set[str] = _workflow_purpose_terms(path)
+        assert purpose_terms, f"{path.name} yielded no workflow purpose terms; this guard went vacuous"
+        description: str = next(purpose for name, purpose in descriptions if name == path.name)
+        missing: set[str] = {
+            term for term in purpose_terms if not re.search(rf"(?<![\w-]){re.escape(term)}(?:s|ed|ing)?(?![\w-])", description.lower())
+        }
+        assert not missing, f"GitHub Workflows entry gives {path.name} the wrong or incomplete purpose; missing {sorted(missing)}"
+
+
+def _all_nav_leaf_pages(target: Any) -> list[str]:
+    """Flatten a live MkDocs nav target into docs-relative leaf pages."""
+    if isinstance(target, str):
+        return [target]
+    if isinstance(target, list):
+        pages: list[str] = []
+        for child in target:
+            pages.extend(_all_nav_leaf_pages(next(iter(child.values())) if isinstance(child, dict) else child))
+        return pages
+    return []
+
+
+def test_llms_indexes_every_mkdocs_page_and_changelog_pointer() -> None:
+    """Every MkDocs leaf page is indexed, except docs/changelog.md via root CHANGELOG.md."""
+    nav: Any = _mkdocs()["nav"]
+    pages: list[str] = [_page for item in nav for target in item.values() for _page in _all_nav_leaf_pages(target)]
+    targets: set[str] = _llms_targets()
+    assert pages, "mkdocs.yml nav has no leaf pages; this guard went vacuous"
+    for page in pages:
+        if page == "changelog.md":
+            assert "CHANGELOG.md" in targets, "llms.txt must represent docs/changelog.md with the root CHANGELOG.md pointer"
+        else:
+            expected: str = f"docs/{page}"
+            assert expected in targets, f"llms.txt omits MkDocs nav page {expected}"
+    assert "docs/agent.md" in targets, "llms.txt must index docs/agent.md"
+    assert "examples/agent/README.md" in targets, "llms.txt must index examples/agent/README.md"
+
+
+def test_llms_preserves_authority_and_migration_notes() -> None:
+    """The authority, datassert migration, and redb co-location notes remain exact."""
+    text: str = _llms_text()
+    assert "When source code and prose docs disagree, treat `src/tablassert/models.py` and `src/tablassert/cli.py` as the current authority." in text
+    assert (
+        "If you encounter older configurations, migrate `datassert:` to `fullmap:` (the graph-config field pointing at the entity-resolution database)."
+        in text
+    )
+    assert (
+        "Current CLI behavior queries an embedded redb database whose primary file is `fullmap/data/fullmap.redb`; its sibling RECORDS shard files (`fullmap.s*.redb`, in the same directory) are required for lookup and must stay co-located with it."
+        in text
+    )
+
+
+def test_llms_contains_no_retired_config_labels() -> None:
+    """Tutorial indexing does not carry the retired TC<n>/GC<n> labels."""
+    assert re.search(r"\b(?:TC|GC)\d+\b", _llms_text()) is None
