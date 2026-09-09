@@ -3469,7 +3469,7 @@ wheels = [
 
 [[package]]
 name = "tablassert"
-version = "17.0.0"
+version = "17.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "biolink-model" },
