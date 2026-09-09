@@ -63,6 +63,33 @@ def test_utime_only_touch_keeps_store_filename(tmp_path: Path) -> None:
     assert _key(_section(source), tmp_path, memo) == first
 
 
+def test_stat_change_rehashes_shared_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A changed stat signature causes the per-build memo to read the file again.
+
+    WHY: the memo is an intra-build optimization, not a correctness cache; a source
+    replaced during a build must not keep using a digest associated with stale metadata.
+    """
+    source: Path = tmp_path / "data.tsv"
+    source.write_bytes(b"same bytes")
+    import tablassert.utils
+
+    real_hash = tablassert.utils.file_content_hash
+    calls: list[Path] = []
+
+    def counted_hash(path: Path, **kwargs: Any) -> str:
+        calls.append(path)
+        return real_hash(path, **kwargs)
+
+    monkeypatch.setattr(tablassert.utils, "file_content_hash", counted_hash)
+    memo: dict[tuple[Path, int, int], str] = {}
+    first: str = _key(_section(source), tmp_path, memo)
+    stat = source.stat()
+    os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    second: str = _key(_section(source), tmp_path, memo)
+    assert first == second
+    assert calls == [source.resolve(), source.resolve()]
+
+
 def test_config_only_change_rekeys(tmp_path: Path) -> None:
     """Changing section configuration rekeys even when the source bytes are shared.
 
