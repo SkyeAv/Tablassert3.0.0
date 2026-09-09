@@ -1426,7 +1426,7 @@
 <p><strong><code>section_hash: Optional[str]</code> / <code>config_file: Optional[str]</code></strong></p>
 <p>Optional context fields used for operational logging when unmatched values are encountered.</p>
 <p><strong><code>column_context: bool</code> (default: <code>True</code>)</strong></p>
-<p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the query result adds a category frequency score and prefers more frequent category hits.</p>
+<p>Controls category-frequency tie-breaking when multiple matches exist for a term. When <code>True</code>, the query result adds a category frequency score and prefers more frequent category hits; distinct CURIEs that remain tied are all returned.</p>
 <p><strong><code>tag: str</code> (default: <code>"_two"</code>)</strong></p>
 <p>Suffix appended to <code>col</code> to locate the <code>level_two</code> output column.</p>
 <p><code>resolve()</code> expects the LazyFrame to already have two NLP columns applied upstream:
@@ -1504,7 +1504,7 @@
 <p>Category avoidance (if specified)</p>
 </li>
 <li>
-<p><strong>Deduplicates</strong> to one CURIE per input string</p>
+<p><strong>Retains the best ranking tier</strong> per input string: duplicate rows for the same CURIE collapse, while distinct CURIEs tied across every ranking heuristic are returned as separate rows</p>
 </li>
 </ol>
 <h3 id="example-usage">Example Usage<a class="headerlink" href="#example-usage" title="Permanent link">&para;</a></h3>
