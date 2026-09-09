@@ -12,6 +12,7 @@ TablassertErrorCodes = Literal[
     "graph-validation-failed",
     "section-validation-failed",
     "babel-download-failed",
+    "source-file-unreadable",
     "resolve-bad-specs",
     "config-rows-and-row-slice-conflict",
     "comparison-bad-comparator-type",
@@ -185,3 +186,24 @@ class BabelDownloadError(TablassertError):
             f"BABEL download failed after {retries} attempts: {url} (last error: {last_error}). Check network connectivity or pin a different BABEL version.",
             code="babel-download-failed",
         )
+
+
+class SourceFileError(TablassertError):
+    """A table section's ``source.local`` file could not be read for content-hashing.
+
+    Notes:
+        ``config`` and ``section_label`` are optional keyword context: the utils layer
+        that first notices the failure often lacks build context, but callers that have
+        it (the CLI's section loop) should pass them so the message names the exact
+        table config and section label (config stem + 8-char section digest).
+    """
+
+    def __init__(self, path: Path, detail: str, *, config: Path | None = None, section_label: str | None = None) -> None:
+        context: str = ""
+        if config is not None and section_label is not None:
+            context = f" (config {config}, section {section_label})"
+        elif config is not None:
+            context = f" (config {config})"
+        elif section_label is not None:
+            context = f" (section {section_label})"
+        super().__init__(f"Source file unreadable{context}: {path} — {detail}", code="source-file-unreadable")

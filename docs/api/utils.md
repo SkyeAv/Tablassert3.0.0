@@ -22,7 +22,7 @@ Generates an **xxh64** digest (hex string, 16 characters) for arbitrary input, c
 def mkhash(x: Any) -> str
 ```
 
-The input is converted to a string and UTF-8 encoded before hashing. The digest is the content-addressed identity for sections: the per-section parquet store filename (`{hash}.parquet` in `.tablassert/store/`) and the section label in validation errors derive from it. User-facing progress labels truncate it to 8 characters for display.
+The input is converted to a string and UTF-8 encoded before hashing. `mkhash` is a general-purpose digest for arbitrary values, including section configuration; it is not itself a source-file hash. The build pipeline uses the section's `mkhash` value as one component of the build-time store key described below. Configuration-only validation uses this digest without reading source files; build-time progress and section-validation errors use the content-aware key, while source-file hashing errors retain the configuration digest as a fallback label. User-facing progress labels truncate the relevant key to 8 characters for display.
 
 The full 64-bit digest is used deliberately: a 32-bit hash would invite birthday collisions (~50% at ~77k sections) that could silently reuse another section's cached subgraph.
 
@@ -33,6 +33,38 @@ mkhash("hello")  # "26c7827d889f6da3"
 ```
 
 **Deterministic:** the same input always produces the same digest.
+
+## file_content_hash()
+
+Generates an **xxh64** digest of a local source file's raw bytes. It resolves the path and raises `SourceFileError` if the path does not exist, is not a regular file, or cannot be read.
+
+```python
+def file_content_hash(
+    path: Path,
+    *,
+    config: Path | None = None,
+    section_label: str | None = None,
+) -> str
+```
+
+This helper does not cache the digest. An edited source file therefore produces a different digest and, in a build, a different section store key. `config` and `section_label` are optional context included in a source-file error when available.
+
+## section_store_key()
+
+Returns the build-time content-aware store key for a section's cached parquet.
+
+```python
+def section_store_key(
+    section: Any,
+    local: Path | None = None,
+    *,
+    content_digest: str | None = None,
+) -> str
+```
+
+For a section with a local source, the key combines the section configuration digest with the source content digest and hashes the result into one 16-character xxh64 value. Callers may provide a precomputed `content_digest` to avoid rereading the file; otherwise `local` is passed to `file_content_hash`. If neither is provided, the function returns the section's plain `mkhash` value. The build pipeline uses the content-aware form for local sources, so changing one source invalidates the cached parquet for each section that reads it without invalidating sections backed by unchanged sources.
+
+The key formula is `mkhash(f"{mkhash(section)}:{content_digest}")`. Build-mode flags add their own filename suffixes (`.head`, `.release`, or `.qc`) after the key; they do not change the digest formula.
 
 ---
 
