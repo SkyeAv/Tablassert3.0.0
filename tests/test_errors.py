@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tablassert.errors import DOCS_URL, BabelDownloadError, GraphValidationError, QcRuntimeMissingError, SectionValidationError
+from tablassert.errors import DOCS_URL, BabelDownloadError, GraphValidationError, QcRuntimeMissingError, SectionValidationError, SourceFileError
 
 
 def test_qc_runtime_missing_error_code_and_docs_url() -> None:
@@ -47,3 +47,31 @@ def test_babel_download_error_code_and_docs_url() -> None:
     err: BabelDownloadError = BabelDownloadError("https://stars.renci.org/var/babel_outputs/x.gz", 5, RuntimeError("network down"))
     assert err.code == "babel-download-failed"
     assert str(err).endswith(DOCS_URL + "babel-download-failed")
+
+
+def test_source_file_error_carries_config_section_and_path() -> None:
+    """Guard: an unreadable source file names the config, the section, and the path.
+
+    The `source-file-unreadable` code plus docs URL tells a user which section's
+    ``source.local`` could not be hashed, and the message must carry the table config
+    path, the section label, and the offending path so they can find it without a
+    debugger.
+    """
+    err: SourceFileError = SourceFileError(Path("/data/missing.csv"), "no such file", config=Path("table.yaml"), section_label="table · 0123abcd")
+    assert err.code == "source-file-unreadable"
+    assert str(err).endswith(DOCS_URL + "source-file-unreadable")
+    assert "table.yaml" in str(err)
+    assert "table · 0123abcd" in str(err)
+    assert "/data/missing.csv" in str(err)
+
+
+def test_source_file_error_without_build_context() -> None:
+    """Guard: the error is still informative when raised without build context.
+
+    The utils layer that first notices the failure often lacks the config path and
+    section label; the message must still name the offending path and the OS detail.
+    """
+    err: SourceFileError = SourceFileError(Path("orphan.csv"), "permission denied")
+    assert err.code == "source-file-unreadable"
+    assert "orphan.csv" in str(err)
+    assert "permission denied" in str(err)
