@@ -185,8 +185,11 @@ identical at any worker count.
 
 Output is written to `rig.artifact_base_path` (created when missing) as `{name}_{version}.nodes.ndjson`,
 `{name}_{version}.edges.ndjson`, and `{name}_{version}.RIG.yaml`; intermediate parquet lands in
-`.tablassert/store/`. The RIG document is audited in memory before it is written: an invalid
-or incomplete RIG fails the build with `[rig-validation-failed]` and nothing is emitted. See
+`.tablassert/store/`. Build-time store keys incorporate the source-file content, so editing a source
+file rebuilds exactly the sections that read the changed content. The first build after this key-format
+upgrade rebuilds every section once because the keys have changed; orphaned old parquet files are not
+automatically deleted. The RIG document is audited in memory before it is written: an invalid or
+incomplete RIG fails the build with `[rig-validation-failed]` and nothing is emitted. See
 [Graph Configuration](configuration/graph.md).
 
 ??? info "Build progress & stages"
