@@ -172,7 +172,6 @@ The positional `GRAPH-CONFIGURATION-FILE` (also `--configuration-file`, `-f`) is
 | `--qc`, `-q` | Flag | No | `False` | Audit resolved mappings (exact → fuzzy → abbreviation → SapBERT) so low-confidence edges are flagged; requires the `[qc]` extra, checked before the build starts. Also runs a final study stage that asserts over the emitted NDJSON: no duplicate node ids, every node has a non-empty `id` and `name`, every edge has a non-empty `subject`, `predicate`, and `object`, no undeclared or isolated nodes, no malformed lines, no null or empty values in any field (checked recursively), and no stray whitespace (verbatim `original_*` fields excepted from the whitespace check, since they are faithful source copies) and fails the build (non-zero exit) on any violation |
 | `--log`, `-l` | Flag | No | `False` | Enable verbose per-section logging |
 | `--head`, `-hd` | Flag | No | `False` | Fast output-shape preview: ≤5 random rows/section, cached to `.head.parquet`, never clobbers a full build |
-| `--no-original`, `-no` | Flag | No | `False` | Omit the verbatim source-cell copies (`original_subject`, `original_object`, and any other `original_*` fields) from the final edge NDJSON |
 
 ```bash
 tablassert build-kg graph.yaml --qc --log

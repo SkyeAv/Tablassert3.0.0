@@ -233,13 +233,20 @@ def _merge_records(stored: dict[str, Any], incoming: dict[str, Any]) -> int:
     List fields union by canonical bytes and sort ONLY when both sides carry an array
     (a list copied from a later record keeps its order); stored-side duplicates survive,
     incoming-side ones collapse. Scalars are first-wins, each difference counts one
-    conflict; a field only on `incoming` is copied, not a conflict. `id` is untouched.
+    conflict, except non-empty `original_*` strings, which are deduplicated and rendered
+    in sorted `A`, `A|B`, or `A|B|C` form. A field only on `incoming` is copied, not a
+    conflict. `id` is untouched.
     `number_of_cases` is recomputed to the union length of `supporting_case_ids` when the
     merged record carries the carrier list and either side carried a count, and that
     superseded divergence is decremented out of the conflict total (both sides present,
     unequal, not both arrays -- the exact mirror of the rust loop condition).
     """
     conflicts = 0
+    original_values: dict[str, set[str]] = {}
+    for record in (stored, incoming):
+        for key, value in record.items():
+            if key.startswith("original_") and isinstance(value, str):
+                original_values.setdefault(key, set()).update(part for part in value.split("|") if part)
     stored_cases: Any = stored.get("number_of_cases", _MISSING)
     incoming_cases: Any = incoming.get("number_of_cases", _MISSING)
     for key, incoming_value in incoming.items():
@@ -257,8 +264,14 @@ def _merge_records(stored: dict[str, Any], incoming: dict[str, Any]) -> int:
                     seen.append(item_bytes)
                     stored_value.append(item)
             stored_value.sort(key=_canonical_json_bytes)
+        elif key.startswith("original_") and isinstance(stored_value, str) and isinstance(incoming_value, str):
+            pass
         elif stored_value != incoming_value:
             conflicts += 1
+    for key, values in original_values.items():
+        if values:
+            ordered = sorted(values, key=lambda value: value.encode("utf-8"))
+            stored[key] = "|".join(ordered)
     union = stored.get("supporting_case_ids")
     if isinstance(union, list) and (stored_cases is not _MISSING or incoming_cases is not _MISSING):
         if (

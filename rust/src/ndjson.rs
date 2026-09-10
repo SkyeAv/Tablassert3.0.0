@@ -208,6 +208,34 @@ struct MergeIndex {
     scalar_conflicts: u64,
 }
 
+type OriginalValues = FxHashMap<String, FxHashSet<String>>;
+
+fn collect_original_values(value: &Value) -> OriginalValues {
+    let mut values: OriginalValues = FxHashMap::default();
+    let Some(map) = value.as_object() else {
+        return values;
+    };
+    for (key, value) in map {
+        if key.starts_with("original_") {
+            if let Value::String(text) = value {
+                for part in text.split('|').filter(|part| !part.is_empty()) {
+                    values
+                        .entry(key.clone())
+                        .or_default()
+                        .insert(part.to_string());
+                }
+            }
+        }
+    }
+    values
+}
+
+fn format_original_values(values: &FxHashSet<String>) -> String {
+    let mut sorted: Vec<&str> = values.iter().map(String::as_str).collect();
+    sorted.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+    sorted.join("|")
+}
+
 /// The canonical bytes of one list item, shared by every structure that needs them.
 ///
 /// ONE heap allocation per distinct item instead of one per consumer: `Rc<T>`'s `Hash`,
@@ -281,6 +309,8 @@ struct MergedRecord {
     hashes: FxHashSet<u64>,
     /// Union state for every field whose current value is an array.
     lists: FxHashMap<String, ListState>,
+    /// Distinct non-empty scalar source values for each `original_*` field.
+    original_values: OriginalValues,
 }
 
 impl MergedRecord {
@@ -298,6 +328,7 @@ impl MergedRecord {
         let mut hashes: FxHashSet<u64> = FxHashSet::default();
         hashes.insert(content);
         Ok(Self {
+            original_values: collect_original_values(&value),
             value,
             hashes,
             lists,
@@ -312,6 +343,11 @@ impl MergedRecord {
         let Some(map) = self.value.as_object_mut() else {
             return Err(runtime_error("expected JSON object"));
         };
+        for (key, values) in &self.original_values {
+            if !values.is_empty() {
+                map.insert(key.clone(), Value::String(format_original_values(values)));
+            }
+        }
         for (key, state) in &mut self.lists {
             if !state.unioned {
                 continue;
@@ -362,7 +398,9 @@ impl MergedRecord {
 ///   checked against the field's `ListState` set in O(1); stored items are never
 ///   re-canonicalized, and the sort by canonical bytes is deferred to write-out
 ///   (`MergedRecord::finish`), where it runs only for fields that saw a real union;
-/// - scalar fields: first-wins on conflict, counted;
+/// - scalar fields: first-wins on conflict, counted, except `original_*` fields;
+/// - `original_*` fields collect distinct non-empty strings and render sorted values as
+///   `A`, `A|B`, or `A|B|C`;
 /// - fields only on `incoming`: copied over (only a conflict when both sides disagree);
 /// - `id` is never touched: both sides carry the same one by construction.
 ///
@@ -399,6 +437,15 @@ fn merge_records(stored: &mut MergedRecord, incoming: &Value) -> PyResult<u64> {
                     stored
                         .lists
                         .insert(key.clone(), ListState::from_items(items)?);
+                } else if key.starts_with("original_") {
+                    if let Value::String(text) = incoming_value {
+                        let values = stored.original_values.entry(key.clone()).or_default();
+                        values.extend(
+                            text.split('|')
+                                .filter(|part| !part.is_empty())
+                                .map(str::to_owned),
+                        );
+                    }
                 }
                 stored_map.insert(key.clone(), incoming_value.clone());
             }
@@ -421,6 +468,26 @@ fn merge_records(stored: &mut MergedRecord, incoming: &Value) -> PyResult<u64> {
                             state.bytes.push(bytes);
                             stored_items.push(item.clone());
                         }
+                    }
+                } else if key.starts_with("original_") {
+                    if let (Value::String(stored_text), Value::String(incoming_text)) =
+                        (&*stored_value, incoming_value)
+                    {
+                        let values = stored.original_values.entry(key.clone()).or_default();
+                        values.extend(
+                            stored_text
+                                .split('|')
+                                .filter(|part| !part.is_empty())
+                                .map(str::to_owned),
+                        );
+                        values.extend(
+                            incoming_text
+                                .split('|')
+                                .filter(|part| !part.is_empty())
+                                .map(str::to_owned),
+                        );
+                    } else if stored_value != incoming_value {
+                        conflicts += 1;
                     }
                 } else if stored_value != incoming_value {
                     conflicts += 1;
@@ -529,6 +596,10 @@ fn merge_records_reference(stored: &mut Value, incoming: &Value) -> PyResult<u64
         return Err(runtime_error("expected JSON object"));
     };
     let mut conflicts: u64 = 0;
+    let mut original_values: OriginalValues = collect_original_values(stored);
+    for (key, values) in collect_original_values(incoming) {
+        original_values.entry(key).or_default().extend(values);
+    }
     // Read both counts BEFORE the fold: the fold may copy incoming's over a stored side
     // that lacks it, and the recompute rule below needs to know each side contributed one.
     let stored_cases: Option<Value> = stored.get("number_of_cases").cloned();
@@ -565,9 +636,18 @@ fn merge_records_reference(stored: &mut Value, incoming: &Value) -> PyResult<u64
                     }
                     keyed.sort_by(|left, right| left.0.cmp(&right.0));
                     stored_items.extend(keyed.into_iter().map(|(_, item)| item));
+                } else if key.starts_with("original_") {
+                    // Aggregated and rendered after this fold, once all values are known.
                 } else if stored_value != incoming_value {
                     conflicts += 1;
                 }
+            }
+        }
+    }
+    if let Some(map) = stored.as_object_mut() {
+        for (key, values) in &original_values {
+            if !values.is_empty() {
+                map.insert(key.clone(), Value::String(format_original_values(values)));
             }
         }
     }
@@ -759,8 +839,9 @@ pub fn dedup_ndjson(
 
 #[cfg(test)]
 mod tests {
-    use super::{dedup_ndjson, differing_keys, record_if_new};
+    use super::{dedup_ndjson, differing_keys, format_original_values, record_if_new};
     use rustc_hash::FxHashMap;
+    use rustc_hash::FxHashSet;
     use serde_json::Value;
     use std::fs;
     use tempfile::tempdir;
@@ -1463,6 +1544,82 @@ mod tests {
         );
         assert_eq!(sources[0]["resource_id"], serde_json::json!("infores:a"));
         assert_eq!(sources[1]["resource_id"], serde_json::json!("infores:b"));
+    }
+
+    #[test]
+    fn format_original_values_uses_sorted_pipe_joining() {
+        let empty: FxHashSet<String> = FxHashSet::default();
+        assert_eq!(format_original_values(&empty), "");
+
+        let one = FxHashSet::from_iter([String::from("only")]);
+        assert_eq!(format_original_values(&one), "only");
+
+        let two = FxHashSet::from_iter([String::from("z"), String::from("a")]);
+        assert_eq!(format_original_values(&two), "a|z");
+
+        let three = FxHashSet::from_iter([String::from("z"), String::from("a"), String::from("m")]);
+        assert_eq!(format_original_values(&three), "a|m|z");
+    }
+
+    #[test]
+    fn merge_mode_aggregates_original_scalars_across_all_records() {
+        let dir = tempdir().expect("tempdir");
+        let (input, output) = write_edges(
+            dir.path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"z\",\"original_object\":\"\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"a\",\"original_object\":\"x\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"m\",\"original_object\":\"y\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"a\",\"original_object\":\"x\"}\n"
+            ),
+        );
+        let (merged, conflicts) = dedup_ndjson(
+            input,
+            output.clone(),
+            true,
+            None,
+            spo_fields(),
+            Some("merge".to_string()),
+        )
+        .expect("merge dedup");
+
+        assert_eq!((merged, conflicts), (2, 0));
+        let edge = merged_edge(&output);
+        assert_eq!(edge["original_subject"], serde_json::json!("a|m|z"));
+        assert_eq!(edge["original_object"], serde_json::json!("x|y"));
+    }
+
+    #[test]
+    fn merge_mode_ignores_empty_originals_and_is_order_independent() {
+        let write = |dir: &std::path::Path, rows: &str| {
+            let (input, output) = write_edges(dir, rows);
+            dedup_ndjson(
+                input,
+                output.clone(),
+                true,
+                None,
+                spo_fields(),
+                Some("merge".to_string()),
+            )
+            .expect("merge dedup");
+            merged_edge(&output)["original_subject"].clone()
+        };
+        let first = write(
+            tempdir().expect("tempdir").path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"only\"}\n"
+            ),
+        );
+        let second = write(
+            tempdir().expect("tempdir").path(),
+            concat!(
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"only\"}\n",
+                "{\"subject\":\"A\",\"predicate\":\"r\",\"object\":\"B\",\"original_subject\":\"\"}\n"
+            ),
+        );
+        assert_eq!(first, serde_json::json!("only"));
+        assert_eq!(first, second);
     }
 
     #[test]

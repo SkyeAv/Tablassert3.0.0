@@ -1592,7 +1592,9 @@ def dedup_stream(p_in: Path, is_edges: bool, domain: str = "TABLASSERT", uuid_fi
         uuid_fields: Optional edge fields that constitute edge identity
             (``Graph.uuid_fields``). ``None`` hashes the whole record.
         on_collision: ``error`` aborts on two different edges deriving one id;
-            ``merge`` folds them into one edge (``Graph.uuid_on_collision``).
+            ``merge`` folds them into one edge (``Graph.uuid_on_collision``). During a merge,
+            distinct non-empty scalar ``original_*`` fields are sorted and rendered as
+            ``A``, ``A|B``, or ``A|B|C``.
 
     Notes:
         Also adds UUIDs to edges. Edges deduplicate on their derived id, so the
@@ -1714,11 +1716,7 @@ def fold_unknown_to_supporting_text(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _collect_subframes(
-    subgraphs: list[Path],
-    on_phase: Callable[[str], None] | None = None,
-    on_subgraph: Callable[[], None] | None = None,
-    infores_id: str | None = None,
-    no_original: bool = False,
+    subgraphs: list[Path], on_phase: Callable[[str], None] | None = None, on_subgraph: Callable[[], None] | None = None, infores_id: str | None = None
 ) -> tuple[list[pl.LazyFrame], list[pl.LazyFrame]]:
     """Scan and normalize subgraph parquets into node/edge subframes.
 
@@ -1733,8 +1731,6 @@ def _collect_subframes(
         on_subgraph: Optional callback fired once after each subgraph is
             processed, used to tick the progress bar.
         infores_id: Graph-level infores CURIE recorded as node ``provided_by``.
-        no_original: When True, also drop the verbatim ``original_*``
-            source-cell copies from the final edge frames.
 
     Returns:
         Tuple of ``(subnodes, subedges)``: per-section node and edge
@@ -1759,9 +1755,6 @@ def _collect_subframes(
             subnodes.append(partial)
         # Drop internal pre-resolution snapshot columns from final edges.
         lf = lf.drop([c for c in lf.collect_schema().names() if c.endswith("_pre_resolution")])
-        # --no-original: drop the verbatim source-cell copies from final edges too.
-        if no_original:
-            lf = lf.drop([c for c in lf.collect_schema().names() if c.startswith("original_")])
         lf = fold_unknown_to_supporting_text(lf)
         subedges.append(lf)
         if on_subgraph is not None:
@@ -1853,7 +1846,6 @@ def compile_graph(
     section_sources: list[dict[str, object]] | None = None,
     on_phase: Callable[[str], None] | None = None,
     on_subgraph: Callable[[], None] | None = None,
-    no_original: bool = False,
     uuid_fields: list[str] | None = None,
     uuid_domain: str | None = None,
     uuid_on_collision: str = "error",
@@ -1875,8 +1867,6 @@ def compile_graph(
             ``write-edges`` / ``dedup`` / ``rig``), used to drive progress UX.
         on_subgraph: Optional callback fired once per processed subgraph,
             used to tick the progress bar.
-        no_original: When ``True``, omit the verbatim ``original_*``
-            source-cell copies from the final edge NDJSON.
         uuid_fields: Optional edge fields that constitute edge identity
             (``Graph.uuid_fields``). ``None`` hashes the whole edge record, so any
             change to any field re-mints the id.
@@ -1916,7 +1906,7 @@ def compile_graph(
 
     subnodes: list[pl.LazyFrame]
     subedges: list[pl.LazyFrame]
-    subnodes, subedges = _collect_subframes(subgraphs, on_phase, on_subgraph, rig_cfg.source_info.infores_id, no_original)
+    subnodes, subedges = _collect_subframes(subgraphs, on_phase, on_subgraph, rig_cfg.source_info.infores_id)
     _write_ndjson(subnodes, subedges, n, e, name, version, rig_cfg, section_sources, on_phase, domain, uuid_fields, uuid_on_collision)
 
 

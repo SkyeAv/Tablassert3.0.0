@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Changed
+- **Original source values are always retained and collision-merged deterministically.** `original_*` edge fields now combine distinct values using sorted `A`, `A|B`, or `A|B|C` formatting; the deprecated `build-kg --no-original` option and API parameters were removed.
+
 ### Documentation
 - **`README.md` no longer presents a scalar `source.url` where the live schema requires a list, and its documentation index now includes the shipped Fullmap, Development, and Changelog pages.** The quick-start configuration uses the valid list form, and the navigation links now cover the corresponding site surfaces.
 - **`docs/installation.md` no longer omits the `distill` extra or blur the distinction between recording and exporting distillation data.** The extras table and preflight guidance now document `distill`, while `agent --distill` is identified as zero-additional-dependency recording and `distill-export` as the step requiring the extra.
@@ -132,7 +135,6 @@ All notable changes to this project are documented in this file.
 ### Added
 - **Release mode drops `applied_to_treat` edges with a `number_of_cases` below 25.** The release pipeline already shed non-significant rows and zero effect sizes, but a treatment edge backed by a single-digit cohort still shipped beside them, because nothing checked how many cases stood behind the association. The new `drop_low_number_of_cases` filter closes that gap: it is wired into `Tcode` op construction gated on `--release` *and* `statement.predicate == "applied_to_treat"`, so other predicates never see it; null case counts are kept (no count was detected, not a small one); sections without a `number_of_cases` column are untouched; and like the other release filters it runs in the `significance` phase before `resolve_batch`, so dropped rows never pay for entity resolution. Non-release builds are unchanged. ([#123](https://github.com/SkyeAv/Tablassert/pull/123))
 
-- **`build-kg --no-original` omits the verbatim source-cell copies from final edges.** The final edge NDJSON carried `original_subject`, `original_object`, and any other `original_*` columns — faithful copies of the raw source cells — with no way to ship a graph without them. The new `--no-original` / `-no` flag drops every `original_*` field from the emitted edges: the columns are still produced mid-pipeline, because entity resolution and the `--qc` audits read them, and the filter sits in `_collect_subframes` beside the existing `*_pre_resolution` drop, ahead of dedup and hashing, so builds stay deterministic. The default is unchanged — full-fidelity output remains standard — and node output is unaffected, since nodes never carry `original_*` fields. ([#124](https://github.com/SkyeAv/Tablassert/pull/124))
 
 ## 16.0.0 - 2026-08-25
 
