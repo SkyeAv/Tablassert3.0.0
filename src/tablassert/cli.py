@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from importlib import import_module
 from importlib.metadata import version as get_version
-from itertools import chain
+from itertools import chain, pairwise
 from multiprocessing import Pool
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, BinaryIO, Literal
@@ -47,6 +47,7 @@ BABEL_SYNONYM_ENDPOINTS: tuple[str, ...] = ("synonyms/", "synonyms-conflated/")
 BABEL_EXCLUDE_PREFIXES: tuple[str, ...] = ("Publication", "GeneProteinConflated")
 BABEL_CLASS_RE: re.Pattern[str] = re.compile(r'<a href="([^"]*_nodes[^"]*\.gz)"')
 BABEL_SYNONYM_RE: re.Pattern[str] = re.compile(r'<a href="([^"]+\.gz)"')
+TAXON_ALLOWLIST_PATH: Path = Path(__file__).parent / "data" / "experimental_taxa.yaml"
 
 
 def _section_store_path(h: str, head: bool = False, release: bool = False, qc: bool = False) -> Path:
@@ -1270,8 +1271,43 @@ def fetch_prebuilt_fullmap(output: Path, progress: PipelineProgress, version: st
     download_logger.info("Installed prebuilt fullmap v{release} -> {output}", release=release, output=output)
 
 
+def load_taxon_allowlist() -> list[int]:
+    """Load the checked-in experimental-taxon YAML list for an opt-in build."""
+    import yaml
+
+    raw: object = yaml.safe_load(TAXON_ALLOWLIST_PATH.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError(f"taxon allowlist must be a YAML list: {TAXON_ALLOWLIST_PATH}")
+    ids: list[int] = []
+    frequencies: list[int] = []
+    for expected_rank, entry in enumerate(raw, start=1):
+        if (
+            not isinstance(entry, dict)
+            or entry.get("rank") != expected_rank
+            or not isinstance(entry.get("taxon_id"), int)
+            or entry["taxon_id"] <= 0
+            or not isinstance(entry.get("frequency"), int)
+            or entry["frequency"] < 0
+        ):
+            raise ValueError(f"invalid taxon allowlist entry at rank {expected_rank}: {entry!r}")
+        ids.append(entry["taxon_id"])
+        frequencies.append(entry["frequency"])
+    if len(ids) != 100 or len(set(ids)) != len(ids):
+        raise ValueError(f"taxon allowlist must contain 100 unique positive IDs: {TAXON_ALLOWLIST_PATH}")
+    if any(
+        left < right or (left == right and left_id > right_id) for (left, left_id), (right, right_id) in pairwise(zip(frequencies, ids, strict=True))
+    ):
+        raise ValueError(f"taxon allowlist ranks are not deterministically ordered: {TAXON_ALLOWLIST_PATH}")
+    return ids
+
+
 def build_fullmap_pipeline(
-    output: Path, progress: PipelineProgress, cache: Path = Path("./fullmap/downloads"), version: str = BABEL_VERSION, aria2c: bool = False
+    output: Path,
+    progress: PipelineProgress,
+    cache: Path = Path("./fullmap/downloads"),
+    version: str = BABEL_VERSION,
+    aria2c: bool = False,
+    taxon_allowlist: list[int] | None = None,
 ) -> None:
     """Build an embedded fullmap redb database from BABEL outputs.
 
@@ -1284,6 +1320,7 @@ def build_fullmap_pipeline(
         cache: Directory for downloaded BABEL files.
         version: BABEL version label.
         aria2c: Use the bundled aria2c binary from the optional ``[aria2]`` extra for downloads when true.
+        taxon_allowlist: Optional NCBI taxon IDs passed to Rust before interning.
     """
     from tablassert import rs
 
@@ -1326,7 +1363,10 @@ def build_fullmap_pipeline(
     # Rust drives per-phase progress (equivalents -> synonyms -> writing) via the
     # callback; the GIL is released during the build so the bar repaints live.
     on_progress = progress.dynamic_loop("Build")
-    rs.build_fullmap_db(output, class_files, synonym_files, progress=on_progress)
+    if taxon_allowlist is None:
+        rs.build_fullmap_db(output, class_files, synonym_files, progress=on_progress)
+    else:
+        rs.build_fullmap_db(output, class_files, synonym_files, progress=on_progress, taxon_allowlist=taxon_allowlist)
     progress.end_section_task()
 
     logger.info(
@@ -1345,6 +1385,7 @@ def build_fullmap(
     version: Annotated[str, cyclopts.Parameter(name=["--version", "-v"])] = BABEL_VERSION,
     aria2c: Annotated[bool, cyclopts.Parameter(name=["--aria2c", "-a"], negative="")] = False,
     force: Annotated[bool, cyclopts.Parameter(name=["--force", "-f"], negative="")] = False,
+    taxon_allowlist: Annotated[bool, cyclopts.Parameter(name="--taxon-allowlist", negative="")] = False,
 ) -> None:
     """Build an embedded fullmap redb database, or download a prebuilt one from RENCI.
 
@@ -1353,6 +1394,8 @@ def build_fullmap(
     extract it — far faster than building from BABEL. If no prebuilt exists for this
     version (or the download/extract fails), fall back to a from-scratch build.
     ``--force`` / ``-f`` skips the prebuilt attempt and always builds from BABEL outputs.
+    ``--taxon-allowlist`` enables the built-in top-100 experimental-taxon filter and always
+    builds from source BABEL files; it never reuses the unfiltered prebuilt archive.
 
     ``--aria2c`` requires the ``[aria2]`` extra, checked before the first download rather
     than on it, so an unusable flag costs nothing.
@@ -1364,10 +1407,12 @@ def build_fullmap(
         aria2c: Use the bundled aria2c binary from the ``[aria2]`` extra for downloads
             (prebuilt or BABEL).
         force: Skip the prebuilt download and always rebuild from BABEL outputs.
+        taxon_allowlist: Enable the built-in top-100 experimental-taxon filter.
     """
-    # A complete primary redb already on disk means the DB is in place: reuse it. Only
-    # --force rebuilds once a DB exists, so it is the explicit "fresh build" knob.
-    if not force and output.is_file() and output.stat().st_size > 0:
+    allowlist_ids: list[int] | None = load_taxon_allowlist() if taxon_allowlist else None
+    # Allowlisted outputs must not reuse an unfiltered database already at the path.
+    # The caller explicitly requested a filtered source build.
+    if not taxon_allowlist and not force and output.is_file() and output.stat().st_size > 0:
         print(f"tablassert build-fullmap: fullmap already present at {output}; skipping (use --force to rebuild).", file=sys.stderr)
         return
     # Checked here rather than earlier: the reuse path above downloads nothing, so a
@@ -1375,10 +1420,13 @@ def build_fullmap(
     if aria2c and not extras.is_installed("aria2"):
         print(f"tablassert build-fullmap: --aria2c is unavailable — {aria2_unavailable_detail()}", file=sys.stderr)
         raise SystemExit(2)
-    if not force:
+    if not force and not taxon_allowlist:
         try:
             run(2, fetch_prebuilt_fullmap, output, version=version, aria2c=aria2c)
             return
         except PrebuiltFullmapUnavailable as exc:
             logger.warning("Prebuilt fullmap unavailable ({reason}); building from BABEL outputs.", reason=exc)
-    run(3, build_fullmap_pipeline, output, cache=cache, version=version, aria2c=aria2c)
+    if allowlist_ids is None:
+        run(3, build_fullmap_pipeline, output, cache=cache, version=version, aria2c=aria2c)
+    else:
+        run(3, build_fullmap_pipeline, output, cache=cache, version=version, aria2c=aria2c, taxon_allowlist=allowlist_ids)

@@ -125,6 +125,7 @@ tablassert build-fullmap [ARGS]
 | `--version`, `-v` | str | No | `2026jul22` | BABEL snapshot date to fetch (a RENCI stamp, **not** Tablassert's version) |
 | `--aria2c`, `-a` | Flag | No | `False` | Opt into the bundled `aria2c` binary from the `[aria2]` extra for resumable segmented downloads (the prebuilt archive **or** BABEL files); fails loud (exit 2, before any download starts) if the extra is missing or unsupported on the current platform, and on a non-zero aria2c exit |
 | `--force`, `-f` | Flag | No | `False` | Skip the prebuilt download and always rebuild from BABEL outputs |
+| `--taxon-allowlist` | Flag | No | `False` | Use the built-in top-100 experimental-taxon allowlist; always build from source BABEL files and never use the unfiltered prebuilt |
 
 ```bash
 # Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)
@@ -133,6 +134,8 @@ tablassert build-fullmap --output /data/fullmap/fullmap.redb
 tablassert build-fullmap --force --output /data/fullmap/fullmap.redb
 # Accelerate either download with bundled aria2c (`pip install "tablassert[aria2]"`; the multi-GB prebuilt is the ideal aria2 use case)
 tablassert build-fullmap --aria2c --output /data/fullmap/fullmap.redb
+# Build a smaller source-derived database for the top 100 taxa (does not use the prebuilt archive)
+tablassert build-fullmap --taxon-allowlist --output /data/fullmap/experimental.redb
 ```
 
 By default `build-fullmap` looks for a prebuilt `fullmap.tar.zst` at

@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 def build_fullmap_db(
-    output: Path, classes: list[Path], synonyms: list[Path], progress: Callable[[int, int, int, str], None] | None = None
+    output: Path,
+    classes: list[Path],
+    synonyms: list[Path],
+    progress: Callable[[int, int, int, str], None] | None = None,
+    taxon_allowlist: list[int] | None = None,
 ) -> None: ...
 def dedup_ndjson(
     input: Path, output: Path, is_edges: bool, domain: str | None = None, uuid_fields: list[str] | None = None, on_collision: str | None = None

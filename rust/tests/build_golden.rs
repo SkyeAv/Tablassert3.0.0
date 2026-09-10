@@ -285,6 +285,57 @@ fn schema_and_shard_count_are_pinned() {
     );
 }
 
+#[test]
+fn taxon_allowlist_metadata_is_stable_and_omitted_for_default_builds() {
+    let dir = tempfile::tempdir().unwrap();
+    let synonyms = dir.path().join("SRC.ndjson");
+    write_jsonl(
+        &synonyms,
+        &[
+            r#"{"curie":"HGNC:1","preferred_name":"Gene","names":["gene"],"types":["Gene"],"taxa":["NCBITaxon:9606"]}"#,
+        ],
+    );
+    let filtered_a = dir.path().join("filtered_a.redb");
+    let filtered_b = dir.path().join("filtered_b.redb");
+    let unfiltered = dir.path().join("unfiltered.redb");
+    pyo3::Python::initialize();
+    pyo3::Python::attach(|py| {
+        tablassert_rs::build_fullmap_db(
+            py,
+            filtered_a.clone(),
+            vec![],
+            vec![synonyms.clone()],
+            None,
+            Some(vec![10090, 9606]),
+        )
+        .unwrap();
+        tablassert_rs::build_fullmap_db(
+            py,
+            filtered_b.clone(),
+            vec![],
+            vec![synonyms.clone()],
+            None,
+            Some(vec![9606, 10090]),
+        )
+        .unwrap();
+        tablassert_rs::build_fullmap_db(py, unfiltered.clone(), vec![], vec![synonyms], None, None)
+            .unwrap();
+    });
+
+    let read_allowlist = |path: &std::path::Path| -> Option<String> {
+        let db = open_primary_copy(path);
+        let read = db.begin_read().unwrap();
+        let meta = read.open_table(META).unwrap();
+        meta.get("taxon_allowlist")
+            .unwrap()
+            .map(|value| value.value().to_string())
+    };
+    let identity = read_allowlist(&filtered_a).unwrap();
+    assert_eq!(Some(identity.clone()), read_allowlist(&filtered_b));
+    assert_eq!(None, read_allowlist(&unfiltered));
+    assert!(identity.starts_with("count=2;xxh64="));
+}
+
 // ---------------------------------------------------------------------------
 // (f) GZ INPUT — a gzipped synonym file yields identical results to plain.
 // ---------------------------------------------------------------------------
@@ -324,6 +375,7 @@ fn gz_input_matches_plain_input() {
             vec![classes],
             vec![synonyms_gz],
             None,
+            None,
         )
         .unwrap();
     });
@@ -351,8 +403,15 @@ fn empty_synonym_file_builds_empty_db() {
     write_jsonl(&synonyms, &[]); // 0 rows
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(py, output.clone(), vec![classes], vec![synonyms], None)
-            .unwrap();
+        tablassert_rs::build_fullmap_db(
+            py,
+            output.clone(),
+            vec![classes],
+            vec![synonyms],
+            None,
+            None,
+        )
+        .unwrap();
     });
 
     assert!(
@@ -383,7 +442,8 @@ fn synonym_row_with_no_names_indexes_only_curie() {
     );
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], None).unwrap();
+        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], None, None)
+            .unwrap();
     });
 
     let map = term_curie_map(&output);
@@ -409,7 +469,8 @@ fn null_preferred_name_falls_back_to_curie() {
     );
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], None).unwrap();
+        tablassert_rs::build_fullmap_db(py, output.clone(), vec![], vec![synonyms], None, None)
+            .unwrap();
     });
 
     let db = open_primary_copy(&output);
@@ -444,8 +505,15 @@ fn class_row_without_equivalents_builds() {
     );
     let output = dir.path().join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(py, output.clone(), vec![classes], vec![synonyms], None)
-            .unwrap();
+        tablassert_rs::build_fullmap_db(
+            py,
+            output.clone(),
+            vec![classes],
+            vec![synonyms],
+            None,
+            None,
+        )
+        .unwrap();
     });
 
     let map = term_curie_map(&output);

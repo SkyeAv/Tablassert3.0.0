@@ -294,7 +294,6 @@ fn token_qc(value: &str) -> bool {
         && !value.contains('\t')
         && !value.contains('\n')
         && !value.contains('\r')
-        && !value.contains("inchikey")
         && !value.contains("uncharacterized")
         && !value.contains("hypothetical")
 }
@@ -459,6 +458,15 @@ fn first_category(row: &SynonymRow<'_>) -> String {
         .to_string()
 }
 
+fn is_organism_taxon(row: &SynonymRow<'_>) -> bool {
+    row.types.iter().any(|category| {
+        category
+            .trim()
+            .trim_start_matches("biolink:")
+            .eq_ignore_ascii_case("OrganismTaxon")
+    })
+}
+
 fn first_taxon(row: &SynonymRow<'_>) -> i32 {
     row.taxa
         .first()
@@ -467,6 +475,56 @@ fn first_taxon(row: &SynonymRow<'_>) -> i32 {
         .trim_start_matches("NCBITaxon:")
         .parse::<i32>()
         .unwrap_or(0)
+}
+
+fn parsed_taxa(row: &SynonymRow<'_>) -> Vec<i32> {
+    row.taxa
+        .iter()
+        .filter_map(|taxon| {
+            let taxon = taxon.trim();
+            let local = taxon
+                .split_once(':')
+                .filter(|(prefix, _)| prefix.eq_ignore_ascii_case("NCBITaxon"))
+                .map(|(_, local)| local)
+                .unwrap_or(taxon);
+            local.parse::<i32>().ok().filter(|id| *id > 0)
+        })
+        .collect()
+}
+
+fn allowlist_identity(taxa: &HashSet<i32>) -> String {
+    let mut ids: Vec<i32> = taxa.iter().copied().collect();
+    ids.sort_unstable();
+    let encoded = ids
+        .iter()
+        .map(i32::to_string)
+        .collect::<Vec<String>>()
+        .join(",");
+    format!(
+        "count={};xxh64={:016x}",
+        ids.len(),
+        xxh64(encoded.as_bytes(), 0)
+    )
+}
+
+fn retain_for_taxon_allowlist(row: &SynonymRow<'_>, allowlist: Option<&HashSet<i32>>) -> bool {
+    let Some(allowlist) = allowlist else {
+        return true;
+    };
+    if is_organism_taxon(row) {
+        return true;
+    }
+    let mut has_valid_taxon = false;
+    for taxon in parsed_taxa(row) {
+        has_valid_taxon = true;
+        if allowlist.contains(&taxon) {
+            return true;
+        }
+    }
+    // Taxonless rows remain available for categories whose BABEL synonym rows
+    // do not carry a positive taxon ID. This includes the conventional
+    // `NCBITaxon:0` sentinel and malformed/empty taxon values.
+    !has_valid_taxon
 }
 
 fn split_curie(curie: &str) -> Option<(&str, &str)> {
@@ -1358,6 +1416,7 @@ struct SynonymShared<'a> {
     curie_counter: &'a AtomicU32,
     equivalents: &'a EquivIndex,
     exclude_prefixes: &'a HashSet<String>,
+    taxon_allowlist: Option<&'a HashSet<i32>>,
     spill_dir: &'a Path,
     local_spill: usize,
     curie_spill: usize,
@@ -1393,6 +1452,9 @@ fn process_row(
     let Some((prefix, local_id)) = split_curie(curie) else {
         return Ok(());
     };
+    if !retain_for_taxon_allowlist(row, sh.taxon_allowlist) {
+        return Ok(());
+    }
     // Skip CURIEs whose prefix the caller excludes (opt-in via
     // TABLASSERT_FULLMAP_EXCLUDE_PREFIXES) — filtered out downstream anyway.
     if sh.exclude_prefixes.contains(prefix) {
@@ -1623,6 +1685,7 @@ fn process_synonyms(
     local_spill: usize,
     curie_spill: usize,
     exclude_prefixes: &HashSet<String>,
+    taxon_allowlist: Option<&HashSet<i32>>,
     worker_count: usize,
     shard_count: usize,
     chunk_bytes: usize,
@@ -1671,6 +1734,7 @@ fn process_synonyms(
         curie_counter: &curie_counter,
         equivalents,
         exclude_prefixes,
+        taxon_allowlist,
         spill_dir,
         local_spill,
         curie_spill,
@@ -1799,6 +1863,7 @@ fn write_final_database(
     insert_batch: usize,
     shard_count: usize,
     progress: Option<&Arc<Progress>>,
+    taxon_allowlist_identity: Option<&str>,
 ) -> PyResult<()> {
     let build_id = new_build_id();
     let build_id_str = build_id.to_string();
@@ -1855,6 +1920,9 @@ fn write_final_database(
         let shard_count_str = shard_count.to_string();
         meta.insert("shards", shard_count_str.as_str())
             .map_err(py_err)?;
+        if let Some(identity) = taxon_allowlist_identity {
+            meta.insert("taxon_allowlist", identity).map_err(py_err)?;
+        }
     }
     write.commit().map_err(py_err)?;
 
@@ -2229,6 +2297,8 @@ fn build_fullmap_inner(
     local_spill: usize,
     curie_spill: usize,
     exclude_prefixes: HashSet<String>,
+    taxon_allowlist: Option<HashSet<i32>>,
+    taxon_allowlist_identity: Option<String>,
     chunk_bytes: usize,
     producers: usize,
     cache_bytes: usize,
@@ -2258,6 +2328,7 @@ fn build_fullmap_inner(
             local_spill,
             curie_spill,
             &exclude_prefixes,
+            taxon_allowlist.as_ref(),
             worker_count,
             shard_count,
             chunk_bytes,
@@ -2288,6 +2359,7 @@ fn build_fullmap_inner(
             insert_batch,
             shard_count,
             progress.as_ref(),
+            taxon_allowlist_identity.as_deref(),
         )?;
 
         // Clean up spill runs on success (left in place on error for inspection).
@@ -2297,13 +2369,14 @@ fn build_fullmap_inner(
 }
 
 #[pyfunction]
-#[pyo3(signature = (output, classes, synonyms, progress=None))]
+#[pyo3(signature = (output, classes, synonyms, progress=None, taxon_allowlist=None))]
 pub fn build_fullmap_db(
     py: Python<'_>,
     output: PathBuf,
     classes: Vec<PathBuf>,
     synonyms: Vec<PathBuf>,
     progress: Option<Py<PyAny>>,
+    taxon_allowlist: Option<Vec<i32>>,
 ) -> PyResult<()> {
     if synonyms.is_empty() {
         return Err(PyValueError::new_err(
@@ -2407,6 +2480,9 @@ pub fn build_fullmap_db(
             PathBuf::from(p)
         });
 
+    let taxon_allowlist: Option<HashSet<i32>> =
+        taxon_allowlist.map(|ids| ids.into_iter().filter(|id| *id > 0).collect());
+    let taxon_allowlist_identity: Option<String> = taxon_allowlist.as_ref().map(allowlist_identity);
     let progress = progress.map(|cb| Arc::new(Progress { cb }));
 
     // Release the GIL for the whole build so rich's Live display thread can
@@ -2422,6 +2498,8 @@ pub fn build_fullmap_db(
             local_spill,
             curie_spill,
             exclude_prefixes,
+            taxon_allowlist,
+            taxon_allowlist_identity,
             chunk_bytes,
             producers,
             cache_bytes,
@@ -3650,6 +3728,8 @@ mod tests {
             local_spill,
             1_000_000,
             HashSet::new(),
+            None,
+            None,
             DEFAULT_CHUNK_BYTES,
             2,
             64 * 1024 * 1024,
@@ -3678,10 +3758,12 @@ mod tests {
     }
 
     #[test]
-    fn token_qc_rejects_banned_tokens() {
+    fn token_qc_rejects_banned_tokens_but_accepts_inchikey() {
         assert!(token_qc("brca1"));
+        assert!(token_qc("inchikey=abc"));
         assert!(!token_qc("hypothetical protein"));
         assert!(!token_qc("line\nbreak"));
+        assert!(!token_qc("tab\tvalue"));
     }
 
     #[test]
@@ -4028,6 +4110,7 @@ mod tests {
             30,
             1_000_000,
             &HashSet::new(),
+            None,
             4,
             shard_count,
             DEFAULT_CHUNK_BYTES,
@@ -4085,6 +4168,8 @@ mod tests {
             100,
             1_000_000,
             HashSet::new(),
+            None,
+            None,
             DEFAULT_CHUNK_BYTES,
             2,
             64 * 1024 * 1024,
@@ -4102,6 +4187,8 @@ mod tests {
             100,
             1_000_000,
             HashSet::new(),
+            None,
+            None,
             DEFAULT_CHUNK_BYTES,
             2,
             64 * 1024 * 1024,
@@ -4519,6 +4606,8 @@ mod tests {
             4_000_000,
             1_000_000,
             HashSet::new(),
+            None,
+            None,
             DEFAULT_CHUNK_BYTES,
             2,
             64 * 1024 * 1024,
@@ -4588,7 +4677,7 @@ mod tests {
 
         std::env::set_var("TABLASSERT_FULLMAP_SHARDS", "2");
         let built = Python::attach(|py| {
-            build_fullmap_db(py, output.clone(), Vec::new(), vec![synonyms], None)
+            build_fullmap_db(py, output.clone(), Vec::new(), vec![synonyms], None, None)
         });
         std::env::remove_var("TABLASSERT_FULLMAP_SHARDS");
         built.unwrap();
@@ -4649,6 +4738,8 @@ mod tests {
             4_000_000,
             1_000_000,
             HashSet::new(),
+            None,
+            None,
             DEFAULT_CHUNK_BYTES,
             2,
             64 * 1024 * 1024,
@@ -5356,6 +5447,8 @@ mod tests {
             4_000_000,
             2,
             HashSet::new(),
+            None,
+            None,
             DEFAULT_CHUNK_BYTES,
             2,
             64 * 1024 * 1024,
@@ -5446,6 +5539,8 @@ mod tests {
             4_000_000,
             1_000_000,
             exclude,
+            None,
+            None,
             DEFAULT_CHUNK_BYTES,
             2,
             64 * 1024 * 1024,
@@ -5505,6 +5600,8 @@ mod tests {
             4_000_000,
             1_000_000,
             HashSet::new(),
+            None,
+            None,
             8192,
             2,
             64 * 1024 * 1024,
@@ -5545,6 +5642,7 @@ mod tests {
                 PathBuf::from("/tmp/should-not-exist.redb"),
                 Vec::new(),
                 Vec::new(),
+                None,
                 None,
             )
             .expect_err("empty synonyms should fail");
