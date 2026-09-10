@@ -245,6 +245,8 @@ annotations:
 
 The separator is a property of the data, not of the slot. Inspect the table's cells and set `split_by` to the separator the cells actually use: `","` for comma-joined ids like `"EFO:0001,EFO:0002"` above, `";"` for `"EFO:0001;EFO:0002"`, `"|"` only if the cells happen to be pipe-joined.
 
+For the canonical `regulatory_approvals` annotation, a pipe-delimited source column uses `split_by: "|"` and emits a real per-row array such as `["011111", "022222"]`; combine it with a class-scoped `category_override` when only the intended association classes receive that grant.
+
 `split_by` is the one multivalued encoding: every row's cell becomes its own JSON array, so an array that differs per row, the shape a literal can never express, is declared directly. Values are trimmed and blanks dropped; a null cell stays null.
 
 Single-value cells need no `split_by` at all: `prune_to_class` wraps a scalar bound for a uniformly multivalued slot into a one-element list, so a lone `EFO:0001` cell already emits as `has_evidence: ["EFO:0001"]`. Reach for it when the cells actually join multiple values. Leave such a column without `split_by` and the joined cell stays a scalar: the same wrapping yields a one-element list holding the whole string (`has_evidence: ["EFO:0001;EFO:0002"]`), structurally valid Biolink that hands consumers one unusable blob instead of two ids.

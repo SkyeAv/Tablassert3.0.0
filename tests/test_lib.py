@@ -54,6 +54,7 @@ from tablassert.lib import (
     publications,
     pvalue_target,
     retrieval_sources,
+    split_list,
     strip_nulls,
     study_size_target,
 )
@@ -1880,33 +1881,32 @@ def test_edge_category_override_still_reconciled_against_predicate() -> None:
 
 
 def test_prune_to_class_keeps_override_only_slots() -> None:
-    """Canonical class grants and model fields survive prune_to_class on pinned rows.
+    """Canonical approval annotations split into arrays and survive only granted classes.
 
     The canonical approval slot is granted to ``EntityToDiseaseAssociation`` /
-    ``EntityToPhenotypicFeatureAssociation`` but not to the pair-derived
-    ``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation``, while
-    ``number_of_cases`` is declared by the pinned classes. Without the override,
-    both are nulled and rescued into the pruned column.
+    ``EntityToPhenotypicFeatureAssociation`` but not to the ungranted fallback class.
+    This exercises the real annotation ``split_by`` operation before the category
+    override and verifies rejected evidence remains observable in the pruned path.
     """
     from tablassert.lib import PRUNED_COLUMN, prune_to_class
 
     lf: pl.LazyFrame = pl.LazyFrame(
         {
-            "subject category": ["biolink:ChemicalEntity"] * 2,
-            "object category": ["biolink:Disease", "biolink:PhenotypicFeature"],
-            "regulatory_approvals": ["011111|022222", "033333"],
-            "number_of_cases": [42, 7],
+            "subject category": ["biolink:ChemicalEntity"] * 3,
+            "object category": ["biolink:Disease", "biolink:PhenotypicFeature", "biolink:Gene"],
+            "regulatory_approvals": ["011111|022222", "033333", "044444"],
+            "number_of_cases": [42, 7, 3],
         }
     )
     override: dict[str, str] = {"Disease": "biolink:EntityToDiseaseAssociation", "PhenotypicFeature": "biolink:EntityToPhenotypicFeatureAssociation"}
-    out: pl.DataFrame = prune_to_class(edge_category(lf, "biolink:associated_with", override)).collect()
-    assert out["regulatory_approvals"].to_list() == ["011111|022222", "033333"]
-    assert out["number_of_cases"].to_list() == [42, 7]
-    assert PRUNED_COLUMN not in out.columns or all(v == [] for v in out[PRUNED_COLUMN].to_list())
+    annotated: pl.LazyFrame = split_list(lf, "regulatory_approvals", "|")
+    out: pl.DataFrame = prune_to_class(edge_category(annotated, "biolink:associated_with", override)).collect()
+    assert out["regulatory_approvals"].to_list() == [["011111", "022222"], ["033333"], None]
+    assert out["number_of_cases"].to_list() == [42, 7, None]
+    assert out[PRUNED_COLUMN].to_list() == [[], [], ["regulatory_approvals=044444", "number_of_cases=3"]]
 
-    control: pl.DataFrame = prune_to_class(edge_category(lf, "biolink:associated_with")).collect()
-    assert control["regulatory_approvals"].to_list() == [None, None]
-    assert control["number_of_cases"].to_list() == [None, None]
+    control: pl.DataFrame = prune_to_class(edge_category(annotated, "biolink:associated_with")).collect()
+    assert control["regulatory_approvals"].to_list() == [None, None, None]
     assert all(any("regulatory_approvals=" in s for s in v) for v in control[PRUNED_COLUMN].to_list())
 
 
