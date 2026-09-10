@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 18.0.0 - 2026-09-10
 
 ### Changed
 - **Original source values are always retained and collision-merged deterministically.** `original_*` edge fields now combine distinct values using sorted `A`, `A|B`, or `A|B|C` formatting; the deprecated `build-kg --no-original` option and API parameters were removed.
