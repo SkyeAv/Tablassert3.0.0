@@ -1928,11 +1928,13 @@ def test_prune_to_class_keeps_class_field_override_grants() -> None:
                 ["biolink:EntityToPhenotypicFeatureAssociation"],
             ],
             "disease_context_qualifier": ["MONDO:0005148", "MONDO:0005148", "MONDO:0005015"],
+            "regulatory_approvals": ["FDA:1", "FDA:2", "FDA:3"],
         }
     )
     out: pl.DataFrame = prune_to_class(lf).collect()
     assert out["disease_context_qualifier"].to_list() == ["MONDO:0005148", None, "MONDO:0005015"]
-    assert out[PRUNED_COLUMN].to_list() == [[], ["disease_context_qualifier=MONDO:0005148"], []]
+    assert out["regulatory_approvals"].to_list() == ["FDA:1", None, "FDA:3"]
+    assert out[PRUNED_COLUMN].to_list() == [[], ["disease_context_qualifier=MONDO:0005148", "regulatory_approvals=FDA:2"], []]
 
 
 def test_supporting_case_ids_survives_prune_and_fold_to_dedup_input() -> None:

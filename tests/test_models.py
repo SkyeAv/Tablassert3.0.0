@@ -869,6 +869,13 @@ def test_annotation_case_is_canonicalized_onto_allow_listed_spellings() -> None:
         assert ann.annotation == "FDA_regulatory_approvals"  # pyright: ignore
 
 
+def test_annotation_case_is_canonicalized_for_regulatory_approvals() -> None:
+    """Canonical class grants accept casing and whitespace through generic normalization."""
+    for declared in ("regulatory_approvals", "REGULATORY_APPROVALS", " Regulatory_Approvals "):
+        ann: Annotation = Annotation(annotation=declared, method="column", encoding="E")  # pyright: ignore
+        assert ann.annotation == "regulatory_approvals"  # pyright: ignore
+
+
 def test_section_rejects_extra_fields() -> None:
     """section rejects extra fields."""
     with pytest.raises(ValidationError):
@@ -1106,6 +1113,7 @@ def test_annotation_warns_when_the_slot_cannot_reach_the_edge() -> None:
             "effect_size",
             "effect_type",
             "FDA_regulatory_approvals",
+            "regulatory_approvals",
             "adjusted p value",
             "odds ratio",
             "q_value",
