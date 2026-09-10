@@ -257,9 +257,9 @@ def _association_model_fields() -> set[str]:
 
     Unions ``model_fields`` across the entire association family rather than only
     walking ``Association.__mro__``. Walking the base MRO alone silently excludes
-    subclass-only evidence slots -- ``clinical_approval_status``,
-    ``number_of_cases``, ``FDA_regulatory_approvals`` -- which then get demoted
-    into ``supporting_text`` by :func:`lib.fold_unknown_to_supporting_text`.
+    subclass-only evidence slots -- ``clinical_approval_status`` and
+    ``number_of_cases`` -- which then get demoted into ``supporting_text`` by
+    :func:`lib.fold_unknown_to_supporting_text`.
     """
     fields: set[str] = set()
     for klass in _association_classes():
@@ -529,8 +529,8 @@ release from making ``species_context_qualifier`` silently emittable again.
 
 
 CLASS_FIELD_OVERRIDES: dict[str, frozenset[str]] = {
-    "EntityToDiseaseAssociation": frozenset({"disease_context_qualifier"}),
-    "EntityToPhenotypicFeatureAssociation": frozenset({"disease_context_qualifier"}),
+    "EntityToDiseaseAssociation": frozenset({"disease_context_qualifier", "regulatory_approvals"}),
+    "EntityToPhenotypicFeatureAssociation": frozenset({"disease_context_qualifier", "regulatory_approvals"}),
 }
 """Per-class grants of edge fields the resolved association class does not declare.
 
@@ -538,15 +538,14 @@ Keys are bare association class names (``association_class(cat).__name__``), val
 the slots ``lib.prune_to_class`` keeps on rows resolved to that class even though the
 installed model attaches them elsewhere.
 
-The motivating case is a DAKP contraindication edge: ``FDA_regulatory_approvals`` is
-declared only on the ``EntityToDisease`` / ``EntityToPhenotypicFeature`` classes the
-edge is pinned to, while ``disease_context_qualifier`` is declared only on the
+The motivating case is a DAKP contraindication edge: ``regulatory_approvals`` is a
+canonical slot not yet attached by the installed model, while
+``disease_context_qualifier`` is declared only on the
 ``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation`` lineage -- so one edge can
-natively carry one slot or the other, never both. Tablassert deliberately emits the
-qualifier on the pinned classes ahead of the pinned model (pending an upstream Biolink
-widening), exactly as :data:`KNOWN_PENDING_EDGE_FIELDS` emits KGX carryovers ahead of
-it. ``_validation_record`` strips granted fields before record validation so the
-deliberate gap is not reported as ``extra_forbidden``.
+natively carry both only through these explicit class-scoped grants. Tablassert
+deliberately emits the granted fields on the pinned classes ahead of the pinned model
+(pending an upstream Biolink widening). ``_validation_record`` strips granted fields
+before record validation so the deliberate gap is not reported as ``extra_forbidden``.
 
 A tripwire test asserts every granted field is still absent from its class: the moment
 a biolink-model release attaches the slot, the suite fails and the stale grant is
@@ -582,7 +581,12 @@ unresolved.
 
 
 ALLOWED_EDGE_FIELDS: frozenset[str] = (
-    (frozenset(_association_model_fields()) | {q.value for q in Qualifiers} | TABLASERT_EDGE_EXTRAS)
+    (
+        frozenset(_association_model_fields())
+        | {q.value for q in Qualifiers}
+        | TABLASERT_EDGE_EXTRAS
+        | frozenset().union(*CLASS_FIELD_OVERRIDES.values())
+    )
     - UNSATISFIABLE_EDGE_FIELDS
     - DISABLED_EDGE_FIELDS
 )
@@ -591,9 +595,9 @@ ALLOWED_EDGE_FIELDS: frozenset[str] = (
 Any column on an edge frame that is not in this set is folded into the
 ``supporting_text`` ``list[str]`` field by ``lib.fold_unknown_to_supporting_text()``
 as a ``"column: value"`` string. Composed of the fields declared by *any* Biolink
-association class, the derived qualifier slot names, and the curated
-``TABLASERT_EDGE_EXTRAS`` -- less the slots that no Pydantic class can hold and the
-fields disabled by Tablassert policy.
+association class, the derived qualifier slot names, the curated
+``TABLASERT_EDGE_EXTRAS``, and explicit :data:`CLASS_FIELD_OVERRIDES` grants -- less the
+slots that no Pydantic class can hold and the fields disabled by Tablassert policy.
 
 Note this is a per-*family* allow-list: a field being permitted here does not mean the
 specific association class chosen for a given edge accepts it. Per-record pruning

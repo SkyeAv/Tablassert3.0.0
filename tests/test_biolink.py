@@ -337,16 +337,16 @@ def test_allowed_edge_fields_excludes_approval_ids() -> None:
     assert "approval_ids" not in ALLOWED_EDGE_FIELDS
 
 
-def test_allowed_edge_fields_keeps_fda_regulatory_approvals_strict() -> None:
-    """``FDA_regulatory_approvals`` is allowed AND strictly valid -- no pending exemption.
+def test_allowed_edge_fields_includes_class_override_grants_without_global_extras() -> None:
+    """Canonical class grants reach the family allow-list without becoming global extras.
 
-    Unlike the retired ``approval_ids`` carve-out, this is a real Biolink slot (declared by
-    ``EntityToDiseaseAssociation`` / ``EntityToPhenotypicFeatureAssociation``), so it never
-    rides ``KNOWN_PENDING_EDGE_FIELDS``: an edge carrying it validates outright.
+    This protects the compatibility boundary: ``regulatory_approvals`` is emitted as a
+    real edge column for the two pinned classes, but is neither an arbitrary global
+    allow-list entry nor a ``TABLASERT_EDGE_EXTRAS`` carryover.
     """
-    assert "FDA_regulatory_approvals" not in TABLASERT_EDGE_EXTRAS
-    assert "FDA_regulatory_approvals" in ALLOWED_EDGE_FIELDS
-    assert "FDA_regulatory_approvals" not in KNOWN_PENDING_EDGE_FIELDS
+    assert "regulatory_approvals" in ALLOWED_EDGE_FIELDS
+    assert "regulatory_approvals" not in TABLASERT_EDGE_EXTRAS
+    assert "regulatory_approvals" not in KNOWN_PENDING_EDGE_FIELDS
 
 
 def test_supporting_case_ids_is_an_allow_listed_pending_extra() -> None:
@@ -369,7 +369,16 @@ def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
     Deriving the allow-list from the base ``Association`` MRO alone silently demotes
     evidence slots such as ``clinical_approval_status`` into ``supporting_text``.
     """
-    for slot in ("clinical_approval_status", "number_of_cases", "FDA_regulatory_approvals"):
+    subclass_only: set[str] = set()
+    for cls in vars(bm).values():
+        if inspect.isclass(cls) and issubclass(cls, bm.Association):
+            subclass_only |= set(cls.model_fields) - set(bm.Association.model_fields)
+    expected_subclass_only = {"clinical_approval_status", "number_of_cases"}
+    assert expected_subclass_only <= subclass_only
+    assert expected_subclass_only <= set(ALLOWED_EDGE_FIELDS)
+    allowed_subclass_only: set[str] = subclass_only & set(ALLOWED_EDGE_FIELDS)
+    assert allowed_subclass_only
+    for slot in allowed_subclass_only:
         assert slot not in bm.Association.model_fields, slot
         assert slot in ALLOWED_EDGE_FIELDS, slot
 
@@ -386,8 +395,14 @@ def test_class_field_overrides_track_the_installed_model() -> None:
     Tripwire: the moment a biolink-model release attaches a granted slot to the class,
     this fails and the stale grant is removed from ``CLASS_FIELD_OVERRIDES`` (same
     philosophy as the ``UNSATISFIABLE_EDGE_FIELDS`` derivation guard). A field the
-    family allow-list would strip anyway must never be granted.
+    family allow-list would strip anyway must never be granted. The canonical
+    ``regulatory_approvals`` grant is intentionally present on exactly the two
+    association classes that need it while the installed model catches up.
     """
+    assert {
+        "EntityToDiseaseAssociation": frozenset({"disease_context_qualifier", "regulatory_approvals"}),
+        "EntityToPhenotypicFeatureAssociation": frozenset({"disease_context_qualifier", "regulatory_approvals"}),
+    } == CLASS_FIELD_OVERRIDES
     for class_name, fields in CLASS_FIELD_OVERRIDES.items():
         cls: type[Any] = association_class(f"biolink:{class_name}")
         assert issubclass(cls, bm.Association), class_name
@@ -397,16 +412,28 @@ def test_class_field_overrides_track_the_installed_model() -> None:
 
 
 def test_validate_record_tolerates_class_field_override_grants() -> None:
-    """A granted field on its granted class is not reported; on any other class it is.
+    """Canonical grants validate on both targets but remain forbidden on an unrelated class.
 
     The grant is a deliberate, class-scoped step ahead of the pinned model, so its
-    ``extra_forbidden`` must not surface in validation -- while the same slot on an
-    ungranted class stays a real defect.
+    ``extra_forbidden`` must not surface on either intended target -- while the same
+    field on an ungranted class stays a real defect through the installed-model boundary.
     """
-    record: dict[str, Any] = {"category": ["biolink:EntityToDiseaseAssociation"], "disease_context_qualifier": "MONDO:0005148"}
-    assert "disease_context_qualifier: extra_forbidden" not in validate_record(record, edge=True)
-    control: dict[str, Any] = {**record, "category": ["biolink:GeneToDiseaseAssociation"]}
-    assert "disease_context_qualifier: extra_forbidden" in validate_record(control, edge=True)
+    base: dict[str, Any] = {
+        "id": "e1",
+        "subject": "CHEBI:1",
+        "predicate": "biolink:associated_with",
+        "object": "MONDO:0005148",
+        "knowledge_level": "statistical_association",
+        "agent_type": "data_analysis_pipeline",
+        "regulatory_approvals": ["FDA:1"],
+    }
+    for category in ("EntityToDiseaseAssociation", "EntityToPhenotypicFeatureAssociation"):
+        record: dict[str, Any] = {**base, "category": [f"biolink:{category}"]}
+        assert validate_record(record, edge=True) == []
+    control: dict[str, Any] = {**base, "category": ["biolink:GeneToDiseaseAssociation"]}
+    assert "regulatory_approvals: extra_forbidden" in validate_record(control, edge=True)
+    unknown: dict[str, Any] = {**base, "category": ["biolink:EntityToDiseaseAssociation"], "not_a_biolink_field": "x"}
+    assert "not_a_biolink_field: extra_forbidden" in validate_record(unknown, edge=True)
 
 
 def test_allowed_edge_fields_excludes_unattached_qualifiers() -> None:
@@ -484,8 +511,7 @@ def test_is_pending_problem_only_exempts_extra_forbidden_pending_fields() -> Non
     assert not is_pending_problem("approval_ids: extra_forbidden")
     # Same field, a REAL failure -> not exempt either way.
     assert not is_pending_problem("approval_ids: missing")
-    # ``FDA_regulatory_approvals`` is a real model slot -> extra_forbidden is a real failure.
-    assert not is_pending_problem("FDA_regulatory_approvals: extra_forbidden")
+    # A real installed-model slot -> extra_forbidden is a real failure.
     # ``effect_size`` is a real Association slot since biolink-model 4.4.4 -> never exempt.
     assert not is_pending_problem("effect_size: extra_forbidden")
     # A genuinely malformed value on a real slot -> never exempt.
