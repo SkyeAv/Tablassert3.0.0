@@ -1880,12 +1880,13 @@ def test_edge_category_override_still_reconciled_against_predicate() -> None:
 
 
 def test_prune_to_class_keeps_override_only_slots() -> None:
-    """Acceptance: FDA_regulatory_approvals / number_of_cases survive prune_to_class on pinned rows.
+    """Canonical class grants and model fields survive prune_to_class on pinned rows.
 
-    Both slots are declared on ``EntityToDiseaseAssociation`` /
-    ``EntityToPhenotypicFeatureAssociation`` but not on the pair-derived
-    ``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation``, so without the override
-    they are nulled and rescued into the pruned column.
+    The canonical approval slot is granted to ``EntityToDiseaseAssociation`` /
+    ``EntityToPhenotypicFeatureAssociation`` but not to the pair-derived
+    ``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation``, while
+    ``number_of_cases`` is declared by the pinned classes. Without the override,
+    both are nulled and rescued into the pruned column.
     """
     from tablassert.lib import PRUNED_COLUMN, prune_to_class
 
@@ -1893,20 +1894,20 @@ def test_prune_to_class_keeps_override_only_slots() -> None:
         {
             "subject category": ["biolink:ChemicalEntity"] * 2,
             "object category": ["biolink:Disease", "biolink:PhenotypicFeature"],
-            "FDA_regulatory_approvals": ["011111|022222", "033333"],
+            "regulatory_approvals": ["011111|022222", "033333"],
             "number_of_cases": [42, 7],
         }
     )
     override: dict[str, str] = {"Disease": "biolink:EntityToDiseaseAssociation", "PhenotypicFeature": "biolink:EntityToPhenotypicFeatureAssociation"}
     out: pl.DataFrame = prune_to_class(edge_category(lf, "biolink:associated_with", override)).collect()
-    assert out["FDA_regulatory_approvals"].to_list() == [["011111|022222"], ["033333"]]
+    assert out["regulatory_approvals"].to_list() == ["011111|022222", "033333"]
     assert out["number_of_cases"].to_list() == [42, 7]
     assert PRUNED_COLUMN not in out.columns or all(v == [] for v in out[PRUNED_COLUMN].to_list())
 
     control: pl.DataFrame = prune_to_class(edge_category(lf, "biolink:associated_with")).collect()
-    assert control["FDA_regulatory_approvals"].to_list() == [None, None]
+    assert control["regulatory_approvals"].to_list() == [None, None]
     assert control["number_of_cases"].to_list() == [None, None]
-    assert all(any("FDA_regulatory_approvals=" in s for s in v) for v in control[PRUNED_COLUMN].to_list())
+    assert all(any("regulatory_approvals=" in s for s in v) for v in control[PRUNED_COLUMN].to_list())
 
 
 def test_prune_to_class_keeps_class_field_override_grants() -> None:
@@ -1916,7 +1917,7 @@ def test_prune_to_class_keeps_class_field_override_grants() -> None:
     ``ChemicalEntityToDiseaseOrPhenotypicFeatureAssociation`` lineage, but the policy
     grant keeps it on ``EntityToDiseaseAssociation`` /
     ``EntityToPhenotypicFeatureAssociation`` rows so a pinned edge can carry it
-    alongside ``FDA_regulatory_approvals``. Classes without the grant still prune it.
+    alongside ``regulatory_approvals``. Classes without the grant still prune it.
     """
     from tablassert.lib import PRUNED_COLUMN, prune_to_class
 
@@ -2956,16 +2957,16 @@ def test_fold_unknown_noop_when_all_allowed() -> None:
             "p_value": [0.01],
             "disease_context_qualifier": ["MONDO:0005148"],
             "publications": [["PMID:1"]],
-            # mixed-case Biolink subclass slot: case preserved verbatim, never folded into
+            # Canonical class-scoped slot: it remains an edge field, never folded into
             # supporting_text.
-            "FDA_regulatory_approvals": ["011111|022222"],
+            "regulatory_approvals": ["011111|022222"],
         }
     ).lazy()
     out: pl.DataFrame = fold_unknown_to_supporting_text(lf).collect()
     # nothing folded, no supporting_text column created
     assert "supporting_text" not in out.columns
-    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "disease_context_qualifier", "publications", "FDA_regulatory_approvals"}
-    assert out["FDA_regulatory_approvals"].to_list() == ["011111|022222"]
+    assert set(out.columns) == {"subject", "object", "predicate", "p_value", "disease_context_qualifier", "publications", "regulatory_approvals"}
+    assert out["regulatory_approvals"].to_list() == ["011111|022222"]
 
 
 def test_fold_unknown_single_column() -> None:

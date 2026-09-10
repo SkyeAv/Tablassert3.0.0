@@ -257,9 +257,9 @@ def _association_model_fields() -> set[str]:
 
     Unions ``model_fields`` across the entire association family rather than only
     walking ``Association.__mro__``. Walking the base MRO alone silently excludes
-    subclass-only evidence slots -- ``clinical_approval_status``,
-    ``number_of_cases``, ``FDA_regulatory_approvals`` -- which then get demoted
-    into ``supporting_text`` by :func:`lib.fold_unknown_to_supporting_text`.
+    subclass-only evidence slots -- ``clinical_approval_status`` and
+    ``number_of_cases`` -- which then get demoted into ``supporting_text`` by
+    :func:`lib.fold_unknown_to_supporting_text`.
     """
     fields: set[str] = set()
     for klass in _association_classes():

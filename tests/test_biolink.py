@@ -349,18 +349,6 @@ def test_allowed_edge_fields_includes_class_override_grants_without_global_extra
     assert "regulatory_approvals" not in KNOWN_PENDING_EDGE_FIELDS
 
 
-def test_allowed_edge_fields_keeps_fda_regulatory_approvals_strict() -> None:
-    """``FDA_regulatory_approvals`` is allowed AND strictly valid -- no pending exemption.
-
-    Unlike the retired ``approval_ids`` carve-out, this is a real Biolink slot (declared by
-    ``EntityToDiseaseAssociation`` / ``EntityToPhenotypicFeatureAssociation``), so it never
-    rides ``KNOWN_PENDING_EDGE_FIELDS``: an edge carrying it validates outright.
-    """
-    assert "FDA_regulatory_approvals" not in TABLASERT_EDGE_EXTRAS
-    assert "FDA_regulatory_approvals" in ALLOWED_EDGE_FIELDS
-    assert "FDA_regulatory_approvals" not in KNOWN_PENDING_EDGE_FIELDS
-
-
 def test_supporting_case_ids_is_an_allow_listed_pending_extra() -> None:
     """``supporting_case_ids`` is a curated, build-internal edge extra.
 
@@ -381,7 +369,16 @@ def test_allowed_edge_fields_includes_subclass_only_slots() -> None:
     Deriving the allow-list from the base ``Association`` MRO alone silently demotes
     evidence slots such as ``clinical_approval_status`` into ``supporting_text``.
     """
-    for slot in ("clinical_approval_status", "number_of_cases", "FDA_regulatory_approvals"):
+    subclass_only: set[str] = set()
+    for cls in vars(bm).values():
+        if inspect.isclass(cls) and issubclass(cls, bm.Association):
+            subclass_only |= set(cls.model_fields) - set(bm.Association.model_fields)
+    expected_subclass_only = {"clinical_approval_status", "number_of_cases"}
+    assert expected_subclass_only <= subclass_only
+    assert expected_subclass_only <= set(ALLOWED_EDGE_FIELDS)
+    allowed_subclass_only: set[str] = subclass_only & set(ALLOWED_EDGE_FIELDS)
+    assert allowed_subclass_only
+    for slot in allowed_subclass_only:
         assert slot not in bm.Association.model_fields, slot
         assert slot in ALLOWED_EDGE_FIELDS, slot
 
@@ -514,8 +511,7 @@ def test_is_pending_problem_only_exempts_extra_forbidden_pending_fields() -> Non
     assert not is_pending_problem("approval_ids: extra_forbidden")
     # Same field, a REAL failure -> not exempt either way.
     assert not is_pending_problem("approval_ids: missing")
-    # ``FDA_regulatory_approvals`` is a real model slot -> extra_forbidden is a real failure.
-    assert not is_pending_problem("FDA_regulatory_approvals: extra_forbidden")
+    # A real installed-model slot -> extra_forbidden is a real failure.
     # ``effect_size`` is a real Association slot since biolink-model 4.4.4 -> never exempt.
     assert not is_pending_problem("effect_size: extra_forbidden")
     # A genuinely malformed value on a real slot -> never exempt.
