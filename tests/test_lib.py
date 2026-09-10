@@ -1722,8 +1722,8 @@ def test_compile_graph_keeps_qualifiers_and_publications_on_edges(monkeypatch: A
     assert "PMID:123" not in nodes
 
 
-def test_compile_graph_no_original_drops_original_columns(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
-    """compile_graph drops ``original_*`` edge columns only when ``no_original`` is set."""
+def test_compile_graph_preserves_original_columns_by_default(monkeypatch: Any, tmp_path: Path, rig_factory: Any) -> None:
+    """compile_graph preserves verbatim ``original_*`` edge columns by default."""
 
     def write_subgraph(p: Path) -> None:
         pl.DataFrame(
@@ -1764,14 +1764,6 @@ def test_compile_graph_no_original_drops_original_columns(monkeypatch: Any, tmp_
     default_edges: str = (tmp_path / "orig_1.0.0.edges.ndjson").read_text()
     assert '"original_subject":"ALPHA"' in default_edges
     assert '"original_object":"X-RAY"' in default_edges
-
-    stripped_sub: Path = tmp_path / "stripped.parquet"
-    write_subgraph(stripped_sub)
-    lib.compile_graph([stripped_sub], "stripped", "1.0.0", rig_factory(tmp_path, infores_id="infores:no-orig-kg"), no_original=True)
-    stripped_edges: str = (tmp_path / "stripped_1.0.0.edges.ndjson").read_text()
-    assert "original_" not in stripped_edges
-    assert '"subject":"A"' in stripped_edges
-    assert '"object":"X"' in stripped_edges
 
 
 def test_dedup_stream_nodes(tmp_path: Path) -> None:

@@ -177,17 +177,11 @@ def _load_graph(configuration_file: Path) -> Graph:
 
 
 def build_pipeline(
-    configuration_file: Path,
-    progress: PipelineProgress,
-    release: bool = False,
-    qc: bool = False,
-    log: bool = False,
-    head: bool = False,
-    no_original: bool = False,
+    configuration_file: Path, progress: PipelineProgress, release: bool = False, qc: bool = False, log: bool = False, head: bool = False
 ) -> None:
     """Load a graph YAML and build it through the shared in-process core."""
     graph: Graph = _load_graph(configuration_file)
-    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head, no_original=no_original)
+    build_graph_pipeline(graph, configuration_file, progress, release=release, qc=qc, log=log, head=head)
 
 
 def build_graph_pipeline(
@@ -198,7 +192,6 @@ def build_graph_pipeline(
     qc: bool = False,
     log: bool = False,
     head: bool = False,
-    no_original: bool = False,
     audit_sources: bool = True,
 ) -> None:
     """Build a validated :class:`Graph` without loading another graph YAML.
@@ -216,8 +209,6 @@ def build_graph_pipeline(
         qc: When ``True``, run quality-control audits and final study assertions.
         log: When ``True``, enable per-section verbose logging.
         head: When ``True``, build a random sample of up to five rows per section.
-        no_original: When ``True``, omit the verbatim ``original_*`` source-cell
-            copies from the final edge NDJSON.
     """
     from tablassert.fullmap import fullmap_db_path
     from tablassert.lib import Tcode, compile_graph, compile_subgraph
@@ -324,7 +315,6 @@ def build_graph_pipeline(
         section_sources if audit_sources else None,
         on_phase=sub_step,
         on_subgraph=advance,
-        no_original=no_original,
         uuid_fields=g.uuid_fields,
         uuid_domain=g.uuid_namespace,
         uuid_on_collision=g.uuid_on_collision,
@@ -731,16 +721,13 @@ def build_kg(
     qc: Annotated[bool, cyclopts.Parameter(name=["--qc", "-q"], negative="")] = False,
     log: Annotated[bool, cyclopts.Parameter(name=["--log", "-l"], negative="")] = False,
     head: Annotated[bool, cyclopts.Parameter(name=["--head", "-hd"], negative="")] = False,
-    no_original: Annotated[bool, cyclopts.Parameter(name=["--no-original", "-no"], negative="")] = False,
 ) -> None:
     """Build a knowledge graph from a YAML configuration file.
 
     The positional config is a Graph YAML that orchestrates one or more table
     configs into a single knowledge-graph build.
 
-    ``--no-original`` omits the verbatim source-cell copies (``original_subject``,
-    ``original_object``, and any other ``original_*`` fields) from the final edge
-    NDJSON. ``--qc`` requires the ``[qc]`` extra (``pip install
+    ``--qc`` requires the ``[qc]`` extra (``pip install
     "tablassert[qc]"``); it is checked before the build starts, because the audit stage
     runs LAST and a missing extra would otherwise surface only after entity resolution
     has finished. It also runs a final study stage that asserts over the emitted NDJSON
@@ -751,7 +738,7 @@ def build_kg(
     """
     if qc:
         extras.require("qc", required_by="--qc")
-    run(7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head, no_original=no_original)
+    run(7 if qc else 6, build_pipeline, graph_configuration_file, release=release, qc=qc, log=log, head=head)
 
 
 @APP.command(name="validate")

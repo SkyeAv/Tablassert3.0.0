@@ -514,10 +514,6 @@ def test_build_kg_configuration_file_flag_parses(tmp_path: Path) -> None:
     # gone, cyclopts rejects the cluster's leading ``-t`` as an unknown option.
     with pytest.raises(UnknownOptionError):
         parse(["build-kg", str(config), "-tc"])
-    # --no-original / -no bind the no_original flag.
-    assert parse(["build-kg", str(config), "--no-original"])["no_original"] is True
-    assert parse(["build-kg", str(config), "-no"])["no_original"] is True
-    assert parse(["build-kg", str(config)]).get("no_original", False) is False
 
 
 def test_build_fullmap_pipeline_reports_download_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
