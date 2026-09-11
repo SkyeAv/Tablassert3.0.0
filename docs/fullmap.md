@@ -23,7 +23,18 @@ tablassert build-fullmap --force
 
 # Optional: after `pip install "tablassert[aria2]"`, use bundled aria2c for resumable segmented downloads (the multi-GB prebuilt is the ideal aria2 use case)
 tablassert build-fullmap --aria2c
+
+# Optional: source-build a smaller DB retaining the built-in top-100 taxa
+# (OrganismTaxon and taxonless rows are not filtered)
+tablassert build-fullmap --taxon-allowlist
 ```
+
+`--taxon-allowlist` is opt-in. It uses the checked-in `src/tablassert/data/experimental_taxa.yaml`
+list, filters non-`OrganismTaxon` synonym rows with valid taxon metadata before interning, and always
+builds from the downloaded BABEL sources. It never reuses the unfiltered prebuilt archive. Rows with
+no valid taxon metadata and every `OrganismTaxon` row are retained; a row with multiple taxa is kept
+when any taxon is allowlisted. The first taxon continues to be stored for existing hydration and
+lookup behavior. The built database records its allowlist identity in `META.taxon_allowlist`.
 
 See the [CLI Reference → build-fullmap](cli.md#build-fullmap) for the complete flag table (output path,
 cache directory, BABEL snapshot version, the optional `--aria2c` / `-a` downloader,
@@ -115,7 +126,7 @@ override only when targeting an unusual machine.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TABLASSERT_FULLMAP_EXCLUDE_PREFIXES` | *(empty)* | Comma-separated CURIE prefixes to drop at build time (e.g. `INCHIKEY,Publication`). Excluding prefixes you never resolve dramatically cuts build time, peak memory, and database size. |
+| `TABLASSERT_FULLMAP_EXCLUDE_PREFIXES` | *(empty)* | Comma-separated CURIE prefixes to drop at build time (e.g. `Publication`). Excluding prefixes you never resolve dramatically cuts build time, peak memory, and database size. InChIKey terms are retained unless excluded explicitly. |
 | `TABLASSERT_FULLMAP_CHUNK_BYTES` | `8388608` (8 MiB) | Byte budget per producer→worker line-chunk. Bounded by bytes (not line count) so chunk memory is fixed even for large synonym records. |
 | `TABLASSERT_FULLMAP_PRODUCERS` | `clamp(workers/4, 4, #files)` | Number of producer (decompressor) threads. Decompression far outpaces parallel processing, so a handful keeps all workers fed. |
 | `TABLASSERT_FULLMAP_LOCAL_SPILL_ENTRIES` | `1000000` | Per-worker term-posting buffer size before spilling a sorted run to disk. Lower → less RAM, more run files. |
@@ -140,7 +151,7 @@ they hold six tables (see `rust/src/fullmap.rs`):
 | `categories` | Compact `u16` id → Biolink category string (primary file) |
 | `sources` | Compact `u8` id → source metadata (name/version) (primary file) |
 | `curies` | Compact `u32` id → CURIE record (CURIE, preferred name, category, taxon, source) (primary file) |
-| `meta` | Schema version tag (`tablassert.fullmap.v5`), the shard count (`shards`), and the BABEL `source_version` used to build the file (primary file) |
+| `meta` | Schema version tag (`tablassert.fullmap.v5`), the shard count (`shards`), the BABEL `source_version` used to build the file, and optional allowlist identity (`taxon_allowlist`) (primary file) |
 
 The shard files must remain alongside the primary file: lookups discover them as siblings of the
 resolved primary path.

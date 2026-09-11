@@ -62,6 +62,70 @@ def fullmap_db(tmp_path: Path) -> Path:
     return output
 
 
+def test_taxon_allowlist_and_inchikey_paths(tmp_path: Path) -> None:
+    """The opt-in builder filters taxon-bearing rows but keeps organism/taxonless rows and InChIKeys."""
+    synonyms = write_jsonl(
+        tmp_path / "SRC.ndjson",
+        [
+            {"curie": "HGNC:1", "preferred_name": "human", "names": ["human gene"], "types": ["Gene"], "taxa": ["NCBITaxon:9606"]},
+            {"curie": "HGNC:2", "preferred_name": "mouse", "names": ["mouse gene"], "types": ["Gene"], "taxa": ["NCBITaxon:10090"]},
+            {"curie": "HGNC:3", "preferred_name": "other", "names": ["other gene"], "types": ["Gene"], "taxa": ["NCBITaxon:999999"]},
+            {
+                "curie": "NCBITaxon:999999",
+                "preferred_name": "taxon",
+                "names": ["other taxon"],
+                "types": ["OrganismTaxon"],
+                "taxa": ["NCBITaxon:999999"],
+            },
+            {
+                "curie": "NCBITaxon:888888",
+                "preferred_name": "multi-category taxon",
+                "names": ["multi-category taxon"],
+                "types": ["NamedThing", "biolink:OrganismTaxon"],
+                "taxa": ["NCBITaxon:888888"],
+            },
+            {"curie": "CHEBI:1", "preferred_name": "untaxed", "names": ["untaxed chemical"], "types": ["ChemicalEntity"], "taxa": []},
+            {"curie": "CHEBI:2", "preferred_name": "sentinel", "names": ["sentinel chemical"], "types": ["ChemicalEntity"], "taxa": ["NCBITaxon:0"]},
+            {
+                "curie": "CHEBI:3",
+                "preferred_name": "malformed",
+                "names": ["malformed chemical"],
+                "types": ["ChemicalEntity"],
+                "taxa": ["not-a-taxon"],
+            },
+            {
+                "curie": "HGNC:4",
+                "preferred_name": "multi",
+                "names": ["multi gene"],
+                "types": ["Gene"],
+                "taxa": ["NCBITaxon:999999", "NCBITaxon:9606"],
+            },
+            {
+                "curie": "HGNC:5",
+                "preferred_name": "case-insensitive",
+                "names": ["case-insensitive gene"],
+                "types": ["Gene"],
+                "taxa": ["ncbitaxon:9606"],
+            },
+            {"curie": "INCHIKEY:ABC-DEF", "preferred_name": "inchi", "names": ["ABC-DEF"], "types": ["SmallMolecule"], "taxa": ["NCBITaxon:9606"]},
+        ],
+    )
+    output = tmp_path / "fullmap.redb"
+    rs.build_fullmap_db(output, [], [synonyms], taxon_allowlist=[9606])
+    assert rs.lookup_fullmap_terms(output, ["human gene"])[0]["CURIE"] == "HGNC:1"
+    assert rs.lookup_fullmap_terms(output, ["mouse gene"]) == []
+    assert rs.lookup_fullmap_terms(output, ["other gene"]) == []
+    assert rs.lookup_fullmap_terms(output, ["other taxon"])[0]["CURIE"] == "NCBITaxon:999999"
+    assert rs.lookup_fullmap_terms(output, ["multi-category taxon"])[0]["CURIE"] == "NCBITaxon:888888"
+    assert rs.lookup_fullmap_terms(output, ["untaxed chemical"])[0]["CURIE"] == "CHEBI:1"
+    assert rs.lookup_fullmap_terms(output, ["sentinel chemical"])[0]["CURIE"] == "CHEBI:2"
+    assert rs.lookup_fullmap_terms(output, ["malformed chemical"])[0]["CURIE"] == "CHEBI:3"
+    assert rs.lookup_fullmap_terms(output, ["multi gene"])[0]["CURIE"] == "HGNC:4"
+    assert rs.lookup_fullmap_terms(output, ["case-insensitive gene"])[0]["CURIE"] == "HGNC:5"
+    assert rs.lookup_fullmap_terms(output, ["abc-def"])[0]["CURIE"] == "INCHIKEY:ABC-DEF"
+    assert rs.lookup_fullmap_terms(output, ["inchikey:abc-def"])[0]["CURIE"] == "INCHIKEY:ABC-DEF"
+
+
 def test_lookup_rows_empty_terms_returns_empty(tmp_path: Path) -> None:
     """Line 119: ``lookup_rows`` short-circuits to ``[]`` for an empty term list.
 

@@ -909,6 +909,15 @@ def test_extract_prebuilt_fullmap_seam_does_not_wrap_keyboard_interrupt(tmp_path
         cli._extract_prebuilt_fullmap(tmp_path / "fullmap.tar.zst", tmp_path / "fullmap.redb", on_phase=lambda p: None)
 
 
+def test_load_taxon_allowlist_is_top_100() -> None:
+    """The built-in YAML artifact is a deterministic 100-entry positive-ID list."""
+    ids = cli.load_taxon_allowlist()
+    assert len(ids) == 100
+    assert len(set(ids)) == 100
+    assert ids[:4] == [9606, 10090, 9913, 559292]
+    assert ids[-1] == 1074311
+
+
 def test_build_fullmap_command_defaults_to_prebuilt_download(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Default (no ``--force``) tries the prebuilt download FIRST, not a from-scratch build.
 
@@ -926,6 +935,33 @@ def test_build_fullmap_command_defaults_to_prebuilt_download(tmp_path: Path, mon
     output: Path = tmp_path / "fullmap.redb"  # does not exist
     cli.build_fullmap(output=output, version="v", aria2c=True)
     assert calls == [(2, cli.fetch_prebuilt_fullmap, output, {"version": "v", "aria2c": True})]
+
+
+def test_build_fullmap_allowlist_skips_prebuilt_and_passes_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Allowlist mode always selects the source build and passes the built-in IDs."""
+    calls: list[tuple[Any, ...]] = []
+
+    def _fake_run(stages: int, fn: Any, arg: Path, **kwargs: Any) -> None:
+        calls.append((stages, fn, arg, kwargs))
+
+    monkeypatch.setattr(cli, "run", _fake_run)
+    output: Path = tmp_path / "filtered.redb"
+    cli.build_fullmap(output=output, taxon_allowlist=True)
+    assert len(calls) == 1
+    assert calls[0][0] == 3
+    assert calls[0][1] is cli.build_fullmap_pipeline
+    assert calls[0][3]["taxon_allowlist"] == cli.load_taxon_allowlist()
+
+    calls.clear()
+    output.write_bytes(b"unfiltered-existing")
+    cli.build_fullmap(output=output, taxon_allowlist=True)
+    assert len(calls) == 1
+    assert calls[0][1] is cli.build_fullmap_pipeline
+
+    monkeypatch.setattr(cli, "fetch_prebuilt_fullmap", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("prebuilt must not run")))
+    calls.clear()
+    cli.build_fullmap(output=tmp_path / "forced-filtered.redb", taxon_allowlist=True, force=True)
+    assert calls[0][1] is cli.build_fullmap_pipeline
 
 
 def test_build_fullmap_command_skips_when_output_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

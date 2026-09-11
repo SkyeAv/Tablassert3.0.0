@@ -117,8 +117,15 @@ pub fn build_fixture(dir: &Path) -> PathBuf {
     write_jsonl(&synonyms, SYNONYM_LINES);
     let output = dir.join("fullmap.redb");
     pyo3::Python::attach(|py| {
-        tablassert_rs::build_fullmap_db(py, output.clone(), vec![classes], vec![synonyms], None)
-            .unwrap();
+        tablassert_rs::build_fullmap_db(
+            py,
+            output.clone(),
+            vec![classes],
+            vec![synonyms],
+            None,
+            None,
+        )
+        .unwrap();
     });
     output
 }
