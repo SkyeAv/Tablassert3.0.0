@@ -1700,6 +1700,13 @@ builds from RENCI BABEL exports instead (download class + synonym files, then bu
 <td><code>False</code></td>
 <td>Skip the prebuilt download and always rebuild from BABEL outputs</td>
 </tr>
+<tr>
+<td><code>--taxon-allowlist</code></td>
+<td>Flag</td>
+<td>No</td>
+<td><code>False</code></td>
+<td>Use the built-in top-100 experimental-taxon allowlist; always build from source BABEL files and never use the unfiltered prebuilt</td>
+</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Default: download the prebuilt fullmap.tar.zst for this version and extract it (fast)</span>
@@ -1708,6 +1715,8 @@ builds from RENCI BABEL exports instead (download class + synonym files, then bu
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--force<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Accelerate either download with bundled aria2c (`pip install &quot;tablassert[aria2]&quot;`; the multi-GB prebuilt is the ideal aria2 use case)</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--aria2c<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/fullmap.redb
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Build a smaller source-derived database for the top 100 taxa (does not use the prebuilt archive)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>tablassert<span class="w"> </span>build-fullmap<span class="w"> </span>--taxon-allowlist<span class="w"> </span>--output<span class="w"> </span>/data/fullmap/experimental.redb
 </code></pre></div>
 <p>By default <code>build-fullmap</code> looks for a prebuilt <code>fullmap.tar.zst</code> at
 <code>https://stars.renci.org/var/babel_outputs/&lt;babel-version&gt;/fullmap/&lt;tablassert-version&gt;/</code> (the version
